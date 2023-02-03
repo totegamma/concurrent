@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: concurrent
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      name: concurrent
+  template:
+    metadata:
+      labels:
+        name: concurrent
+    spec:
+      containers:
+      - name: concurrent
+        image: ghcr.io/totegamma/concurrent:master
+        ports:
+          - containerPort: 8000
+        imagePullPolicy: Always
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 3
+          periodSeconds: 3
+      - name: posgresql
+        image: postgres
+        ports:
+          - containerPort: 5432
+        imagePullPolicy: Always
+        env:
+          - name: POSTGRES_PASSWORD
+            value: password
+        volumeMounts:
+          - name: postgres-init
+            mountPath: /docker-entrypoint-initdb.d/init.sql
+      volumes:
+        - name: postgres-init
+          configMap:
+            name: postgres-init
+

@@ -1,0 +1,18 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+data:
+  init.sql: |-
+    CREATE DATABASE concurrent;
+    \c concurrent
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+    CREATE TABLE messages (
+      id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+      cdate TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
+      author varchar(1024),
+      payload jsonb,
+      signature varchar(1024)
+    );
+    INSERT INTO messages (author, payload, signature) VALUES ('hoge', '{}', 'piyo');
+

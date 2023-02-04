@@ -2,7 +2,10 @@ module concurrent
 
 go 1.19
 
-require github.com/jackc/pgx/v4 v4.17.2
+require (
+	github.com/jackc/pgx/v4 v4.17.2
+	github.com/lib/pq v1.10.2
+)
 
 require (
 	github.com/jackc/chunkreader/v2 v2.0.1 // indirect

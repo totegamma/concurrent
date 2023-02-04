@@ -1,19 +1,21 @@
 package main
 
 import (
-    "io"
-    "fmt"
-    "log"
-    "time"
     "bytes"
     "crypto"
-    "net/http"
     "crypto/rsa"
     "crypto/x509"
     "database/sql"
-    "encoding/json"
     "encoding/base64"
+    "encoding/json"
+    "fmt"
+    "io"
+    "log"
+    "net/http"
+    "strings"
+    "time"
     _ "github.com/jackc/pgx/v4/stdlib"
+    "github.com/lib/pq"
 )
 
 type Message struct {
@@ -58,10 +60,27 @@ func main() {
 }
 
 func (backend Backend) getMessages(w http.ResponseWriter, r *http.Request) {
-    rows, err := backend.DB.Query("SELECT * FROM messages")
-    if err != nil {
-        log.Fatalf("getMessages db.Query error:%v", err)
+
+    var filter_str = r.URL.Query().Get("users")
+    var filter = strings.Split(filter_str, ",")
+
+    var rows *sql.Rows
+
+    if (filter_str != "") {
+        var err error
+        rows, err = backend.DB.Query("SELECT * FROM messages WHERE author = ANY($1)", pq.Array(filter))
+        if err != nil {
+            log.Fatalf("getMessages db.Query error:%v", err)
+        }
+
+    } else {
+        var err error
+        rows, err = backend.DB.Query("SELECT * FROM messages")
+        if err != nil {
+            log.Fatalf("getMessages db.Query error:%v", err)
+        }
     }
+
     defer rows.Close()
 
     var response Response
@@ -74,7 +93,7 @@ func (backend Backend) getMessages(w http.ResponseWriter, r *http.Request) {
         response.Messages = append(response.Messages, u)
     }
 
-    err = rows.Err()
+    err := rows.Err()
     if err != nil {
         log.Fatalf("getMessages rows.Err error:%v", err)
     }

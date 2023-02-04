@@ -35,6 +35,8 @@ spec:
         volumeMounts:
           - name: postgres-init
             mountPath: /docker-entrypoint-initdb.d
+          - name: postgres-varlib
+            moutPath: /var/lib/postgresql
       volumes:
         - name: postgres-init
           configMap:
@@ -43,4 +45,7 @@ spec:
             - key: init.sql
               path: init.sql
               mode: 0644
+        - name: postgres-varlib
+          persistentVolumeClaim:
+            claimName: postgres-varlib
 

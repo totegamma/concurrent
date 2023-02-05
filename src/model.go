@@ -16,7 +16,7 @@ type Message struct {
     Payload string `json:"payload"`
     Signature string `json:"signature"`
     CDate time.Time `json:"cdate"`
-    Associations []string `json: "associations"`
+    Associations []string `json:"associations"`
 }
 
 type Character struct {

@@ -11,9 +11,14 @@ import (
 
 func (backend Backend) getCharacters(w http.ResponseWriter, r *http.Request) {
 
+
+    var filter_author = r.URL.Query().Get("author")
     var filter_schema = r.URL.Query().Get("schema")
 
-    rows, err := backend.DB.Query("SELECT * FROM characters WHERE schema = $1", filter_schema)
+    fmt.Print(filter_author)
+    fmt.Print(filter_schema)
+
+    rows, err := backend.DB.Query("SELECT * FROM characters WHERE author = $1 AND schema = $2", filter_author, filter_schema)
     if err != nil {
         log.Fatalf("getCharacters db.Query error:%v", err)
     }
@@ -89,11 +94,14 @@ func (backend Backend) characterHandler(w http.ResponseWriter, r *http.Request) 
     w.Header().Set("Access-Control-Allow-Headers", "*")
     w.Header().Set("Access-Control-Allow-Origin", "*")
     w.Header().Set( "Access-Control-Allow-Methods","GET, POST, PUT, DELETE, OPTIONS" )
+    fmt.Println(r.Method)
     switch r.Method {
         case http.MethodGet:
             backend.getCharacters(w, r)
         case http.MethodPut:
             backend.putCharacter(w, r)
+        case http.MethodOptions:
+            return
         default:
             w.WriteHeader(http.StatusMethodNotAllowed)
             fmt.Fprint(w, "Method not allowed.")

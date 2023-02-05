@@ -52,6 +52,8 @@ func (backend Backend) associationHandler(w http.ResponseWriter, r *http.Request
     switch r.Method {
         case http.MethodPost:
             backend.postAssociation(w, r)
+        case http.MethodOptions:
+            return
         default:
             w.WriteHeader(http.StatusMethodNotAllowed)
             fmt.Fprint(w, "Method not allowed.")

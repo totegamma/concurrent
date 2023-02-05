@@ -31,7 +31,7 @@ data:
       payload jsonb,
       signature varchar(1024),
       cdate TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
-      associations UUID[]
+      associations UUID[] DEFAULT array[]::UUID[]
     );
 
     CREATE FUNCTION attach_association() RETURNS TRIGGER AS $attach_association$

@@ -40,7 +40,7 @@ func (backend Backend) getMessages(w http.ResponseWriter, r *http.Request) {
 
     for rows.Next() {
         u := &Message{}
-        if err := rows.Scan(&u.ID, &u.CDate, &u.Author, &u.Payload, &u.Signature); err != nil {
+        if err := rows.Scan(&u.ID, &u.Author, &u.Schema, &u.Payload, &u.Signature, &u.CDate, pq.Array(&u.Associations)); err != nil {
             log.Fatalf("getMessages rows.Scan error:%v", err)
         }
         response.Messages = append(response.Messages, u)
@@ -102,6 +102,8 @@ func (backend Backend) messageHandler(w http.ResponseWriter, r *http.Request) {
             backend.getMessages(w, r)
         case http.MethodPost:
             backend.postMessage(w, r)
+        case http.MethodOptions:
+            return
         default:
             w.WriteHeader(http.StatusMethodNotAllowed)
             fmt.Fprint(w, "Method not allowed.")

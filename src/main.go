@@ -26,12 +26,12 @@ func main() {
     }
 
     fmt.Println("start web")
-    http.HandleFunc("/", backend.restHandler)
+    http.HandleFunc("/messages", backend.messageHandler)
+    http.HandleFunc("/characters", backend.characterHandler)
+    http.HandleFunc("/associations", backend.associationHandler)
     http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
         fmt.Fprint(w, "ok");
     })
     http.ListenAndServe(":8000", nil)
 }
-
-
 

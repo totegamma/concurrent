@@ -40,7 +40,7 @@ func (backend Backend) getMessages(w http.ResponseWriter, r *http.Request) {
 
     for rows.Next() {
         u := &Message{}
-        if err := rows.Scan(&u.ID, &u.Cdate, &u.Author, &u.Payload, &u.Signature); err != nil {
+        if err := rows.Scan(&u.ID, &u.CDate, &u.Author, &u.Payload, &u.Signature); err != nil {
             log.Fatalf("getMessages rows.Scan error:%v", err)
         }
         response.Messages = append(response.Messages, u)
@@ -79,8 +79,9 @@ func (backend Backend) postMessage(w http.ResponseWriter, r *http.Request) {
         fmt.Println("承認")
     }
 
-    res, err := backend.DB.Exec("INSERT INTO messages (author, payload, signature) VALUES ($1, $2, $3)",
+    res, err := backend.DB.Exec("INSERT INTO messages (author, schema, payload, signature) VALUES ($1, $2, $3, $4)",
                     message.Author,
+                    message.Schema,
                     message.Payload,
                     message.Signature,
                 )
@@ -92,7 +93,7 @@ func (backend Backend) postMessage(w http.ResponseWriter, r *http.Request) {
     fmt.Fprintf(w, "{\"message\": \"accept: %v\"}", res)
 }
 
-func (backend Backend) restHandler(w http.ResponseWriter, r *http.Request) {
+func (backend Backend) messageHandler(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Access-Control-Allow-Headers", "*")
     w.Header().Set("Access-Control-Allow-Origin", "*")
     w.Header().Set( "Access-Control-Allow-Methods","GET, POST, PUT, DELETE, OPTIONS" )

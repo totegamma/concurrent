@@ -2,7 +2,6 @@ package main
 
 import (
     "net/http"
-    "log"
     "encoding/json"
     "fmt"
     "bytes"
@@ -30,19 +29,10 @@ func (backend Backend) postAssociation(w http.ResponseWriter, r *http.Request) {
         fmt.Println("承認")
     }
 
-    res, err := backend.DB.Exec("INSERT INTO assosiation (author, schema, target, payload, signature) VALUES ($1, $2, $3, $4, $5)",
-                    assosiation.Author,
-                    assosiation.Schema,
-                    assosiation.Target,
-                    assosiation.Payload,
-                    assosiation.Signature,
-                )
-    if err != nil {
-        log.Fatalf("postAssosiation db.Exec error:%v", err)
-    }
+    backend.DB.Create(&assosiation)
 
     w.WriteHeader(http.StatusCreated)
-    fmt.Fprintf(w, "{\"message\": \"accept: %v\"}", res)
+    fmt.Fprintf(w, "{\"message\": \"accept\"}")
 }
 
 func (backend Backend) associationHandler(w http.ResponseWriter, r *http.Request) {

@@ -11,33 +11,18 @@ import (
 
 func (backend Backend) getCharacters(w http.ResponseWriter, r *http.Request) {
 
-
     var filter_author = r.URL.Query().Get("author")
     var filter_schema = r.URL.Query().Get("schema")
 
     fmt.Print(filter_author)
     fmt.Print(filter_schema)
 
-    rows, err := backend.DB.Query("SELECT * FROM characters WHERE author = $1 AND schema = $2", filter_author, filter_schema)
-    if err != nil {
-        log.Fatalf("getCharacters db.Query error:%v", err)
-    }
+    var characters []Character
 
-    defer rows.Close()
+    backend.DB.Where("author = $1 AND schema = $2", filter_author, filter_schema).Find(&characters);
 
-    var response Response
-
-    for rows.Next() {
-        u := &Character{}
-        if err := rows.Scan(&u.Author, &u.Schema, &u.Payload, &u.Signature, &u.CDate); err != nil {
-            log.Fatalf("getCharacters rows.Scan error:%v", err)
-        }
-        response.Characters = append(response.Characters, u)
-    }
-
-    err = rows.Err()
-    if err != nil {
-        log.Fatalf("getCharacters rows.Err error:%v", err)
+    response := CharactersResponse {
+        Characters: characters,
     }
 
     jsonstr, err := json.Marshal(response)
@@ -68,33 +53,16 @@ func (backend Backend) putCharacter(w http.ResponseWriter, r *http.Request) {
         fmt.Println("承認")
     }
 
-    res, err := backend.DB.Exec(
-                    `
-                    INSERT INTO characters (author, schema, payload, signature)
-                    VALUES ($1, $2, $3, $4)
-                    ON CONFLICT(author, schema)
-                    DO UPDATE SET
-                        payload = $3,
-                        signature = $4
-                    `,
-                    character.Author,
-                    character.Schema,
-                    character.Payload,
-                    character.Signature,
-                )
-    if err != nil {
-        log.Fatalf("putCharacter db.Exec error:%v", err)
-    }
+    backend.DB.Create(&character)
 
     w.WriteHeader(http.StatusCreated)
-    fmt.Fprintf(w, "{\"message\": \"accept: %v\"}", res)
+    fmt.Fprintf(w, "{\"message\": \"accept\"}")
 }
 
 func (backend Backend) characterHandler(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Access-Control-Allow-Headers", "*")
     w.Header().Set("Access-Control-Allow-Origin", "*")
     w.Header().Set( "Access-Control-Allow-Methods","GET, POST, PUT, DELETE, OPTIONS" )
-    fmt.Println(r.Method)
     switch r.Method {
         case http.MethodGet:
             backend.getCharacters(w, r)

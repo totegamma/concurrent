@@ -1,28 +1,29 @@
 package main
 
 import (
-    "database/sql"
     "fmt"
     "net/http"
-    _ "github.com/jackc/pgx/v4/stdlib"
+    "gorm.io/gorm"
+    "gorm.io/driver/postgres"
 )
 
 
 func main() {
-    uri := "postgres://postgres:password@localhost/concurrent"
 
-    fmt.Println("hello")
-    fmt.Println("connect to db")
-    var err error
-    DB, err := sql.Open("pgx", uri)
+    dsn := "host=localhost user=postgres password=postgres dbname=concurrent port=5432 sslmode=disable"
+    db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
     if err != nil {
-        panic(err)
+        fmt.Println("failed to connect database");
+        panic("failed to connect database")
     }
-    defer DB.Close()
-    fmt.Println(DB)
+
+    // Migrate the schema
+    fmt.Println("start migrate")
+    db.AutoMigrate(&Character{}, &Association{}, &Message{})
+    fmt.Println("done!")
 
     backend := Backend {
-        DB: DB,
+        DB: db,
     }
 
     fmt.Println("start web")
@@ -34,4 +35,33 @@ func main() {
     })
     http.ListenAndServe(":8000", nil)
 }
+
+/*
+CREATE FUNCTION attach_association() RETURNS TRIGGER AS $attach_association$
+BEGIN
+    UPDATE messages
+    SET associations = ARRAY_APPEND(associations, NEW.id)
+    WHERE id = NEW.target;
+    return NEW;
+END;
+$attach_association$
+LANGUAGE plpgsql;
+CREATE TRIGGER attach_association_trigger
+    AFTER INSERT
+    ON associations
+    FOR EACH ROW EXECUTE FUNCTION attach_association();
+CREATE FUNCTION detach_association() RETURNS TRIGGER AS $detach_association$
+BEGIN
+    UPDATE messages
+    SET associations = ARRAY_REMOVE(associations, OLD.id)
+    WHERE id = NEW.target;
+    return OLD;
+END;
+$detach_association$
+LANGUAGE plpgsql;
+CREATE TRIGGER detach_association_trigger
+    BEFORE DELETE 
+    ON associations
+    FOR EACH ROW EXECUTE FUNCTION detach_association();
+*/
 

@@ -3,8 +3,6 @@ package main
 import (
     "net/http"
     "strings"
-    "database/sql"
-    "github.com/lib/pq"
     "log"
     "encoding/json"
     "fmt"
@@ -16,39 +14,16 @@ func (backend Backend) getMessages(w http.ResponseWriter, r *http.Request) {
 
     var filter_str = r.URL.Query().Get("users")
     var filter = strings.Split(filter_str, ",")
-
-    var rows *sql.Rows
+    var messages []Message
 
     if (filter_str != "") {
-        var err error
-        rows, err = backend.DB.Query("SELECT * FROM messages WHERE author = ANY($1)", pq.Array(filter))
-        if err != nil {
-            log.Fatalf("getMessages db.Query error:%v", err)
-        }
-
+        backend.DB.Where("author = ANY($1)", filter).Find(&messages)
     } else {
-        var err error
-        rows, err = backend.DB.Query("SELECT * FROM messages")
-        if err != nil {
-            log.Fatalf("getMessages db.Query error:%v", err)
-        }
+        backend.DB.Find(&messages)
     }
 
-    defer rows.Close()
-
-    var response Response
-
-    for rows.Next() {
-        u := &Message{}
-        if err := rows.Scan(&u.ID, &u.Author, &u.Schema, &u.Payload, &u.Signature, &u.CDate, pq.Array(&u.Associations)); err != nil {
-            log.Fatalf("getMessages rows.Scan error:%v", err)
-        }
-        response.Messages = append(response.Messages, u)
-    }
-
-    err := rows.Err()
-    if err != nil {
-        log.Fatalf("getMessages rows.Err error:%v", err)
+    response := MessagesResponse {
+        Messages: messages,
     }
 
     jsonstr, err := json.Marshal(response)
@@ -79,18 +54,10 @@ func (backend Backend) postMessage(w http.ResponseWriter, r *http.Request) {
         fmt.Println("承認")
     }
 
-    res, err := backend.DB.Exec("INSERT INTO messages (author, schema, payload, signature) VALUES ($1, $2, $3, $4)",
-                    message.Author,
-                    message.Schema,
-                    message.Payload,
-                    message.Signature,
-                )
-    if err != nil {
-        log.Fatalf("postMessage db.Exec error:%v", err)
-    }
+    backend.DB.Create(&message)
 
     w.WriteHeader(http.StatusCreated)
-    fmt.Fprintf(w, "{\"message\": \"accept: %v\"}", res)
+    fmt.Fprintf(w, "{\"message\": \"accept\"}")
 }
 
 func (backend Backend) messageHandler(w http.ResponseWriter, r *http.Request) {

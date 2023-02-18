@@ -14,8 +14,8 @@ type MessageRepository struct {
     db *gorm.DB
 }
 
-func NewMessageRepository(db *gorm.DB) *MessageRepository {
-    return &MessageRepository{db: db}
+func NewMessageRepository(db *gorm.DB) MessageRepository {
+    return MessageRepository{db: db}
 }
 
 func (r *MessageRepository) Create(message Message) {

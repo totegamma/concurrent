@@ -13,8 +13,8 @@ type CharacterRepository struct {
     db *gorm.DB
 }
 
-func NewCharacterRepository(db *gorm.DB) *CharacterRepository {
-    return &CharacterRepository{db: db}
+func NewCharacterRepository(db *gorm.DB) CharacterRepository {
+    return CharacterRepository{db: db}
 }
 
 func (r *CharacterRepository) Upsert(character Character) {

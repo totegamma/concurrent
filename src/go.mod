@@ -3,6 +3,7 @@ module concurrent
 go 1.19
 
 require (
+	github.com/google/wire v0.5.0
 	gorm.io/driver/postgres v1.4.8
 	gorm.io/gorm v1.24.5
 )

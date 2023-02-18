@@ -12,8 +12,8 @@ type AssociationService struct {
     repo AssociationRepository
 }
 
-func NewAssociationService(repo AssociationRepository) *AssociationService {
-    return &AssociationService{repo: repo}
+func NewAssociationService(repo AssociationRepository) AssociationService {
+    return AssociationService{repo: repo}
 }
 
 func (s *AssociationService) postAssociation(association Association) {
@@ -31,8 +31,7 @@ func (s *AssociationService) postAssociation(association Association) {
 
 func (backend Backend) associationHandler(w http.ResponseWriter, r *http.Request) {
 
-    associationRepository := NewAssociationRepository(backend.DB)
-    associationService := NewAssociationService(*associationRepository)
+    associationService := SetupAssociationService(backend.DB)
 
     w.Header().Set("Access-Control-Allow-Headers", "*")
     w.Header().Set("Access-Control-Allow-Origin", "*")

@@ -14,8 +14,8 @@ type MessageService struct {
     repo MessageRepository
 }
 
-func NewMessageService(repo MessageRepository) *MessageService {
-    return &MessageService{repo: repo}
+func NewMessageService(repo MessageRepository) MessageService {
+    return MessageService{repo: repo}
 }
 
 func (s *MessageService) getMessages(followee []string) []Message{
@@ -44,8 +44,7 @@ func (s *MessageService) postMessage(message Message) {
 
 func (backend Backend) messageHandler(w http.ResponseWriter, r *http.Request) {
 
-    messageRepository := NewMessageRepository(backend.DB)
-    messageService := NewMessageService(*messageRepository)
+    messageService := SetupMessageService(backend.DB)
 
     w.Header().Set("Access-Control-Allow-Headers", "*")
     w.Header().Set("Access-Control-Allow-Origin", "*")

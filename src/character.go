@@ -13,8 +13,8 @@ type CharacterService struct {
     repo CharacterRepository
 }
 
-func NewCharacterService(repo CharacterRepository) *CharacterService {
-    return &CharacterService{repo: repo}
+func NewCharacterService(repo CharacterRepository) CharacterService {
+    return CharacterService{repo: repo}
 }
 
 func (s* CharacterService) getCharacters(owner string, schema string) []Character {
@@ -34,8 +34,7 @@ func (s* CharacterService) putCharacter(character Character) {
 
 func (backend Backend) characterHandler(w http.ResponseWriter, r *http.Request) {
 
-    characterRepository := NewCharacterRepository(backend.DB)
-    characterService := NewCharacterService(*characterRepository)
+    characterService := SetupCharacterService(backend.DB)
 
     w.Header().Set("Access-Control-Allow-Headers", "*")
     w.Header().Set("Access-Control-Allow-Origin", "*")

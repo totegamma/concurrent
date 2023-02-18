@@ -35,6 +35,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
 
+      - name: setup go
+        uses: actions/setup-go@v2
+
+      - name: install wire
+        run: go install github.com/google/wire/cmd/wire@latest
+
+      - name: run wire
+        run: cd src && wire
+
       # Install the cosign tool except on PR
       # https://github.com/sigstore/cosign-installer
       - name: Install cosign

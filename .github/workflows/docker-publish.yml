@@ -42,7 +42,7 @@ jobs:
         run: go install github.com/google/wire/cmd/wire@latest
 
       - name: run wire
-        run: cd src && wire
+        run: cd src && $(go env GOPATH)/bin/wire
 
       # Install the cosign tool except on PR
       # https://github.com/sigstore/cosign-installer

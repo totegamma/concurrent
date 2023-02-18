@@ -30,11 +30,13 @@ spec:
           - containerPort: 5432
         imagePullPolicy: Always
         env:
+          - name: POSTGRES_USER
+            value: postgres
           - name: POSTGRES_PASSWORD
-            value: password
+            value: postgres
+          - name: POSTGRES_DB
+            value: concurrent
         volumeMounts:
-          - name: postgres-init
-            mountPath: /docker-entrypoint-initdb.d
           - name: postgres-varlib
             mountPath: /var/lib/postgresql
       volumes:

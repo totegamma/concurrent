@@ -16,10 +16,10 @@ func (backend Backend) postAssociation(w http.ResponseWriter, r *http.Request) {
     buf := new(bytes.Buffer)
     io.Copy(buf, body)
 
-    var assosiation Association
-    json.Unmarshal(buf.Bytes(), &assosiation)
+    var association Association
+    json.Unmarshal(buf.Bytes(), &association)
 
-    if err := verifySignature(assosiation.Payload, assosiation.Author, assosiation.Signature); err != nil {
+    if err := verifySignature(association.Payload, association.Author, association.Signature); err != nil {
         fmt.Println("err: ", err)
         fmt.Println("拒否")
         w.WriteHeader(http.StatusBadRequest)
@@ -29,7 +29,7 @@ func (backend Backend) postAssociation(w http.ResponseWriter, r *http.Request) {
         fmt.Println("承認")
     }
 
-    backend.DB.Create(&assosiation)
+    backend.DB.Create(&association)
 
     w.WriteHeader(http.StatusCreated)
     fmt.Fprintf(w, "{\"message\": \"accept\"}")

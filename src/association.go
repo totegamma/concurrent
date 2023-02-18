@@ -8,40 +8,47 @@ import (
     "io"
 )
 
+type AssociationService struct {
+    repo AssociationRepository
+}
 
-func (backend Backend) postAssociation(w http.ResponseWriter, r *http.Request) {
-    body := r.Body
-    defer body.Close()
+func NewAssociationService(repo AssociationRepository) *AssociationService {
+    return &AssociationService{repo: repo}
+}
 
-    buf := new(bytes.Buffer)
-    io.Copy(buf, body)
-
-    var association Association
-    json.Unmarshal(buf.Bytes(), &association)
-
+func (s *AssociationService) postAssociation(association Association) {
     if err := verifySignature(association.Payload, association.Author, association.Signature); err != nil {
         fmt.Println("err: ", err)
         fmt.Println("拒否")
-        w.WriteHeader(http.StatusBadRequest)
-        fmt.Fprint(w, "invalid signature")
         return
     } else {
         fmt.Println("承認")
     }
 
-    backend.DB.Create(&association)
-
-    w.WriteHeader(http.StatusCreated)
-    fmt.Fprintf(w, "{\"message\": \"accept\"}")
+    s.repo.Create(association)
 }
 
+
 func (backend Backend) associationHandler(w http.ResponseWriter, r *http.Request) {
+
+    associationRepository := NewAssociationRepository(backend.DB)
+    associationService := NewAssociationService(*associationRepository)
+
     w.Header().Set("Access-Control-Allow-Headers", "*")
     w.Header().Set("Access-Control-Allow-Origin", "*")
     w.Header().Set( "Access-Control-Allow-Methods","GET, POST, PUT, DELETE, OPTIONS" )
     switch r.Method {
         case http.MethodPost:
-            backend.postAssociation(w, r)
+            body := r.Body
+            defer body.Close()
+
+            buf := new(bytes.Buffer)
+            io.Copy(buf, body)
+
+            var association Association
+            json.Unmarshal(buf.Bytes(), &association)
+
+            associationService.postAssociation(association)
         case http.MethodOptions:
             return
         default:

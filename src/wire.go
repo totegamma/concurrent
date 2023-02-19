@@ -36,3 +36,13 @@ func SetupAssociationHandler(db *gorm.DB) handler.AssociationHandler {
     return handler.AssociationHandler{}
 }
 
+func SetupWebfingerHandler(db *gorm.DB) handler.WebfingerHandler {
+    wire.Build(handler.NewWebfingerHandler, service.NewCharacterService, repository.NewCharacterRepository)
+    return handler.WebfingerHandler{}
+}
+
+func SetupActivityPubHandler(db *gorm.DB) handler.ActivityPubHandler {
+    wire.Build(handler.NewActivityPubHandler, service.NewCharacterService, repository.NewCharacterRepository)
+    return handler.ActivityPubHandler{}
+}
+

@@ -22,9 +22,14 @@ func (r *CharacterRepository) Upsert(character model.Character) {
     r.db.Save(&character)
 }
 
-func (r *CharacterRepository) Get(owner string, schema string) []model.Character {
+func (r *CharacterRepository) Get(owner string, schema string) ([]model.Character, error) {
     var characters []model.Character
-    r.db.Where("author = $1 AND schema = $2", owner, schema).Find(&characters);
-    return characters
+    if err := r.db.Where("author = $1 AND schema = $2", owner, schema).Find(&characters).Error; err != nil {
+        return []model.Character{}, err
+    }
+    if characters == nil {
+        return []model.Character{}, nil
+    }
+    return characters, nil
 }
 

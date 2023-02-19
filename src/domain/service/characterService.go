@@ -15,7 +15,12 @@ func NewCharacterService(repo repository.CharacterRepository) CharacterService {
 }
 
 func (s* CharacterService) GetCharacters(owner string, schema string) []model.Character {
-    return s.repo.Get(owner, schema)
+    characters, err := s.repo.Get(owner, schema)
+    if err != nil {
+        fmt.Printf("error occured while GetCharacters in characterRepository. error: %v\n", err)
+        return []model.Character{}
+    }
+    return characters
 }
 
 func (s* CharacterService) PutCharacter(character model.Character) {

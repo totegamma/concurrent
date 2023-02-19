@@ -2,7 +2,6 @@ package main
 
 import (
 	"concurrent/domain/model"
-	"concurrent/presentation/handler"
 	"fmt"
 	"net/http"
 
@@ -69,8 +68,8 @@ func main() {
     fmt.Println("done!")
 
     concurrentApp := SetupConcurrentApp(db)
-    webfingerHandler := handler.NewWebFingerHandler()
-    activityPubHandler := handler.NewActivityPubHandler()
+    webfingerHandler := SetupWebfingerHandler(db)
+    activityPubHandler := SetupActivityPubHandler(db)
 
     fmt.Println("start web")
     http.HandleFunc("/", concurrentApp.ServeHTTP)

@@ -3,22 +3,36 @@
 package main
 
 import (
-    "gorm.io/gorm"
-    "github.com/google/wire"
+	"concurrent/application"
+	"concurrent/domain/repository"
+	"concurrent/domain/service"
+	"concurrent/presentation/handler"
+
+	"github.com/google/wire"
+	"gorm.io/gorm"
 )
 
-func SetupMessageService(db *gorm.DB) MessageService {
-    wire.Build(NewMessageService, NewMessageRepository)
-    return MessageService{}
+var messageHandlerProvider = wire.NewSet(handler.NewMessageHandler, service.NewMessageService, repository.NewMessageRepository)
+var characterHandlerProvider = wire.NewSet(handler.NewCharacterHandler, service.NewCharacterService, repository.NewCharacterRepository)
+var associationHandlerProvider = wire.NewSet(handler.NewAssociationHandler, service.NewAssociationService, repository.NewAssociationRepository)
+
+func SetupConcurrentApp(db *gorm.DB) application.ConcurrentApp {
+    wire.Build(application.NewConcurrentApp, messageHandlerProvider, characterHandlerProvider, associationHandlerProvider)
+    return application.ConcurrentApp{}
 }
 
-func SetupCharacterService(db *gorm.DB) CharacterService {
-    wire.Build(NewCharacterService, NewCharacterRepository)
-    return CharacterService{}
+func SetupMessageHandler(db *gorm.DB) handler.MessageHandler {
+    wire.Build(messageHandlerProvider)
+    return handler.MessageHandler{}
 }
 
-func SetupAssociationService(db *gorm.DB) AssociationService {
-    wire.Build(NewAssociationService, NewAssociationRepository)
-    return AssociationService{}
+func SetupCharacterHandler(db *gorm.DB) handler.CharacterHandler {
+    wire.Build(characterHandlerProvider)
+    return handler.CharacterHandler{}
+}
+
+func SetupAssociationHandler(db *gorm.DB) handler.AssociationHandler {
+    wire.Build(associationHandlerProvider)
+    return handler.AssociationHandler{}
 }
 

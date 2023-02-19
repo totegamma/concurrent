@@ -1,4 +1,4 @@
-package main
+package service
 
 import (
     "crypto"
@@ -7,7 +7,7 @@ import (
     "encoding/base64"
 )
 
-func verifySignature(message string, keystr string, signature string) error {
+func VerifySignature(message string, keystr string, signature string) error {
     // PEMの中身はDERと同じASN.1のバイナリデータをBase64によってエンコーディングされたテキストなのでBase64でデコードする
     // ゆえにDERエンコード形式に変換
     keyBytes, err := base64.StdEncoding.DecodeString(keystr)

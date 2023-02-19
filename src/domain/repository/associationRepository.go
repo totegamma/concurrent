@@ -1,11 +1,12 @@
-package main
+package repository
 
 import (
     "gorm.io/gorm"
+    "concurrent/domain/model"
 )
 
 type IAssociationRepository interface {
-    Create(association Association)
+    Create(association model.Association)
 }
 
 type AssociationRepository struct {
@@ -16,7 +17,7 @@ func NewAssociationRepository(db *gorm.DB) AssociationRepository {
     return AssociationRepository{db: db}
 }
 
-func (r *AssociationRepository) Create(association Association) {
+func (r *AssociationRepository) Create(association model.Association) {
     r.db.Create(&association)
 }
 

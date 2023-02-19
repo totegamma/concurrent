@@ -5,6 +5,7 @@ import (
     "net/http"
     "gorm.io/gorm"
     "gorm.io/driver/postgres"
+    "concurrent/domain/model"
 )
 
 
@@ -19,7 +20,7 @@ func main() {
 
     // Migrate the schema
     fmt.Println("start migrate")
-    db.AutoMigrate(&Character{}, &Association{}, &Message{})
+    db.AutoMigrate(&model.Character{}, &model.Association{}, &model.Message{})
 
     var count int64
     db.Table("information_schema.triggers").Where("trigger_name = 'attach_association_trigger'").Count(&count)
@@ -65,14 +66,10 @@ func main() {
     }
     fmt.Println("done!")
 
-    backend := Backend {
-        DB: db,
-    }
+    concurrentApp := SetupConcurrentApp(db)
 
     fmt.Println("start web")
-    http.HandleFunc("/messages", backend.messageHandler)
-    http.HandleFunc("/characters", backend.characterHandler)
-    http.HandleFunc("/associations", backend.associationHandler)
+    http.HandleFunc("/", concurrentApp.ServeHTTP)
     http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
         fmt.Fprint(w, "ok");
     })

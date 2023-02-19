@@ -1,4 +1,4 @@
-package main
+package handler
 
 import (
     "io"
@@ -7,34 +7,20 @@ import (
     "bytes"
     "net/http"
     "encoding/json"
+    "concurrent/domain/model"
+    "concurrent/domain/service"
 )
 
-type CharacterService struct {
-    repo CharacterRepository
+type CharacterHandler struct {
+    service service.CharacterService
 }
 
-func NewCharacterService(repo CharacterRepository) CharacterService {
-    return CharacterService{repo: repo}
+func NewCharacterHandler(service service.CharacterService) CharacterHandler {
+    return CharacterHandler{service: service}
 }
 
-func (s* CharacterService) getCharacters(owner string, schema string) []Character {
-    return s.repo.Get(owner, schema)
-}
+func (h CharacterHandler) Handle(w http.ResponseWriter, r *http.Request) {
 
-func (s* CharacterService) putCharacter(character Character) {
-    if err := verifySignature(character.Payload, character.Author, character.Signature); err != nil {
-        fmt.Println("err: ", err)
-        fmt.Println("拒否")
-        return
-    } else {
-        fmt.Println("承認")
-    }
-    s.repo.Upsert(character)
-}
-
-func (backend Backend) characterHandler(w http.ResponseWriter, r *http.Request) {
-
-    characterService := SetupCharacterService(backend.DB)
 
     w.Header().Set("Access-Control-Allow-Headers", "*")
     w.Header().Set("Access-Control-Allow-Origin", "*")
@@ -43,8 +29,8 @@ func (backend Backend) characterHandler(w http.ResponseWriter, r *http.Request) 
         case http.MethodGet:
             var filter_author = r.URL.Query().Get("author")
             var filter_schema = r.URL.Query().Get("schema")
-            characters := characterService.getCharacters(filter_author, filter_schema)
-            response := CharactersResponse {
+            characters := h.service.GetCharacters(filter_author, filter_schema)
+            response := model.CharactersResponse {
                 Characters: characters,
             }
             jsonstr, err := json.Marshal(response)
@@ -59,9 +45,9 @@ func (backend Backend) characterHandler(w http.ResponseWriter, r *http.Request) 
             buf := new(bytes.Buffer)
             io.Copy(buf, body)
 
-            var character Character
+            var character model.Character
             json.Unmarshal(buf.Bytes(), &character)
-            characterService.putCharacter(character)
+            h.service.PutCharacter(character)
             w.WriteHeader(http.StatusCreated)
             fmt.Fprintf(w, "{\"message\": \"accept\"}")
         case http.MethodOptions:

@@ -1,11 +1,13 @@
 package main
 
 import (
-    "fmt"
-    "net/http"
-    "gorm.io/gorm"
-    "gorm.io/driver/postgres"
-    "concurrent/domain/model"
+	"concurrent/domain/model"
+	"concurrent/presentation/handler"
+	"fmt"
+	"net/http"
+
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 )
 
 
@@ -67,9 +69,13 @@ func main() {
     fmt.Println("done!")
 
     concurrentApp := SetupConcurrentApp(db)
+    webfingerHandler := handler.NewWebFingerHandler()
+    activityPubHandler := handler.NewActivityPubHandler()
 
     fmt.Println("start web")
     http.HandleFunc("/", concurrentApp.ServeHTTP)
+    http.HandleFunc("/.well-known/webfinger", webfingerHandler.Handle)
+    http.Handle("/ap/", http.StripPrefix("/ap", http.HandlerFunc(activityPubHandler.Handle)))
     http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
         fmt.Fprint(w, "ok");
     })

@@ -24,7 +24,7 @@ func (s* CharacterService) GetCharacters(owner string, schema string) []model.Ch
 }
 
 func (s* CharacterService) PutCharacter(character model.Character) {
-    if err := VerifySignature(character.Payload, character.Author, character.Signature.R, character.Signature.S); err != nil {
+    if err := VerifySignature(character.Payload, character.Author, character.R, character.S); err != nil {
         fmt.Println("err: ", err)
         fmt.Println("拒否")
         return

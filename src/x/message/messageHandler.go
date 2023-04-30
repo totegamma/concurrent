@@ -1,4 +1,4 @@
-package handler
+package message
 
 import (
 	"bytes"
@@ -8,15 +8,13 @@ import (
 	"io"
 	"log"
 	"net/http"
-	"concurrent/domain/model"
-	"concurrent/domain/service"
 )
 
 type MessageHandler struct {
-    service service.MessageService
+    service MessageService
 }
 
-func NewMessageHandler(service service.MessageService) MessageHandler {
+func NewMessageHandler(service MessageService) MessageHandler {
     return MessageHandler{service: service}
 }
 
@@ -34,7 +32,7 @@ func (h MessageHandler) Handle(w http.ResponseWriter, r *http.Request) {
             }
 
             message := h.service.GetMessage(id)
-            response := model.MessageResponse {
+            response := MessageResponse {
                 Message: message,
             }
 
@@ -49,7 +47,7 @@ func (h MessageHandler) Handle(w http.ResponseWriter, r *http.Request) {
             defer body.Close()
             buf := new(bytes.Buffer)
             io.Copy(buf, body)
-            var message model.Message
+            var message Message
             json.Unmarshal(buf.Bytes(), &message)
             h.service.PostMessage(message)
             w.WriteHeader(http.StatusCreated)

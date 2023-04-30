@@ -1,21 +1,23 @@
-package application
+package main
 
 import (
     "net/http"
-    "concurrent/presentation/handler"
-    "concurrent/x/stream"
+    "github.com/totegamma/concurrent/x/message"
+    "github.com/totegamma/concurrent/x/character"
+    "github.com/totegamma/concurrent/x/association"
+    "github.com/totegamma/concurrent/x/stream"
 )
 
 type ConcurrentApp struct {
-    MessageHandler handler.MessageHandler;
-    CharacterHandler handler.CharacterHandler;
-    AssociationHandler handler.AssociationHandler;
+    MessageHandler message.MessageHandler;
+    CharacterHandler character.CharacterHandler;
+    AssociationHandler association.AssociationHandler;
     StreamHandler stream.StreamHandler;
 }
 
-func NewConcurrentApp(messageHandler handler.MessageHandler, 
-                        characterHandler handler.CharacterHandler,
-                        associationhandler handler.AssociationHandler,
+func NewConcurrentApp(messageHandler message.MessageHandler, 
+                        characterHandler character.CharacterHandler,
+                        associationhandler association.AssociationHandler,
                         streamhandler stream.StreamHandler,
                     ) ConcurrentApp {
     return ConcurrentApp{

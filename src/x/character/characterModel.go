@@ -1,4 +1,4 @@
-package model
+package character
 
 import "time"
 
@@ -9,5 +9,9 @@ type Character struct {
     R string `json:"r" gorm:"type:char(64)"`
     S string `json:"s" gorm:"type:char(64)"`
     CDate time.Time `json:"cdate" gorm:"type:timestamp with time zone;not null;default:clock_timestamp()"`
+}
+
+type CharactersResponse struct {
+    Characters []Character `json:"characters"`
 }
 

@@ -1,4 +1,4 @@
-package model
+package activitypub
 
 type WebFinger_Link struct {
     Rel string `json:"rel"`

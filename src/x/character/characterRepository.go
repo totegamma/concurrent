@@ -1,12 +1,11 @@
-package repository
+package character
 
 import (
     "gorm.io/gorm"
-    "concurrent/domain/model"
 )
 
 type ICharacterRepository interface {
-    Upsert(character model.Character)
+    Upsert(character Character)
     Get(owner string, schema string)
 }
 
@@ -18,17 +17,17 @@ func NewCharacterRepository(db *gorm.DB) CharacterRepository {
     return CharacterRepository{db: db}
 }
 
-func (r *CharacterRepository) Upsert(character model.Character) {
+func (r *CharacterRepository) Upsert(character Character) {
     r.db.Save(&character)
 }
 
-func (r *CharacterRepository) Get(owner string, schema string) ([]model.Character, error) {
-    var characters []model.Character
+func (r *CharacterRepository) Get(owner string, schema string) ([]Character, error) {
+    var characters []Character
     if err := r.db.Where("author = $1 AND schema = $2", owner, schema).Find(&characters).Error; err != nil {
-        return []model.Character{}, err
+        return []Character{}, err
     }
     if characters == nil {
-        return []model.Character{}, nil
+        return []Character{}, nil
     }
     return characters, nil
 }

@@ -1,13 +1,16 @@
 package main
 
 import (
-	"concurrent/domain/model"
 	"fmt"
 	"net/http"
 
-	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/driver/postgres"
     "github.com/redis/go-redis/v9"
+
+	"github.com/totegamma/concurrent/x/message"
+	"github.com/totegamma/concurrent/x/character"
+	"github.com/totegamma/concurrent/x/association"
 )
 
 
@@ -22,7 +25,7 @@ func main() {
 
     // Migrate the schema
     fmt.Println("start migrate")
-    db.AutoMigrate(&model.Character{}, &model.Association{}, &model.Message{})
+    db.AutoMigrate(&character.Character{}, &association.Association{}, &message.Message{})
 
     var count int64
     db.Table("information_schema.triggers").Where("trigger_name = 'attach_association_trigger'").Count(&count)

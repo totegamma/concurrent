@@ -1,4 +1,4 @@
-module concurrent
+module github.com/totegamma/concurrent
 
 go 1.19
 

@@ -1,4 +1,4 @@
-package model
+package activitypub
 
 type Act_Icon struct {
     Type string `json:"type"`

@@ -1,15 +1,14 @@
-package repository
+package message
 
 import (
     "fmt"
     "gorm.io/gorm"
-    "concurrent/domain/model"
 )
 
 type IMessageRepository interface {
-    Create(message model.Message)
-    GetAll() []model.Message
-    GetFollowee() []model.Message
+    Create(message Message)
+    GetAll() []Message
+    GetFollowee() []Message
 }
 
 type MessageRepository struct {
@@ -20,26 +19,26 @@ func NewMessageRepository(db *gorm.DB) MessageRepository {
     return MessageRepository{db: db}
 }
 
-func (r *MessageRepository) Create(message model.Message) string {
+func (r *MessageRepository) Create(message Message) string {
     r.db.Create(&message)
     return message.ID
 }
 
-func (r *MessageRepository) Get(key string) model.Message {
-    var message model.Message
+func (r *MessageRepository) Get(key string) Message {
+    var message Message
     r.db.First(&message, "id = ?", key)
     fmt.Println(message)
     return message
 }
 
-func (r *MessageRepository) GetAll() []model.Message {
-    var messages []model.Message
+func (r *MessageRepository) GetAll() []Message {
+    var messages []Message
     r.db.Find(&messages)
     return messages
 }
 
-func (r *MessageRepository) GetFollowee(followeeList []string) []model.Message {
-    var messages []model.Message
+func (r *MessageRepository) GetFollowee(followeeList []string) []Message {
+    var messages []Message
     r.db.Where("author = ANY($1)", followeeList).Find(&messages)
     return messages
 }

@@ -1,4 +1,4 @@
-package handler
+package association
 
 import (
     "net/http"
@@ -6,15 +6,13 @@ import (
     "fmt"
     "bytes"
     "io"
-    "concurrent/domain/model"
-    "concurrent/domain/service"
 )
 
 type AssociationHandler struct {
-    service service.AssociationService
+    service AssociationService
 }
 
-func NewAssociationHandler(service service.AssociationService) AssociationHandler {
+func NewAssociationHandler(service AssociationService) AssociationHandler {
     return AssociationHandler{service: service}
 }
 
@@ -31,7 +29,7 @@ func (h AssociationHandler) Handle(w http.ResponseWriter, r *http.Request) {
             buf := new(bytes.Buffer)
             io.Copy(buf, body)
 
-            var association model.Association
+            var association Association
             json.Unmarshal(buf.Bytes(), &association)
 
             h.service.PostAssociation(association)

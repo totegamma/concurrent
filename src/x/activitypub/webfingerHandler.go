@@ -1,8 +1,7 @@
-package handler
+package activitypub
 
 import (
-	"concurrent/domain/model"
-	"concurrent/domain/service"
+	"github.com/totegamma/concurrent/x/character"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -13,10 +12,10 @@ const profileSchema = "https://raw.githubusercontent.com/totegamma/concurrent-sc
 const domain = "concurrent.kokopi.me"
 
 type WebfingerHandler struct {
-    service service.CharacterService
+    service character.CharacterService
 }
 
-func NewWebfingerHandler(service service.CharacterService) WebfingerHandler {
+func NewWebfingerHandler(service character.CharacterService) WebfingerHandler {
     return WebfingerHandler{service: service}
 }
 
@@ -37,9 +36,9 @@ func (h WebfingerHandler) Handle(w http.ResponseWriter, r *http.Request) {
             hits := h.service.GetCharacters(subject, profileSchema)
 
             if len(hits) > 0 {
-                webfinger := model.WebFinger {
+                webfinger := WebFinger {
                     Subject: "acct:" + subject + "@" + domain,
-                    Links: []model.WebFinger_Link{
+                    Links: []WebFinger_Link{
                         {
                             Rel: "self",
                             Type: "application/activity+json",

@@ -1,4 +1,4 @@
-package handler
+package character
 
 import (
     "io"
@@ -7,15 +7,13 @@ import (
     "bytes"
     "net/http"
     "encoding/json"
-    "concurrent/domain/model"
-    "concurrent/domain/service"
 )
 
 type CharacterHandler struct {
-    service service.CharacterService
+    service CharacterService
 }
 
-func NewCharacterHandler(service service.CharacterService) CharacterHandler {
+func NewCharacterHandler(service CharacterService) CharacterHandler {
     return CharacterHandler{service: service}
 }
 
@@ -30,7 +28,7 @@ func (h CharacterHandler) Handle(w http.ResponseWriter, r *http.Request) {
             var filter_author = r.URL.Query().Get("author")
             var filter_schema = r.URL.Query().Get("schema")
             characters := h.service.GetCharacters(filter_author, filter_schema)
-            response := model.CharactersResponse {
+            response := CharactersResponse {
                 Characters: characters,
             }
             jsonstr, err := json.Marshal(response)
@@ -45,7 +43,7 @@ func (h CharacterHandler) Handle(w http.ResponseWriter, r *http.Request) {
             buf := new(bytes.Buffer)
             io.Copy(buf, body)
 
-            var character model.Character
+            var character Character
             json.Unmarshal(buf.Bytes(), &character)
             h.service.PutCharacter(character)
             w.WriteHeader(http.StatusCreated)

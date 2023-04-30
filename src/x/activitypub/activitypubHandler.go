@@ -1,8 +1,7 @@
-package handler
+package activitypub
 
 import (
-	"concurrent/domain/model"
-	"concurrent/domain/service"
+	"github.com/totegamma/concurrent/x/character"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -10,10 +9,10 @@ import (
 )
 
 type ActivityPubHandler struct {
-    service service.CharacterService
+    service character.CharacterService
 }
 
-func NewActivityPubHandler(service service.CharacterService) ActivityPubHandler {
+func NewActivityPubHandler(service character.CharacterService) ActivityPubHandler {
     return ActivityPubHandler{service: service}
 }
 
@@ -44,7 +43,7 @@ func (h ActivityPubHandler) Handle(w http.ResponseWriter, r *http.Request) {
                 var profile Profile
                 json.Unmarshal([]byte(profileJson), &profile)
 
-                message := model.Act_Message{
+                message := Act_Message{
                     Context: "https://www.w3.org/ns/activitystreams",
                     Type: "Person",
                     Id: "https://concurrent.kokopi.me/ap/" + id,
@@ -54,7 +53,7 @@ func (h ActivityPubHandler) Handle(w http.ResponseWriter, r *http.Request) {
                     Inbox: "https://concurrent.kokopi.me/ap/inbox",
                     Outbox: "https://concurrent.kokopi.me/ap/outbox",
                     Url: "https://concurrent.kokopi.me/ap/" + id,
-                    Icon: model.Act_Icon{
+                    Icon: Act_Icon{
                         Type: "Image",
                         MediaType: "image/png",
                         Url: profile.Avatar,

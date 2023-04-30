@@ -16,10 +16,13 @@ func NewMessageService(repo repository.MessageRepository) MessageService {
 
 func (s *MessageService) GetMessages(followee []string) []model.Message{
     var messages []model.Message
-
+    fmt.Printf("%v\n", followee);
+    fmt.Printf("switch: %v\n", len(followee))
     if (len(followee) > 0) {
+        fmt.Println("get followee")
         messages = s.repo.GetFollowee(followee)
     } else {
+        fmt.Println("get all")
         messages = s.repo.GetAll()
     }
 

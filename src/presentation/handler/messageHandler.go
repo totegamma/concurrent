@@ -27,8 +27,11 @@ func (h MessageHandler) Handle(w http.ResponseWriter, r *http.Request) {
     w.Header().Set( "Access-Control-Allow-Methods","GET, POST, PUT, DELETE, OPTIONS" )
     switch r.Method {
         case http.MethodGet:
-            var filter_str = r.URL.Query().Get("users")
-            var filter = strings.Split(filter_str, ",")
+            var filter_str, queried = r.URL.Query()["users"]
+            var filter []string
+            if queried {
+                filter = strings.Split(filter_str[0], ",")
+            }
             messages := h.service.GetMessages(filter)
             response := model.MessagesResponse {
                 Messages: messages,

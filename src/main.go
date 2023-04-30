@@ -79,7 +79,11 @@ func main() {
     activityPubHandler := SetupActivityPubHandler(db)
 
     fmt.Println("start web")
-    http.HandleFunc("/", concurrentApp.ServeHTTP)
+    http.HandleFunc("/messages", concurrentApp.MessageHandler.Handle)
+    http.HandleFunc("/messages/", concurrentApp.MessageHandler.Handle)
+    http.HandleFunc("/characters", concurrentApp.CharacterHandler.Handle)
+    http.HandleFunc("/associations", concurrentApp.AssociationHandler.Handle)
+    http.HandleFunc("/stream", concurrentApp.StreamHandler.Handle)
     http.HandleFunc("/.well-known/webfinger", webfingerHandler.Handle)
     http.Handle("/ap/", http.StripPrefix("/ap", http.HandlerFunc(activityPubHandler.Handle)))
     http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
@@ -88,3 +92,17 @@ func main() {
     http.ListenAndServe(":8000", nil)
 }
 
+/*
+func (app *ConcurrentApp) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+    switch r.URL.Path {
+    case "/messages":
+        app.messageHandler.Handle(w, r)
+    case "/characters":
+        app.characterHandler.Handle(w, r)
+    case "/associations":
+        app.associationHandler.Handle(w, r)
+    case "/stream":
+        app.streamHandler.Handle(w, r)
+    }
+}
+*/

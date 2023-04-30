@@ -13,5 +13,6 @@ type Message struct {
     S string `json:"s" gorm:"type:char(64)"`
     CDate time.Time `json:"cdate" gorm:"type:timestamp with time zone;not null;default:clock_timestamp()"`
     Associations []string `json:"associations" gorm:"type:uuid[]"`
+    Streams string `json:"streams" gorm:"type:text"`
 }
 

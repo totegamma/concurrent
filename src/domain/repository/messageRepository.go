@@ -1,6 +1,7 @@
 package repository
 
 import (
+    "fmt"
     "gorm.io/gorm"
     "concurrent/domain/model"
 )
@@ -19,8 +20,16 @@ func NewMessageRepository(db *gorm.DB) MessageRepository {
     return MessageRepository{db: db}
 }
 
-func (r *MessageRepository) Create(message model.Message) {
+func (r *MessageRepository) Create(message model.Message) string {
     r.db.Create(&message)
+    return message.ID
+}
+
+func (r *MessageRepository) Get(key string) model.Message {
+    var message model.Message
+    r.db.First(&message, "id = ?", key)
+    fmt.Println(message)
+    return message
 }
 
 func (r *MessageRepository) GetAll() []model.Message {

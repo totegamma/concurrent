@@ -2,16 +2,25 @@ package service
 
 import (
     "fmt"
+    "strings"
     "concurrent/domain/model"
     "concurrent/domain/repository"
+    "concurrent/x/stream"
 )
 
 type MessageService struct {
     repo repository.MessageRepository
+    stream stream.StreamService
 }
 
-func NewMessageService(repo repository.MessageRepository) MessageService {
-    return MessageService{repo: repo}
+func NewMessageService(repo repository.MessageRepository, stream stream.StreamService) MessageService {
+    return MessageService{repo: repo, stream: stream}
+}
+
+func (s *MessageService) GetMessage(id string) model.Message{
+    var message model.Message
+    message = s.repo.Get(id)
+    return message
 }
 
 func (s *MessageService) GetMessages(followee []string) []model.Message{
@@ -37,7 +46,9 @@ func (s *MessageService) PostMessage(message model.Message) {
     } else {
         fmt.Println("承認")
     }
-
-    s.repo.Create(message)
+    id := s.repo.Create(message)
+    for _, stream := range strings.Split(message.Streams, ",") {
+        s.stream.Post(stream, id)
+    }
 }
 

@@ -24,8 +24,8 @@ func SetupConcurrentApp(db *gorm.DB, client *redis.Client) application.Concurren
     return application.ConcurrentApp{}
 }
 
-func SetupMessageHandler(db *gorm.DB) handler.MessageHandler {
-    wire.Build(messageHandlerProvider)
+func SetupMessageHandler(db *gorm.DB, client *redis.Client) handler.MessageHandler {
+    wire.Build(messageHandlerProvider, stream.NewStreamService)
     return handler.MessageHandler{}
 }
 

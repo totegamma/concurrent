@@ -3,11 +3,11 @@ package handler
 import (
 	"bytes"
 	"encoding/json"
+	"path/filepath"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
-	"strings"
 	"concurrent/domain/model"
 	"concurrent/domain/service"
 )
@@ -27,14 +27,15 @@ func (h MessageHandler) Handle(w http.ResponseWriter, r *http.Request) {
     w.Header().Set( "Access-Control-Allow-Methods","GET, POST, PUT, DELETE, OPTIONS" )
     switch r.Method {
         case http.MethodGet:
-            var filter_str, queried = r.URL.Query()["users"]
-            var filter []string
-            if queried {
-                filter = strings.Split(filter_str[0], ",")
+            _, id := filepath.Split(r.URL.Path)
+
+            if id != "" {
+                fmt.Println(id)
             }
-            messages := h.service.GetMessages(filter)
-            response := model.MessagesResponse {
-                Messages: messages,
+
+            message := h.service.GetMessage(id)
+            response := model.MessageResponse {
+                Message: message,
             }
 
             jsonstr, err := json.Marshal(response)

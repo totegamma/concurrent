@@ -58,3 +58,23 @@ func (h StreamHandler) Handle(w http.ResponseWriter, r *http.Request) {
             fmt.Fprint(w, "Method not allowed.")
     }
 }
+
+func (h StreamHandler) HandleList(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Access-Control-Allow-Headers", "*")
+    w.Header().Set("Access-Control-Allow-Origin", "*")
+    w.Header().Set( "Access-Control-Allow-Methods","GET, POST, PUT, DELETE, OPTIONS" )
+    switch r.Method {
+        case http.MethodGet:
+            list := h.service.StreamList()
+            jsonstr, err := json.Marshal(list)
+            if err != nil {
+                log.Fatalf("getMessages json.Marshal error:%v", err)
+            }
+            fmt.Fprint(w, string(jsonstr))
+        case http.MethodOptions:
+            return
+        default:
+            w.WriteHeader(http.StatusMethodNotAllowed)
+            fmt.Fprint(w, "Method not allowed.")
+    }
+}

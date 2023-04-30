@@ -39,3 +39,8 @@ func (s *StreamService) Post(stream string, id string) string {
     return cmd.Val()
 }
 
+func (s *StreamService) StreamList() []string {
+    cmd := s.client.Keys(redis_ctx, "*")
+    return cmd.Val()
+}
+

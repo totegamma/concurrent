@@ -19,11 +19,6 @@ var characterHandlerProvider = wire.NewSet(character.NewCharacterHandler, charac
 var associationHandlerProvider = wire.NewSet(association.NewAssociationHandler, association.NewAssociationService, association.NewAssociationRepository)
 var streamHandlerProvider = wire.NewSet(stream.NewStreamHandler, stream.NewStreamService)
 
-func SetupConcurrentApp(db *gorm.DB, client *redis.Client) ConcurrentApp {
-    wire.Build(NewConcurrentApp, messageHandlerProvider, characterHandlerProvider, associationHandlerProvider, streamHandlerProvider)
-    return ConcurrentApp{}
-}
-
 func SetupMessageHandler(db *gorm.DB, client *redis.Client) message.MessageHandler {
     wire.Build(messageHandlerProvider, stream.NewStreamService)
     return message.MessageHandler{}

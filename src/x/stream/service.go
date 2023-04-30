@@ -10,20 +10,17 @@ import (
 )
 
 type StreamService struct {
+    client* redis.Client
 }
 
-func NewStreamService() StreamService {
-    return StreamService{}
+func NewStreamService(client *redis.Client) StreamService {
+    return StreamService{ client }
 }
 
 var redis_ctx = context.Background()
 
+
 func (s *StreamService) PostRedis() {
-    rdb := redis.NewClient(&redis.Options{
-        Addr:     "localhost:6379",
-        Password: "", // no password set
-        DB:       0,  // use default DB
-    })
 
     message, err := MakeRandomStr(10)
     fmt.Println(message)
@@ -33,12 +30,12 @@ func (s *StreamService) PostRedis() {
         Member: message,
     }
 
-    err = rdb.ZAdd(redis_ctx, "user/test", content).Err()
+    err = s.client.ZAdd(redis_ctx, "user/test", content).Err()
     if err != nil {
         panic(err)
     }
 
-    cmd := rdb.XAdd(redis_ctx, &redis.XAddArgs{
+    cmd := s.client.XAdd(redis_ctx, &redis.XAddArgs{
         Stream: "user_stream",
         ID: "*",
         Values: map[string]interface{}{
@@ -48,7 +45,7 @@ func (s *StreamService) PostRedis() {
     })
     fmt.Printf("cmd: %v\n", cmd);
 
-    vals, err := rdb.ZRevRangeByScore(redis_ctx, "user/test", &redis.ZRangeBy{
+    vals, err := s.client.ZRevRangeByScore(redis_ctx, "user/test", &redis.ZRangeBy{
         Min: "-inf",
         Max: "+inf",
         Offset: 0,

@@ -11,6 +11,7 @@ import (
 
 	"github.com/google/wire"
 	"gorm.io/gorm"
+    "github.com/redis/go-redis/v9"
 )
 
 var messageHandlerProvider = wire.NewSet(handler.NewMessageHandler, service.NewMessageService, repository.NewMessageRepository)
@@ -18,7 +19,7 @@ var characterHandlerProvider = wire.NewSet(handler.NewCharacterHandler, service.
 var associationHandlerProvider = wire.NewSet(handler.NewAssociationHandler, service.NewAssociationService, repository.NewAssociationRepository)
 var streamHandlerProvider = wire.NewSet(stream.NewStreamHandler, stream.NewStreamService)
 
-func SetupConcurrentApp(db *gorm.DB) application.ConcurrentApp {
+func SetupConcurrentApp(db *gorm.DB, client *redis.Client) application.ConcurrentApp {
     wire.Build(application.NewConcurrentApp, messageHandlerProvider, characterHandlerProvider, associationHandlerProvider, streamHandlerProvider)
     return application.ConcurrentApp{}
 }
@@ -48,7 +49,7 @@ func SetupActivityPubHandler(db *gorm.DB) handler.ActivityPubHandler {
     return handler.ActivityPubHandler{}
 }
 
-func SetupStreamHandler() stream.StreamHandler {
+func SetupStreamHandler(client *redis.Client) stream.StreamHandler {
     wire.Build(streamHandlerProvider)
     return stream.StreamHandler{}
 }

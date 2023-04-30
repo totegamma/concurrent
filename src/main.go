@@ -7,6 +7,7 @@ import (
 
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+    "github.com/redis/go-redis/v9"
 )
 
 
@@ -67,7 +68,13 @@ func main() {
     }
     fmt.Println("done!")
 
-    concurrentApp := SetupConcurrentApp(db)
+    rdb := redis.NewClient(&redis.Options{
+        Addr:     "localhost:6379",
+        Password: "", // no password set
+        DB:       0,  // use default DB
+    })
+
+    concurrentApp := SetupConcurrentApp(db, rdb)
     webfingerHandler := SetupWebfingerHandler(db)
     activityPubHandler := SetupActivityPubHandler(db)
 

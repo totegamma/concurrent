@@ -38,6 +38,16 @@ func (s *StreamService) PostRedis() {
         panic(err)
     }
 
+    cmd := rdb.XAdd(redis_ctx, &redis.XAddArgs{
+        Stream: "user_stream",
+        ID: "*",
+        Values: map[string]interface{}{
+            "timestamp": time.Now().UnixMicro(),
+            "message": message,
+        },
+    })
+    fmt.Printf("cmd: %v\n", cmd);
+
     vals, err := rdb.ZRevRangeByScore(redis_ctx, "user/test", &redis.ZRangeBy{
         Min: "-inf",
         Max: "+inf",

@@ -1,47 +1,42 @@
 package service
 
 import (
-    "crypto"
-    "crypto/rsa"
-    "crypto/x509"
-    "encoding/base64"
+    "log"
+	"encoding/hex"
+    "github.com/pkg/errors"
+	"golang.org/x/crypto/sha3"
+	"github.com/ethereum/go-ethereum/crypto"
 )
 
-func VerifySignature(message string, keystr string, signature string) error {
-    // PEMの中身はDERと同じASN.1のバイナリデータをBase64によってエンコーディングされたテキストなのでBase64でデコードする
-    // ゆえにDERエンコード形式に変換
-    keyBytes, err := base64.StdEncoding.DecodeString(keystr)
-    if err != nil {
+func VerifySignature(message string, pubkeyStr string, signature_r string, signature_s string) error {
+
+    log.Print(message)
+    log.Print(pubkeyStr)
+    log.Print(signature_r)
+    log.Print(signature_s)
+
+	// 公開鍵をデコード
+	pubKeyBytes, err := hex.DecodeString(pubkeyStr)
+	if err != nil {
         return err
+	}
+
+    // R値とS値をbig.Intに変換
+	sigBytes, err := hex.DecodeString(signature_r + signature_s)
+	if err != nil {
+        return err
+	}
+
+	// メッセージをKeccak256でハッシュ化
+	hash := sha3.NewLegacyKeccak256()
+	hash.Write([]byte(message))
+	hashedMessage := hash.Sum(nil)
+
+	verified := crypto.VerifySignature(pubKeyBytes, hashedMessage, sigBytes)
+    if verified {
+        return nil
     }
 
-    // DERでエンコードされた公開鍵を解析する
-    // 成功すると、pubは* rsa.PublicKey、* dsa.PublicKey、または* ecdsa.PublicKey型になる
-    pub, err := x509.ParsePKIXPublicKey(keyBytes)
-    if err != nil {
-        return err
-    }
-
-    // 署名文字列はBase64でエンコーディングされたテキストなのでBase64でデコードする
-    signDataByte, err := base64.StdEncoding.DecodeString(signature)
-    if err != nil {
-        return err
-    }
-
-    // SHA-256のハッシュ関数を使って受信データのハッシュ値を算出する
-    h := crypto.Hash.New(crypto.SHA256)
-    h.Write([]byte(message))
-    hashed := h.Sum(nil)
-
-    // 署名の検証、有効な署名はnilを返すことによって示される
-    // ここで何をしているかというと、、
-    // ①送信者のデータ（署名データ）を公開鍵で復号しハッシュ値を算出
-    // ②受信側で算出したハッシュ値と、①のハッシュ値を比較し、一致すれば、「送信者が正しい」「データが改ざんされていない」ということを確認できる
-    err = rsa.VerifyPKCS1v15(pub.(*rsa.PublicKey), crypto.SHA256, hashed, signDataByte)
-    if err != nil {
-        return err
-    }
-
-    return nil
+    return errors.New("signature validation failed")
 }
 

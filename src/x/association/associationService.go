@@ -25,3 +25,11 @@ func (s *AssociationService) PostAssociation(association Association) {
     s.repo.Create(association)
 }
 
+func (s *AssociationService) GetOwn(author string) []Association {
+    return s.repo.GetOwn(author)
+}
+
+func (s *AssociationService) Delete(id string) {
+    s.repo.Delete(id)
+}
+

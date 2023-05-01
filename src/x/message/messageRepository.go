@@ -3,6 +3,7 @@ package message
 import (
     "fmt"
     "gorm.io/gorm"
+    "github.com/totegamma/concurrent/x/association"
 )
 
 type IMessageRepository interface {
@@ -26,7 +27,22 @@ func (r *MessageRepository) Create(message Message) string {
 
 func (r *MessageRepository) Get(key string) Message {
     var message Message
+    var associations []association.Association
+    /*
+    r.db.Table("associations").
+        Select("associations.*").
+        Joins("JOIN messages ON messages.id = ?", message.ID).
+        Where("associations.id = ANY(messages.associations)").
+        Find(&associations)
+        */
     r.db.First(&message, "id = ?", key)
+
+    r.db.Table("associations").
+        Select("associations.*").
+        Joins("JOIN messages ON messages.id = associations.target").
+        Where("messages.id = ? AND associations.id = ANY(messages.associations)", message.ID).
+        Find(&associations)
+    message.AssociationsData = associations
     fmt.Println(message)
     return message
 }

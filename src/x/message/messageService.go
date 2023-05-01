@@ -38,7 +38,7 @@ func (s *MessageService) GetMessages(followee []string) []Message{
 }
 
 func (s *MessageService) PostMessage(message Message) {
-    if err := util.VerifySignature(message.Payload, message.Author, message.R, message.S); err != nil {
+    if err := util.VerifySignature(message.Payload, message.Author, message.Signature); err != nil {
         fmt.Println("err: ", err)
         fmt.Println("拒否")
         return

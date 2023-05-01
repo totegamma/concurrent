@@ -23,7 +23,7 @@ func (s* CharacterService) GetCharacters(owner string, schema string) []Characte
 }
 
 func (s* CharacterService) PutCharacter(character Character) {
-    if err := util.VerifySignature(character.Payload, character.Author, character.R, character.S); err != nil {
+    if err := util.VerifySignature(character.Payload, character.Author, character.Signature); err != nil {
         fmt.Println("err: ", err)
         fmt.Println("拒否")
         return

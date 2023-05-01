@@ -14,7 +14,7 @@ func NewAssociationService(repo AssociationRepository) AssociationService {
 }
 
 func (s *AssociationService) PostAssociation(association Association) {
-    if err := util.VerifySignature(association.Payload, association.Author, association.R, association.S); err != nil {
+    if err := util.VerifySignature(association.Payload, association.Author, association.Signature); err != nil {
         fmt.Println("err: ", err)
         fmt.Println("拒否")
         return

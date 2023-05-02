@@ -51,3 +51,10 @@ func (s *MessageService) PostMessage(message Message) {
     }
 }
 
+func (s *MessageService) DeleteMessage(id string) {
+    deleted := s.repo.Delete(id)
+    for _, stream := range strings.Split(deleted.Streams, ",") {
+        s.stream.Delete(stream, id)
+    }
+}
+

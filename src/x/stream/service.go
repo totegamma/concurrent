@@ -1,6 +1,7 @@
 package stream
 
 import (
+    "fmt"
     "context"
     "github.com/redis/go-redis/v9"
 )
@@ -16,13 +17,10 @@ func NewStreamService(client *redis.Client) StreamService {
 var redis_ctx = context.Background()
 
 func (s *StreamService) GetRecent(streams []string) []redis.XMessage {
-    cmd := s.client.XRead(redis_ctx, &redis.XReadArgs{
-        Streams: streams,
-        Count: 64,
-    })
     var messages []redis.XMessage
-    for _, elem := range cmd.Val() {
-        messages = append(messages, elem.Messages...)
+    for _, stream := range streams {
+        cmd := s.client.XRevRangeN(redis_ctx, stream, "+", "-", 64)
+        messages = append(messages, cmd.Val()...)
     }
     return messages
 }
@@ -42,5 +40,10 @@ func (s *StreamService) Post(stream string, id string) string {
 func (s *StreamService) StreamList() []string {
     cmd := s.client.Keys(redis_ctx, "*")
     return cmd.Val()
+}
+
+func (s *StreamService) Delete(stream string, id string) {
+    cmd := s.client.XDel(redis_ctx, stream, id)
+    fmt.Println(cmd)
 }
 

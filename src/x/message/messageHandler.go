@@ -52,6 +52,19 @@ func (h MessageHandler) Handle(w http.ResponseWriter, r *http.Request) {
             h.service.PostMessage(message)
             w.WriteHeader(http.StatusCreated)
             fmt.Fprintf(w, "{\"message\": \"accept\"}")
+        case http.MethodDelete:
+            body := r.Body
+            defer body.Close()
+
+            buf := new(bytes.Buffer)
+            io.Copy(buf, body)
+
+            var request deleteQuery
+            json.Unmarshal(buf.Bytes(), &request)
+
+            h.service.DeleteMessage(request.Id)
+            fmt.Fprintf(w, "{\"message\": \"accept\"}")
+
         case http.MethodOptions:
             return
         default:

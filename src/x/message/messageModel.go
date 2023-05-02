@@ -26,3 +26,7 @@ type MessageResponse struct {
     Message Message `json:"message"`
 }
 
+type deleteQuery struct {
+    Id string `json:"id"`
+}
+

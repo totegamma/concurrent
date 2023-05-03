@@ -1,7 +1,7 @@
 package socket
 
 import (
-    "fmt"
+    "log"
     "sync"
     "github.com/gorilla/websocket"
 )
@@ -32,19 +32,15 @@ func (s *SocketService) RemoveClient(ws *websocket.Conn) {
     ws.Close()
 }
 
-func (s *SocketService) NotifyAllClients(message string) {
-    fmt.Println("welcome to notify all clients!")
+func (s *SocketService) NotifyAllClients(message []byte) {
     s.clientsMutex.Lock()
     defer s.clientsMutex.Unlock()
-    fmt.Println("lock accuired!")
 
-    fmt.Println(s.clients)
     for client := range s.clients {
-        err := client.WriteMessage(websocket.TextMessage, []byte(message))
+        err := client.WriteMessage(websocket.TextMessage, message)
         if err != nil {
-            fmt.Printf("Failed to write WebSocket message to client: %v\n", err)
+            log.Printf("Failed to write WebSocket message to client: %v\n", err)
             delete(s.clients, client)
         }
     }
-    fmt.Println("finish")
 }

@@ -30,7 +30,7 @@ func SetupCharacterHandler(db *gorm.DB) character.CharacterHandler {
     return character.CharacterHandler{}
 }
 
-func SetupAssociationHandler(db *gorm.DB) association.AssociationHandler {
+func SetupAssociationHandler(db *gorm.DB, socketService *socket.SocketService) association.AssociationHandler {
     wire.Build(associationHandlerProvider)
     return association.AssociationHandler{}
 }

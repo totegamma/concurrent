@@ -37,7 +37,6 @@ func (h StreamHandler) Handle(w http.ResponseWriter, r *http.Request) {
             if err != nil {
                 log.Fatalf("getMessages json.Marshal error:%v", err)
             }
-            fmt.Printf("message: %v\n", messages)
             fmt.Fprint(w, string(jsonstr))
         case http.MethodPost:
 

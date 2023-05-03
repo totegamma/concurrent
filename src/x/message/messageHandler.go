@@ -27,10 +27,6 @@ func (h MessageHandler) Handle(w http.ResponseWriter, r *http.Request) {
         case http.MethodGet:
             _, id := filepath.Split(r.URL.Path)
 
-            if id != "" {
-                fmt.Println(id)
-            }
-
             message := h.service.GetMessage(id)
             response := MessageResponse {
                 Message: message,

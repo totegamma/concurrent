@@ -1,6 +1,7 @@
 package association
 
 import (
+    "fmt"
     "gorm.io/gorm"
 )
 
@@ -27,7 +28,17 @@ func (r *AssociationRepository) GetOwn(author string) []Association {
     return associations 
 }
 
-func (r *AssociationRepository) Delete(id string) {
-    r.db.Where("id = $1", id).Delete(&Association{})
+func (r *AssociationRepository) Delete(id string) Association {
+    var deleted Association
+    if err := r.db.First(&deleted, "id = ?", id).Error; err != nil {
+        fmt.Printf("Error finding association: %v\n", err)
+        return Association{}
+    }
+    result := r.db.Where("id = $1", id).Delete(&Association{})
+    if result.Error != nil {
+        fmt.Printf("Error deleting association: %v\n", result.Error)
+        return Association{}
+    }
+    return deleted
 }
 

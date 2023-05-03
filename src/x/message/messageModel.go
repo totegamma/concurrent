@@ -18,6 +18,11 @@ type Message struct {
     Streams string `json:"streams" gorm:"type:text"`
 }
 
+type MessageStreamEvent struct {
+    Type string `json:"type"`
+    Body Message `json:"body"`
+}
+
 type MessagesResponse struct {
     Messages []Message `json:"messages"`
 }

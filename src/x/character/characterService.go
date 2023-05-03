@@ -1,7 +1,7 @@
 package character
 
 import (
-    "fmt"
+    "log"
     "github.com/totegamma/concurrent/x/util"
 )
 
@@ -16,7 +16,7 @@ func NewCharacterService(repo CharacterRepository) CharacterService {
 func (s* CharacterService) GetCharacters(owner string, schema string) []Character {
     characters, err := s.repo.Get(owner, schema)
     if err != nil {
-        fmt.Printf("error occured while GetCharacters in characterRepository. error: %v\n", err)
+        log.Printf("error occured while GetCharacters in characterRepository. error: %v\n", err)
         return []Character{}
     }
     return characters
@@ -24,11 +24,8 @@ func (s* CharacterService) GetCharacters(owner string, schema string) []Characte
 
 func (s* CharacterService) PutCharacter(character Character) {
     if err := util.VerifySignature(character.Payload, character.Author, character.Signature); err != nil {
-        fmt.Println("err: ", err)
-        fmt.Println("拒否")
+        log.Println("verify signature err: ", err)
         return
-    } else {
-        fmt.Println("承認")
     }
     s.repo.Upsert(character)
 }

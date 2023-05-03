@@ -1,7 +1,6 @@
 package message
 
 import (
-    "fmt"
     "gorm.io/gorm"
     "github.com/totegamma/concurrent/x/association"
 )
@@ -36,7 +35,6 @@ func (r *MessageRepository) Get(key string) Message {
         Where("messages.id = ? AND associations.id = ANY(messages.associations)", message.ID).
         Find(&associations)
     message.AssociationsData = associations
-    fmt.Println(message)
     return message
 }
 

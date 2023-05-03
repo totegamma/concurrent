@@ -14,6 +14,11 @@ type Association struct {
     CDate time.Time `json:"cdate" gorm:"type:timestamp with time zone;not null;default:clock_timestamp()"`
 }
 
+type AssociationStreamEvent struct {
+    Type string `json:"type"`
+    Body Association `json:"body"`
+}
+
 type deleteQuery struct {
     Id string `json:"id"`
 }

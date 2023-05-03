@@ -66,7 +66,6 @@ func (h ActivityPubHandler) Handle(w http.ResponseWriter, r *http.Request) {
                 }
 
                 w.Header().Set("content-type", "application/activity+json; charset=utf-8")
-                fmt.Print(string(outputJson))
                 fmt.Fprint(w, string(outputJson))
             }
 

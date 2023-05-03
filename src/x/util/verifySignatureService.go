@@ -1,7 +1,6 @@
 package util
 
 import (
-    "log"
     "encoding/hex"
     "github.com/pkg/errors"
     "golang.org/x/crypto/sha3"
@@ -9,10 +8,6 @@ import (
 )
 
 func VerifySignature(message string, address string, signature string) error {
-
-    log.Print(message)
-    log.Print(address)
-    log.Print(signature)
 
     // R値とS値をbig.Intに変換
     sigBytes, err := hex.DecodeString(signature)
@@ -29,17 +24,14 @@ func VerifySignature(message string, address string, signature string) error {
     if err != nil {
         return err
     }
-    log.Println(recoveredPub)
 
     pubkey, err := crypto.UnmarshalPubkey(recoveredPub)
     if err != nil {
         return err
     }
     sigaddr := crypto.PubkeyToAddress(*pubkey)
-    log.Println(sigaddr)
 
     verified := address[2:] == sigaddr.Hex()[2:]
-    log.Printf("Signature verified: %v\n", verified)
     if verified {
         return nil
     }

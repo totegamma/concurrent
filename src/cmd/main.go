@@ -58,7 +58,7 @@ func main() {
             BEGIN
                 UPDATE messages
                 SET associations = ARRAY_REMOVE(associations, OLD.id)
-                WHERE id = NEW.target;
+                WHERE id = OLD.target;
                 return OLD;
             END;
             $detach_association$
@@ -83,7 +83,7 @@ func main() {
     socketHandler := SetupSocketHandler(socketService)
     messageHandler := SetupMessageHandler(db, rdb, socketService)
     characterHandler := SetupCharacterHandler(db)
-    associationHandler := SetupAssociationHandler(db)
+    associationHandler := SetupAssociationHandler(db, socketService)
     streamHandler := SetupStreamHandler(rdb)
     webfingerHandler := SetupWebfingerHandler(db)
     activityPubHandler := SetupActivityPubHandler(db)

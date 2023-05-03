@@ -20,7 +20,7 @@ func NewMessageRepository(db *gorm.DB) MessageRepository {
     return MessageRepository{db: db}
 }
 
-func (r *MessageRepository) Create(message Message) string {
+func (r *MessageRepository) Create(message *Message) string {
     r.db.Create(&message)
     return message.ID
 }

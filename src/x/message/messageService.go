@@ -30,7 +30,7 @@ func (s *MessageService) PostMessage(message Message) {
         log.Println("verify signature err: ", err)
         return
     }
-    id := s.repo.Create(message)
+    id := s.repo.Create(&message)
     for _, stream := range strings.Split(message.Streams, ",") {
         s.stream.Post(stream, id)
     }

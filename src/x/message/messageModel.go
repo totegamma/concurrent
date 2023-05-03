@@ -20,6 +20,7 @@ type Message struct {
 
 type MessageStreamEvent struct {
     Type string `json:"type"`
+    Action string `json:"action"`
     Body Message `json:"body"`
 }
 

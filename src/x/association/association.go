@@ -16,6 +16,7 @@ type Association struct {
 
 type AssociationStreamEvent struct {
     Type string `json:"type"`
+    Action string `json:"action"`
     Body Association `json:"body"`
 }
 

@@ -36,7 +36,8 @@ func (s *MessageService) PostMessage(message Message) {
     }
 
     jsonstr, _ := json.Marshal(MessageStreamEvent{
-        Type: "create",
+        Type: "message",
+        Action: "create",
         Body: message,
     })
     s.socket.NotifyAllClients(jsonstr)
@@ -48,10 +49,10 @@ func (s *MessageService) DeleteMessage(id string) {
         s.stream.Delete(stream, id)
     }
     jsonstr, _ := json.Marshal(MessageStreamEvent{
-        Type: "delete",
+        Type: "message",
+        Action: "delete",
         Body: deleted,
     })
     s.socket.NotifyAllClients(jsonstr)
-
 }
 

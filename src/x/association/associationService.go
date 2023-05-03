@@ -25,11 +25,11 @@ func (s *AssociationService) PostAssociation(association Association) {
     s.repo.Create(association)
 
     jsonstr, _ := json.Marshal(AssociationStreamEvent{
-        Type: "create",
+        Type: "association",
+        Action: "create",
         Body: association,
     })
     s.socket.NotifyAllClients(jsonstr)
-
 }
 
 func (s *AssociationService) GetOwn(author string) []Association {
@@ -39,10 +39,10 @@ func (s *AssociationService) GetOwn(author string) []Association {
 func (s *AssociationService) Delete(id string) {
     deleted := s.repo.Delete(id)
     jsonstr, _ := json.Marshal(AssociationStreamEvent{
-        Type: "delete",
+        Type: "association",
+        Action: "delete",
         Body: deleted,
     })
     s.socket.NotifyAllClients(jsonstr)
-
 }
 

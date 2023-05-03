@@ -4,13 +4,14 @@ import (
 	"fmt"
 	"net/http"
 
-	"gorm.io/gorm"
+	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/postgres"
-    "github.com/redis/go-redis/v9"
+	"gorm.io/gorm"
 
-	"github.com/totegamma/concurrent/x/message"
-	"github.com/totegamma/concurrent/x/character"
 	"github.com/totegamma/concurrent/x/association"
+	"github.com/totegamma/concurrent/x/character"
+	"github.com/totegamma/concurrent/x/message"
+	"github.com/totegamma/concurrent/x/socket"
 )
 
 
@@ -77,7 +78,10 @@ func main() {
         DB:       0,  // use default DB
     })
 
-    messageHandler := SetupMessageHandler(db, rdb)
+    socketService := socket.NewSocketService();
+
+    socketHandler := SetupSocketHandler(socketService)
+    messageHandler := SetupMessageHandler(db, rdb, socketService)
     characterHandler := SetupCharacterHandler(db)
     associationHandler := SetupAssociationHandler(db)
     streamHandler := SetupStreamHandler(rdb)
@@ -91,6 +95,7 @@ func main() {
     http.HandleFunc("/associations", associationHandler.Handle)
     http.HandleFunc("/stream", streamHandler.Handle)
     http.HandleFunc("/stream/list", streamHandler.HandleList)
+    http.HandleFunc("/socket", socketHandler.Handle)
     http.HandleFunc("/.well-known/webfinger", webfingerHandler.Handle)
     http.Handle("/ap/", http.StripPrefix("/ap", http.HandlerFunc(activityPubHandler.Handle)))
     http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {

@@ -7,6 +7,7 @@ import (
     "github.com/google/wire"
     "github.com/redis/go-redis/v9"
 
+    "github.com/totegamma/concurrent/x/socket"
     "github.com/totegamma/concurrent/x/stream"
     "github.com/totegamma/concurrent/x/message"
     "github.com/totegamma/concurrent/x/character"
@@ -19,7 +20,7 @@ var characterHandlerProvider = wire.NewSet(character.NewCharacterHandler, charac
 var associationHandlerProvider = wire.NewSet(association.NewAssociationHandler, association.NewAssociationService, association.NewAssociationRepository)
 var streamHandlerProvider = wire.NewSet(stream.NewStreamHandler, stream.NewStreamService)
 
-func SetupMessageHandler(db *gorm.DB, client *redis.Client) message.MessageHandler {
+func SetupMessageHandler(db *gorm.DB, client *redis.Client, socketService *socket.SocketService) message.MessageHandler {
     wire.Build(messageHandlerProvider, stream.NewStreamService)
     return message.MessageHandler{}
 }
@@ -47,5 +48,10 @@ func SetupActivityPubHandler(db *gorm.DB) activitypub.ActivityPubHandler {
 func SetupStreamHandler(client *redis.Client) stream.StreamHandler {
     wire.Build(streamHandlerProvider)
     return stream.StreamHandler{}
+}
+
+func SetupSocketHandler(socketService *socket.SocketService) *socket.SocketHandler {
+    wire.Build(socket.NewSocketHandler)
+    return &socket.SocketHandler{}
 }
 

@@ -5,18 +5,24 @@ import (
     "strings"
     "github.com/totegamma/concurrent/x/util"
     "github.com/totegamma/concurrent/x/stream"
+    "github.com/totegamma/concurrent/x/socket"
 )
 
 type MessageService struct {
     repo MessageRepository
     stream stream.StreamService
+    socket *socket.SocketService
 }
 
-func NewMessageService(repo MessageRepository, stream stream.StreamService) MessageService {
-    return MessageService{repo: repo, stream: stream}
+func NewMessageService(repo MessageRepository, stream stream.StreamService, socketService *socket.SocketService) MessageService {
+    return MessageService{repo: repo, stream: stream, socket: socketService}
 }
 
 func (s *MessageService) GetMessage(id string) Message{
+
+    fmt.Println("GetMesaage!")
+    s.socket.NotifyAllClients(id)
+
     var message Message
     message = s.repo.Get(id)
     return message

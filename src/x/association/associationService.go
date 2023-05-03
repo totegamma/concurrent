@@ -22,7 +22,7 @@ func (s *AssociationService) PostAssociation(association Association) {
         return
     }
 
-    s.repo.Create(association)
+    s.repo.Create(&association)
 
     jsonstr, _ := json.Marshal(AssociationStreamEvent{
         Type: "association",

@@ -18,7 +18,7 @@ func NewAssociationRepository(db *gorm.DB) AssociationRepository {
     return AssociationRepository{db: db}
 }
 
-func (r *AssociationRepository) Create(association Association) {
+func (r *AssociationRepository) Create(association *Association) {
     r.db.Create(&association)
 }
 

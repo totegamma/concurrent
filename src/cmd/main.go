@@ -83,7 +83,7 @@ func main() {
     socketHandler := SetupSocketHandler(socketService)
     messageHandler := SetupMessageHandler(db, rdb, socketService)
     characterHandler := SetupCharacterHandler(db)
-    associationHandler := SetupAssociationHandler(db, socketService)
+    associationHandler := SetupAssociationHandler(db, rdb, socketService)
     streamHandler := SetupStreamHandler(rdb)
     webfingerHandler := SetupWebfingerHandler(db)
     activityPubHandler := SetupActivityPubHandler(db)

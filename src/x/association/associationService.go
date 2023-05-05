@@ -4,16 +4,18 @@ import (
     "log"
     "encoding/json"
     "github.com/totegamma/concurrent/x/util"
+    "github.com/totegamma/concurrent/x/stream"
     "github.com/totegamma/concurrent/x/socket"
 )
 
 type AssociationService struct {
     repo AssociationRepository
+    stream stream.StreamService
     socket *socket.SocketService
 }
 
-func NewAssociationService(repo AssociationRepository, socketService *socket.SocketService) AssociationService {
-    return AssociationService{repo: repo, socket: socketService}
+func NewAssociationService(repo AssociationRepository, stream stream.StreamService, socketService *socket.SocketService) AssociationService {
+    return AssociationService{repo: repo, stream: stream, socket: socketService}
 }
 
 func (s *AssociationService) PostAssociation(association Association) {
@@ -23,6 +25,9 @@ func (s *AssociationService) PostAssociation(association Association) {
     }
 
     s.repo.Create(&association)
+    for _, stream := range association.Streams {
+        s.stream.Post(stream, association.ID)
+    }
 
     jsonstr, _ := json.Marshal(AssociationStreamEvent{
         Type: "association",

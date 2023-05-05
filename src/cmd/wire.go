@@ -30,8 +30,8 @@ func SetupCharacterHandler(db *gorm.DB) character.CharacterHandler {
     return character.CharacterHandler{}
 }
 
-func SetupAssociationHandler(db *gorm.DB, socketService *socket.SocketService) association.AssociationHandler {
-    wire.Build(associationHandlerProvider)
+func SetupAssociationHandler(db *gorm.DB, client *redis.Client, socketService *socket.SocketService) association.AssociationHandler {
+    wire.Build(associationHandlerProvider, stream.NewStreamService)
     return association.AssociationHandler{}
 }
 

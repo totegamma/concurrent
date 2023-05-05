@@ -22,6 +22,12 @@ func (r *AssociationRepository) Create(association *Association) {
     r.db.Create(&association)
 }
 
+func (r *AssociationRepository) Get(id string) Association {
+    var association Association
+    r.db.Where("id = $1", id).First(&association)
+    return association
+}
+
 func (r *AssociationRepository) GetOwn(author string) []Association {
     var associations []Association
     r.db.Where("author = $1", author)

@@ -93,6 +93,7 @@ func main() {
     http.HandleFunc("/messages/", messageHandler.Handle)
     http.HandleFunc("/characters", characterHandler.Handle)
     http.HandleFunc("/associations", associationHandler.Handle)
+    http.HandleFunc("/associations/", associationHandler.Handle)
     http.HandleFunc("/stream", streamHandler.Handle)
     http.HandleFunc("/stream/list", streamHandler.HandleList)
     http.HandleFunc("/socket", socketHandler.Handle)

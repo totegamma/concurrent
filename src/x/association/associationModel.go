@@ -26,3 +26,7 @@ type deleteQuery struct {
     Id string `json:"id"`
 }
 
+type AssociationResponse struct {
+    Association Association `json:"association"`
+}
+

@@ -6,6 +6,7 @@ import (
     "log"
     "bytes"
     "net/http"
+	"path/filepath"
     "encoding/json"
 )
 
@@ -24,12 +25,18 @@ func (h AssociationHandler) Handle(w http.ResponseWriter, r *http.Request) {
     w.Header().Set( "Access-Control-Allow-Methods","GET, POST, PUT, DELETE, OPTIONS" )
     switch r.Method {
         case http.MethodGet:
-            var author = r.URL.Query().Get("author")
-            associations := h.service.GetOwn(author)
-            jsonstr, err := json.Marshal(associations)
-            if err != nil {
-                log.Fatalf("getCharacters json.Marshal error:%v", err)
+            _, id := filepath.Split(r.URL.Path)
+
+            association := h.service.Get(id)
+            response := AssociationResponse {
+                Association: association,
             }
+
+            jsonstr, err := json.Marshal(response)
+            if err != nil {
+                log.Fatalf("Association.Get json.Marshal error:%v", err)
+            }
+
             fmt.Fprint(w, string(jsonstr))
         case http.MethodPost:
             body := r.Body

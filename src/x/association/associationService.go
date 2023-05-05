@@ -37,6 +37,10 @@ func (s *AssociationService) PostAssociation(association Association) {
     s.socket.NotifyAllClients(jsonstr)
 }
 
+func (s *AssociationService) Get(id string) Association {
+    return s.repo.Get(id)
+}
+
 func (s *AssociationService) GetOwn(author string) []Association {
     return s.repo.GetOwn(author)
 }

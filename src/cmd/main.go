@@ -12,6 +12,7 @@ import (
 	"github.com/totegamma/concurrent/x/character"
 	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/socket"
+	"github.com/totegamma/concurrent/x/stream"
 )
 
 
@@ -26,7 +27,7 @@ func main() {
 
     // Migrate the schema
     fmt.Println("start migrate")
-    db.AutoMigrate(&character.Character{}, &association.Association{}, &message.Message{})
+    db.AutoMigrate(&character.Character{}, &association.Association{}, &message.Message{}, &stream.Stream{})
 
     var count int64
     db.Table("information_schema.triggers").Where("trigger_name = 'attach_association_trigger'").Count(&count)
@@ -84,7 +85,7 @@ func main() {
     messageHandler := SetupMessageHandler(db, rdb, socketService)
     characterHandler := SetupCharacterHandler(db)
     associationHandler := SetupAssociationHandler(db, rdb, socketService)
-    streamHandler := SetupStreamHandler(rdb)
+    streamHandler := SetupStreamHandler(db, rdb)
     webfingerHandler := SetupWebfingerHandler(db)
     activityPubHandler := SetupActivityPubHandler(db)
 
@@ -95,6 +96,7 @@ func main() {
     http.HandleFunc("/associations", associationHandler.Handle)
     http.HandleFunc("/associations/", associationHandler.Handle)
     http.HandleFunc("/stream", streamHandler.Handle)
+    http.HandleFunc("/stream/recent", streamHandler.HandleRecent)
     http.HandleFunc("/stream/list", streamHandler.HandleList)
     http.HandleFunc("/socket", socketHandler.Handle)
     http.HandleFunc("/.well-known/webfinger", webfingerHandler.Handle)

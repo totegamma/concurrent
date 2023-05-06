@@ -1,17 +1,18 @@
 package stream
 
 import (
-    "fmt"
+    "log"
     "context"
     "github.com/redis/go-redis/v9"
 )
 
 type StreamService struct {
     client* redis.Client
+    repository* Repository
 }
 
-func NewStreamService(client *redis.Client) StreamService {
-    return StreamService{ client }
+func NewStreamService(client *redis.Client, repository *Repository) StreamService {
+    return StreamService{ client, repository }
 }
 
 var redis_ctx = context.Background()
@@ -42,8 +43,21 @@ func (s *StreamService) StreamList() []string {
     return cmd.Val()
 }
 
+func (s *StreamService) Upsert(stream *Stream) {
+    s.repository.Upsert(stream)
+}
+
+func (s *StreamService) Get(key string) Stream {
+    return s.repository.Get(key)
+}
+
+func (s *StreamService) StreamListBySchema(schema string) []Stream {
+    streams := s.repository.GetList(schema)
+    return streams
+}
+
 func (s *StreamService) Delete(stream string, id string) {
     cmd := s.client.XDel(redis_ctx, stream, id)
-    fmt.Println(cmd)
+    log.Println(cmd)
 }
 

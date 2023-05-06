@@ -18,10 +18,10 @@ import (
 var messageHandlerProvider = wire.NewSet(message.NewMessageHandler, message.NewMessageService, message.NewMessageRepository)
 var characterHandlerProvider = wire.NewSet(character.NewCharacterHandler, character.NewCharacterService, character.NewCharacterRepository)
 var associationHandlerProvider = wire.NewSet(association.NewAssociationHandler, association.NewAssociationService, association.NewAssociationRepository)
-var streamHandlerProvider = wire.NewSet(stream.NewStreamHandler, stream.NewStreamService)
+var streamHandlerProvider = wire.NewSet(stream.NewStreamHandler, stream.NewStreamService, stream.NewRepository)
 
 func SetupMessageHandler(db *gorm.DB, client *redis.Client, socketService *socket.SocketService) message.MessageHandler {
-    wire.Build(messageHandlerProvider, stream.NewStreamService)
+    wire.Build(messageHandlerProvider, stream.NewStreamService, stream.NewRepository)
     return message.MessageHandler{}
 }
 
@@ -31,7 +31,7 @@ func SetupCharacterHandler(db *gorm.DB) character.CharacterHandler {
 }
 
 func SetupAssociationHandler(db *gorm.DB, client *redis.Client, socketService *socket.SocketService) association.AssociationHandler {
-    wire.Build(associationHandlerProvider, stream.NewStreamService)
+    wire.Build(associationHandlerProvider, stream.NewStreamService, stream.NewRepository)
     return association.AssociationHandler{}
 }
 
@@ -45,7 +45,7 @@ func SetupActivityPubHandler(db *gorm.DB) activitypub.ActivityPubHandler {
     return activitypub.ActivityPubHandler{}
 }
 
-func SetupStreamHandler(client *redis.Client) stream.StreamHandler {
+func SetupStreamHandler(db *gorm.DB, client *redis.Client) stream.StreamHandler {
     wire.Build(streamHandlerProvider)
     return stream.StreamHandler{}
 }

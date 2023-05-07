@@ -26,6 +26,15 @@ func (s *StreamService) GetRecent(streams []string) []redis.XMessage {
     return messages
 }
 
+func (s *StreamService) GetRange(streams []string, since string ,until string, limit int64) []redis.XMessage {
+    var messages []redis.XMessage
+    for _, stream := range streams {
+        cmd := s.client.XRevRangeN(redis_ctx, stream, until, since, limit)
+        messages = append(messages, cmd.Val()...)
+    }
+    return messages
+}
+
 func (s *StreamService) Post(stream string, id string) string {
     cmd := s.client.XAdd(redis_ctx, &redis.XAddArgs{
         Stream: stream,

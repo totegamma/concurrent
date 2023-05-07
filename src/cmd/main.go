@@ -97,6 +97,7 @@ func main() {
     http.HandleFunc("/associations/", associationHandler.Handle)
     http.HandleFunc("/stream", streamHandler.Handle)
     http.HandleFunc("/stream/recent", streamHandler.HandleRecent)
+    http.HandleFunc("/stream/range", streamHandler.HandleRange)
     http.HandleFunc("/stream/list", streamHandler.HandleList)
     http.HandleFunc("/socket", socketHandler.Handle)
     http.HandleFunc("/.well-known/webfinger", webfingerHandler.Handle)

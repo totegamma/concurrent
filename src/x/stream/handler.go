@@ -91,6 +91,41 @@ func (h StreamHandler) HandleRecent(w http.ResponseWriter, r *http.Request) {
     }
 }
 
+func (h StreamHandler) HandleRange(w http.ResponseWriter, r *http.Request) {
+    w.Header().Set("Access-Control-Allow-Headers", "*")
+    w.Header().Set("Access-Control-Allow-Origin", "*")
+    w.Header().Set( "Access-Control-Allow-Methods","GET, POST, PUT, DELETE, OPTIONS" )
+    switch r.Method {
+        case http.MethodGet: // クエリがあればstreamの中身を、なければstreamのリストを返す
+            streamsStr := r.URL.Query().Get("streams")
+            streams := strings.Split(streamsStr, ",")
+
+            sinceArr, sinceSpecified := r.URL.Query()["since"]
+            since := "-"
+            if (sinceSpecified) {
+                since = sinceArr[0]
+            }
+            untilArr, untilSpecified := r.URL.Query()["until"]
+            until := "+"
+            if (untilSpecified) {
+                until = untilArr[0]
+            }
+
+            messages := h.service.GetRange(streams, since, until, 64)
+
+            jsonstr, err := json.Marshal(messages)
+            if err != nil {
+                log.Fatalf("getMessages json.Marshal error:%v", err)
+            }
+            fmt.Fprint(w, string(jsonstr))
+        case http.MethodOptions:
+            return
+        default:
+            w.WriteHeader(http.StatusMethodNotAllowed)
+            fmt.Fprint(w, "Method not allowed.")
+    }
+}
+
 func (h StreamHandler) HandleList(w http.ResponseWriter, r *http.Request) {
     w.Header().Set("Access-Control-Allow-Headers", "*")
     w.Header().Set("Access-Control-Allow-Origin", "*")

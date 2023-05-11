@@ -1,58 +1,42 @@
+// Package character is handling concurrent Character object
 package character
 
 import (
-    "io"
-    "log"
-    "fmt"
-    "bytes"
     "net/http"
-    "encoding/json"
+    "github.com/labstack/echo/v4"
 )
 
-type CharacterHandler struct {
+// Handler is handles Character Object
+type Handler struct {
     service CharacterService
 }
 
-func NewCharacterHandler(service CharacterService) CharacterHandler {
-    return CharacterHandler{service: service}
+// NewCharacterHandler is for wire
+func NewCharacterHandler(service CharacterService) Handler {
+    return Handler{service: service}
 }
 
-func (h CharacterHandler) Handle(w http.ResponseWriter, r *http.Request) {
-
-
-    w.Header().Set("Access-Control-Allow-Headers", "*")
-    w.Header().Set("Access-Control-Allow-Origin", "*")
-    w.Header().Set( "Access-Control-Allow-Methods","GET, POST, PUT, DELETE, OPTIONS" )
-    switch r.Method {
-        case http.MethodGet:
-            var filter_author = r.URL.Query().Get("author")
-            var filter_schema = r.URL.Query().Get("schema")
-            characters := h.service.GetCharacters(filter_author, filter_schema)
-            response := CharactersResponse {
-                Characters: characters,
-            }
-            jsonstr, err := json.Marshal(response)
-            if err != nil {
-                log.Fatalf("getCharacters json.Marshal error:%v", err)
-            }
-            fmt.Fprint(w, string(jsonstr))
-        case http.MethodPut:
-            body := r.Body
-            defer body.Close()
-
-            buf := new(bytes.Buffer)
-            io.Copy(buf, body)
-
-            var character Character
-            json.Unmarshal(buf.Bytes(), &character)
-            h.service.PutCharacter(character)
-            w.WriteHeader(http.StatusCreated)
-            fmt.Fprintf(w, "{\"message\": \"accept\"}")
-        case http.MethodOptions:
-            return
-        default:
-            w.WriteHeader(http.StatusMethodNotAllowed)
-            fmt.Fprint(w, "Method not allowed.")
+// Get is for Handling HTTP Get Method
+func (h Handler) Get(c echo.Context) error {
+    author := c.QueryParam("author")
+    schema := c.QueryParam("schema")
+    characters := h.service.GetCharacters(author, schema)
+    response := CharactersResponse {
+        Characters: characters,
     }
+    return c.JSON(http.StatusOK, response)
+}
+
+// Put is for Handling HTTP Put Method
+func (h Handler) Put(c echo.Context) error {
+
+    var character Character
+    err := c.Bind(&character)
+    if (err != nil) {
+        return err
+    }
+
+    h.service.PutCharacter(character)
+    return c.String(http.StatusCreated, "{\"message\": \"accept\"}")
 }
 

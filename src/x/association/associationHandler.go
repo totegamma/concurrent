@@ -1,72 +1,56 @@
+// Package association is handles concurrent Association objects
 package association
 
 import (
-    "io"
-    "fmt"
-    "log"
-    "bytes"
     "net/http"
-	"path/filepath"
-    "encoding/json"
+    "github.com/labstack/echo/v4"
 )
 
-type AssociationHandler struct {
+// Handler handles Association objects
+type Handler struct {
     service AssociationService
 }
 
-func NewAssociationHandler(service AssociationService) AssociationHandler {
-    return AssociationHandler{service: service}
+// NewAssociationHandler is for wire.go
+func NewAssociationHandler(service AssociationService) Handler {
+    return Handler{service: service}
 }
 
-func (h AssociationHandler) Handle(w http.ResponseWriter, r *http.Request) {
 
-    w.Header().Set("Access-Control-Allow-Headers", "*")
-    w.Header().Set("Access-Control-Allow-Origin", "*")
-    w.Header().Set( "Access-Control-Allow-Methods","GET, POST, PUT, DELETE, OPTIONS" )
-    switch r.Method {
-        case http.MethodGet:
-            _, id := filepath.Split(r.URL.Path)
+// Get is for Handling HTTP Get Method
+func (h Handler) Get(c echo.Context) error {
+    id := c.Param("id")
 
-            association := h.service.Get(id)
-            response := AssociationResponse {
-                Association: association,
-            }
-
-            jsonstr, err := json.Marshal(response)
-            if err != nil {
-                log.Fatalf("Association.Get json.Marshal error:%v", err)
-            }
-
-            fmt.Fprint(w, string(jsonstr))
-        case http.MethodPost:
-            body := r.Body
-            defer body.Close()
-
-            buf := new(bytes.Buffer)
-            io.Copy(buf, body)
-
-            var association Association
-            json.Unmarshal(buf.Bytes(), &association)
-
-            h.service.PostAssociation(association)
-            fmt.Fprintf(w, "{\"message\": \"accept\"}")
-        case http.MethodDelete:
-            body := r.Body
-            defer body.Close()
-
-            buf := new(bytes.Buffer)
-            io.Copy(buf, body)
-
-            var request deleteQuery
-            json.Unmarshal(buf.Bytes(), &request)
-
-            h.service.Delete(request.Id)
-            fmt.Fprintf(w, "{\"message\": \"accept\"}")
-        case http.MethodOptions:
-            return
-        default:
-            w.WriteHeader(http.StatusMethodNotAllowed)
-            fmt.Fprint(w, "Method not allowed.")
+    association := h.service.Get(id)
+    response := AssociationResponse {
+        Association: association,
     }
+    return c.JSON(http.StatusOK, response)
+}
+
+// Post is for Handling HTTP Post Method
+func (h Handler) Post(c echo.Context) error {
+
+    var association Association
+    err := c.Bind(&association)
+    if (err != nil) {
+        return err
+    }
+
+    h.service.PostAssociation(association)
+    return c.String(http.StatusCreated, "{\"message\": \"accept\"}")
+}
+
+// Delete is for Handling HTTP Delete Method
+func (h Handler) Delete(c echo.Context) error {
+
+    var request deleteQuery
+    err := c.Bind(&request)
+    if (err != nil) {
+        return err
+    }
+
+    h.service.Delete(request.Id)
+    return c.String(http.StatusOK, "{\"message\": \"accept\"}")
 }
 

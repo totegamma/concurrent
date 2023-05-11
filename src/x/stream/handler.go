@@ -1,148 +1,92 @@
+// Package stream is for handling concurrent stream object
 package stream
 
 import (
-    "io"
     "fmt"
     "log"
-    "bytes"
     "strings"
     "net/http"
-    "encoding/json"
+    "github.com/labstack/echo/v4"
 )
 
-type StreamHandler struct {
+// Handler handles Stream objects
+type Handler struct {
     service StreamService
 }
 
-func NewStreamHandler(service StreamService) StreamHandler {
-    return StreamHandler{service: service}
+// NewStreamHandler is for wire.go
+func NewStreamHandler(service StreamService) Handler {
+    return Handler{service: service}
 }
 
-type StreamPostQuery struct {
-    Stream string `json:"stream"`
-    ID string `json:"id"`
+
+// Get is for handling HTTP Get Method
+func (h Handler) Get(c echo.Context) error {
+    streamStr := c.QueryParam("stream")
+    stream := h.service.Get(streamStr)
+    return c.JSON(http.StatusOK, stream)
 }
 
-func (h StreamHandler) Handle(w http.ResponseWriter, r *http.Request) {
-    w.Header().Set("Access-Control-Allow-Headers", "*")
-    w.Header().Set("Access-Control-Allow-Origin", "*")
-    w.Header().Set( "Access-Control-Allow-Methods","GET, POST, PUT, DELETE, OPTIONS" )
-    switch r.Method {
-        case http.MethodGet: // クエリがあればstreamの中身を、なければstreamのリストを返す
-            streamStr := r.URL.Query().Get("stream")
-            stream := h.service.Get(streamStr)
-
-            jsonstr, err := json.Marshal(stream)
-            if err != nil {
-                log.Fatalf("getMessages json.Marshal error:%v", err)
-            }
-            fmt.Fprint(w, string(jsonstr))
-        case http.MethodPost: // streamへの投稿
-            body := r.Body
-            defer body.Close()
-            buf := new(bytes.Buffer)
-            io.Copy(buf, body)
-            var query StreamPostQuery
-            json.Unmarshal(buf.Bytes(), &query)
-
-            id := h.service.Post(query.Stream, query.ID)
-            w.WriteHeader(http.StatusCreated)
-            fmt.Fprintf(w, fmt.Sprintf("{\"message\": \"accept\", \"id\": \"%s\"}", id))
-
-        case http.MethodPut: //streamの作成・更新
-            body := r.Body
-            defer body.Close()
-            buf := new(bytes.Buffer)
-            io.Copy(buf, body)
-            var stream Stream
-            json.Unmarshal(buf.Bytes(), &stream)
-            log.Println(stream)
-
-            h.service.Upsert(&stream)
-            fmt.Fprintf(w, fmt.Sprintf("{\"message\": \"accept\", \"id\": \"%s\"}", stream.ID))
-        case http.MethodOptions:
-            return
-        default:
-            w.WriteHeader(http.StatusMethodNotAllowed)
-            fmt.Fprint(w, "Method not allowed.")
+// Post is for handling HTTP Post Method
+func (h Handler) Post(c echo.Context) error {
+    var query PostQuery
+    err := c.Bind(&query)
+    if (err != nil) {
+        return err
     }
+
+    id := h.service.Post(query.Stream, query.ID)
+    return c.String(http.StatusCreated, fmt.Sprintf("{\"message\": \"accept\", \"id\": \"%s\"}", id))
+
 }
 
-func (h StreamHandler) HandleRecent(w http.ResponseWriter, r *http.Request) {
-    w.Header().Set("Access-Control-Allow-Headers", "*")
-    w.Header().Set("Access-Control-Allow-Origin", "*")
-    w.Header().Set( "Access-Control-Allow-Methods","GET, POST, PUT, DELETE, OPTIONS" )
-    switch r.Method {
-        case http.MethodGet: // クエリがあればstreamの中身を、なければstreamのリストを返す
-            streamsStr := r.URL.Query().Get("streams")
-            streams := strings.Split(streamsStr, ",")
-            messages := h.service.GetRecent(streams)
-
-            jsonstr, err := json.Marshal(messages)
-            if err != nil {
-                log.Fatalf("getMessages json.Marshal error:%v", err)
-            }
-            fmt.Fprint(w, string(jsonstr))
-        case http.MethodOptions:
-            return
-        default:
-            w.WriteHeader(http.StatusMethodNotAllowed)
-            fmt.Fprint(w, "Method not allowed.")
+// Put is for handling HTTP Put Method
+func (h Handler) Put(c echo.Context) error {
+    var stream Stream
+    err := c.Bind(&stream)
+    if (err != nil) {
+        log.Println(err)
+        return err
     }
+
+    h.service.Upsert(&stream)
+    return c.String(http.StatusCreated, fmt.Sprintf("{\"message\": \"accept\", \"id\": \"%s\"}", stream.ID))
 }
 
-func (h StreamHandler) HandleRange(w http.ResponseWriter, r *http.Request) {
-    w.Header().Set("Access-Control-Allow-Headers", "*")
-    w.Header().Set("Access-Control-Allow-Origin", "*")
-    w.Header().Set( "Access-Control-Allow-Methods","GET, POST, PUT, DELETE, OPTIONS" )
-    switch r.Method {
-        case http.MethodGet: // クエリがあればstreamの中身を、なければstreamのリストを返す
-            streamsStr := r.URL.Query().Get("streams")
-            streams := strings.Split(streamsStr, ",")
+// Recent returns recent messages in some streams
+func (h Handler) Recent(c echo.Context) error {
+    streamsStr := c.QueryParam("streams")
+    streams := strings.Split(streamsStr, ",")
+    messages := h.service.GetRecent(streams)
 
-            sinceArr, sinceSpecified := r.URL.Query()["since"]
-            since := "-"
-            if (sinceSpecified) {
-                since = sinceArr[0]
-            }
-            untilArr, untilSpecified := r.URL.Query()["until"]
-            until := "+"
-            if (untilSpecified) {
-                until = untilArr[0]
-            }
+    return c.JSON(http.StatusOK, messages)
+}
 
-            messages := h.service.GetRange(streams, since, until, 64)
+// Range returns messages since to until in specified streams
+func (h Handler) Range(c echo.Context) error {
+    queryStreams := c.QueryParam("streams")
+    streams := strings.Split(queryStreams, ",")
+    querySince := c.QueryParam("streams")
+    queryUntil := c.QueryParam("until")
 
-            jsonstr, err := json.Marshal(messages)
-            if err != nil {
-                log.Fatalf("getMessages json.Marshal error:%v", err)
-            }
-            fmt.Fprint(w, string(jsonstr))
-        case http.MethodOptions:
-            return
-        default:
-            w.WriteHeader(http.StatusMethodNotAllowed)
-            fmt.Fprint(w, "Method not allowed.")
+    since := "-"
+    if (querySince != "") {
+        since = querySince
     }
+
+    until := "+"
+    if (queryUntil != "") {
+        until = queryUntil
+    }
+
+    messages := h.service.GetRange(streams, since, until, 64)
+    return c.JSON(http.StatusOK, messages)
 }
 
-func (h StreamHandler) HandleList(w http.ResponseWriter, r *http.Request) {
-    w.Header().Set("Access-Control-Allow-Headers", "*")
-    w.Header().Set("Access-Control-Allow-Origin", "*")
-    w.Header().Set( "Access-Control-Allow-Methods","GET, POST, PUT, DELETE, OPTIONS" )
-    switch r.Method {
-        case http.MethodGet:
-            schema := r.URL.Query().Get("schema")
-            list := h.service.StreamListBySchema(schema)
-            jsonstr, err := json.Marshal(list)
-            if err != nil {
-                log.Fatalf("getMessages json.Marshal error:%v", err)
-            }
-            fmt.Fprint(w, string(jsonstr))
-        case http.MethodOptions:
-            return
-        default:
-            w.WriteHeader(http.StatusMethodNotAllowed)
-            fmt.Fprint(w, "Method not allowed.")
-    }
+// List returns stream ids which filtered by specific schema
+func (h Handler) List(c echo.Context) error {
+    schema := c.QueryParam("schema")
+    list := h.service.StreamListBySchema(schema)
+    return c.JSON(http.StatusOK, list)
 }
+

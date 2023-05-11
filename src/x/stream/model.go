@@ -17,3 +17,8 @@ type Stream struct {
     CDate time.Time `json:"cdate" gorm:"type:timestamp with time zone;not null;default:clock_timestamp()"`
 }
 
+type PostQuery struct {
+    Stream string `json:"stream"`
+    ID string `json:"id"`
+}
+

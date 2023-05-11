@@ -1,17 +1,21 @@
+// Package socket is used for handling user streaming socket
 package socket
 
 import (
-    "fmt"
+    "log"
     "net/http"
     "github.com/gorilla/websocket"
+    "github.com/labstack/echo/v4"
 )
 
-type SocketHandler struct {
+// Handler is handles websocket
+type Handler struct {
     service *SocketService
 }
 
-func NewSocketHandler(service *SocketService) *SocketHandler {
-    return &SocketHandler{service}
+// NewSocketHandler is used for wire.go
+func NewSocketHandler(service *SocketService) *Handler {
+    return &Handler{service}
 }
 
 var upgrader = websocket.Upgrader{
@@ -22,11 +26,12 @@ var upgrader = websocket.Upgrader{
     },
 }
 
-func (h *SocketHandler) Handle(w http.ResponseWriter, r *http.Request) {
-    ws, err := upgrader.Upgrade(w, r, nil)
+// Connect is used for start websocket connection
+func (h Handler) Connect(c echo.Context) error {
+    ws, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
     if err != nil {
-        fmt.Println("Failed to upgrade WebSocket:", err)
-        return
+        log.Println("Failed to upgrade WebSocket:", err)
+        c.Logger().Error(err)
     }
     defer func() {
         h.service.RemoveClient(ws)
@@ -38,11 +43,8 @@ func (h *SocketHandler) Handle(w http.ResponseWriter, r *http.Request) {
     for {
         _, _, err := ws.ReadMessage()
         if err != nil {
-            fmt.Println("Failed to read WebSocket message:", err)
-            break
+            c.Logger().Error(err)
         }
     }
 }
-
-
 

@@ -20,19 +20,19 @@ var characterHandlerProvider = wire.NewSet(character.NewCharacterHandler, charac
 var associationHandlerProvider = wire.NewSet(association.NewAssociationHandler, association.NewAssociationService, association.NewAssociationRepository)
 var streamHandlerProvider = wire.NewSet(stream.NewStreamHandler, stream.NewStreamService, stream.NewRepository)
 
-func SetupMessageHandler(db *gorm.DB, client *redis.Client, socketService *socket.SocketService) message.MessageHandler {
+func SetupMessageHandler(db *gorm.DB, client *redis.Client, socketService *socket.SocketService) message.Handler {
     wire.Build(messageHandlerProvider, stream.NewStreamService, stream.NewRepository)
-    return message.MessageHandler{}
+    return message.Handler{}
 }
 
-func SetupCharacterHandler(db *gorm.DB) character.CharacterHandler {
+func SetupCharacterHandler(db *gorm.DB) character.Handler {
     wire.Build(characterHandlerProvider)
-    return character.CharacterHandler{}
+    return character.Handler{}
 }
 
-func SetupAssociationHandler(db *gorm.DB, client *redis.Client, socketService *socket.SocketService) association.AssociationHandler {
+func SetupAssociationHandler(db *gorm.DB, client *redis.Client, socketService *socket.SocketService) association.Handler {
     wire.Build(associationHandlerProvider, stream.NewStreamService, stream.NewRepository)
-    return association.AssociationHandler{}
+    return association.Handler{}
 }
 
 func SetupWebfingerHandler(db *gorm.DB) activitypub.WebfingerHandler {
@@ -45,13 +45,13 @@ func SetupActivityPubHandler(db *gorm.DB) activitypub.ActivityPubHandler {
     return activitypub.ActivityPubHandler{}
 }
 
-func SetupStreamHandler(db *gorm.DB, client *redis.Client) stream.StreamHandler {
+func SetupStreamHandler(db *gorm.DB, client *redis.Client) stream.Handler {
     wire.Build(streamHandlerProvider)
-    return stream.StreamHandler{}
+    return stream.Handler{}
 }
 
-func SetupSocketHandler(socketService *socket.SocketService) *socket.SocketHandler {
+func SetupSocketHandler(socketService *socket.SocketService) *socket.Handler {
     wire.Build(socket.NewSocketHandler)
-    return &socket.SocketHandler{}
+    return &socket.Handler{}
 }
 

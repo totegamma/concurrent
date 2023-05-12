@@ -90,6 +90,7 @@ func main() {
     streamHandler := SetupStreamHandler(db, rdb)
 
     e := echo.New()
+    e.HideBanner = true
     e.Use(middleware.CORS())
     e.Use(middleware.Logger())
     e.Use(middleware.Recover())

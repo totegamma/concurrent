@@ -5,6 +5,7 @@ import (
     "github.com/lib/pq"
 )
 
+// Association is one of a concurrent base object
 type Association struct {
     ID string `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
     Author string `json:"author" gorm:"type:varchar(64)"`
@@ -16,17 +17,18 @@ type Association struct {
     Streams pq.StringArray `json:"streams" gorm:"type:text[]"`
 }
 
-type AssociationStreamEvent struct {
+// StreamEvent is a message type which send to socket service
+type StreamEvent struct {
     Type string `json:"type"`
     Action string `json:"action"`
     Body Association `json:"body"`
 }
 
 type deleteQuery struct {
-    Id string `json:"id"`
+    ID string `json:"id"`
 }
 
-type AssociationResponse struct {
+type associationResponse struct {
     Association Association `json:"association"`
 }
 

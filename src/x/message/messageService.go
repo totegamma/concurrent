@@ -9,23 +9,27 @@ import (
     "github.com/totegamma/concurrent/x/socket"
 )
 
-type MessageService struct {
-    repo MessageRepository
-    stream stream.StreamService
-    socket *socket.SocketService
+// Service is a service of message
+type Service struct {
+    repo Repository
+    stream stream.Service
+    socket *socket.Service
 }
 
-func NewMessageService(repo MessageRepository, stream stream.StreamService, socketService *socket.SocketService) MessageService {
-    return MessageService{repo: repo, stream: stream, socket: socketService}
+// NewService is used for wire.go
+func NewService(repo Repository, stream stream.Service, socket *socket.Service) Service {
+    return Service{repo: repo, stream: stream, socket: socket}
 }
 
-func (s *MessageService) GetMessage(id string) Message{
+// GetMessage returns a message by ID
+func (s *Service) GetMessage(id string) Message{
     var message Message
     message = s.repo.Get(id)
     return message
 }
 
-func (s *MessageService) PostMessage(message Message) {
+// PostMessage creates new message
+func (s *Service) PostMessage(message Message) {
     if err := util.VerifySignature(message.Payload, message.Author, message.Signature); err != nil {
         log.Println("verify signature err: ", err)
         return
@@ -35,7 +39,7 @@ func (s *MessageService) PostMessage(message Message) {
         s.stream.Post(stream, id)
     }
 
-    jsonstr, _ := json.Marshal(MessageStreamEvent{
+    jsonstr, _ := json.Marshal(streamEvent{
         Type: "message",
         Action: "create",
         Body: message,
@@ -43,12 +47,13 @@ func (s *MessageService) PostMessage(message Message) {
     s.socket.NotifyAllClients(jsonstr)
 }
 
-func (s *MessageService) DeleteMessage(id string) {
+// DeleteMessage deletes a message by ID
+func (s *Service) DeleteMessage(id string) {
     deleted := s.repo.Delete(id)
     for _, stream := range strings.Split(deleted.Streams, ",") {
         s.stream.Delete(stream, id)
     }
-    jsonstr, _ := json.Marshal(MessageStreamEvent{
+    jsonstr, _ := json.Marshal(streamEvent{
         Type: "message",
         Action: "delete",
         Body: deleted,

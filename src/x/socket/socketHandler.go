@@ -10,11 +10,11 @@ import (
 
 // Handler is handles websocket
 type Handler struct {
-    service *SocketService
+    service *Service
 }
 
-// NewSocketHandler is used for wire.go
-func NewSocketHandler(service *SocketService) *Handler {
+// NewHandler is used for wire.go
+func NewHandler(service *Service) *Handler {
     return &Handler{service}
 }
 

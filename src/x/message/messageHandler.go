@@ -8,11 +8,11 @@ import (
 
 // Handler handles Message objects
 type Handler struct {
-    service MessageService
+    service Service
 }
 
 // NewMessageHandler is for wire.go
-func NewMessageHandler(service MessageService) Handler {
+func NewHandler(service Service) Handler {
     return Handler{service: service}
 }
 
@@ -23,7 +23,7 @@ func (h Handler) Get(c echo.Context) error {
     id := c.Param("id")
 
     message := h.service.GetMessage(id)
-    response := MessageResponse {
+    response := messageResponse {
         Message: message,
     }
     return c.JSON(http.StatusOK, response)

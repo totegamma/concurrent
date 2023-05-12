@@ -6,6 +6,7 @@ import (
     "github.com/totegamma/concurrent/x/association"
 )
 
+// Message is one of a concurrent base object
 type Message struct {
     ID string `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
     Author string `json:"author" gorm:"type:varchar(64)"`
@@ -18,21 +19,21 @@ type Message struct {
     Streams string `json:"streams" gorm:"type:text"`
 }
 
-type MessageStreamEvent struct {
+type streamEvent struct {
     Type string `json:"type"`
     Action string `json:"action"`
     Body Message `json:"body"`
 }
 
-type MessagesResponse struct {
+type messagesResponse struct {
     Messages []Message `json:"messages"`
 }
 
-type MessageResponse struct {
+type messageResponse struct {
     Message Message `json:"message"`
 }
 
 type deleteQuery struct {
-    Id string `json:"id"`
+    ID string `json:"id"`
 }
 

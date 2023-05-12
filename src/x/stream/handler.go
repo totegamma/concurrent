@@ -11,11 +11,11 @@ import (
 
 // Handler handles Stream objects
 type Handler struct {
-    service StreamService
+    service Service
 }
 
-// NewStreamHandler is for wire.go
-func NewStreamHandler(service StreamService) Handler {
+// NewHandler is for wire.go
+func NewHandler(service Service) Handler {
     return Handler{service: service}
 }
 
@@ -29,7 +29,7 @@ func (h Handler) Get(c echo.Context) error {
 
 // Post is for handling HTTP Post Method
 func (h Handler) Post(c echo.Context) error {
-    var query PostQuery
+    var query postQuery
     err := c.Bind(&query)
     if (err != nil) {
         return err

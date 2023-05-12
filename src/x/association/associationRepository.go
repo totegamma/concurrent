@@ -5,36 +5,38 @@ import (
     "gorm.io/gorm"
 )
 
-type IAssociationRepository interface {
-    Create(association Association)
-    GetOwn(author string)
-}
 
-type AssociationRepository struct {
+// Repository is association repository
+type Repository struct {
     db *gorm.DB
 }
 
-func NewAssociationRepository(db *gorm.DB) AssociationRepository {
-    return AssociationRepository{db: db}
+// NewRepository is for wire.go
+func NewRepository(db *gorm.DB) Repository {
+    return Repository{db: db}
 }
 
-func (r *AssociationRepository) Create(association *Association) {
+// Create creates new association
+func (r *Repository) Create(association *Association) {
     r.db.Create(&association)
 }
 
-func (r *AssociationRepository) Get(id string) Association {
+// Get returns a Association by ID
+func (r *Repository) Get(id string) Association {
     var association Association
     r.db.Where("id = $1", id).First(&association)
     return association
 }
 
-func (r *AssociationRepository) GetOwn(author string) []Association {
+// GetOwn returns all associations which owned by specified owner
+func (r *Repository) GetOwn(author string) []Association {
     var associations []Association
     r.db.Where("author = $1", author)
     return associations 
 }
 
-func (r *AssociationRepository) Delete(id string) Association {
+// Delete deletes a association by ID
+func (r *Repository) Delete(id string) Association {
     var deleted Association
     if err := r.db.First(&deleted, "id = ?", id).Error; err != nil {
         fmt.Printf("Error finding association: %v\n", err)

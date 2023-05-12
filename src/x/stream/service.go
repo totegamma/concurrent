@@ -9,16 +9,18 @@ import (
     "github.com/redis/go-redis/v9"
 )
 
-type StreamService struct {
+// Service is stream service
+type Service struct {
     client* redis.Client
     repository* Repository
 }
 
-func NewStreamService(client *redis.Client, repository *Repository) StreamService {
-    return StreamService{ client, repository }
+// NewService is for wire.go
+func NewService(client *redis.Client, repository *Repository) Service {
+    return Service{ client, repository }
 }
 
-var redis_ctx = context.Background()
+var ctx = context.Background()
 
 func min(a, b int) int {
 	if a < b {
@@ -27,10 +29,11 @@ func min(a, b int) int {
 	return b
 }
 
-func (s *StreamService) GetRecent(streams []string) []redis.XMessage {
+// GetRecent returns recent message from streams
+func (s *Service) GetRecent(streams []string) []redis.XMessage {
     var messages []redis.XMessage
     for _, stream := range streams {
-        cmd := s.client.XRevRangeN(redis_ctx, stream, "+", "-", 16)
+        cmd := s.client.XRevRangeN(ctx, stream, "+", "-", 16)
         messages = append(messages, cmd.Val()...)
     }
     m := make(map[string]bool)
@@ -51,10 +54,11 @@ func (s *StreamService) GetRecent(streams []string) []redis.XMessage {
     return uniq[:min(len(uniq),16)]
 }
 
-func (s *StreamService) GetRange(streams []string, since string ,until string, limit int64) []redis.XMessage {
+// GetRange returns specified range messages from streams
+func (s *Service) GetRange(streams []string, since string ,until string, limit int64) []redis.XMessage {
     var messages []redis.XMessage
     for _, stream := range streams {
-        cmd := s.client.XRevRangeN(redis_ctx, stream, until, since, limit)
+        cmd := s.client.XRevRangeN(ctx, stream, until, since, limit)
         messages = append(messages, cmd.Val()...)
     }
     m := make(map[string]bool)
@@ -75,8 +79,9 @@ func (s *StreamService) GetRange(streams []string, since string ,until string, l
     return uniq[:min(len(uniq), int(limit))]
 }
 
-func (s *StreamService) Post(stream string, id string) string {
-    cmd := s.client.XAdd(redis_ctx, &redis.XAddArgs{
+// Post posts to stream
+func (s *Service) Post(stream string, id string) string {
+    cmd := s.client.XAdd(ctx, &redis.XAddArgs{
         Stream: stream,
         ID: "*",
         Values: map[string]interface{}{
@@ -87,26 +92,26 @@ func (s *StreamService) Post(stream string, id string) string {
     return cmd.Val()
 }
 
-func (s *StreamService) StreamList() []string {
-    cmd := s.client.Keys(redis_ctx, "*")
-    return cmd.Val()
-}
 
-func (s *StreamService) Upsert(stream *Stream) {
+// Upsert updates stream information
+func (s *Service) Upsert(stream *Stream) {
     s.repository.Upsert(stream)
 }
 
-func (s *StreamService) Get(key string) Stream {
+// Get returns stream information by ID
+func (s *Service) Get(key string) Stream {
     return s.repository.Get(key)
 }
 
-func (s *StreamService) StreamListBySchema(schema string) []Stream {
+// StreamListBySchema returns streamList by schema
+func (s *Service) StreamListBySchema(schema string) []Stream {
     streams := s.repository.GetList(schema)
     return streams
 }
 
-func (s *StreamService) Delete(stream string, id string) {
-    cmd := s.client.XDel(redis_ctx, stream, id)
+// Delete deletes 
+func (s *Service) Delete(stream string, id string) {
+    cmd := s.client.XDel(ctx, stream, id)
     log.Println(cmd)
 }
 

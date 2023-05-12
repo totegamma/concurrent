@@ -81,7 +81,7 @@ func main() {
         DB:       0,  // use default DB
     })
 
-    socketService := socket.NewSocketService();
+    socketService := socket.NewService();
 
     socketHandler := SetupSocketHandler(socketService)
     messageHandler := SetupMessageHandler(db, rdb, socketService)

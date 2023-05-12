@@ -12,16 +12,15 @@ import (
     "github.com/totegamma/concurrent/x/message"
     "github.com/totegamma/concurrent/x/character"
     "github.com/totegamma/concurrent/x/association"
-    "github.com/totegamma/concurrent/x/activitypub"
 )
 
-var messageHandlerProvider = wire.NewSet(message.NewMessageHandler, message.NewMessageService, message.NewMessageRepository)
-var characterHandlerProvider = wire.NewSet(character.NewCharacterHandler, character.NewCharacterService, character.NewCharacterRepository)
-var associationHandlerProvider = wire.NewSet(association.NewAssociationHandler, association.NewAssociationService, association.NewAssociationRepository)
-var streamHandlerProvider = wire.NewSet(stream.NewStreamHandler, stream.NewStreamService, stream.NewRepository)
+var messageHandlerProvider = wire.NewSet(message.NewHandler, message.NewService, message.NewRepository)
+var characterHandlerProvider = wire.NewSet(character.NewHandler, character.NewService, character.NewRepository)
+var associationHandlerProvider = wire.NewSet(association.NewHandler, association.NewService, association.NewRepository)
+var streamHandlerProvider = wire.NewSet(stream.NewHandler, stream.NewService, stream.NewRepository)
 
-func SetupMessageHandler(db *gorm.DB, client *redis.Client, socketService *socket.SocketService) message.Handler {
-    wire.Build(messageHandlerProvider, stream.NewStreamService, stream.NewRepository)
+func SetupMessageHandler(db *gorm.DB, client *redis.Client, socket *socket.Service) message.Handler {
+    wire.Build(messageHandlerProvider, stream.NewService, stream.NewRepository)
     return message.Handler{}
 }
 
@@ -30,19 +29,9 @@ func SetupCharacterHandler(db *gorm.DB) character.Handler {
     return character.Handler{}
 }
 
-func SetupAssociationHandler(db *gorm.DB, client *redis.Client, socketService *socket.SocketService) association.Handler {
-    wire.Build(associationHandlerProvider, stream.NewStreamService, stream.NewRepository)
+func SetupAssociationHandler(db *gorm.DB, client *redis.Client, socket *socket.Service) association.Handler {
+    wire.Build(associationHandlerProvider, stream.NewService, stream.NewRepository)
     return association.Handler{}
-}
-
-func SetupWebfingerHandler(db *gorm.DB) activitypub.WebfingerHandler {
-    wire.Build(activitypub.NewWebfingerHandler, character.NewCharacterService, character.NewCharacterRepository)
-    return activitypub.WebfingerHandler{}
-}
-
-func SetupActivityPubHandler(db *gorm.DB) activitypub.ActivityPubHandler {
-    wire.Build(activitypub.NewActivityPubHandler, character.NewCharacterService, character.NewCharacterRepository)
-    return activitypub.ActivityPubHandler{}
 }
 
 func SetupStreamHandler(db *gorm.DB, client *redis.Client) stream.Handler {
@@ -50,8 +39,8 @@ func SetupStreamHandler(db *gorm.DB, client *redis.Client) stream.Handler {
     return stream.Handler{}
 }
 
-func SetupSocketHandler(socketService *socket.SocketService) *socket.Handler {
-    wire.Build(socket.NewSocketHandler)
+func SetupSocketHandler(socketService *socket.Service) *socket.Handler {
+    wire.Build(socket.NewHandler)
     return &socket.Handler{}
 }
 

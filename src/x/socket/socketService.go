@@ -6,33 +6,38 @@ import (
     "github.com/gorilla/websocket"
 )
 
-type SocketService struct {
+// Service is socket service
+type Service struct {
     clients map[*websocket.Conn]bool
     clientsMutex *sync.Mutex
 }
 
-func NewSocketService() *SocketService {
-    return &SocketService{
+// NewService is for wire.go
+func NewService() *Service {
+    return &Service{
         make(map[*websocket.Conn]bool),
         &sync.Mutex{},
     }
 }
 
-func (s *SocketService) AddClient(ws *websocket.Conn) {
+// AddClient addes a connection to broadcast group
+func (s *Service) AddClient(ws *websocket.Conn) {
     s.clientsMutex.Lock()
     s.clients[ws] = true
     s.clientsMutex.Unlock()
 
 }
 
-func (s *SocketService) RemoveClient(ws *websocket.Conn) {
+// RemoveClient removes a connection from broadcast group
+func (s *Service) RemoveClient(ws *websocket.Conn) {
     s.clientsMutex.Lock()
     delete(s.clients, ws)
     s.clientsMutex.Unlock()
     ws.Close()
 }
 
-func (s *SocketService) NotifyAllClients(message []byte) {
+// NotifyAllClients broadcasts message to all clients
+func (s *Service) NotifyAllClients(message []byte) {
     s.clientsMutex.Lock()
     defer s.clientsMutex.Unlock()
 

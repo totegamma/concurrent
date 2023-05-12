@@ -8,21 +8,20 @@ import (
 
 // Handler handles Association objects
 type Handler struct {
-    service AssociationService
+    service Service
 }
 
-// NewAssociationHandler is for wire.go
-func NewAssociationHandler(service AssociationService) Handler {
+// NewHandler is for wire.go
+func NewHandler(service Service) Handler {
     return Handler{service: service}
 }
-
 
 // Get is for Handling HTTP Get Method
 func (h Handler) Get(c echo.Context) error {
     id := c.Param("id")
 
     association := h.service.Get(id)
-    response := AssociationResponse {
+    response := associationResponse {
         Association: association,
     }
     return c.JSON(http.StatusOK, response)
@@ -50,7 +49,7 @@ func (h Handler) Delete(c echo.Context) error {
         return err
     }
 
-    h.service.Delete(request.Id)
+    h.service.Delete(request.ID)
     return c.String(http.StatusOK, "{\"message\": \"accept\"}")
 }
 

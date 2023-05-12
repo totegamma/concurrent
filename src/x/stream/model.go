@@ -5,6 +5,7 @@ import (
     "github.com/lib/pq"
 )
 
+// Stream is one of a base object of concurrent
 type Stream struct {
     ID string `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
     Author string `json:"author" gorm:"type:text"`
@@ -17,7 +18,7 @@ type Stream struct {
     CDate time.Time `json:"cdate" gorm:"type:timestamp with time zone;not null;default:clock_timestamp()"`
 }
 
-type PostQuery struct {
+type postQuery struct {
     Stream string `json:"stream"`
     ID string `json:"id"`
 }

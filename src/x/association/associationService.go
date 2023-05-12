@@ -8,17 +8,20 @@ import (
     "github.com/totegamma/concurrent/x/socket"
 )
 
-type AssociationService struct {
-    repo AssociationRepository
-    stream stream.StreamService
-    socket *socket.SocketService
+// Service is association service
+type Service struct {
+    repo Repository
+    stream stream.Service
+    socket *socket.Service
 }
 
-func NewAssociationService(repo AssociationRepository, stream stream.StreamService, socketService *socket.SocketService) AssociationService {
-    return AssociationService{repo: repo, stream: stream, socket: socketService}
+// NewService is used for wire.go
+func NewService(repo Repository, stream stream.Service, socket*socket.Service) Service {
+    return Service{repo: repo, stream: stream, socket: socket}
 }
 
-func (s *AssociationService) PostAssociation(association Association) {
+// PostAssociation creates new association
+func (s *Service) PostAssociation(association Association) {
     if err := util.VerifySignature(association.Payload, association.Author, association.Signature); err != nil {
         log.Println("verify signature err: ", err)
         return
@@ -29,7 +32,7 @@ func (s *AssociationService) PostAssociation(association Association) {
         s.stream.Post(stream, association.ID)
     }
 
-    jsonstr, _ := json.Marshal(AssociationStreamEvent{
+    jsonstr, _ := json.Marshal(StreamEvent{
         Type: "association",
         Action: "create",
         Body: association,
@@ -37,17 +40,20 @@ func (s *AssociationService) PostAssociation(association Association) {
     s.socket.NotifyAllClients(jsonstr)
 }
 
-func (s *AssociationService) Get(id string) Association {
+// Get returns an association by ID
+func (s *Service) Get(id string) Association {
     return s.repo.Get(id)
 }
 
-func (s *AssociationService) GetOwn(author string) []Association {
+// GetOwn returns associations by author
+func (s *Service) GetOwn(author string) []Association {
     return s.repo.GetOwn(author)
 }
 
-func (s *AssociationService) Delete(id string) {
+// Delete deletes an association by ID
+func (s *Service) Delete(id string) {
     deleted := s.repo.Delete(id)
-    jsonstr, _ := json.Marshal(AssociationStreamEvent{
+    jsonstr, _ := json.Marshal(StreamEvent{
         Type: "association",
         Action: "delete",
         Body: deleted,

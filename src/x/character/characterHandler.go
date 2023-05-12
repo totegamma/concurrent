@@ -8,11 +8,11 @@ import (
 
 // Handler is handles Character Object
 type Handler struct {
-    service CharacterService
+    service Service
 }
 
-// NewCharacterHandler is for wire
-func NewCharacterHandler(service CharacterService) Handler {
+// NewHandler is for wire
+func NewHandler(service Service) Handler {
     return Handler{service: service}
 }
 

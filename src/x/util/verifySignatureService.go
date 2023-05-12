@@ -1,3 +1,4 @@
+// Package util provides various utility functions
 package util
 
 import (
@@ -7,6 +8,7 @@ import (
     "github.com/ethereum/go-ethereum/crypto"
 )
 
+// VerifySignature verifies a keccak256 signature
 func VerifySignature(message string, address string, signature string) error {
 
     // R値とS値をbig.Intに変換

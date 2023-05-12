@@ -5,27 +5,25 @@ import (
     "github.com/totegamma/concurrent/x/association"
 )
 
-type IMessageRepository interface {
-    Create(message Message)
-    GetAll() []Message
-    GetFollowee() []Message
-    Delete() Message
-}
 
-type MessageRepository struct {
+// Repository is message repository
+type Repository struct {
     db *gorm.DB
 }
 
-func NewMessageRepository(db *gorm.DB) MessageRepository {
-    return MessageRepository{db: db}
+// NewRepository is used for wire.go
+func NewRepository(db *gorm.DB) Repository {
+    return Repository{db: db}
 }
 
-func (r *MessageRepository) Create(message *Message) string {
+// Create creates new message
+func (r *Repository) Create(message *Message) string {
     r.db.Create(&message)
     return message.ID
 }
 
-func (r *MessageRepository) Get(key string) Message {
+// Get returns a message with associaiton data
+func (r *Repository) Get(key string) Message {
     var message Message
     var associations []association.Association
     r.db.First(&message, "id = ?", key)
@@ -38,19 +36,8 @@ func (r *MessageRepository) Get(key string) Message {
     return message
 }
 
-func (r *MessageRepository) GetAll() []Message {
-    var messages []Message
-    r.db.Find(&messages)
-    return messages
-}
-
-func (r *MessageRepository) GetFollowee(followeeList []string) []Message {
-    var messages []Message
-    r.db.Where("author = ANY($1)", followeeList).Find(&messages)
-    return messages
-}
-
-func (r *MessageRepository) Delete(id string) Message {
+// Delete deletes an message
+func (r *Repository) Delete(id string) Message {
     var deleted Message
     r.db.Where("id = $1", id).Delete(&deleted)
     return deleted

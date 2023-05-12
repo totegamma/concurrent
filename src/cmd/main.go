@@ -1,7 +1,7 @@
 package main
 
 import (
-    "fmt"
+    "log"
     "net/http"
 
     "gorm.io/gorm"
@@ -17,6 +17,7 @@ import (
     "github.com/totegamma/concurrent/x/socket"
     "github.com/totegamma/concurrent/x/stream"
     "github.com/totegamma/concurrent/x/host"
+    "github.com/totegamma/concurrent/x/util"
 )
 
 func main() {
@@ -24,18 +25,18 @@ func main() {
     dsn := "host=localhost user=postgres password=postgres dbname=concurrent port=5432 sslmode=disable"
     db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
     if err != nil {
-        fmt.Println("failed to connect database");
+        log.Println("failed to connect database");
         panic("failed to connect database")
     }
 
     // Migrate the schema
-    fmt.Println("start migrate")
+    log.Println("start migrate")
     db.AutoMigrate(&character.Character{}, &association.Association{}, &message.Message{}, &stream.Stream{}, &host.Host{})
 
     var count int64
     db.Table("information_schema.triggers").Where("trigger_name = 'attach_association_trigger'").Count(&count)
     if count == 0 {
-        fmt.Println("Create attach_association_trigger")
+        log.Println("Create attach_association_trigger")
         attach_association_hook := `
             CREATE FUNCTION attach_association() RETURNS TRIGGER AS $attach_association$
             BEGIN
@@ -56,7 +57,7 @@ func main() {
 
     db.Table("information_schema.triggers").Where("trigger_name = 'detach_association_trigger'").Count(&count)
     if count == 0 {
-        fmt.Println("Create detach_association_trigger")
+        log.Println("Create detach_association_trigger")
         detach_association_hook := `
             CREATE FUNCTION detach_association() RETURNS TRIGGER AS $detach_association$
             BEGIN
@@ -74,13 +75,23 @@ func main() {
         `
         db.Exec(detach_association_hook)
     }
-    fmt.Println("done!")
+    log.Println("done!")
 
     rdb := redis.NewClient(&redis.Options{
         Addr:     "localhost:6379",
         Password: "", // no password set
         DB:       0,  // use default DB
     })
+
+    e := echo.New()
+
+    config := util.Config{}
+    err = config.Load("config.yaml")
+    if err != nil {
+        e.Logger.Fatal(err)
+    }
+
+    log.Print("Config loaded! I am: ", config.CCAddr)
 
     socketService := socket.NewService();
 
@@ -89,9 +100,8 @@ func main() {
     characterHandler := SetupCharacterHandler(db)
     associationHandler := SetupAssociationHandler(db, rdb, socketService)
     streamHandler := SetupStreamHandler(db, rdb)
-    hostHandler := SetupHostHandler(db)
+    hostHandler := SetupHostHandler(db, config)
 
-    e := echo.New()
     e.HideBanner = true
     e.Use(middleware.CORS())
     e.Use(middleware.Logger())
@@ -111,9 +121,11 @@ func main() {
     e.GET("/stream/list", streamHandler.List)
     e.GET("/stream/range", streamHandler.Range)
     e.GET("/socket", socketHandler.Connect)
-    e.GET("/host/:id", hostHandler.Get)
+    e.GET("/host/:id", hostHandler.Get) //TODO deprecated. remove later
     e.PUT("/host", hostHandler.Upsert)
-    e.GET("/host", hostHandler.List)
+    e.GET("/host", hostHandler.Profile)
+    e.GET("/host/list", hostHandler.List)
+    e.POST("/host/hello", hostHandler.Hello)
     e.GET("/health", func(c echo.Context) (err error) {
         return c.String(http.StatusOK, "ok")
     })

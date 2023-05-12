@@ -7,6 +7,7 @@ import (
     "github.com/google/wire"
     "github.com/redis/go-redis/v9"
 
+    "github.com/totegamma/concurrent/x/util"
     "github.com/totegamma/concurrent/x/host"
     "github.com/totegamma/concurrent/x/socket"
     "github.com/totegamma/concurrent/x/stream"
@@ -41,7 +42,7 @@ func SetupStreamHandler(db *gorm.DB, client *redis.Client) stream.Handler {
     return stream.Handler{}
 }
 
-func SetupHostHandler(db *gorm.DB) host.Handler {
+func SetupHostHandler(db *gorm.DB, config util.Config) host.Handler {
     wire.Build(hostHandlerProvider)
     return host.Handler{}
 }

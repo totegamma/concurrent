@@ -11,7 +11,7 @@ type Handler struct {
     service Service
 }
 
-// NewMessageHandler is for wire.go
+// NewHandler is for wire.go
 func NewHandler(service Service) Handler {
     return Handler{service: service}
 }

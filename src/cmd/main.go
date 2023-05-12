@@ -16,6 +16,7 @@ import (
     "github.com/totegamma/concurrent/x/message"
     "github.com/totegamma/concurrent/x/socket"
     "github.com/totegamma/concurrent/x/stream"
+    "github.com/totegamma/concurrent/x/host"
 )
 
 func main() {
@@ -29,7 +30,7 @@ func main() {
 
     // Migrate the schema
     fmt.Println("start migrate")
-    db.AutoMigrate(&character.Character{}, &association.Association{}, &message.Message{}, &stream.Stream{})
+    db.AutoMigrate(&character.Character{}, &association.Association{}, &message.Message{}, &stream.Stream{}, &host.Host{})
 
     var count int64
     db.Table("information_schema.triggers").Where("trigger_name = 'attach_association_trigger'").Count(&count)
@@ -88,6 +89,7 @@ func main() {
     characterHandler := SetupCharacterHandler(db)
     associationHandler := SetupAssociationHandler(db, rdb, socketService)
     streamHandler := SetupStreamHandler(db, rdb)
+    hostHandler := SetupHostHandler(db)
 
     e := echo.New()
     e.HideBanner = true
@@ -109,6 +111,9 @@ func main() {
     e.GET("/stream/list", streamHandler.List)
     e.GET("/stream/range", streamHandler.Range)
     e.GET("/socket", socketHandler.Connect)
+    e.GET("/host/:id", hostHandler.Get)
+    e.PUT("/host", hostHandler.Upsert)
+    e.GET("/host", hostHandler.List)
     e.GET("/health", func(c echo.Context) (err error) {
         return c.String(http.StatusOK, "ok")
     })

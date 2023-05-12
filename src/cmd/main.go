@@ -1,6 +1,7 @@
 package main
 
 import (
+    "fmt"
     "log"
     "net/http"
 
@@ -21,6 +22,8 @@ import (
 )
 
 func main() {
+
+    fmt.Print(concurrentBanner)
 
     dsn := "host=localhost user=postgres password=postgres dbname=concurrent port=5432 sslmode=disable"
     db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})

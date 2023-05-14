@@ -17,13 +17,22 @@ func NewStreamService(client *redis.Client, repository *Repository) StreamServic
 
 var redis_ctx = context.Background()
 
+
 func (s *StreamService) GetRecent(streams []string) []redis.XMessage {
     var messages []redis.XMessage
     for _, stream := range streams {
         cmd := s.client.XRevRangeN(redis_ctx, stream, "+", "-", 64)
         messages = append(messages, cmd.Val()...)
     }
-    return messages
+    m := make(map[string]bool)
+    uniq := [] redis.XMessage{}
+    for _, elem := range messages {
+        if !m[elem.Values["id"].(string)] {
+            m[elem.Values["id"].(string)] = true
+            uniq = append(uniq, elem)
+        }
+    }
+    return uniq
 }
 
 func (s *StreamService) GetRange(streams []string, since string ,until string, limit int64) []redis.XMessage {
@@ -32,7 +41,16 @@ func (s *StreamService) GetRange(streams []string, since string ,until string, l
         cmd := s.client.XRevRangeN(redis_ctx, stream, until, since, limit)
         messages = append(messages, cmd.Val()...)
     }
-    return messages
+    m := make(map[string]bool)
+    uniq := [] redis.XMessage{}
+    for _, elem := range messages {
+        if !m[elem.Values["id"].(string)] {
+            m[elem.Values["id"].(string)] = true
+            uniq = append(uniq, elem)
+        }
+    }
+    return uniq
+
 }
 
 func (s *StreamService) Post(stream string, id string) string {

@@ -111,7 +111,7 @@ func (h StreamHandler) HandleRange(w http.ResponseWriter, r *http.Request) {
                 until = untilArr[0]
             }
 
-            messages := h.service.GetRange(streams, since, until, 64)
+            messages := h.service.GetRange(streams, since, until, 16)
 
             jsonstr, err := json.Marshal(messages)
             if err != nil {

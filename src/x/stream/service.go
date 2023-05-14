@@ -21,7 +21,7 @@ var redis_ctx = context.Background()
 func (s *StreamService) GetRecent(streams []string) []redis.XMessage {
     var messages []redis.XMessage
     for _, stream := range streams {
-        cmd := s.client.XRevRangeN(redis_ctx, stream, "+", "-", 64)
+        cmd := s.client.XRevRangeN(redis_ctx, stream, "+", "-", 16)
         messages = append(messages, cmd.Val()...)
     }
     m := make(map[string]bool)

@@ -2,6 +2,9 @@ package stream
 
 import (
     "log"
+    "sort"
+    "strconv"
+    "strings"
     "context"
     "github.com/redis/go-redis/v9"
 )
@@ -17,6 +20,12 @@ func NewStreamService(client *redis.Client, repository *Repository) StreamServic
 
 var redis_ctx = context.Background()
 
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
 
 func (s *StreamService) GetRecent(streams []string) []redis.XMessage {
     var messages []redis.XMessage
@@ -32,7 +41,14 @@ func (s *StreamService) GetRecent(streams []string) []redis.XMessage {
             uniq = append(uniq, elem)
         }
     }
-    return uniq
+    sort.Slice(uniq, func(l, r int) bool {
+        lStr := strings.Replace(uniq[l].ID, "-", ".", 1)
+        rStr := strings.Replace(uniq[r].ID, "-", ".", 1)
+        lTime, _ := strconv.ParseFloat(lStr, 32)
+        rTime, _ := strconv.ParseFloat(rStr, 32)
+        return lTime > rTime
+    })
+    return uniq[:min(len(uniq),16)]
 }
 
 func (s *StreamService) GetRange(streams []string, since string ,until string, limit int64) []redis.XMessage {
@@ -49,8 +65,14 @@ func (s *StreamService) GetRange(streams []string, since string ,until string, l
             uniq = append(uniq, elem)
         }
     }
-    return uniq
-
+    sort.Slice(uniq, func(l, r int) bool {
+        lStr := strings.Replace(uniq[l].ID, "-", ".", 1)
+        rStr := strings.Replace(uniq[r].ID, "-", ".", 1)
+        lTime, _ := strconv.ParseFloat(lStr, 32)
+        rTime, _ := strconv.ParseFloat(rStr, 32)
+        return lTime > rTime
+    })
+    return uniq[:min(len(uniq), int(limit))]
 }
 
 func (s *StreamService) Post(stream string, id string) string {

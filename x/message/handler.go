@@ -2,7 +2,6 @@
 package message
 
 import (
-    "log"
     "net/http"
     "github.com/labstack/echo/v4"
 )
@@ -34,12 +33,11 @@ func (h Handler) Get(c echo.Context) error {
 func (h Handler) Post(c echo.Context) error {
     var request postRequest
     err := c.Bind(&request)
-    if (err != nil) {
+    if err != nil {
         return err
     }
-    log.Println(request)
     err = h.service.PostMessage(request.SignedObject, request.Signature, request.Streams)
-    if (err != nil) {
+    if err != nil {
         return err
     }
     return c.String(http.StatusCreated, "{\"message\": \"accept\"}")

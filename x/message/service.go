@@ -4,7 +4,6 @@ import (
     "encoding/json"
     "log"
 
-    "github.com/totegamma/concurrent/x/core"
     "github.com/totegamma/concurrent/x/socket"
     "github.com/totegamma/concurrent/x/stream"
     "github.com/totegamma/concurrent/x/util"
@@ -32,7 +31,7 @@ func (s *Service) GetMessage(id string) Message{
 // PostMessage creates new message
 func (s *Service) PostMessage(objectStr string, signature string, streams []string) error {
 
-    var object core.SignedObject
+    var object signedObject
     err := json.Unmarshal([]byte(objectStr), &object)
     if err != nil {
         return err

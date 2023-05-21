@@ -29,7 +29,24 @@ type deleteQuery struct {
     ID string `json:"id"`
 }
 
+type postRequest struct {
+    SignedObject string `json:"signedObject"`
+    Signature string `json:"signature"`
+    Streams []string `json:"streams"`
+    TargetType string `json:"targetType"`
+}
+
 type associationResponse struct {
     Association Association `json:"association"`
+}
+
+type signedObject struct {
+    Signer string `json:"signer"`
+    Type string `json:"type"`
+    Schema string `json:"schema"`
+    Body interface{} `json:"body"`
+    Meta interface{} `json:"meta"`
+    SignedAt time.Time `json:"signedAt"`
+    Target string `json:"target"`
 }
 

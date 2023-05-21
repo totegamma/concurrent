@@ -3,7 +3,6 @@ package stream
 
 import (
     "fmt"
-    "log"
     "strings"
     "net/http"
     "github.com/labstack/echo/v4"
@@ -42,15 +41,17 @@ func (h Handler) Post(c echo.Context) error {
 
 // Put is for handling HTTP Put Method
 func (h Handler) Put(c echo.Context) error {
-    var stream Stream
-    err := c.Bind(&stream)
-    if (err != nil) {
-        log.Println(err)
+    var request postRequest
+    err := c.Bind(&request)
+    if err != nil {
         return err
     }
 
-    h.service.Upsert(&stream)
-    return c.String(http.StatusCreated, fmt.Sprintf("{\"message\": \"accept\", \"id\": \"%s\"}", stream.ID))
+    id, err := h.service.Upsert(request.SignedObject, request.Signature, request.ID)
+    if err != nil {
+        return err
+    }
+    return c.String(http.StatusCreated, fmt.Sprintf("{\"message\": \"accept\", \"id\": \"%s\"}", id))
 }
 
 // Recent returns recent messages in some streams

@@ -29,14 +29,15 @@ func (h Handler) Get(c echo.Context) error {
 
 // Post is for Handling HTTP Post Method
 func (h Handler) Post(c echo.Context) error {
-
-    var association Association
-    err := c.Bind(&association)
-    if (err != nil) {
+    var request postRequest
+    err := c.Bind(&request)
+    if err != nil {
         return err
     }
-
-    h.service.PostAssociation(association)
+    err = h.service.PostAssociation(request.SignedObject, request.Signature, request.Streams, request.TargetType)
+    if err != nil {
+        return err
+    }
     return c.String(http.StatusCreated, "{\"message\": \"accept\"}")
 }
 

@@ -2,6 +2,8 @@ package character
 
 import (
     "log"
+    "encoding/json"
+
     "github.com/totegamma/concurrent/x/util"
 )
 
@@ -26,11 +28,29 @@ func (s* Service) GetCharacters(owner string, schema string) []Character {
 }
 
 // PutCharacter creates new character if the signature is valid
-func (s* Service) PutCharacter(character Character) {
-    if err := util.VerifySignature(character.Payload, character.Author, character.Signature); err != nil {
-        log.Println("verify signature err: ", err)
-        return
+func (s* Service) PutCharacter(objectStr string, signature string, id string) error {
+
+    var object signedObject
+    err := json.Unmarshal([]byte(objectStr), &object)
+    if err != nil {
+        return err
     }
+
+    if err := util.VerifySignature(objectStr, object.Signer, signature); err != nil {
+        log.Println("verify signature err: ", err)
+        return err
+    }
+
+    character := Character {
+        ID: id,
+        Author: object.Signer,
+        Schema: object.Schema,
+        Payload: objectStr,
+        Signature: signature,
+    }
+
     s.repo.Upsert(character)
+
+    return nil
 }
 

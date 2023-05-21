@@ -21,10 +21,27 @@ func NewService(repo Repository, stream stream.Service, socket*socket.Service) S
 }
 
 // PostAssociation creates new association
-func (s *Service) PostAssociation(association Association) {
-    if err := util.VerifySignature(association.Payload, association.Author, association.Signature); err != nil {
+func (s *Service) PostAssociation(objectStr string, signature string, streams []string, targetType string) error {
+
+    var object signedObject
+    err := json.Unmarshal([]byte(objectStr), &object)
+    if err != nil {
+        return err
+    }
+
+    if err := util.VerifySignature(objectStr, object.Signer, signature); err != nil {
         log.Println("verify signature err: ", err)
-        return
+        return err
+    }
+
+    association := Association {
+        Author: object.Signer,
+        Schema: object.Schema,
+        TargetID: object.Target,
+        TargetType: targetType,
+        Payload: objectStr,
+        Signature: signature,
+        Streams: streams,
     }
 
     s.repo.Create(&association)
@@ -38,6 +55,8 @@ func (s *Service) PostAssociation(association Association) {
         Body: association,
     })
     s.socket.NotifyAllClients(jsonstr)
+
+    return nil
 }
 
 // Get returns an association by ID

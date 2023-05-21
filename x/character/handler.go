@@ -30,13 +30,16 @@ func (h Handler) Get(c echo.Context) error {
 // Put is for Handling HTTP Put Method
 func (h Handler) Put(c echo.Context) error {
 
-    var character Character
-    err := c.Bind(&character)
-    if (err != nil) {
+    var request postRequest
+    err := c.Bind(&request)
+    if err != nil {
         return err
     }
 
-    h.service.PutCharacter(character)
+    err = h.service.PutCharacter(request.SignedObject, request.Signature, request.ID)
+    if err != nil {
+        return err
+    }
     return c.String(http.StatusCreated, "{\"message\": \"accept\"}")
 }
 

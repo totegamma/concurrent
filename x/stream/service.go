@@ -6,7 +6,9 @@ import (
     "strconv"
     "strings"
     "context"
+    "encoding/json"
     "github.com/redis/go-redis/v9"
+    "github.com/totegamma/concurrent/x/util"
 )
 
 // Service is stream service
@@ -94,8 +96,31 @@ func (s *Service) Post(stream string, id string) string {
 
 
 // Upsert updates stream information
-func (s *Service) Upsert(stream *Stream) {
-    s.repository.Upsert(stream)
+func (s *Service) Upsert(objectStr string, signature string, id string) (string, error) {
+    var object signedObject
+    err := json.Unmarshal([]byte(objectStr), &object)
+    if err != nil {
+        return "", err
+    }
+
+    if err := util.VerifySignature(objectStr, object.Signer, signature); err != nil {
+        log.Println("verify signature err: ", err)
+        return "", err
+    }
+
+    stream := Stream {
+        ID: id,
+        Author: object.Signer,
+        Maintainer: object.Maintainer,
+        Writer: object.Writer,
+        Reader: object.Reader,
+        Schema: object.Schema,
+        Payload: objectStr,
+        Signature: signature,
+    }
+
+    s.repository.Upsert(&stream)
+    return stream.ID, nil
 }
 
 // Get returns stream information by ID

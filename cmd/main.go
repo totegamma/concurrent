@@ -43,7 +43,7 @@ func main() {
 
     // Migrate the schema
     log.Println("start migrate")
-    db.AutoMigrate(&character.Character{},&message.Message{}, &association.Association{},  &stream.Stream{}, &host.Host{})
+    db.AutoMigrate(&message.Message{}, &character.Character{}, &association.Association{},  &stream.Stream{}, &host.Host{})
 
     rdb := redis.NewClient(&redis.Options{
         Addr:     config.RedisAddr,

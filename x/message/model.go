@@ -13,7 +13,7 @@ type Message struct {
     Payload string `json:"payload" gorm:"type:json"`
     Signature string `json:"signature" gorm:"type:char(130)"`
     CDate time.Time `json:"cdate" gorm:"type:timestamp with time zone;not null;default:clock_timestamp()"`
-    Associations []association.Association `json:"associations" gorm:"foreignkey:Target"`
+    Associations []association.Association `json:"associations" gorm:"polymorphic:Target"`
     Streams string `json:"streams" gorm:"type:text"`
 }
 

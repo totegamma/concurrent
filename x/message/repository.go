@@ -1,8 +1,6 @@
 package message
 
 import (
-	"log"
-
 	"gorm.io/gorm"
 )
 
@@ -26,7 +24,6 @@ func (r *Repository) Create(message *Message) string {
 func (r *Repository) Get(key string) Message {
     var message Message
     r.db.Preload("Associations").First(&message, "id = ?", key)
-    log.Print(message)
     return message
 }
 

@@ -1,12 +1,13 @@
 package message
 
 import (
-    "log"
-    "strings"
     "encoding/json"
-    "github.com/totegamma/concurrent/x/util"
-    "github.com/totegamma/concurrent/x/stream"
+    "log"
+
+    "github.com/totegamma/concurrent/x/core"
     "github.com/totegamma/concurrent/x/socket"
+    "github.com/totegamma/concurrent/x/stream"
+    "github.com/totegamma/concurrent/x/util"
 )
 
 // Service is a service of message
@@ -29,13 +30,29 @@ func (s *Service) GetMessage(id string) Message{
 }
 
 // PostMessage creates new message
-func (s *Service) PostMessage(message Message) {
-    if err := util.VerifySignature(message.Payload, message.Author, message.Signature); err != nil {
-        log.Println("verify signature err: ", err)
-        return
+func (s *Service) PostMessage(objectStr string, signature string, streams []string) error {
+
+    var object core.SignedObject
+    err := json.Unmarshal([]byte(objectStr), &object)
+    if err != nil {
+        return err
     }
+
+    if err := util.VerifySignature(objectStr, object.Signer, signature); err != nil {
+        log.Println("verify signature err: ", err)
+        return err
+    }
+
+    message := Message{
+        Author: object.Signer,
+        Schema: object.Schema,
+        Payload: objectStr,
+        Signature: signature,
+        Streams: streams,
+    }
+
     id := s.repo.Create(&message)
-    for _, stream := range strings.Split(message.Streams, ",") {
+    for _, stream := range message.Streams {
         s.stream.Post(stream, id)
     }
 
@@ -45,12 +62,13 @@ func (s *Service) PostMessage(message Message) {
         Body: message,
     })
     s.socket.NotifyAllClients(jsonstr)
+    return nil
 }
 
 // DeleteMessage deletes a message by ID
 func (s *Service) DeleteMessage(id string) {
     deleted := s.repo.Delete(id)
-    for _, stream := range strings.Split(deleted.Streams, ",") {
+    for _, stream := range deleted.Streams {
         s.stream.Delete(stream, id)
     }
     jsonstr, _ := json.Marshal(streamEvent{

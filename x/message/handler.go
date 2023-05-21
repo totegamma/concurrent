@@ -2,6 +2,7 @@
 package message
 
 import (
+    "log"
     "net/http"
     "github.com/labstack/echo/v4"
 )
@@ -23,10 +24,7 @@ func (h Handler) Get(c echo.Context) error {
     id := c.Param("id")
 
     message := h.service.GetMessage(id)
-    response := messageResponse {
-        Message: message,
-    }
-    return c.JSON(http.StatusOK, response)
+    return c.JSON(http.StatusOK, message)
 }
 
 // Post is for Handling HTTP Post Method
@@ -34,12 +32,16 @@ func (h Handler) Get(c echo.Context) error {
 // Output: nothing
 // Effect: register message object to database
 func (h Handler) Post(c echo.Context) error {
-    var message Message
-    err := c.Bind(&message)
+    var request postRequest
+    err := c.Bind(&request)
     if (err != nil) {
         return err
     }
-    h.service.PostMessage(message)
+    log.Println(request)
+    err = h.service.PostMessage(request.SignedObject, request.Signature, request.Streams)
+    if (err != nil) {
+        return err
+    }
     return c.String(http.StatusCreated, "{\"message\": \"accept\"}")
 }
 

@@ -2,6 +2,8 @@ package message
 
 import (
     "time"
+
+    "github.com/lib/pq"
     "github.com/totegamma/concurrent/x/association"
 )
 
@@ -14,7 +16,7 @@ type Message struct {
     Signature string `json:"signature" gorm:"type:char(130)"`
     CDate time.Time `json:"cdate" gorm:"type:timestamp with time zone;not null;default:clock_timestamp()"`
     Associations []association.Association `json:"associations" gorm:"polymorphic:Target"`
-    Streams string `json:"streams" gorm:"type:text"`
+    Streams pq.StringArray `json:"streams" gorm:"type:text[]"`
 }
 
 type streamEvent struct {
@@ -27,11 +29,13 @@ type messagesResponse struct {
     Messages []Message `json:"messages"`
 }
 
-type messageResponse struct {
-    Message Message `json:"message"`
-}
-
 type deleteQuery struct {
     ID string `json:"id"`
+}
+
+type postRequest struct {
+    SignedObject string `json:"signedObject"`
+    Signature string `json:"signature"`
+    Streams []string `json:"streams"`
 }
 

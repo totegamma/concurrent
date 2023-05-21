@@ -2,9 +2,9 @@ FROM golang:latest AS builder
 
 WORKDIR /work
 
-COPY src/go.mod src/go.sum ./
+COPY ./go.mod ./go.sum ./
 RUN go mod download && go mod verify
-COPY src/ ./
+COPY ./ ./
 RUN go install github.com/google/wire/cmd/wire@latest \
  && wire ./cmd \
  && go build -o concurrent ./cmd

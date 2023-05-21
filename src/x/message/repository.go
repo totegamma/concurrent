@@ -1,10 +1,10 @@
 package message
 
 import (
-    "gorm.io/gorm"
-    "github.com/totegamma/concurrent/x/association"
-)
+	"log"
 
+	"gorm.io/gorm"
+)
 
 // Repository is message repository
 type Repository struct {
@@ -25,14 +25,8 @@ func (r *Repository) Create(message *Message) string {
 // Get returns a message with associaiton data
 func (r *Repository) Get(key string) Message {
     var message Message
-    var associations []association.Association
-    r.db.First(&message, "id = ?", key)
-    r.db.Table("associations").
-        Select("associations.*").
-        Joins("JOIN messages ON messages.id = associations.target").
-        Where("messages.id = ? AND associations.id = ANY(messages.associations)", message.ID).
-        Find(&associations)
-    message.AssociationsData = associations
+    r.db.Preload("Associations").First(&message, "id = ?", key)
+    log.Print(message)
     return message
 }
 

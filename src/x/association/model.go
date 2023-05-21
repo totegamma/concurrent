@@ -8,8 +8,8 @@ import (
 // Association is one of a concurrent base object
 type Association struct {
     ID string `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
-    Author string `json:"author" gorm:"type:varchar(64)"`
-    Schema string `json:"schema"  gorm:"type:varchar(1024)"`
+    Author string `json:"author" gorm:"type:varchar(42)"`
+    Schema string `json:"schema"  gorm:"type:varchar(256)"`
     Target string `json:"target" gorm:"type:uuid"`
     Payload string `json:"payload" gorm:"type:json"`
     Signature string `json:"signature" gorm:"type:char(130)"`

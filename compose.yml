@@ -1,0 +1,40 @@
+version: "3"
+
+services:
+  concurrent:
+    build: .
+    restart: always
+    links:
+      - db
+      - redis
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./config:/etc/concurrent/:ro
+  db:
+    restart: always
+    image: postgres
+    healthcheck:
+      test: "pg_isready -U postgres"
+      interval: 5s
+      retries: 20
+    ports:
+      - "5432:5432"
+    environment:
+      - "POSTGRES_PASSWORD=postgres"
+      - "POSTGRES_DB=concurrent"
+  redis:
+    restart: always
+    image: redis
+    healthcheck:
+      test: "redis-cli ping"
+      interval: 5s
+      retries: 20
+    ports:
+      - "6379:6379"
+  

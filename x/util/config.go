@@ -12,6 +12,8 @@ type Config struct {
     CCAddr string `yaml:"ccaddr"`
     Pubkey string `yaml:"publickey"`
     Prvkey string `yaml:"privatekey"`
+    Dsn string `yaml:"dsn"`
+    RedisAddr string `yaml:"redisAddr"`
 }
 
 // Load loads concurrent config from given path

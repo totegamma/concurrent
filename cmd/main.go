@@ -25,8 +25,17 @@ func main() {
 
     fmt.Print(concurrentBanner)
 
-    dsn := "host=localhost user=postgres password=postgres dbname=concurrent port=5432 sslmode=disable"
-    db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+    e := echo.New()
+
+    config := util.Config{}
+    err := config.Load("/etc/concurrent/config.yaml")
+    if err != nil {
+        e.Logger.Fatal(err)
+    }
+
+    log.Print("Config loaded! I am: ", config.CCAddr)
+
+    db, err := gorm.Open(postgres.Open(config.Dsn), &gorm.Config{})
     if err != nil {
         log.Println("failed to connect database");
         panic("failed to connect database")
@@ -37,20 +46,10 @@ func main() {
     db.AutoMigrate(&character.Character{},&message.Message{}, &association.Association{},  &stream.Stream{}, &host.Host{})
 
     rdb := redis.NewClient(&redis.Options{
-        Addr:     "localhost:6379",
+        Addr:     config.RedisAddr,
         Password: "", // no password set
         DB:       0,  // use default DB
     })
-
-    e := echo.New()
-
-    config := util.Config{}
-    err = config.Load("config.yaml")
-    if err != nil {
-        e.Logger.Fatal(err)
-    }
-
-    log.Print("Config loaded! I am: ", config.CCAddr)
 
     socketService := socket.NewService();
 

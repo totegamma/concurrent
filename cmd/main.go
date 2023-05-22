@@ -1,9 +1,11 @@
 package main
 
 import (
+    "os"
     "fmt"
     "log"
     "net/http"
+    "path/filepath"
 
     "gorm.io/gorm"
     "gorm.io/driver/postgres"
@@ -14,10 +16,10 @@ import (
 
     "github.com/totegamma/concurrent/x/association"
     "github.com/totegamma/concurrent/x/character"
+    "github.com/totegamma/concurrent/x/host"
     "github.com/totegamma/concurrent/x/message"
     "github.com/totegamma/concurrent/x/socket"
     "github.com/totegamma/concurrent/x/stream"
-    "github.com/totegamma/concurrent/x/host"
     "github.com/totegamma/concurrent/x/util"
 )
 
@@ -87,11 +89,20 @@ func main() {
     apiV1.POST("/host/hello", hostHandler.Hello)
     apiV1.GET("/admin/sayhello/:fqdn", hostHandler.SayHello)
 
-    e.Static("/", "/etc/www/concurrent")
+    e.GET("/*", spa)
     e.GET("/health", func(c echo.Context) (err error) {
         return c.String(http.StatusOK, "ok")
     })
 
     e.Logger.Fatal(e.Start(":8000"))
+}
+
+func spa(c echo.Context) error {
+    path := c.Request().URL.Path
+    fpath := filepath.Join("/etc/www/concurrent", path)
+    if _, err := os.Stat(fpath); os.IsNotExist(err) {
+        return c.File("/etc/www/concurrent/index.html")
+    }
+    return c.File(fpath)
 }
 

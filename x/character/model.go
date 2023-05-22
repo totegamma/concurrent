@@ -34,6 +34,5 @@ type signedObject struct {
     Body interface{} `json:"body"`
     Meta interface{} `json:"meta"`
     SignedAt time.Time `json:"signedAt"`
-    Target string `json:"target"`
 }
 

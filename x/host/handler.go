@@ -1,6 +1,7 @@
 package host
 
 import (
+	"bytes"
 	"encoding/json"
 	"io/ioutil"
 	"net/http"
@@ -95,5 +96,45 @@ func (h Handler) Hello(c echo.Context) error {
         CCAddr: h.config.CCAddr,
         Pubkey: h.config.Pubkey,
     })
+}
+
+// SayHello iniciates a new host registration
+func (h Handler) SayHello(c echo.Context) error {
+    target := c.Param("fqdn")
+
+    me := Profile{
+        ID: h.config.FQDN,
+        CCAddr: h.config.CCAddr,
+        Pubkey: h.config.Pubkey,
+    }
+
+    meStr, err := json.Marshal(me)
+
+    // challenge
+    req, err := http.NewRequest("POST", "https://" + target + "/host/hello", bytes.NewBuffer(meStr))
+    if err != nil {
+        return c.String(http.StatusBadRequest, err.Error())
+    }
+    req.Header.Add("content-type", "application/json")
+    client := new(http.Client)
+    resp, err := client.Do(req)
+    if err != nil {
+        return c.String(http.StatusBadRequest, err.Error())
+    }
+    defer resp.Body.Close()
+
+    body, _ := ioutil.ReadAll(resp.Body)
+
+    var fetchedProf Profile
+    json.Unmarshal(body, &fetchedProf)
+
+    h.service.Upsert(&Host{
+        ID: fetchedProf.ID,
+        CCAddr: fetchedProf.CCAddr,
+        Role: "unassigned",
+        Pubkey: fetchedProf.Pubkey,
+    })
+
+    return c.JSON(http.StatusOK, fetchedProf)
 }
 

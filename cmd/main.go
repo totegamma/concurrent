@@ -84,6 +84,7 @@ func main() {
     e.GET("/host", hostHandler.Profile)
     e.GET("/host/list", hostHandler.List)
     e.POST("/host/hello", hostHandler.Hello)
+    e.GET("/admin/sayhello/:fqdn", hostHandler.SayHello)
     e.GET("/health", func(c echo.Context) (err error) {
         return c.String(http.StatusOK, "ok")
     })

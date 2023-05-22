@@ -44,6 +44,7 @@ func (h Handler) Connect(c echo.Context) error {
         _, _, err := ws.ReadMessage()
         if err != nil {
             c.Logger().Error(err)
+            return err
         }
     }
 }

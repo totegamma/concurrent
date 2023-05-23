@@ -50,7 +50,7 @@ type Element struct {
 }
 
 type checkpointPacket struct {
-    Stream string `json:"id"`
+    Stream string `json:"stream"`
     ID string `json:"id"`
     Author string `json:"author"`
 }

@@ -41,7 +41,7 @@ func (s *Service) List() []SafeEntity {
 
 // PullRemoteEntities copies remote entities
 func (s *Service) PullRemoteEntities(host host.Host) error {
-    req, err := http.NewRequest("GET", "https://" + host.ID + "/entity/list", nil)
+    req, err := http.NewRequest("GET", "https://" + host.ID + "/api/v1/entity/list", nil)
     if err != nil {
         return err
     }

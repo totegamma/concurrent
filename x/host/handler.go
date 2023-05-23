@@ -111,7 +111,7 @@ func (h Handler) SayHello(c echo.Context) error {
     meStr, err := json.Marshal(me)
 
     // challenge
-    req, err := http.NewRequest("POST", "https://" + target + "/host/hello", bytes.NewBuffer(meStr))
+    req, err := http.NewRequest("POST", "https://" + target + "/api/v1/host/hello", bytes.NewBuffer(meStr))
     if err != nil {
         return c.String(http.StatusBadRequest, err.Error())
     }

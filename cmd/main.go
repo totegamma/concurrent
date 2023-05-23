@@ -56,6 +56,8 @@ func main() {
 
     socketService := socket.NewService();
 
+    agent := SetupAgent(db)
+
     socketHandler := SetupSocketHandler(socketService)
     messageHandler := SetupMessageHandler(db, rdb, socketService)
     characterHandler := SetupCharacterHandler(db)
@@ -98,6 +100,8 @@ func main() {
     e.GET("/health", func(c echo.Context) (err error) {
         return c.String(http.StatusOK, "ok")
     })
+
+    agent.Boot()
 
     e.Logger.Fatal(e.Start(":8000"))
 }

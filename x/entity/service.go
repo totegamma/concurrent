@@ -1,6 +1,11 @@
 package entity
 
 import (
+    "log"
+    "net/http"
+    "io/ioutil"
+    "encoding/json"
+    "github.com/totegamma/concurrent/x/host"
 )
 
 // Service is entity service
@@ -32,5 +37,35 @@ func (s *Service) Get(key string) Entity {
 func (s *Service) List() []SafeEntity {
     entities := s.repository.GetList()
     return entities
+}
+
+// PullRemoteEntities copies remote entities
+func (s *Service) PullRemoteEntities(host host.Host) error {
+    req, err := http.NewRequest("GET", "https://" + host.ID + "/entity/list", nil)
+    if err != nil {
+        return err
+    }
+    client := new(http.Client)
+    resp, err := client.Do(req)
+    if err != nil {
+        return err
+    }
+    defer resp.Body.Close()
+
+    body, _ := ioutil.ReadAll(resp.Body)
+
+    var remoteEntities []Entity
+    json.Unmarshal(body, &remoteEntities)
+
+    log.Print(remoteEntities)
+
+    for _, entity := range remoteEntities {
+        s.repository.Create(&Entity{
+            ID: entity.ID,
+            Host: host.ID,
+        })
+    }
+
+    return nil
 }
 

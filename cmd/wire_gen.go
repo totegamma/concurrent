@@ -9,8 +9,10 @@ package main
 import (
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
+	"github.com/totegamma/concurrent/x/agent"
 	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/character"
+	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/host"
 	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/socket"
@@ -60,19 +62,37 @@ func SetupHostHandler(db *gorm.DB, config util.Config) host.Handler {
 	return handler
 }
 
+func SetupEntityHandler(db *gorm.DB) entity.Handler {
+	repository := entity.NewRepository(db)
+	service := entity.NewService(repository)
+	handler := entity.NewHandler(service)
+	return handler
+}
+
 func SetupSocketHandler(socketService *socket.Service) *socket.Handler {
 	handler := socket.NewHandler(socketService)
 	return handler
 }
 
+func SetupAgent(db *gorm.DB) *agent.Agent {
+	repository := host.NewRepository(db)
+	service := host.NewService(repository)
+	entityRepository := entity.NewRepository(db)
+	entityService := entity.NewService(entityRepository)
+	agentAgent := agent.NewAgent(service, entityService)
+	return agentAgent
+}
+
 // wire.go:
+
+var hostHandlerProvider = wire.NewSet(host.NewHandler, host.NewService, host.NewRepository)
+
+var entityHandlerProvider = wire.NewSet(entity.NewHandler, entity.NewService, entity.NewRepository)
+
+var streamHandlerProvider = wire.NewSet(stream.NewHandler, stream.NewService, stream.NewRepository)
 
 var messageHandlerProvider = wire.NewSet(message.NewHandler, message.NewService, message.NewRepository)
 
 var characterHandlerProvider = wire.NewSet(character.NewHandler, character.NewService, character.NewRepository)
 
 var associationHandlerProvider = wire.NewSet(association.NewHandler, association.NewService, association.NewRepository)
-
-var streamHandlerProvider = wire.NewSet(stream.NewHandler, stream.NewService, stream.NewRepository)
-
-var hostHandlerProvider = wire.NewSet(host.NewHandler, host.NewService, host.NewRepository)

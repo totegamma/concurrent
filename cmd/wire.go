@@ -9,6 +9,7 @@ import (
 
     "github.com/totegamma/concurrent/x/util"
     "github.com/totegamma/concurrent/x/host"
+    "github.com/totegamma/concurrent/x/agent"
     "github.com/totegamma/concurrent/x/entity"
     "github.com/totegamma/concurrent/x/socket"
     "github.com/totegamma/concurrent/x/stream"
@@ -58,5 +59,10 @@ func SetupEntityHandler(db *gorm.DB) entity.Handler {
 func SetupSocketHandler(socketService *socket.Service) *socket.Handler {
     wire.Build(socket.NewHandler)
     return &socket.Handler{}
+}
+
+func SetupAgent(db *gorm.DB) *agent.Agent {
+    wire.Build(agent.NewAgent, host.NewService, host.NewRepository, entity.NewService, entity.NewRepository)
+    return &agent.Agent{}
 }
 

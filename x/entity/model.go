@@ -9,6 +9,7 @@ import (
 type Entity struct {
     ID string `json:"id" gorm:"type:char(42)"`
     Role string `json:"role" gorm:"type:text;default:default"`
+    Host string `json:"host" gorm:"type:text"`
     Meta string `json:"meta" gorm:"type:json"`
     CDate time.Time `json:"cdate" gorm:"type:timestamp with time zone;not null;default:clock_timestamp()"`
 }
@@ -22,6 +23,7 @@ type postRequest struct {
 type SafeEntity struct {
     ID string `json:"ccaddr"`
     Role string `json:"role"`
+    Host string `json:"host"`
     CDate time.Time `json:"cdate"`
 }
 

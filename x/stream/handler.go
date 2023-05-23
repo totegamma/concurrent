@@ -91,3 +91,16 @@ func (h Handler) List(c echo.Context) error {
     return c.JSON(http.StatusOK, list)
 }
 
+// Checkpoint used by cross server communication
+func (h Handler) Checkpoint(c echo.Context) error {
+    var packet checkpointPacket
+    err := c.Bind(&packet)
+    if err != nil {
+        return err
+    }
+
+    h.service.Post(packet.Stream, packet.ID, packet.Author)
+
+    return c.String(http.StatusCreated, fmt.Sprintf("{\"message\": \"accept\"}"))
+}
+

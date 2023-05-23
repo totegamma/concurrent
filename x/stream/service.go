@@ -1,16 +1,18 @@
 package stream
 
 import (
-    "context"
-    "encoding/json"
-    "log"
-    "sort"
-    "strconv"
-    "strings"
+	"bytes"
+	"context"
+	"encoding/json"
+	"log"
+	"net/http"
+	"sort"
+	"strconv"
+	"strings"
 
-    "github.com/redis/go-redis/v9"
-    "github.com/totegamma/concurrent/x/entity"
-    "github.com/totegamma/concurrent/x/util"
+	"github.com/redis/go-redis/v9"
+	"github.com/totegamma/concurrent/x/entity"
+	"github.com/totegamma/concurrent/x/util"
 )
 
 // Service is stream service
@@ -18,11 +20,12 @@ type Service struct {
     client* redis.Client
     repository* Repository
     entity* entity.Service
+    config util.Config
 }
 
 // NewService is for wire.go
-func NewService(client *redis.Client, repository *Repository, entity *entity.Service) *Service {
-    return &Service{ client, repository, entity }
+func NewService(client *redis.Client, repository *Repository, entity *entity.Service, config util.Config) *Service {
+    return &Service{ client, repository, entity, config }
 }
 
 var ctx = context.Background()
@@ -109,17 +112,42 @@ func (s *Service) GetRange(streams []string, since string ,until string, limit i
 }
 
 // Post posts to stream
-func (s *Service) Post(stream string, id string, author string) string {
-    cmd := s.client.XAdd(ctx, &redis.XAddArgs{
-        Stream: stream,
-        ID: "*",
-        Values: map[string]interface{}{
-            "id": id,
-            "author": author,
-        },
-    })
+func (s *Service) Post(stream string, id string, author string) error {
+    query := strings.Split(stream, "@")
+    if (len(query) == 1 || query[1] == s.config.FQDN) {
+        s.client.XAdd(ctx, &redis.XAddArgs{
+            Stream: query[0],
+            ID: "*",
+            Values: map[string]interface{}{
+                "id": id,
+                "author": author,
+            },
+        })
+    } else {
+        packet := checkpointPacket{
+            Stream: query[0],
+            ID: id,
+            Author: author,
+        }
+        packetStr, err := json.Marshal(packet)
+        if err != nil {
+            return err
+        }
+        req, err := http.NewRequest("POST", "https://" + query[1] + "/api/v1/stream/checkpoint", bytes.NewBuffer(packetStr))
+        if err != nil {
+            return err
+        }
+        req.Header.Add("content-type", "application/json")
+        client := new(http.Client)
+        resp, err := client.Do(req)
+        if err != nil {
+            return err
+        }
+        defer resp.Body.Close()
 
-    return cmd.Val()
+        // TODO: response check
+    }
+    return nil
 }
 
 

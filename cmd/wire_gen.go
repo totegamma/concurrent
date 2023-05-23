@@ -28,7 +28,7 @@ func SetupMessageHandler(db *gorm.DB, client *redis.Client, socket2 *socket.Serv
 	streamRepository := stream.NewRepository(db)
 	entityRepository := entity.NewRepository(db)
 	service := entity.NewService(entityRepository, config)
-	streamService := stream.NewService(client, streamRepository, service)
+	streamService := stream.NewService(client, streamRepository, service, config)
 	messageService := message.NewService(repository, streamService, socket2)
 	handler := message.NewHandler(messageService)
 	return handler
@@ -46,7 +46,7 @@ func SetupAssociationHandler(db *gorm.DB, client *redis.Client, socket2 *socket.
 	streamRepository := stream.NewRepository(db)
 	entityRepository := entity.NewRepository(db)
 	service := entity.NewService(entityRepository, config)
-	streamService := stream.NewService(client, streamRepository, service)
+	streamService := stream.NewService(client, streamRepository, service, config)
 	associationService := association.NewService(repository, streamService, socket2)
 	handler := association.NewHandler(associationService)
 	return handler
@@ -56,7 +56,7 @@ func SetupStreamHandler(db *gorm.DB, client *redis.Client, config util.Config) *
 	repository := stream.NewRepository(db)
 	entityRepository := entity.NewRepository(db)
 	service := entity.NewService(entityRepository, config)
-	streamService := stream.NewService(client, repository, service)
+	streamService := stream.NewService(client, repository, service, config)
 	handler := stream.NewHandler(streamService)
 	return handler
 }

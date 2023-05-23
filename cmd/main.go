@@ -85,6 +85,7 @@ func main() {
     apiV1.GET("/stream/recent", streamHandler.Recent)
     apiV1.GET("/stream/list", streamHandler.List)
     apiV1.GET("/stream/range", streamHandler.Range)
+    apiV1.POST("/stream/checkpoint", streamHandler.Checkpoint)
     apiV1.GET("/socket", socketHandler.Connect)
     apiV1.GET("/host/:id", hostHandler.Get) //TODO deprecated. remove later
     apiV1.PUT("/host", hostHandler.Upsert)

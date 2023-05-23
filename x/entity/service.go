@@ -65,6 +65,7 @@ func (s *Service) PullRemoteEntities(host host.Host) error {
         s.repository.Upsert(&Entity{
             ID: entity.ID,
             Host: host.ID,
+            Meta: "null",
         })
     }
 

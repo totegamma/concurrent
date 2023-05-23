@@ -21,15 +21,20 @@ func (r *Repository) Get(key string) Entity {
     return entity
 }
 
-// Create updates a stream
+// Create creates a entity
 func (r *Repository) Create(entity *Entity) {
     r.db.Create(&entity)
+}
+
+// Upsert updates a entity
+func (r *Repository) Upsert(entity *Entity) {
+    r.db.Save(&entity)
 }
 
 // GetList returns all entities
 func (r *Repository) GetList() []SafeEntity {
     var entities []SafeEntity
-    r.db.Model(&Entity{}).Find(&entities)
+    r.db.Model(&Entity{}).Where("host IS NULL").Find(&entities)
     return entities
 }
 

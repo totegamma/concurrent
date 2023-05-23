@@ -9,7 +9,7 @@ import (
 type Entity struct {
     ID string `json:"id" gorm:"type:char(42)"`
     Role string `json:"role" gorm:"type:text;default:default"`
-    Host string `json:"host" gorm:"type:text"`
+    Host string `json:"host" gorm:"type:text;default:''"`
     Meta string `json:"meta" gorm:"type:json;default:'{}'"`
     CDate time.Time `json:"cdate" gorm:"type:timestamp with time zone;not null;default:clock_timestamp()"`
 }

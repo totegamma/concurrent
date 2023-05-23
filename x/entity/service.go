@@ -60,7 +60,7 @@ func (s *Service) PullRemoteEntities(host host.Host) error {
     log.Print(remoteEntities)
 
     for _, entity := range remoteEntities {
-        s.repository.Create(&Entity{
+        s.repository.Upsert(&Entity{
             ID: entity.ID,
             Host: host.ID,
         })

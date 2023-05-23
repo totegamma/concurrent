@@ -1,11 +1,13 @@
-import { Typography } from '@mui/material'
+import { Backdrop, CircularProgress, Typography } from '@mui/material'
 import type { RJSFSchema } from '@rjsf/utils'
 import Form from '@rjsf/mui'
 import validator from '@rjsf/validator-ajv8'
 import { useSearchParams } from 'react-router-dom'
+import React from 'react'
 
 const schema: RJSFSchema = {
     title: 'Concurrent-<ホスト名> 登録フォーム',
+    description: '情報はトラブル対応や本人確認にのみ用いられ、このホストの管理人以外には公開されません。',
     type: 'object',
     required: ['name', 'email', 'consent'],
     properties: {
@@ -18,10 +20,13 @@ const schema: RJSFSchema = {
 
 export const Register = (): JSX.Element => {
     const [searchParams] = useSearchParams()
+    const [loading, setLoading] = React.useState(false);
+    const [success, setSuccess] = React.useState(false);
 
     const ccaddr = searchParams.get('ccaddr')
 
     const register = (meta: any): void => {
+        setLoading(true)
         const requestOptions = {
             method: 'POST',
             headers: { 'content-type': 'application/json' },
@@ -38,20 +43,29 @@ export const Register = (): JSX.Element => {
             .then(async (res) => await res.json())
             .then((data) => {
                 console.log(data)
+                setLoading(false)
+                setSuccess(true)
             })
     }
 
 
-
     return (
         <>
+            <Backdrop open={loading} sx={{zIndex: 1000}}>
+                <CircularProgress color="inherit" />
+            </Backdrop>
             <Typography variant="h1">Registration</Typography>
             <Typography>for {ccaddr}</Typography>
-            <Form
-                schema={schema}
-                validator={validator}
-                onSubmit={(e) => {register(e.formData)}}
-            />
+            {success ?
+                <>登録完了</>
+            :
+                <Form
+                    disabled={loading}
+                    schema={schema}
+                    validator={validator}
+                    onSubmit={(e) => {register(e.formData)}}
+                />
+            }
         </>
     )
 }

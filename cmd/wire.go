@@ -9,6 +9,7 @@ import (
 
     "github.com/totegamma/concurrent/x/util"
     "github.com/totegamma/concurrent/x/host"
+    "github.com/totegamma/concurrent/x/entity"
     "github.com/totegamma/concurrent/x/socket"
     "github.com/totegamma/concurrent/x/stream"
     "github.com/totegamma/concurrent/x/message"
@@ -16,11 +17,13 @@ import (
     "github.com/totegamma/concurrent/x/association"
 )
 
+
+var hostHandlerProvider = wire.NewSet(host.NewHandler, host.NewService, host.NewRepository)
+var entityHandlerProvider = wire.NewSet(entity.NewHandler, entity.NewService, entity.NewRepository)
+var streamHandlerProvider = wire.NewSet(stream.NewHandler, stream.NewService, stream.NewRepository)
 var messageHandlerProvider = wire.NewSet(message.NewHandler, message.NewService, message.NewRepository)
 var characterHandlerProvider = wire.NewSet(character.NewHandler, character.NewService, character.NewRepository)
 var associationHandlerProvider = wire.NewSet(association.NewHandler, association.NewService, association.NewRepository)
-var streamHandlerProvider = wire.NewSet(stream.NewHandler, stream.NewService, stream.NewRepository)
-var hostHandlerProvider = wire.NewSet(host.NewHandler, host.NewService, host.NewRepository)
 
 func SetupMessageHandler(db *gorm.DB, client *redis.Client, socket *socket.Service) message.Handler {
     wire.Build(messageHandlerProvider, stream.NewService, stream.NewRepository)
@@ -45,6 +48,11 @@ func SetupStreamHandler(db *gorm.DB, client *redis.Client) stream.Handler {
 func SetupHostHandler(db *gorm.DB, config util.Config) host.Handler {
     wire.Build(hostHandlerProvider)
     return host.Handler{}
+}
+
+func SetupEntityHandler(db *gorm.DB) entity.Handler {
+    wire.Build(entityHandlerProvider)
+    return entity.Handler{}
 }
 
 func SetupSocketHandler(socketService *socket.Service) *socket.Handler {

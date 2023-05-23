@@ -19,6 +19,7 @@ import (
     "github.com/totegamma/concurrent/x/host"
     "github.com/totegamma/concurrent/x/message"
     "github.com/totegamma/concurrent/x/socket"
+    "github.com/totegamma/concurrent/x/entity"
     "github.com/totegamma/concurrent/x/stream"
     "github.com/totegamma/concurrent/x/util"
 )
@@ -45,7 +46,7 @@ func main() {
 
     // Migrate the schema
     log.Println("start migrate")
-    db.AutoMigrate(&message.Message{}, &character.Character{}, &association.Association{},  &stream.Stream{}, &host.Host{})
+    db.AutoMigrate(&message.Message{}, &character.Character{}, &association.Association{},  &stream.Stream{}, &host.Host{}, &entity.Entity{})
 
     rdb := redis.NewClient(&redis.Options{
         Addr:     config.RedisAddr,
@@ -61,6 +62,7 @@ func main() {
     associationHandler := SetupAssociationHandler(db, rdb, socketService)
     streamHandler := SetupStreamHandler(db, rdb)
     hostHandler := SetupHostHandler(db, config)
+    entityHandler := SetupEntityHandler(db)
 
     e.HideBanner = true
     e.Use(middleware.CORS())
@@ -87,6 +89,9 @@ func main() {
     apiV1.GET("/host", hostHandler.Profile)
     apiV1.GET("/host/list", hostHandler.List)
     apiV1.POST("/host/hello", hostHandler.Hello)
+    apiV1.POST("/entity", entityHandler.Post)
+    apiV1.GET("/entity/:id", entityHandler.Get)
+    apiV1.GET("/entity/list", entityHandler.List)
     apiV1.GET("/admin/sayhello/:fqdn", hostHandler.SayHello)
 
     e.GET("/*", spa)

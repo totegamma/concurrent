@@ -10,8 +10,8 @@ type Repository struct {
 }
 
 // NewRepository is for wire.go
-func NewRepository(db *gorm.DB) Repository {
-    return Repository{db: db}
+func NewRepository(db *gorm.DB) *Repository {
+    return &Repository{db: db}
 }
 
 // Upsert upserts existing character

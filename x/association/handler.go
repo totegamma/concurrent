@@ -8,12 +8,12 @@ import (
 
 // Handler handles Association objects
 type Handler struct {
-    service Service
+    service *Service
 }
 
 // NewHandler is for wire.go
-func NewHandler(service Service) Handler {
-    return Handler{service: service}
+func NewHandler(service *Service) *Handler {
+    return &Handler{service: service}
 }
 
 // Get is for Handling HTTP Get Method

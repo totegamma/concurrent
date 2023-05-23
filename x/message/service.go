@@ -11,14 +11,14 @@ import (
 
 // Service is a service of message
 type Service struct {
-    repo Repository
-    stream stream.Service
+    repo *Repository
+    stream *stream.Service
     socket *socket.Service
 }
 
 // NewService is used for wire.go
-func NewService(repo Repository, stream stream.Service, socket *socket.Service) Service {
-    return Service{repo: repo, stream: stream, socket: socket}
+func NewService(repo *Repository, stream *stream.Service, socket *socket.Service) *Service {
+    return &Service{repo: repo, stream: stream, socket: socket}
 }
 
 // GetMessage returns a message by ID
@@ -52,7 +52,7 @@ func (s *Service) PostMessage(objectStr string, signature string, streams []stri
 
     id := s.repo.Create(&message)
     for _, stream := range message.Streams {
-        s.stream.Post(stream, id)
+        s.stream.Post(stream, id, "")
     }
 
     jsonstr, _ := json.Marshal(streamEvent{

@@ -10,14 +10,14 @@ import (
 
 // Service is association service
 type Service struct {
-    repo Repository
-    stream stream.Service
+    repo *Repository
+    stream *stream.Service
     socket *socket.Service
 }
 
 // NewService is used for wire.go
-func NewService(repo Repository, stream stream.Service, socket*socket.Service) Service {
-    return Service{repo: repo, stream: stream, socket: socket}
+func NewService(repo *Repository, stream *stream.Service, socket *socket.Service) *Service {
+    return &Service{repo: repo, stream: stream, socket: socket}
 }
 
 // PostAssociation creates new association
@@ -46,7 +46,7 @@ func (s *Service) PostAssociation(objectStr string, signature string, streams []
 
     s.repo.Create(&association)
     for _, stream := range association.Streams {
-        s.stream.Post(stream, association.ID)
+        s.stream.Post(stream, association.ID, "")
     }
 
     jsonstr, _ := json.Marshal(StreamEvent{

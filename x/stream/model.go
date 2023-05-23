@@ -41,3 +41,11 @@ type signedObject struct {
     Reader []string `json:"reader"`
 }
 
+// Element is stream element
+type Element struct {
+    Timestamp string `json:"timestamp"`
+    ID string `json:"id"`
+    Author string `json:"author"`
+    Host string `json:"currenthost"`
+}
+

@@ -1,13 +1,15 @@
 package stream
 
 import (
+    "context"
+    "encoding/json"
     "log"
     "sort"
     "strconv"
     "strings"
-    "context"
-    "encoding/json"
+
     "github.com/redis/go-redis/v9"
+    "github.com/totegamma/concurrent/x/entity"
     "github.com/totegamma/concurrent/x/util"
 )
 
@@ -15,11 +17,12 @@ import (
 type Service struct {
     client* redis.Client
     repository* Repository
+    entity* entity.Service
 }
 
 // NewService is for wire.go
-func NewService(client *redis.Client, repository *Repository) Service {
-    return Service{ client, repository }
+func NewService(client *redis.Client, repository *Repository, entity *entity.Service) *Service {
+    return &Service{ client, repository, entity }
 }
 
 var ctx = context.Background()
@@ -32,10 +35,10 @@ func min(a, b int) int {
 }
 
 // GetRecent returns recent message from streams
-func (s *Service) GetRecent(streams []string) []redis.XMessage {
+func (s *Service) GetRecent(streams []string, limit int) []Element {
     var messages []redis.XMessage
     for _, stream := range streams {
-        cmd := s.client.XRevRangeN(ctx, stream, "+", "-", 16)
+        cmd := s.client.XRevRangeN(ctx, stream, "+", "-", int64(limit))
         messages = append(messages, cmd.Val()...)
     }
     m := make(map[string]bool)
@@ -53,14 +56,26 @@ func (s *Service) GetRecent(streams []string) []redis.XMessage {
         rTime, _ := strconv.ParseFloat(rStr, 32)
         return lTime > rTime
     })
-    return uniq[:min(len(uniq),16)]
+    chopped := uniq[:min(len(uniq), limit)]
+    result := []Element{}
+
+    for _, elem := range chopped {
+        result = append(result, Element{
+            Timestamp: elem.ID,
+            ID: elem.Values["id"].(string),
+            Author: elem.Values["author"].(string),
+            Host: s.entity.ResolveHost(elem.Values["author"].(string)),
+        })
+    }
+
+    return result
 }
 
 // GetRange returns specified range messages from streams
-func (s *Service) GetRange(streams []string, since string ,until string, limit int64) []redis.XMessage {
+func (s *Service) GetRange(streams []string, since string ,until string, limit int) []Element {
     var messages []redis.XMessage
     for _, stream := range streams {
-        cmd := s.client.XRevRangeN(ctx, stream, until, since, limit)
+        cmd := s.client.XRevRangeN(ctx, stream, until, since, int64(limit))
         messages = append(messages, cmd.Val()...)
     }
     m := make(map[string]bool)
@@ -78,16 +93,29 @@ func (s *Service) GetRange(streams []string, since string ,until string, limit i
         rTime, _ := strconv.ParseFloat(rStr, 32)
         return lTime > rTime
     })
-    return uniq[:min(len(uniq), int(limit))]
+    chopped := uniq[:min(len(uniq), limit)]
+    result := []Element{}
+
+    for _, elem := range chopped {
+        result = append(result, Element{
+            Timestamp: elem.ID,
+            ID: elem.Values["id"].(string),
+            Author: elem.Values["author"].(string),
+            Host: s.entity.ResolveHost(elem.Values["author"].(string)),
+        })
+    }
+
+    return result
 }
 
 // Post posts to stream
-func (s *Service) Post(stream string, id string) string {
+func (s *Service) Post(stream string, id string, author string) string {
     cmd := s.client.XAdd(ctx, &redis.XAddArgs{
         Stream: stream,
         ID: "*",
         Values: map[string]interface{}{
             "id": id,
+            "author": author,
         },
     })
 

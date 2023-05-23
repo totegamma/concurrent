@@ -9,12 +9,12 @@ import (
 
 // Service is service of characters
 type Service struct {
-    repo Repository
+    repo *Repository
 }
 
 // NewService is for wire.go
-func NewService(repo Repository) Service {
-    return Service{repo: repo}
+func NewService(repo *Repository) *Service {
+    return &Service{repo: repo}
 }
 
 // GetCharacters returns characters by owner and schema

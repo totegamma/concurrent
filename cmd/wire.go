@@ -21,39 +21,39 @@ import (
 
 var hostHandlerProvider = wire.NewSet(host.NewHandler, host.NewService, host.NewRepository)
 var entityHandlerProvider = wire.NewSet(entity.NewHandler, entity.NewService, entity.NewRepository)
-var streamHandlerProvider = wire.NewSet(stream.NewHandler, stream.NewService, stream.NewRepository)
+var streamHandlerProvider = wire.NewSet(stream.NewHandler, stream.NewService, stream.NewRepository, entity.NewService, entity.NewRepository)
 var messageHandlerProvider = wire.NewSet(message.NewHandler, message.NewService, message.NewRepository)
 var characterHandlerProvider = wire.NewSet(character.NewHandler, character.NewService, character.NewRepository)
 var associationHandlerProvider = wire.NewSet(association.NewHandler, association.NewService, association.NewRepository)
 
-func SetupMessageHandler(db *gorm.DB, client *redis.Client, socket *socket.Service) message.Handler {
-    wire.Build(messageHandlerProvider, stream.NewService, stream.NewRepository)
-    return message.Handler{}
+func SetupMessageHandler(db *gorm.DB, client *redis.Client, socket *socket.Service) *message.Handler {
+    wire.Build(messageHandlerProvider, stream.NewService, stream.NewRepository, entity.NewService, entity.NewRepository)
+    return &message.Handler{}
 }
 
-func SetupCharacterHandler(db *gorm.DB) character.Handler {
+func SetupCharacterHandler(db *gorm.DB) *character.Handler {
     wire.Build(characterHandlerProvider)
-    return character.Handler{}
+    return &character.Handler{}
 }
 
-func SetupAssociationHandler(db *gorm.DB, client *redis.Client, socket *socket.Service) association.Handler {
-    wire.Build(associationHandlerProvider, stream.NewService, stream.NewRepository)
-    return association.Handler{}
+func SetupAssociationHandler(db *gorm.DB, client *redis.Client, socket *socket.Service) *association.Handler {
+    wire.Build(associationHandlerProvider, stream.NewService, stream.NewRepository, entity.NewService, entity.NewRepository)
+    return &association.Handler{}
 }
 
-func SetupStreamHandler(db *gorm.DB, client *redis.Client) stream.Handler {
+func SetupStreamHandler(db *gorm.DB, client *redis.Client) *stream.Handler {
     wire.Build(streamHandlerProvider)
-    return stream.Handler{}
+    return &stream.Handler{}
 }
 
-func SetupHostHandler(db *gorm.DB, config util.Config) host.Handler {
+func SetupHostHandler(db *gorm.DB, config util.Config) *host.Handler {
     wire.Build(hostHandlerProvider)
-    return host.Handler{}
+    return &host.Handler{}
 }
 
-func SetupEntityHandler(db *gorm.DB) entity.Handler {
+func SetupEntityHandler(db *gorm.DB) *entity.Handler {
     wire.Build(entityHandlerProvider)
-    return entity.Handler{}
+    return &entity.Handler{}
 }
 
 func SetupSocketHandler(socketService *socket.Service) *socket.Handler {

@@ -5,12 +5,12 @@ import (
 
 // Service is stream service
 type Service struct {
-    repository Repository
+    repository *Repository
 }
 
 // NewService is for wire.go
-func NewService(repository Repository) Service {
-    return Service{ repository }
+func NewService(repository *Repository) *Service {
+    return &Service{ repository }
 }
 
 

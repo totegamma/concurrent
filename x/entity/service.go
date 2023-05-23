@@ -10,12 +10,12 @@ import (
 
 // Service is entity service
 type Service struct {
-    repository Repository
+    repository *Repository
 }
 
 // NewService is for wire.go
-func NewService(repository Repository) Service {
-    return Service{ repository }
+func NewService(repository *Repository) *Service {
+    return &Service{ repository }
 }
 
 
@@ -67,5 +67,11 @@ func (s *Service) PullRemoteEntities(host host.Host) error {
     }
 
     return nil
+}
+
+// ResolveHost resolves host from user address
+func (s *Service) ResolveHost(user string) string {
+    entity := s.repository.Get(user)
+    return entity.Host
 }
 

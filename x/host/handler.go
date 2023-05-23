@@ -12,13 +12,13 @@ import (
 
 // Handler is handles websocket
 type Handler struct {
-    service Service
+    service *Service
     config util.Config
 }
 
 // NewHandler is used for wire.go
-func NewHandler(service Service, config util.Config) Handler {
-    return Handler{service, config}
+func NewHandler(service *Service, config util.Config) *Handler {
+    return &Handler{service, config}
 }
 
 // Get returns a host by ID

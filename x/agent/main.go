@@ -10,11 +10,11 @@ import (
 
 // Agent is...
 type Agent struct {
-    hostService host.Service
-    entityService entity.Service
+    hostService* host.Service
+    entityService* entity.Service
 }
 
-func NewAgent(host host.Service, entity entity.Service) *Agent {
+func NewAgent(host *host.Service, entity *entity.Service) *Agent {
     return &Agent{hostService: host, entityService: entity}
 }
 

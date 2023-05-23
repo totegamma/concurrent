@@ -8,12 +8,12 @@ import (
 
 // Handler is handles Character Object
 type Handler struct {
-    service Service
+    service *Service
 }
 
 // NewHandler is for wire
-func NewHandler(service Service) Handler {
-    return Handler{service: service}
+func NewHandler(service *Service) *Handler {
+    return &Handler{service: service}
 }
 
 // Get is for Handling HTTP Get Method

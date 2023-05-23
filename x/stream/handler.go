@@ -10,12 +10,12 @@ import (
 
 // Handler handles Stream objects
 type Handler struct {
-    service Service
+    service *Service
 }
 
 // NewHandler is for wire.go
-func NewHandler(service Service) Handler {
-    return Handler{service: service}
+func NewHandler(service *Service) *Handler {
+    return &Handler{service: service}
 }
 
 
@@ -34,7 +34,7 @@ func (h Handler) Post(c echo.Context) error {
         return err
     }
 
-    id := h.service.Post(query.Stream, query.ID)
+    id := h.service.Post(query.Stream, query.ID, "")
     return c.String(http.StatusCreated, fmt.Sprintf("{\"message\": \"accept\", \"id\": \"%s\"}", id))
 
 }
@@ -58,7 +58,7 @@ func (h Handler) Put(c echo.Context) error {
 func (h Handler) Recent(c echo.Context) error {
     streamsStr := c.QueryParam("streams")
     streams := strings.Split(streamsStr, ",")
-    messages := h.service.GetRecent(streams)
+    messages := h.service.GetRecent(streams, 16)
 
     return c.JSON(http.StatusOK, messages)
 }

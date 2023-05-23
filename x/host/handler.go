@@ -64,7 +64,7 @@ func (h Handler) Hello(c echo.Context) error {
     }
 
     // challenge
-    req, err := http.NewRequest("GET", "https://" + newcomer.ID + "/host", nil)
+    req, err := http.NewRequest("GET", "https://" + newcomer.ID + "/api/v1/host", nil)
     if err != nil {
         return c.String(http.StatusBadRequest, err.Error())
     }

@@ -26,22 +26,22 @@ var messageHandlerProvider = wire.NewSet(message.NewHandler, message.NewService,
 var characterHandlerProvider = wire.NewSet(character.NewHandler, character.NewService, character.NewRepository)
 var associationHandlerProvider = wire.NewSet(association.NewHandler, association.NewService, association.NewRepository)
 
-func SetupMessageHandler(db *gorm.DB, client *redis.Client, socket *socket.Service) *message.Handler {
+func SetupMessageHandler(db *gorm.DB, client *redis.Client, socket *socket.Service, config util.Config) *message.Handler {
     wire.Build(messageHandlerProvider, stream.NewService, stream.NewRepository, entity.NewService, entity.NewRepository)
     return &message.Handler{}
 }
 
-func SetupCharacterHandler(db *gorm.DB) *character.Handler {
+func SetupCharacterHandler(db *gorm.DB, config util.Config) *character.Handler {
     wire.Build(characterHandlerProvider)
     return &character.Handler{}
 }
 
-func SetupAssociationHandler(db *gorm.DB, client *redis.Client, socket *socket.Service) *association.Handler {
+func SetupAssociationHandler(db *gorm.DB, client *redis.Client, socket *socket.Service, config util.Config) *association.Handler {
     wire.Build(associationHandlerProvider, stream.NewService, stream.NewRepository, entity.NewService, entity.NewRepository)
     return &association.Handler{}
 }
 
-func SetupStreamHandler(db *gorm.DB, client *redis.Client) *stream.Handler {
+func SetupStreamHandler(db *gorm.DB, client *redis.Client, config util.Config) *stream.Handler {
     wire.Build(streamHandlerProvider)
     return &stream.Handler{}
 }
@@ -51,17 +51,17 @@ func SetupHostHandler(db *gorm.DB, config util.Config) *host.Handler {
     return &host.Handler{}
 }
 
-func SetupEntityHandler(db *gorm.DB) *entity.Handler {
+func SetupEntityHandler(db *gorm.DB, config util.Config) *entity.Handler {
     wire.Build(entityHandlerProvider)
     return &entity.Handler{}
 }
 
-func SetupSocketHandler(socketService *socket.Service) *socket.Handler {
+func SetupSocketHandler(socketService *socket.Service, config util.Config) *socket.Handler {
     wire.Build(socket.NewHandler)
     return &socket.Handler{}
 }
 
-func SetupAgent(db *gorm.DB) *agent.Agent {
+func SetupAgent(db *gorm.DB, config util.Config) *agent.Agent {
     wire.Build(agent.NewAgent, host.NewService, host.NewRepository, entity.NewService, entity.NewRepository)
     return &agent.Agent{}
 }

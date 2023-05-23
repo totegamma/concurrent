@@ -34,7 +34,7 @@ func (r *Repository) Upsert(entity *Entity) {
 // GetList returns all entities
 func (r *Repository) GetList() []SafeEntity {
     var entities []SafeEntity
-    r.db.Model(&Entity{}).Where("host IS NULL").Find(&entities)
+    r.db.Model(&Entity{}).Where("host IS NULL or host = ''").Find(&entities)
     return entities
 }
 

@@ -23,39 +23,39 @@ import (
 
 // Injectors from wire.go:
 
-func SetupMessageHandler(db *gorm.DB, client *redis.Client, socket2 *socket.Service) *message.Handler {
+func SetupMessageHandler(db *gorm.DB, client *redis.Client, socket2 *socket.Service, config util.Config) *message.Handler {
 	repository := message.NewRepository(db)
 	streamRepository := stream.NewRepository(db)
 	entityRepository := entity.NewRepository(db)
-	service := entity.NewService(entityRepository)
+	service := entity.NewService(entityRepository, config)
 	streamService := stream.NewService(client, streamRepository, service)
 	messageService := message.NewService(repository, streamService, socket2)
 	handler := message.NewHandler(messageService)
 	return handler
 }
 
-func SetupCharacterHandler(db *gorm.DB) *character.Handler {
+func SetupCharacterHandler(db *gorm.DB, config util.Config) *character.Handler {
 	repository := character.NewRepository(db)
 	service := character.NewService(repository)
 	handler := character.NewHandler(service)
 	return handler
 }
 
-func SetupAssociationHandler(db *gorm.DB, client *redis.Client, socket2 *socket.Service) *association.Handler {
+func SetupAssociationHandler(db *gorm.DB, client *redis.Client, socket2 *socket.Service, config util.Config) *association.Handler {
 	repository := association.NewRepository(db)
 	streamRepository := stream.NewRepository(db)
 	entityRepository := entity.NewRepository(db)
-	service := entity.NewService(entityRepository)
+	service := entity.NewService(entityRepository, config)
 	streamService := stream.NewService(client, streamRepository, service)
 	associationService := association.NewService(repository, streamService, socket2)
 	handler := association.NewHandler(associationService)
 	return handler
 }
 
-func SetupStreamHandler(db *gorm.DB, client *redis.Client) *stream.Handler {
+func SetupStreamHandler(db *gorm.DB, client *redis.Client, config util.Config) *stream.Handler {
 	repository := stream.NewRepository(db)
 	entityRepository := entity.NewRepository(db)
-	service := entity.NewService(entityRepository)
+	service := entity.NewService(entityRepository, config)
 	streamService := stream.NewService(client, repository, service)
 	handler := stream.NewHandler(streamService)
 	return handler
@@ -68,23 +68,23 @@ func SetupHostHandler(db *gorm.DB, config util.Config) *host.Handler {
 	return handler
 }
 
-func SetupEntityHandler(db *gorm.DB) *entity.Handler {
+func SetupEntityHandler(db *gorm.DB, config util.Config) *entity.Handler {
 	repository := entity.NewRepository(db)
-	service := entity.NewService(repository)
+	service := entity.NewService(repository, config)
 	handler := entity.NewHandler(service)
 	return handler
 }
 
-func SetupSocketHandler(socketService *socket.Service) *socket.Handler {
+func SetupSocketHandler(socketService *socket.Service, config util.Config) *socket.Handler {
 	handler := socket.NewHandler(socketService)
 	return handler
 }
 
-func SetupAgent(db *gorm.DB) *agent.Agent {
+func SetupAgent(db *gorm.DB, config util.Config) *agent.Agent {
 	repository := host.NewRepository(db)
 	service := host.NewService(repository)
 	entityRepository := entity.NewRepository(db)
-	entityService := entity.NewService(entityRepository)
+	entityService := entity.NewService(entityRepository, config)
 	agentAgent := agent.NewAgent(service, entityService)
 	return agentAgent
 }

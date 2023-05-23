@@ -46,7 +46,7 @@ func (s *Service) PostAssociation(objectStr string, signature string, streams []
 
     s.repo.Create(&association)
     for _, stream := range association.Streams {
-        s.stream.Post(stream, association.ID, "")
+        s.stream.Post(stream, association.ID, association.Author)
     }
 
     jsonstr, _ := json.Marshal(StreamEvent{

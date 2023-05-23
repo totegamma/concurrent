@@ -5,17 +5,19 @@ import (
     "net/http"
     "io/ioutil"
     "encoding/json"
+    "github.com/totegamma/concurrent/x/util"
     "github.com/totegamma/concurrent/x/host"
 )
 
 // Service is entity service
 type Service struct {
     repository *Repository
+    config util.Config
 }
 
 // NewService is for wire.go
-func NewService(repository *Repository) *Service {
-    return &Service{ repository }
+func NewService(repository *Repository, config util.Config) *Service {
+    return &Service{ repository, config }
 }
 
 
@@ -72,6 +74,10 @@ func (s *Service) PullRemoteEntities(host host.Host) error {
 // ResolveHost resolves host from user address
 func (s *Service) ResolveHost(user string) string {
     entity := s.repository.Get(user)
-    return entity.Host
+    fqdn := entity.Host
+    if fqdn == "" {
+        fqdn = s.config.FQDN
+    }
+    return fqdn
 }
 

@@ -56,15 +56,15 @@ func main() {
 
     socketService := socket.NewService();
 
-    agent := SetupAgent(db)
+    agent := SetupAgent(db, config)
 
-    socketHandler := SetupSocketHandler(socketService)
-    messageHandler := SetupMessageHandler(db, rdb, socketService)
-    characterHandler := SetupCharacterHandler(db)
-    associationHandler := SetupAssociationHandler(db, rdb, socketService)
-    streamHandler := SetupStreamHandler(db, rdb)
+    socketHandler := SetupSocketHandler(socketService, config)
+    messageHandler := SetupMessageHandler(db, rdb, socketService, config)
+    characterHandler := SetupCharacterHandler(db, config)
+    associationHandler := SetupAssociationHandler(db, rdb, socketService, config)
+    streamHandler := SetupStreamHandler(db, rdb, config)
     hostHandler := SetupHostHandler(db, config)
-    entityHandler := SetupEntityHandler(db)
+    entityHandler := SetupEntityHandler(db, config)
 
     e.HideBanner = true
     e.Use(middleware.CORS())

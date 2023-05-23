@@ -54,7 +54,7 @@ func (s *Service) PullRemoteEntities(host host.Host) error {
 
     body, _ := ioutil.ReadAll(resp.Body)
 
-    var remoteEntities []Entity
+    var remoteEntities []SafeEntity
     json.Unmarshal(body, &remoteEntities)
 
     log.Print(remoteEntities)

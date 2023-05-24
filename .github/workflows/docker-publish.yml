@@ -7,11 +7,11 @@ name: Docker
 
 on:
   push:
-    branches: [ "master" ]
+    branches:
+      - "master"
+      - "develop"
     # Publish semver tags as releases.
     tags: [ 'v*.*.*' ]
-  pull_request:
-    branches: [ "master" ]
 
 env:
   # Use docker.io for Docker Hub if empty
@@ -72,3 +72,4 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+

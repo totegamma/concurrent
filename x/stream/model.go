@@ -7,7 +7,7 @@ import (
 
 // Stream is one of a base object of concurrent
 type Stream struct {
-    ID string `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+    ID string `json:"id" gorm:"primaryKey;type:char(20);"`
     Author string `json:"author" gorm:"type:char(42)"`
     Maintainer pq.StringArray `json:"maintainer" gorm:"type:char(42)[];default:'{}'"`
     Writer pq.StringArray `json:"writer" gorm:"type:char(42)[];default:'{}'"`

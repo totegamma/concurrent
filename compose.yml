@@ -24,7 +24,7 @@ services:
       interval: 5s
       retries: 20
     volumes:
-      - ./composeData/db:/var/lib/postgresql/data
+      - ./_composeData/db:/var/lib/postgresql/data
     ports:
       - "5432:5432"
     environment:
@@ -34,7 +34,7 @@ services:
     restart: always
     image: redis
     volumes:
-      - ./composeData/redis:/data
+      - ./_composeData/redis:/data
     healthcheck:
       test: "redis-cli ping"
       interval: 5s

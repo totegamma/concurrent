@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"strings"
 
+    "github.com/rs/xid"
 	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/util"
@@ -162,6 +163,10 @@ func (s *Service) Upsert(objectStr string, signature string, id string) (string,
     if err := util.VerifySignature(objectStr, object.Signer, signature); err != nil {
         log.Println("verify signature err: ", err)
         return "", err
+    }
+
+    if id == "" {
+        id = xid.New().String()
     }
 
     stream := Stream {

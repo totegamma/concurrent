@@ -34,6 +34,7 @@ type postRequest struct {
     Signature string `json:"signature"`
     Streams []string `json:"streams"`
     TargetType string `json:"targetType"`
+    TargetHost string `json:"targetHost"`
 }
 
 type associationResponse struct {

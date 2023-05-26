@@ -24,9 +24,9 @@ var entityHandlerProvider = wire.NewSet(entity.NewHandler, entity.NewService, en
 var streamHandlerProvider = wire.NewSet(stream.NewHandler, stream.NewService, stream.NewRepository, entity.NewService, entity.NewRepository)
 var messageHandlerProvider = wire.NewSet(message.NewHandler, message.NewService, message.NewRepository)
 var characterHandlerProvider = wire.NewSet(character.NewHandler, character.NewService, character.NewRepository)
-var associationHandlerProvider = wire.NewSet(association.NewHandler, association.NewService, association.NewRepository)
+var associationHandlerProvider = wire.NewSet(association.NewHandler, association.NewService, association.NewRepository, message.NewService, message.NewRepository)
 
-func SetupMessageHandler(db *gorm.DB, client *redis.Client, socket *socket.Service, config util.Config) *message.Handler {
+func SetupMessageHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *message.Handler {
     wire.Build(messageHandlerProvider, stream.NewService, stream.NewRepository, entity.NewService, entity.NewRepository)
     return &message.Handler{}
 }
@@ -36,12 +36,12 @@ func SetupCharacterHandler(db *gorm.DB, config util.Config) *character.Handler {
     return &character.Handler{}
 }
 
-func SetupAssociationHandler(db *gorm.DB, client *redis.Client, socket *socket.Service, config util.Config) *association.Handler {
+func SetupAssociationHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *association.Handler {
     wire.Build(associationHandlerProvider, stream.NewService, stream.NewRepository, entity.NewService, entity.NewRepository)
     return &association.Handler{}
 }
 
-func SetupStreamHandler(db *gorm.DB, client *redis.Client, config util.Config) *stream.Handler {
+func SetupStreamHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *stream.Handler {
     wire.Build(streamHandlerProvider)
     return &stream.Handler{}
 }
@@ -56,8 +56,8 @@ func SetupEntityHandler(db *gorm.DB, config util.Config) *entity.Handler {
     return &entity.Handler{}
 }
 
-func SetupSocketHandler(socketService *socket.Service, config util.Config) *socket.Handler {
-    wire.Build(socket.NewHandler)
+func SetupSocketHandler(rdb *redis.Client,  config util.Config) *socket.Handler {
+    wire.Build(socket.NewHandler, socket.NewService,)
     return &socket.Handler{}
 }
 

@@ -5,8 +5,8 @@ import (
     "net/http"
     "io/ioutil"
     "encoding/json"
+    "github.com/totegamma/concurrent/x/core"
     "github.com/totegamma/concurrent/x/util"
-    "github.com/totegamma/concurrent/x/host"
 )
 
 // Service is entity service
@@ -23,7 +23,7 @@ func NewService(repository *Repository, config util.Config) *Service {
 
 // Create updates stream information
 func (s *Service) Create(ccaddr string, meta string) {
-    s.repository.Create(&Entity{
+    s.repository.Create(&core.Entity{
         ID: ccaddr,
         Role: "default",
         Meta: meta,
@@ -31,7 +31,7 @@ func (s *Service) Create(ccaddr string, meta string) {
 }
 
 // Get returns stream information by ID
-func (s *Service) Get(key string) Entity {
+func (s *Service) Get(key string) core.Entity {
     return s.repository.Get(key)
 }
 
@@ -42,7 +42,7 @@ func (s *Service) List() []SafeEntity {
 }
 
 // PullRemoteEntities copies remote entities
-func (s *Service) PullRemoteEntities(host host.Host) error {
+func (s *Service) PullRemoteEntities(host core.Host) error {
     req, err := http.NewRequest("GET", "https://" + host.ID + "/api/v1/entity/list", nil)
     if err != nil {
         return err
@@ -62,7 +62,7 @@ func (s *Service) PullRemoteEntities(host host.Host) error {
     log.Print(remoteEntities)
 
     for _, entity := range remoteEntities {
-        s.repository.Upsert(&Entity{
+        s.repository.Upsert(&core.Entity{
             ID: entity.ID,
             Host: host.ID,
             Meta: "null",

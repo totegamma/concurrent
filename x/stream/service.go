@@ -14,19 +14,20 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/util"
+	"github.com/totegamma/concurrent/x/core"
 )
 
 // Service is stream service
 type Service struct {
-    client* redis.Client
+    rdb* redis.Client
     repository* Repository
     entity* entity.Service
     config util.Config
 }
 
 // NewService is for wire.go
-func NewService(client *redis.Client, repository *Repository, entity *entity.Service, config util.Config) *Service {
-    return &Service{ client, repository, entity, config }
+func NewService(rdb *redis.Client, repository *Repository, entity *entity.Service, config util.Config) *Service {
+    return &Service{ rdb, repository, entity, config }
 }
 
 var ctx = context.Background()
@@ -42,7 +43,7 @@ func min(a, b int) int {
 func (s *Service) GetRecent(streams []string, limit int) []Element {
     var messages []redis.XMessage
     for _, stream := range streams {
-        cmd := s.client.XRevRangeN(ctx, stream, "+", "-", int64(limit))
+        cmd := s.rdb.XRevRangeN(ctx, stream, "+", "-", int64(limit))
         messages = append(messages, cmd.Val()...)
     }
     m := make(map[string]bool)
@@ -79,7 +80,7 @@ func (s *Service) GetRecent(streams []string, limit int) []Element {
 func (s *Service) GetRange(streams []string, since string ,until string, limit int) []Element {
     var messages []redis.XMessage
     for _, stream := range streams {
-        cmd := s.client.XRevRangeN(ctx, stream, until, since, int64(limit))
+        cmd := s.rdb.XRevRangeN(ctx, stream, until, since, int64(limit))
         messages = append(messages, cmd.Val()...)
     }
     m := make(map[string]bool)
@@ -116,7 +117,7 @@ func (s *Service) GetRange(streams []string, since string ,until string, limit i
 func (s *Service) Post(stream string, id string, author string) error {
     query := strings.Split(stream, "@")
     if (len(query) == 1 || query[1] == s.config.FQDN) {
-        s.client.XAdd(ctx, &redis.XAddArgs{
+        s.rdb.XAdd(ctx, &redis.XAddArgs{
             Stream: query[0],
             ID: "*",
             Values: map[string]interface{}{
@@ -169,7 +170,7 @@ func (s *Service) Upsert(objectStr string, signature string, id string) (string,
         id = xid.New().String()
     }
 
-    stream := Stream {
+    stream := core.Stream {
         ID: id,
         Author: object.Signer,
         Maintainer: object.Maintainer,
@@ -185,19 +186,19 @@ func (s *Service) Upsert(objectStr string, signature string, id string) (string,
 }
 
 // Get returns stream information by ID
-func (s *Service) Get(key string) Stream {
+func (s *Service) Get(key string) core.Stream {
     return s.repository.Get(key)
 }
 
 // StreamListBySchema returns streamList by schema
-func (s *Service) StreamListBySchema(schema string) []Stream {
+func (s *Service) StreamListBySchema(schema string) []core.Stream {
     streams := s.repository.GetList(schema)
     return streams
 }
 
 // Delete deletes 
 func (s *Service) Delete(stream string, id string) {
-    cmd := s.client.XDel(ctx, stream, id)
+    cmd := s.rdb.XDel(ctx, stream, id)
     log.Println(cmd)
 }
 

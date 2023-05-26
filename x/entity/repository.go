@@ -2,6 +2,7 @@ package entity
 
 import (
     "gorm.io/gorm"
+    "github.com/totegamma/concurrent/x/core"
 )
 
 // Repository is host repository
@@ -15,26 +16,26 @@ func NewRepository(db *gorm.DB) *Repository {
 }
 
 // Get returns a host by ID
-func (r *Repository) Get(key string) Entity {
-    var entity Entity
+func (r *Repository) Get(key string) core.Entity {
+    var entity core.Entity
     r.db.First(&entity, "id = ?", key)
     return entity
 }
 
 // Create creates a entity
-func (r *Repository) Create(entity *Entity) {
+func (r *Repository) Create(entity *core.Entity) {
     r.db.Create(&entity)
 }
 
 // Upsert updates a entity
-func (r *Repository) Upsert(entity *Entity) {
+func (r *Repository) Upsert(entity *core.Entity) {
     r.db.Save(&entity)
 }
 
 // GetList returns all entities
 func (r *Repository) GetList() []SafeEntity {
     var entities []SafeEntity
-    r.db.Model(&Entity{}).Where("host IS NULL or host = ''").Find(&entities)
+    r.db.Model(&core.Entity{}).Where("host IS NULL or host = ''").Find(&entities)
     return entities
 }
 

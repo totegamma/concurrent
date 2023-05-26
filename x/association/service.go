@@ -2,22 +2,26 @@ package association
 
 import (
     "log"
+    "context"
     "encoding/json"
+    "github.com/redis/go-redis/v9"
     "github.com/totegamma/concurrent/x/util"
+    "github.com/totegamma/concurrent/x/core"
     "github.com/totegamma/concurrent/x/stream"
-    "github.com/totegamma/concurrent/x/socket"
+    "github.com/totegamma/concurrent/x/message"
 )
 
 // Service is association service
 type Service struct {
+    rdb *redis.Client
     repo *Repository
     stream *stream.Service
-    socket *socket.Service
+    message *message.Service
 }
 
 // NewService is used for wire.go
-func NewService(repo *Repository, stream *stream.Service, socket *socket.Service) *Service {
-    return &Service{repo: repo, stream: stream, socket: socket}
+func NewService(rdb *redis.Client, repo *Repository, stream *stream.Service, message *message.Service) *Service {
+    return &Service{rdb, repo, stream, message}
 }
 
 // PostAssociation creates new association
@@ -34,7 +38,7 @@ func (s *Service) PostAssociation(objectStr string, signature string, streams []
         return err
     }
 
-    association := Association {
+    association := core.Association {
         Author: object.Signer,
         Schema: object.Schema,
         TargetID: object.Target,
@@ -54,18 +58,25 @@ func (s *Service) PostAssociation(objectStr string, signature string, streams []
         Action: "create",
         Body: association,
     })
-    s.socket.NotifyAllClients(jsonstr)
+
+    targetMessage := s.message.GetMessage(association.TargetID)
+    for _, stream := range targetMessage.Streams {
+        err := s.rdb.Publish(context.Background(), stream, jsonstr).Err()
+        if err != nil {
+            log.Printf("fail to publish message to Redis: %v", err)
+        }
+    }
 
     return nil
 }
 
 // Get returns an association by ID
-func (s *Service) Get(id string) Association {
+func (s *Service) Get(id string) core.Association {
     return s.repo.Get(id)
 }
 
 // GetOwn returns associations by author
-func (s *Service) GetOwn(author string) []Association {
+func (s *Service) GetOwn(author string) []core.Association {
     return s.repo.GetOwn(author)
 }
 
@@ -77,6 +88,12 @@ func (s *Service) Delete(id string) {
         Action: "delete",
         Body: deleted,
     })
-    s.socket.NotifyAllClients(jsonstr)
+    targetMessage := s.message.GetMessage(deleted.TargetID)
+    for _, stream := range targetMessage.Streams {
+        err := s.rdb.Publish(context.Background(), stream, jsonstr).Err()
+        if err != nil {
+            log.Printf("fail to publish message to Redis: %v", err)
+        }
+    }
 }
 

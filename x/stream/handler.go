@@ -67,7 +67,7 @@ func (h Handler) Recent(c echo.Context) error {
 func (h Handler) Range(c echo.Context) error {
     queryStreams := c.QueryParam("streams")
     streams := strings.Split(queryStreams, ",")
-    querySince := c.QueryParam("streams")
+    querySince := c.QueryParam("since")
     queryUntil := c.QueryParam("until")
 
     since := "-"

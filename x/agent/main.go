@@ -80,7 +80,7 @@ func (a *Agent)updateConnections() {
     for _, server := range serverList {
         if _, ok := a.connections[server]; !ok {
             // new server, create new connection
-            u := url.URL{Scheme: "wss", Host: server, Path: "/socket"}
+            u := url.URL{Scheme: "wss", Host: server, Path: "/api/v1/socket"}
             c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
             if err != nil {
                 log.Printf("fail to dial: %v", err)

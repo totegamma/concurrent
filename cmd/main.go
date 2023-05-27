@@ -55,7 +55,7 @@ func main() {
         DB:       0,  // use default DB
     })
 
-    agent := SetupAgent(db, config)
+    agent := SetupAgent(db, rdb, config)
 
     socketHandler := SetupSocketHandler(rdb, config)
     messageHandler := SetupMessageHandler(db, rdb, config)

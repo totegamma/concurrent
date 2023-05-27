@@ -78,17 +78,17 @@ func SetupEntityHandler(db *gorm.DB, config util.Config) *entity.Handler {
 }
 
 func SetupSocketHandler(rdb *redis.Client, config util.Config) *socket.Handler {
-	service := socket.NewService(rdb)
+	service := socket.NewService()
 	handler := socket.NewHandler(service, rdb)
 	return handler
 }
 
-func SetupAgent(db *gorm.DB, config util.Config) *agent.Agent {
+func SetupAgent(db *gorm.DB, rdb *redis.Client, config util.Config) *agent.Agent {
 	repository := host.NewRepository(db)
 	service := host.NewService(repository)
 	entityRepository := entity.NewRepository(db)
 	entityService := entity.NewService(entityRepository, config)
-	agentAgent := agent.NewAgent(service, entityService)
+	agentAgent := agent.NewAgent(rdb, config, service, entityService)
 	return agentAgent
 }
 

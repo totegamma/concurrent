@@ -61,7 +61,7 @@ func SetupSocketHandler(rdb *redis.Client,  config util.Config) *socket.Handler 
     return &socket.Handler{}
 }
 
-func SetupAgent(db *gorm.DB, config util.Config) *agent.Agent {
+func SetupAgent(db *gorm.DB, rdb *redis.Client, config util.Config) *agent.Agent {
     wire.Build(agent.NewAgent, host.NewService, host.NewRepository, entity.NewService, entity.NewRepository)
     return &agent.Agent{}
 }

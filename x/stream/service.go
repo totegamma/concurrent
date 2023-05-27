@@ -117,14 +117,31 @@ func (s *Service) GetRange(streams []string, since string ,until string, limit i
 func (s *Service) Post(stream string, id string, author string) error {
     query := strings.Split(stream, "@")
     if (len(query) == 1 || query[1] == s.config.FQDN) {
-        s.rdb.XAdd(ctx, &redis.XAddArgs{
+        // add to stream
+        timestamp, err := s.rdb.XAdd(ctx, &redis.XAddArgs{
             Stream: query[0],
             ID: "*",
             Values: map[string]interface{}{
                 "id": id,
                 "author": author,
             },
+        }).Result()
+        if err != nil {
+            log.Printf("fail to xadd: %v", err)
+        }
+
+        // publish event to pubsub
+        jsonstr, _ := json.Marshal(Element{
+            Timestamp: timestamp,
+            ID: id,
+            Author: author,
+            Host: s.config.FQDN,
+            Stream: stream,
         })
+        err = s.rdb.Publish(context.Background(), stream, jsonstr).Err()
+        if err != nil {
+            log.Printf("fail to publish message to Redis: %v", err)
+        }
     } else {
         packet := checkpointPacket{
             Stream: query[0],

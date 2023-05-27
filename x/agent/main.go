@@ -159,9 +159,9 @@ func summarize(input []string) map[string][]string {
             log.Println("Invalid format: ", item)
             continue
         }
-        id, fqdn := split[0], split[1]
+        fqdn := split[1]
 
-        summary[fqdn] = append(summary[fqdn], id)
+        summary[fqdn] = append(summary[fqdn], item)
     }
 
     return summary

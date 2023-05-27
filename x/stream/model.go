@@ -33,6 +33,7 @@ type Element struct {
     ID string `json:"id"`
     Author string `json:"author"`
     Host string `json:"currenthost"`
+    Stream string `json:"stream"`
 }
 
 type checkpointPacket struct {

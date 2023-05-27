@@ -3,6 +3,7 @@ package socket
 
 import (
     "log"
+    "sync"
 	"context"
     "net/http"
     "github.com/gorilla/websocket"
@@ -15,12 +16,17 @@ var ctx = context.Background()
 // Handler is handles websocket
 type Handler struct {
     service *Service
-    rdb* redis.Client
+    rdb *redis.Client
+    mutex *sync.Mutex
 }
 
 // NewHandler is used for wire.go
 func NewHandler(service *Service, rdb *redis.Client) *Handler {
-    return &Handler{service, rdb}
+    return &Handler{
+        service,
+        rdb,
+        &sync.Mutex{},
+    }
 }
 
 var upgrader = websocket.Upgrader{
@@ -30,6 +36,13 @@ var upgrader = websocket.Upgrader{
         return true
     },
 }
+
+func (h Handler) send(ws *websocket.Conn, message string) error {
+    h.mutex.Lock()
+    defer h.mutex.Unlock()
+    return ws.WriteMessage(websocket.TextMessage, []byte(message))
+}
+
 
 // Connect is used for start websocket connection
 func (h Handler) Connect(c echo.Context) error {
@@ -70,7 +83,7 @@ func (h Handler) Connect(c echo.Context) error {
                 }
                 log.Printf("Received message from channel %s: %s\n", msg.Channel, msg.Payload)
 
-                err = ws.WriteMessage(websocket.TextMessage, []byte(msg.Payload))
+                err = h.send(ws, msg.Payload)
                 if err != nil {
                     log.Println("Error writing message: ", err)
                     break

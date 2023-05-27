@@ -51,13 +51,21 @@ func (a *Agent) collectUsers() {
 // Boot starts agent
 func (a *Agent) Boot() {
     log.Printf("agent start!")
-    ticker := time.NewTicker(60 * time.Second)
+    ticker10 := time.NewTicker(10 * time.Second)
+    ticker60 := time.NewTicker(60 * time.Second)
     go func() {
-        for range ticker.C {
-            a.collectUsers()
-            a.updateConnections()
+        for {
+            select {
+                case <-ticker10.C:
+                    a.updateConnections()
+                    break
+                case <- ticker60.C:
+                    a.collectUsers()
+                    break
+            }
         }
     }()
+
 }
 
 func (a *Agent)updateConnections() {
@@ -87,8 +95,6 @@ func (a *Agent)updateConnections() {
                 continue
             }
 
-            log.Printf("start connection to %v\n", u)
-
             a.connections[server] = c
 
             // launch a new goroutine for handling incoming messages
@@ -101,15 +107,11 @@ func (a *Agent)updateConnections() {
                         return
                     }
 
-                    log.Printf("get ws event: %v\n", message)
-
                     var event streamEvent
                     err = json.Unmarshal(message, &event)
                     if err != nil {
                         log.Printf("fail to Unmarshall redis message: %v", err)
                     }
-
-                    log.Printf("[relay] targetstream: %v\n", event.Stream)
 
                     // publish message to Redis
                     err = a.rdb.Publish(context.Background(), event.Stream, string(message)).Err()
@@ -123,7 +125,6 @@ func (a *Agent)updateConnections() {
             summarized[server],
         }
         err := websocket.WriteJSON(a.connections[server], request)
-        log.Printf("send subscribe request %v to %v\n", server, request)
         if err != nil {
             log.Printf("fail to send subscribe request to remote server %v: %v", server, err)
             delete(a.connections, server)

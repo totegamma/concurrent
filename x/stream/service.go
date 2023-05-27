@@ -1,6 +1,7 @@
 package stream
 
 import (
+    "fmt"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -14,19 +15,20 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/util"
+	"github.com/totegamma/concurrent/x/core"
 )
 
 // Service is stream service
 type Service struct {
-    client* redis.Client
+    rdb* redis.Client
     repository* Repository
     entity* entity.Service
     config util.Config
 }
 
 // NewService is for wire.go
-func NewService(client *redis.Client, repository *Repository, entity *entity.Service, config util.Config) *Service {
-    return &Service{ client, repository, entity, config }
+func NewService(rdb *redis.Client, repository *Repository, entity *entity.Service, config util.Config) *Service {
+    return &Service{ rdb, repository, entity, config }
 }
 
 var ctx = context.Background()
@@ -42,7 +44,7 @@ func min(a, b int) int {
 func (s *Service) GetRecent(streams []string, limit int) []Element {
     var messages []redis.XMessage
     for _, stream := range streams {
-        cmd := s.client.XRevRangeN(ctx, stream, "+", "-", int64(limit))
+        cmd := s.rdb.XRevRangeN(ctx, stream, "+", "-", int64(limit))
         messages = append(messages, cmd.Val()...)
     }
     m := make(map[string]bool)
@@ -79,7 +81,7 @@ func (s *Service) GetRecent(streams []string, limit int) []Element {
 func (s *Service) GetRange(streams []string, since string ,until string, limit int) []Element {
     var messages []redis.XMessage
     for _, stream := range streams {
-        cmd := s.client.XRevRangeN(ctx, stream, until, since, int64(limit))
+        cmd := s.rdb.XRevRangeN(ctx, stream, until, since, int64(limit))
         messages = append(messages, cmd.Val()...)
     }
     m := make(map[string]bool)
@@ -113,28 +115,60 @@ func (s *Service) GetRange(streams []string, since string ,until string, limit i
 }
 
 // Post posts to stream
-func (s *Service) Post(stream string, id string, author string) error {
+func (s *Service) Post(stream string, id string, author string, host string) error {
     query := strings.Split(stream, "@")
-    if (len(query) == 1 || query[1] == s.config.FQDN) {
-        s.client.XAdd(ctx, &redis.XAddArgs{
-            Stream: query[0],
+    if len(query) != 2 {
+        return fmt.Errorf("Invalid format: %v", stream)
+    }
+    
+    if (host == "") {
+        host = s.config.FQDN
+    }
+
+    streamID, streamHost := query[0], query[1]
+
+    if (streamHost == s.config.FQDN) {
+        // add to stream
+        timestamp, err := s.rdb.XAdd(ctx, &redis.XAddArgs{
+            Stream: streamID,
             ID: "*",
             Values: map[string]interface{}{
                 "id": id,
                 "author": author,
             },
+        }).Result()
+        if err != nil {
+            log.Printf("fail to xadd: %v", err)
+        }
+
+        // publish event to pubsub
+        jsonstr, _ := json.Marshal(Event{
+            Stream: stream,
+            Type: "message",
+            Action: "create",
+            Body: Element{
+                Timestamp: timestamp,
+                ID: id,
+                Author: author,
+                Host: host,
+            },
         })
+        err = s.rdb.Publish(context.Background(), stream, jsonstr).Err()
+        if err != nil {
+            log.Printf("fail to publish message to Redis: %v", err)
+        }
     } else {
         packet := checkpointPacket{
-            Stream: query[0],
+            Stream: stream,
             ID: id,
             Author: author,
+            Host: s.config.FQDN,
         }
         packetStr, err := json.Marshal(packet)
         if err != nil {
             return err
         }
-        req, err := http.NewRequest("POST", "https://" + query[1] + "/api/v1/stream/checkpoint", bytes.NewBuffer(packetStr))
+        req, err := http.NewRequest("POST", "https://" + streamHost + "/api/v1/stream/checkpoint", bytes.NewBuffer(packetStr))
         if err != nil {
             return err
         }
@@ -169,7 +203,7 @@ func (s *Service) Upsert(objectStr string, signature string, id string) (string,
         id = xid.New().String()
     }
 
-    stream := Stream {
+    stream := core.Stream {
         ID: id,
         Author: object.Signer,
         Maintainer: object.Maintainer,
@@ -185,19 +219,19 @@ func (s *Service) Upsert(objectStr string, signature string, id string) (string,
 }
 
 // Get returns stream information by ID
-func (s *Service) Get(key string) Stream {
+func (s *Service) Get(key string) core.Stream {
     return s.repository.Get(key)
 }
 
 // StreamListBySchema returns streamList by schema
-func (s *Service) StreamListBySchema(schema string) []Stream {
+func (s *Service) StreamListBySchema(schema string) []core.Stream {
     streams := s.repository.GetList(schema)
     return streams
 }
 
 // Delete deletes 
 func (s *Service) Delete(stream string, id string) {
-    cmd := s.client.XDel(ctx, stream, id)
+    cmd := s.rdb.XDel(ctx, stream, id)
     log.Println(cmd)
 }
 

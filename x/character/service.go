@@ -3,8 +3,8 @@ package character
 import (
     "log"
     "encoding/json"
-
     "github.com/totegamma/concurrent/x/util"
+    "github.com/totegamma/concurrent/x/core"
 )
 
 // Service is service of characters
@@ -18,11 +18,11 @@ func NewService(repo *Repository) *Service {
 }
 
 // GetCharacters returns characters by owner and schema
-func (s* Service) GetCharacters(owner string, schema string) []Character {
+func (s* Service) GetCharacters(owner string, schema string) []core.Character {
     characters, err := s.repo.Get(owner, schema)
     if err != nil {
         log.Printf("error occured while GetCharacters in characterRepository. error: %v\n", err)
-        return []Character{}
+        return []core.Character{}
     }
     return characters
 }
@@ -41,7 +41,7 @@ func (s* Service) PutCharacter(objectStr string, signature string, id string) er
         return err
     }
 
-    character := Character {
+    character := core.Character {
         ID: id,
         Author: object.Signer,
         Schema: object.Schema,

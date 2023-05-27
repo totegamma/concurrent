@@ -23,13 +23,13 @@ import (
 
 // Injectors from wire.go:
 
-func SetupMessageHandler(db *gorm.DB, client *redis.Client, socket2 *socket.Service, config util.Config) *message.Handler {
+func SetupMessageHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *message.Handler {
 	repository := message.NewRepository(db)
 	streamRepository := stream.NewRepository(db)
 	entityRepository := entity.NewRepository(db)
 	service := entity.NewService(entityRepository, config)
-	streamService := stream.NewService(client, streamRepository, service, config)
-	messageService := message.NewService(repository, streamService, socket2)
+	streamService := stream.NewService(rdb, streamRepository, service, config)
+	messageService := message.NewService(rdb, repository, streamService)
 	handler := message.NewHandler(messageService)
 	return handler
 }
@@ -41,22 +41,24 @@ func SetupCharacterHandler(db *gorm.DB, config util.Config) *character.Handler {
 	return handler
 }
 
-func SetupAssociationHandler(db *gorm.DB, client *redis.Client, socket2 *socket.Service, config util.Config) *association.Handler {
+func SetupAssociationHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *association.Handler {
 	repository := association.NewRepository(db)
 	streamRepository := stream.NewRepository(db)
 	entityRepository := entity.NewRepository(db)
 	service := entity.NewService(entityRepository, config)
-	streamService := stream.NewService(client, streamRepository, service, config)
-	associationService := association.NewService(repository, streamService, socket2)
+	streamService := stream.NewService(rdb, streamRepository, service, config)
+	messageRepository := message.NewRepository(db)
+	messageService := message.NewService(rdb, messageRepository, streamService)
+	associationService := association.NewService(rdb, repository, streamService, messageService)
 	handler := association.NewHandler(associationService)
 	return handler
 }
 
-func SetupStreamHandler(db *gorm.DB, client *redis.Client, config util.Config) *stream.Handler {
+func SetupStreamHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *stream.Handler {
 	repository := stream.NewRepository(db)
 	entityRepository := entity.NewRepository(db)
 	service := entity.NewService(entityRepository, config)
-	streamService := stream.NewService(client, repository, service, config)
+	streamService := stream.NewService(rdb, repository, service, config)
 	handler := stream.NewHandler(streamService)
 	return handler
 }
@@ -75,17 +77,18 @@ func SetupEntityHandler(db *gorm.DB, config util.Config) *entity.Handler {
 	return handler
 }
 
-func SetupSocketHandler(socketService *socket.Service, config util.Config) *socket.Handler {
-	handler := socket.NewHandler(socketService)
+func SetupSocketHandler(rdb *redis.Client, config util.Config) *socket.Handler {
+	service := socket.NewService()
+	handler := socket.NewHandler(service, rdb)
 	return handler
 }
 
-func SetupAgent(db *gorm.DB, config util.Config) *agent.Agent {
+func SetupAgent(db *gorm.DB, rdb *redis.Client, config util.Config) *agent.Agent {
 	repository := host.NewRepository(db)
 	service := host.NewService(repository)
 	entityRepository := entity.NewRepository(db)
 	entityService := entity.NewService(entityRepository, config)
-	agentAgent := agent.NewAgent(service, entityService)
+	agentAgent := agent.NewAgent(rdb, config, service, entityService)
 	return agentAgent
 }
 
@@ -101,4 +104,4 @@ var messageHandlerProvider = wire.NewSet(message.NewHandler, message.NewService,
 
 var characterHandlerProvider = wire.NewSet(character.NewHandler, character.NewService, character.NewRepository)
 
-var associationHandlerProvider = wire.NewSet(association.NewHandler, association.NewService, association.NewRepository)
+var associationHandlerProvider = wire.NewSet(association.NewHandler, association.NewService, association.NewRepository, message.NewService, message.NewRepository)

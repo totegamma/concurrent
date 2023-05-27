@@ -2,6 +2,7 @@ package character
 
 import (
     "gorm.io/gorm"
+    "github.com/totegamma/concurrent/x/core"
 )
 
 // Repository is a repository for character objects
@@ -15,18 +16,18 @@ func NewRepository(db *gorm.DB) *Repository {
 }
 
 // Upsert upserts existing character
-func (r *Repository) Upsert(character Character) {
+func (r *Repository) Upsert(character core.Character) {
     r.db.Save(&character)
 }
 
 // Get returns character list which matches specified owner and chema
-func (r *Repository) Get(owner string, schema string) ([]Character, error) {
-    var characters []Character
+func (r *Repository) Get(owner string, schema string) ([]core.Character, error) {
+    var characters []core.Character
     if err := r.db.Where("author = $1 AND schema = $2", owner, schema).Find(&characters).Error; err != nil {
-        return []Character{}, err
+        return []core.Character{}, err
     }
     if characters == nil {
-        return []Character{}, nil
+        return []core.Character{}, nil
     }
     return characters, nil
 }

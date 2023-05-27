@@ -1,29 +1,29 @@
 package message
 
 import (
-    "encoding/json"
     "log"
-
-    "github.com/totegamma/concurrent/x/socket"
+    "encoding/json"
+    "github.com/redis/go-redis/v9"
     "github.com/totegamma/concurrent/x/stream"
     "github.com/totegamma/concurrent/x/util"
+    "github.com/totegamma/concurrent/x/core"
 )
 
 // Service is a service of message
 type Service struct {
+    rdb *redis.Client
     repo *Repository
     stream *stream.Service
-    socket *socket.Service
 }
 
 // NewService is used for wire.go
-func NewService(repo *Repository, stream *stream.Service, socket *socket.Service) *Service {
-    return &Service{repo: repo, stream: stream, socket: socket}
+func NewService(rdb *redis.Client, repo *Repository, stream *stream.Service) *Service {
+    return &Service{rdb, repo, stream}
 }
 
 // GetMessage returns a message by ID
-func (s *Service) GetMessage(id string) Message{
-    var message Message
+func (s *Service) GetMessage(id string) core.Message{
+    var message core.Message
     message = s.repo.Get(id)
     return message
 }
@@ -42,7 +42,7 @@ func (s *Service) PostMessage(objectStr string, signature string, streams []stri
         return err
     }
 
-    message := Message{
+    message := core.Message{
         Author: object.Signer,
         Schema: object.Schema,
         Payload: objectStr,
@@ -51,30 +51,19 @@ func (s *Service) PostMessage(objectStr string, signature string, streams []stri
     }
 
     id := s.repo.Create(&message)
+
     for _, stream := range message.Streams {
-        s.stream.Post(stream, id, message.Author)
+        s.stream.Post(stream, id, message.Author, "")
     }
 
-    jsonstr, _ := json.Marshal(streamEvent{
-        Type: "message",
-        Action: "create",
-        Body: message,
-    })
-    s.socket.NotifyAllClients(jsonstr)
     return nil
 }
 
 // DeleteMessage deletes a message by ID
 func (s *Service) DeleteMessage(id string) {
-    deleted := s.repo.Delete(id)
-    for _, stream := range deleted.Streams {
-        s.stream.Delete(stream, id)
-    }
-    jsonstr, _ := json.Marshal(streamEvent{
-        Type: "message",
-        Action: "delete",
-        Body: deleted,
-    })
-    s.socket.NotifyAllClients(jsonstr)
+    /* deleted := */ s.repo.Delete(id)
+    // for _, stream := range deleted.Streams {
+    //     s.stream.Delete(stream, id)
+    // }
 }
 

@@ -14,14 +14,8 @@ import (
     "github.com/labstack/echo/v4"
     "github.com/labstack/echo/v4/middleware"
 
-    "github.com/totegamma/concurrent/x/association"
-    "github.com/totegamma/concurrent/x/character"
-    "github.com/totegamma/concurrent/x/host"
-    "github.com/totegamma/concurrent/x/message"
-    "github.com/totegamma/concurrent/x/socket"
-    "github.com/totegamma/concurrent/x/entity"
-    "github.com/totegamma/concurrent/x/stream"
     "github.com/totegamma/concurrent/x/util"
+    "github.com/totegamma/concurrent/x/core"
 )
 
 func main() {
@@ -46,7 +40,14 @@ func main() {
 
     // Migrate the schema
     log.Println("start migrate")
-    db.AutoMigrate(&message.Message{}, &character.Character{}, &association.Association{},  &stream.Stream{}, &host.Host{}, &entity.Entity{})
+    db.AutoMigrate(
+        &core.Message{},
+        &core.Character{},
+        &core.Association{},
+        &core.Stream{},
+        &core.Host{},
+        &core.Entity{},
+    )
 
     rdb := redis.NewClient(&redis.Options{
         Addr:     config.RedisAddr,
@@ -54,14 +55,12 @@ func main() {
         DB:       0,  // use default DB
     })
 
-    socketService := socket.NewService();
+    agent := SetupAgent(db, rdb, config)
 
-    agent := SetupAgent(db, config)
-
-    socketHandler := SetupSocketHandler(socketService, config)
-    messageHandler := SetupMessageHandler(db, rdb, socketService, config)
+    socketHandler := SetupSocketHandler(rdb, config)
+    messageHandler := SetupMessageHandler(db, rdb, config)
     characterHandler := SetupCharacterHandler(db, config)
-    associationHandler := SetupAssociationHandler(db, rdb, socketService, config)
+    associationHandler := SetupAssociationHandler(db, rdb, config)
     streamHandler := SetupStreamHandler(db, rdb, config)
     hostHandler := SetupHostHandler(db, config)
     entityHandler := SetupEntityHandler(db, config)
@@ -80,7 +79,6 @@ func main() {
     apiV1.POST("/associations", associationHandler.Post)
     apiV1.DELETE("/associations", associationHandler.Delete)
     apiV1.GET("/stream", streamHandler.Get)
-    apiV1.POST("/stream", streamHandler.Post)
     apiV1.PUT("/stream", streamHandler.Put)
     apiV1.GET("/stream/recent", streamHandler.Recent)
     apiV1.GET("/stream/list", streamHandler.List)

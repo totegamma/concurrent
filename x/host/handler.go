@@ -8,6 +8,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/x/util"
+    "github.com/totegamma/concurrent/x/core"
 )
 
 // Handler is handles websocket
@@ -31,7 +32,7 @@ func (h Handler) Get(c echo.Context) error {
 
 // Upsert updates Host registry
 func (h Handler) Upsert(c echo.Context) error {
-    var host Host
+    var host core.Host
     err := c.Bind(&host)
     if (err != nil) {
         return err
@@ -84,7 +85,7 @@ func (h Handler) Hello(c echo.Context) error {
         return c.String(http.StatusBadRequest, "validation failed")
     }
 
-    h.service.Upsert(&Host{
+    h.service.Upsert(&core.Host{
         ID: newcomer.ID,
         CCAddr: newcomer.CCAddr,
         Role: "unassigned",
@@ -128,7 +129,7 @@ func (h Handler) SayHello(c echo.Context) error {
     var fetchedProf Profile
     json.Unmarshal(body, &fetchedProf)
 
-    h.service.Upsert(&Host{
+    h.service.Upsert(&core.Host{
         ID: fetchedProf.ID,
         CCAddr: fetchedProf.CCAddr,
         Role: "unassigned",

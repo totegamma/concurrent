@@ -16,26 +16,26 @@ func NewRepository(db *gorm.DB) *Repository {
 }
 
 // Get returns a host by ID
-func (r *Repository) Get(key string) core.Entity {
+func (r *Repository) Get(key string) (core.Entity, error) {
     var entity core.Entity
-    r.db.First(&entity, "id = ?", key)
-    return entity
+    err := r.db.First(&entity, "id = ?", key).Error
+    return entity, err 
 }
 
 // Create creates a entity
-func (r *Repository) Create(entity *core.Entity) {
-    r.db.Create(&entity)
+func (r *Repository) Create(entity *core.Entity) error {
+    return r.db.Create(&entity).Error
 }
 
 // Upsert updates a entity
-func (r *Repository) Upsert(entity *core.Entity) {
-    r.db.Save(&entity)
+func (r *Repository) Upsert(entity *core.Entity) error {
+    return r.db.Save(&entity).Error
 }
 
 // GetList returns all entities
-func (r *Repository) GetList() []SafeEntity {
+func (r *Repository) GetList() ([]SafeEntity, error) {
     var entities []SafeEntity
-    r.db.Model(&core.Entity{}).Where("host IS NULL or host = ''").Find(&entities)
-    return entities
+    err := r.db.Model(&core.Entity{}).Where("host IS NULL or host = ''").Find(&entities).Error
+    return entities, err
 }
 

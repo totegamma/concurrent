@@ -18,13 +18,13 @@ func NewService(repo *Repository) *Service {
 }
 
 // GetCharacters returns characters by owner and schema
-func (s* Service) GetCharacters(owner string, schema string) []core.Character {
+func (s* Service) GetCharacters(owner string, schema string) ([]core.Character, error) {
     characters, err := s.repo.Get(owner, schema)
     if err != nil {
         log.Printf("error occured while GetCharacters in characterRepository. error: %v\n", err)
-        return []core.Character{}
+        return []core.Character{}, err
     }
-    return characters
+    return characters, nil
 }
 
 // PutCharacter creates new character if the signature is valid
@@ -49,7 +49,10 @@ func (s* Service) PutCharacter(objectStr string, signature string, id string) er
         Signature: signature,
     }
 
-    s.repo.Upsert(character)
+    err = s.repo.Upsert(character)
+    if err != nil {
+        return err
+    }
 
     return nil
 }

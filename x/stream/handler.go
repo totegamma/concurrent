@@ -3,8 +3,11 @@ package stream
 
 import (
     "fmt"
+    "errors"
     "strings"
     "net/http"
+
+    "gorm.io/gorm"
     "github.com/labstack/echo/v4"
 )
 
@@ -22,7 +25,13 @@ func NewHandler(service *Service) *Handler {
 // Get is for handling HTTP Get Method
 func (h Handler) Get(c echo.Context) error {
     streamStr := c.QueryParam("stream")
-    stream := h.service.Get(streamStr)
+    stream, err := h.service.Get(streamStr)
+    if err != nil {
+        if errors.Is(err, gorm.ErrRecordNotFound) {
+            return c.JSON(http.StatusNotFound, echo.Map{"error": "User not found"})
+        }
+        return err
+    }
     return c.JSON(http.StatusOK, stream)
 }
 
@@ -45,7 +54,7 @@ func (h Handler) Put(c echo.Context) error {
 func (h Handler) Recent(c echo.Context) error {
     streamsStr := c.QueryParam("streams")
     streams := strings.Split(streamsStr, ",")
-    messages := h.service.GetRecent(streams, 16)
+    messages, _ := h.service.GetRecent(streams, 16)
 
     return c.JSON(http.StatusOK, messages)
 }
@@ -67,14 +76,17 @@ func (h Handler) Range(c echo.Context) error {
         until = queryUntil
     }
 
-    messages := h.service.GetRange(streams, since, until, 16)
+    messages, _ := h.service.GetRange(streams, since, until, 16)
     return c.JSON(http.StatusOK, messages)
 }
 
 // List returns stream ids which filtered by specific schema
 func (h Handler) List(c echo.Context) error {
     schema := c.QueryParam("schema")
-    list := h.service.StreamListBySchema(schema)
+    list, err := h.service.StreamListBySchema(schema)
+    if err != nil {
+        return err
+    }
     return c.JSON(http.StatusOK, list)
 }
 
@@ -86,7 +98,10 @@ func (h Handler) Checkpoint(c echo.Context) error {
         return err
     }
 
-    h.service.Post(packet.Stream, packet.ID, packet.Author, packet.Host)
+    err = h.service.Post(packet.Stream, packet.ID, packet.Author, packet.Host)
+    if err != nil {
+        return nil
+    }
 
     return c.String(http.StatusCreated, fmt.Sprintf("{\"message\": \"accept\"}"))
 }

@@ -2,7 +2,9 @@
 package message
 
 import (
+    "errors"
     "net/http"
+    "gorm.io/gorm"
     "github.com/labstack/echo/v4"
 )
 
@@ -22,7 +24,13 @@ func NewHandler(service *Service) *Handler {
 func (h Handler) Get(c echo.Context) error {
     id := c.Param("id")
 
-    message := h.service.GetMessage(id)
+    message, err := h.service.GetMessage(id)
+    if err != nil {
+        if errors.Is(err, gorm.ErrRecordNotFound) {
+            return c.JSON(http.StatusNotFound, echo.Map{"error": "Message not found"})
+        }
+        return err
+    }
     return c.JSON(http.StatusOK, message)
 }
 

@@ -22,10 +22,8 @@ func NewService(rdb *redis.Client, repo *Repository, stream *stream.Service) *Se
 }
 
 // GetMessage returns a message by ID
-func (s *Service) GetMessage(id string) core.Message{
-    var message core.Message
-    message = s.repo.Get(id)
-    return message
+func (s *Service) GetMessage(id string) (core.Message, error) {
+    return s.repo.Get(id)
 }
 
 // PostMessage creates new message
@@ -50,7 +48,10 @@ func (s *Service) PostMessage(objectStr string, signature string, streams []stri
         Streams: streams,
     }
 
-    id := s.repo.Create(&message)
+    id, err := s.repo.Create(&message)
+    if err != nil {
+        return err
+    }
 
     for _, stream := range message.Streams {
         s.stream.Post(stream, id, message.Author, "")
@@ -60,10 +61,7 @@ func (s *Service) PostMessage(objectStr string, signature string, streams []stri
 }
 
 // DeleteMessage deletes a message by ID
-func (s *Service) DeleteMessage(id string) {
-    /* deleted := */ s.repo.Delete(id)
-    // for _, stream := range deleted.Streams {
-    //     s.stream.Delete(stream, id)
-    // }
+func (s *Service) DeleteMessage(id string) (core.Message, error) {
+    return s.repo.Delete(id)
 }
 

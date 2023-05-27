@@ -1,13 +1,15 @@
 package host
 
 import (
-	"bytes"
-	"encoding/json"
-	"io/ioutil"
-	"net/http"
+    "bytes"
+    "errors"
+    "net/http"
+    "io/ioutil"
+    "gorm.io/gorm"
+    "encoding/json"
 
-	"github.com/labstack/echo/v4"
-	"github.com/totegamma/concurrent/x/util"
+    "github.com/labstack/echo/v4"
+    "github.com/totegamma/concurrent/x/util"
     "github.com/totegamma/concurrent/x/core"
 )
 
@@ -25,7 +27,13 @@ func NewHandler(service *Service, config util.Config) *Handler {
 // Get returns a host by ID
 func (h Handler) Get(c echo.Context) error {
     id := c.Param("id")
-    host := h.service.Get(id)
+    host, err := h.service.Get(id)
+    if err != nil {
+        if errors.Is(err, gorm.ErrRecordNotFound) {
+            return c.JSON(http.StatusNotFound, echo.Map{"error": "Host not found"})
+        }
+        return err
+    }
     return c.JSON(http.StatusOK, host)
 
 }
@@ -37,13 +45,19 @@ func (h Handler) Upsert(c echo.Context) error {
     if (err != nil) {
         return err
     }
-    h.service.Upsert(&host)
+    err = h.service.Upsert(&host)
+    if err != nil {
+        return err
+    }
     return c.String(http.StatusCreated, "{\"message\": \"accept\"}")
 }
 
 // List returns all hosts
 func (h Handler) List(c echo.Context) error {
-    hosts := h.service.List()
+    hosts, err := h.service.List()
+    if err != nil {
+        return err
+    }
     return c.JSON(http.StatusOK, hosts)
 }
 

@@ -2,7 +2,9 @@
 package character
 
 import (
+    "errors"
     "net/http"
+    "gorm.io/gorm"
     "github.com/labstack/echo/v4"
 )
 
@@ -20,7 +22,13 @@ func NewHandler(service *Service) *Handler {
 func (h Handler) Get(c echo.Context) error {
     author := c.QueryParam("author")
     schema := c.QueryParam("schema")
-    characters := h.service.GetCharacters(author, schema)
+    characters, err := h.service.GetCharacters(author, schema)
+    if err != nil {
+        if errors.Is(err, gorm.ErrRecordNotFound) {
+            return c.JSON(http.StatusNotFound, echo.Map{"error": "Character not found"})
+        }
+        return err
+    }
     response := CharactersResponse {
         Characters: characters,
     }

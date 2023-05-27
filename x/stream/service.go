@@ -41,7 +41,7 @@ func min(a, b int) int {
 }
 
 // GetRecent returns recent message from streams
-func (s *Service) GetRecent(streams []string, limit int) []Element {
+func (s *Service) GetRecent(streams []string, limit int) ([]Element, error) {
     var messages []redis.XMessage
     for _, stream := range streams {
         cmd := s.rdb.XRevRangeN(ctx, stream, "+", "-", int64(limit))
@@ -66,19 +66,20 @@ func (s *Service) GetRecent(streams []string, limit int) []Element {
     result := []Element{}
 
     for _, elem := range chopped {
+        host, _ := s.entity.ResolveHost(elem.Values["author"].(string))
         result = append(result, Element{
             Timestamp: elem.ID,
             ID: elem.Values["id"].(string),
             Author: elem.Values["author"].(string),
-            Host: s.entity.ResolveHost(elem.Values["author"].(string)),
+            Host: host,
         })
     }
 
-    return result
+    return result, nil
 }
 
 // GetRange returns specified range messages from streams
-func (s *Service) GetRange(streams []string, since string ,until string, limit int) []Element {
+func (s *Service) GetRange(streams []string, since string ,until string, limit int) ([]Element, error) {
     var messages []redis.XMessage
     for _, stream := range streams {
         cmd := s.rdb.XRevRangeN(ctx, stream, until, since, int64(limit))
@@ -103,15 +104,16 @@ func (s *Service) GetRange(streams []string, since string ,until string, limit i
     result := []Element{}
 
     for _, elem := range chopped {
+        host, _ := s.entity.ResolveHost(elem.Values["author"].(string))
         result = append(result, Element{
             Timestamp: elem.ID,
             ID: elem.Values["id"].(string),
             Author: elem.Values["author"].(string),
-            Host: s.entity.ResolveHost(elem.Values["author"].(string)),
+            Host: host,
         })
     }
 
-    return result
+    return result, nil
 }
 
 // Post posts to stream
@@ -219,19 +221,17 @@ func (s *Service) Upsert(objectStr string, signature string, id string) (string,
 }
 
 // Get returns stream information by ID
-func (s *Service) Get(key string) core.Stream {
+func (s *Service) Get(key string) (core.Stream, error) {
     return s.repository.Get(key)
 }
 
 // StreamListBySchema returns streamList by schema
-func (s *Service) StreamListBySchema(schema string) []core.Stream {
-    streams := s.repository.GetList(schema)
-    return streams
+func (s *Service) StreamListBySchema(schema string) ([]core.Stream, error) {
+    return s.repository.GetList(schema)
 }
 
 // Delete deletes 
 func (s *Service) Delete(stream string, id string) {
-    cmd := s.rdb.XDel(ctx, stream, id)
-    log.Println(cmd)
+    s.rdb.XDel(ctx, stream, id)
 }
 

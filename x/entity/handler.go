@@ -2,8 +2,9 @@
 package entity
 
 import (
-    "log"
+    "errors"
     "net/http"
+    "gorm.io/gorm"
     "github.com/labstack/echo/v4"
 )
 
@@ -22,7 +23,13 @@ func NewHandler(service *Service) *Handler {
 // Output: Message Object
 func (h Handler) Get(c echo.Context) error {
     id := c.Param("id")
-    entity := h.service.Get(id)
+    entity, err := h.service.Get(id)
+    if err != nil {
+        if errors.Is(err, gorm.ErrRecordNotFound) {
+            return c.JSON(http.StatusNotFound, echo.Map{"error": "entity not found"})
+        }
+        return err
+    }
     publicInfo := SafeEntity {
         ID: entity.ID,
         Role: entity.Role,
@@ -42,14 +49,19 @@ func (h Handler) Post(c echo.Context) error {
     if err != nil {
         return err
     }
-    log.Print(request)
-    h.service.Create(request.CCAddr, request.Meta)
+    err = h.service.Create(request.CCAddr, request.Meta)
+    if err != nil {
+        return err
+    }
     return c.String(http.StatusCreated, "{\"message\": \"accept\"}")
 }
 
 // List returns all known entity list
 func (h Handler) List(c echo.Context) error {
-    entities := h.service.List()
+    entities, err := h.service.List()
+    if err != nil {
+        return err
+    }
     return c.JSON(http.StatusOK, entities)
 }
 

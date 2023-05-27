@@ -2,7 +2,9 @@
 package association
 
 import (
+    "errors"
     "net/http"
+	"gorm.io/gorm"
     "github.com/labstack/echo/v4"
 )
 
@@ -20,7 +22,13 @@ func NewHandler(service *Service) *Handler {
 func (h Handler) Get(c echo.Context) error {
     id := c.Param("id")
 
-    association := h.service.Get(id)
+    association, err := h.service.Get(id)
+    if err != nil {
+        if errors.Is(err, gorm.ErrRecordNotFound) {
+            return c.JSON(http.StatusNotFound, echo.Map{"error": "association not found"})
+        }
+        return err
+    }
     response := associationResponse {
         Association: association,
     }
@@ -50,7 +58,10 @@ func (h Handler) Delete(c echo.Context) error {
         return err
     }
 
-    h.service.Delete(request.ID)
+    err = h.service.Delete(request.ID)
+    if err != nil {
+        return err
+    }
     return c.String(http.StatusOK, "{\"message\": \"accept\"}")
 }
 

@@ -16,8 +16,8 @@ func NewRepository(db *gorm.DB) *Repository {
 }
 
 // Upsert upserts existing character
-func (r *Repository) Upsert(character core.Character) {
-    r.db.Save(&character)
+func (r *Repository) Upsert(character core.Character) error {
+    return r.db.Save(&character).Error
 }
 
 // Get returns character list which matches specified owner and chema

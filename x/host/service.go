@@ -16,18 +16,17 @@ func NewService(repository *Repository) *Service {
 
 
 // Upsert updates stream information
-func (s *Service) Upsert(host *core.Host) {
-    s.repository.Upsert(host)
+func (s *Service) Upsert(host *core.Host) error {
+    return s.repository.Upsert(host)
 }
 
 // Get returns stream information by ID
-func (s *Service) Get(key string) core.Host {
+func (s *Service) Get(key string) (core.Host, error) {
     return s.repository.Get(key)
 }
 
 // List returns streamList by schema
-func (s *Service) List() []core.Host {
-    hosts := s.repository.GetList()
-    return hosts
+func (s *Service) List() ([]core.Host, error) {
+    return s.repository.GetList()
 }
 

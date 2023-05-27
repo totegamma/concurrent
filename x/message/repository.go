@@ -16,22 +16,22 @@ func NewRepository(db *gorm.DB) *Repository {
 }
 
 // Create creates new message
-func (r *Repository) Create(message *core.Message) string {
-    r.db.Create(&message)
-    return message.ID
+func (r *Repository) Create(message *core.Message) (string, error) {
+    err := r.db.Create(&message).Error
+    return message.ID, err
 }
 
 // Get returns a message with associaiton data
-func (r *Repository) Get(key string) core.Message {
+func (r *Repository) Get(key string) (core.Message, error) {
     var message core.Message
-    r.db.Preload("Associations").First(&message, "id = ?", key)
-    return message
+    err := r.db.Preload("Associations").First(&message, "id = ?", key).Error
+    return message, err
 }
 
 // Delete deletes an message
-func (r *Repository) Delete(id string) core.Message {
+func (r *Repository) Delete(id string) (core.Message, error) {
     var deleted core.Message
-    r.db.Where("id = $1", id).Delete(&deleted)
-    return deleted
+    err := r.db.Where("id = $1", id).Delete(&deleted).Error
+    return deleted, err
 }
 

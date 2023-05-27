@@ -18,36 +18,36 @@ func NewRepository(db *gorm.DB) *Repository {
 }
 
 // Create creates new association
-func (r *Repository) Create(association *core.Association) {
-    r.db.Create(&association)
+func (r *Repository) Create(association *core.Association) error {
+    return r.db.Create(&association).Error
 }
 
 // Get returns a Association by ID
-func (r *Repository) Get(id string) core.Association {
+func (r *Repository) Get(id string) (core.Association, error) {
     var association core.Association
-    r.db.Where("id = $1", id).First(&association)
-    return association
+    err := r.db.Where("id = $1", id).First(&association).Error
+    return association, err
 }
 
 // GetOwn returns all associations which owned by specified owner
-func (r *Repository) GetOwn(author string) []core.Association {
+func (r *Repository) GetOwn(author string) ([]core.Association, error) {
     var associations []core.Association
-    r.db.Where("author = $1", author)
-    return associations 
+    err := r.db.Where("author = $1", author).Error
+    return associations, err
 }
 
 // Delete deletes a association by ID
-func (r *Repository) Delete(id string) core.Association {
+func (r *Repository) Delete(id string) (core.Association, error) {
     var deleted core.Association
     if err := r.db.First(&deleted, "id = ?", id).Error; err != nil {
         fmt.Printf("Error finding association: %v\n", err)
-        return core.Association{}
+        return core.Association{}, err
     }
-    result := r.db.Where("id = $1", id).Delete(&core.Association{})
-    if result.Error != nil {
-        fmt.Printf("Error deleting association: %v\n", result.Error)
-        return core.Association{}
+    err := r.db.Where("id = $1", id).Delete(&core.Association{}).Error
+    if err != nil {
+        fmt.Printf("Error deleting association: %v\n", err)
+        return core.Association{}, err
     }
-    return deleted
+    return deleted, nil
 }
 

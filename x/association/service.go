@@ -53,7 +53,10 @@ func (s *Service) PostAssociation(objectStr string, signature string, streams []
         s.stream.Post(stream, association.ID, association.Author, "")
     }
 
-    targetMessage := s.message.GetMessage(association.TargetID)
+    targetMessage, err := s.message.GetMessage(association.TargetID)
+    if err != nil {
+        return err
+    }
     for _, stream := range targetMessage.Streams {
         jsonstr, _ := json.Marshal(Event{
             Stream: stream,
@@ -73,19 +76,25 @@ func (s *Service) PostAssociation(objectStr string, signature string, streams []
 }
 
 // Get returns an association by ID
-func (s *Service) Get(id string) core.Association {
+func (s *Service) Get(id string) (core.Association, error) {
     return s.repo.Get(id)
 }
 
 // GetOwn returns associations by author
-func (s *Service) GetOwn(author string) []core.Association {
+func (s *Service) GetOwn(author string) ([]core.Association, error) {
     return s.repo.GetOwn(author)
 }
 
 // Delete deletes an association by ID
-func (s *Service) Delete(id string) {
-    deleted := s.repo.Delete(id)
-    targetMessage := s.message.GetMessage(deleted.TargetID)
+func (s *Service) Delete(id string) error {
+    deleted, err := s.repo.Delete(id)
+    if err != nil {
+        return err
+    }
+    targetMessage, err := s.message.GetMessage(deleted.TargetID)
+    if err != nil {
+        return err
+    }
     for _, stream := range targetMessage.Streams {
         jsonstr, _ := json.Marshal(Event{
             Stream: stream,
@@ -98,7 +107,9 @@ func (s *Service) Delete(id string) {
         err := s.rdb.Publish(context.Background(), stream, jsonstr).Err()
         if err != nil {
             log.Printf("fail to publish message to Redis: %v", err)
+            return err
         }
     }
+    return nil
 }
 

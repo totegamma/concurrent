@@ -132,6 +132,7 @@ func (s *Service) Post(stream string, id string, author string) error {
 
         // publish event to pubsub
         jsonstr, _ := json.Marshal(Event{
+            Stream: stream,
             Type: "message",
             Action: "create",
             Body: Element{
@@ -139,7 +140,6 @@ func (s *Service) Post(stream string, id string, author string) error {
                 ID: id,
                 Author: author,
                 Host: s.config.FQDN,
-                Stream: stream,
             },
         })
         err = s.rdb.Publish(context.Background(), stream, jsonstr).Err()

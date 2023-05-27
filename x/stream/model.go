@@ -46,6 +46,7 @@ type checkpointPacket struct {
     Stream string `json:"stream"`
     ID string `json:"id"`
     Author string `json:"author"`
+    Host string `json:"host"`
 }
 
 

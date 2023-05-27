@@ -1,6 +1,7 @@
 package stream
 
 import (
+    "fmt"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -114,12 +115,18 @@ func (s *Service) GetRange(streams []string, since string ,until string, limit i
 }
 
 // Post posts to stream
-func (s *Service) Post(stream string, id string, author string) error {
+func (s *Service) Post(stream string, id string, author string, host string) error {
     query := strings.Split(stream, "@")
-    if (len(query) == 1 || query[1] == s.config.FQDN) {
+    if len(query) != 2 {
+        return fmt.Errorf("Invalid format: %v", stream)
+    }
+
+    streamID, streamHost := query[0], query[1]
+
+    if (streamHost == s.config.FQDN) {
         // add to stream
         timestamp, err := s.rdb.XAdd(ctx, &redis.XAddArgs{
-            Stream: query[0],
+            Stream: streamID,
             ID: "*",
             Values: map[string]interface{}{
                 "id": id,
@@ -139,7 +146,7 @@ func (s *Service) Post(stream string, id string, author string) error {
                 Timestamp: timestamp,
                 ID: id,
                 Author: author,
-                Host: s.config.FQDN,
+                Host: host,
             },
         })
         err = s.rdb.Publish(context.Background(), stream, jsonstr).Err()
@@ -148,15 +155,16 @@ func (s *Service) Post(stream string, id string, author string) error {
         }
     } else {
         packet := checkpointPacket{
-            Stream: query[0],
+            Stream: stream,
             ID: id,
             Author: author,
+            Host: s.config.FQDN,
         }
         packetStr, err := json.Marshal(packet)
         if err != nil {
             return err
         }
-        req, err := http.NewRequest("POST", "https://" + query[1] + "/api/v1/stream/checkpoint", bytes.NewBuffer(packetStr))
+        req, err := http.NewRequest("POST", "https://" + streamHost + "/api/v1/stream/checkpoint", bytes.NewBuffer(packetStr))
         if err != nil {
             return err
         }

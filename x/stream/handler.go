@@ -26,19 +26,6 @@ func (h Handler) Get(c echo.Context) error {
     return c.JSON(http.StatusOK, stream)
 }
 
-// Post is for handling HTTP Post Method
-func (h Handler) Post(c echo.Context) error {
-    var query postQuery
-    err := c.Bind(&query)
-    if (err != nil) {
-        return err
-    }
-
-    id := h.service.Post(query.Stream, query.ID, "")
-    return c.String(http.StatusCreated, fmt.Sprintf("{\"message\": \"accept\", \"id\": \"%s\"}", id))
-
-}
-
 // Put is for handling HTTP Put Method
 func (h Handler) Put(c echo.Context) error {
     var request postRequest
@@ -99,7 +86,7 @@ func (h Handler) Checkpoint(c echo.Context) error {
         return err
     }
 
-    h.service.Post(packet.Stream, packet.ID, packet.Author)
+    h.service.Post(packet.Stream, packet.ID, packet.Author, packet.Host)
 
     return c.String(http.StatusCreated, fmt.Sprintf("{\"message\": \"accept\"}"))
 }

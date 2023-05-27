@@ -79,7 +79,6 @@ func main() {
     apiV1.POST("/associations", associationHandler.Post)
     apiV1.DELETE("/associations", associationHandler.Delete)
     apiV1.GET("/stream", streamHandler.Get)
-    apiV1.POST("/stream", streamHandler.Post)
     apiV1.PUT("/stream", streamHandler.Put)
     apiV1.GET("/stream/recent", streamHandler.Recent)
     apiV1.GET("/stream/list", streamHandler.List)

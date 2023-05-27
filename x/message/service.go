@@ -53,14 +53,15 @@ func (s *Service) PostMessage(objectStr string, signature string, streams []stri
 
     id := s.repo.Create(&message)
 
-    jsonstr, _ := json.Marshal(streamEvent{
-        Type: "message",
-        Action: "create",
-        Body: message,
-    })
 
     for _, stream := range message.Streams {
         s.stream.Post(stream, id, message.Author)
+        jsonstr, _ := json.Marshal(streamEvent{
+            Stream: stream,
+            Type: "message",
+            Action: "create",
+            Body: message,
+        })
         err := s.rdb.Publish(context.Background(), stream, jsonstr).Err()
         if err != nil {
             log.Printf("fail to publish message to Redis: %v", err)
@@ -75,13 +76,12 @@ func (s *Service) DeleteMessage(id string) {
     deleted := s.repo.Delete(id)
     for _, stream := range deleted.Streams {
         s.stream.Delete(stream, id)
-    }
-    jsonstr, _ := json.Marshal(streamEvent{
-        Type: "message",
-        Action: "delete",
-        Body: deleted,
-    })
-    for _, stream := range deleted.Streams {
+        jsonstr, _ := json.Marshal(streamEvent{
+            Stream: stream,
+            Type: "message",
+            Action: "delete",
+            Body: deleted,
+        })
         err := s.rdb.Publish(context.Background(), stream, jsonstr).Err()
         if err != nil {
             log.Printf("fail to publish message to Redis: %v", err)

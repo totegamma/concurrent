@@ -6,24 +6,26 @@ import (
     "time"
     "github.com/totegamma/concurrent/x/host"
     "github.com/totegamma/concurrent/x/entity"
+    "github.com/totegamma/concurrent/x/socket"
 )
 
 // Agent is...
 type Agent struct {
-    hostService* host.Service
-    entityService* entity.Service
+    socket* socket.Service
+    host* host.Service
+    entity* entity.Service
 }
 
-func NewAgent(host *host.Service, entity *entity.Service) *Agent {
-    return &Agent{hostService: host, entityService: entity}
+func NewAgent(socket *socket.Service, host *host.Service, entity *entity.Service) *Agent {
+    return &Agent{socket, host, entity}
 }
 
 
 func (a *Agent) collectUsers() {
-    hosts := a.hostService.List()
+    hosts := a.host.List()
     for _, host := range hosts {
         log.Printf("collect users for %v\n", host)
-        a.entityService.PullRemoteEntities(host)
+        a.entity.PullRemoteEntities(host)
     }
 }
 
@@ -35,6 +37,7 @@ func (a *Agent) Boot() {
     go func() {
         for range ticker.C {
             a.collectUsers()
+            a.socket.UpdateConnections()
         }
     }()
 }

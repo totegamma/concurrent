@@ -7,6 +7,7 @@ import (
 
 // StreamEvent is a message type which send to socket service
 type StreamEvent struct {
+    Stream string `json:"stream"`
     Type string `json:"type"`
     Action string `json:"action"`
     Body core.Association `json:"body"`

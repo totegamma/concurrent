@@ -78,7 +78,7 @@ func SetupEntityHandler(db *gorm.DB, config util.Config) *entity.Handler {
 }
 
 func SetupSocketHandler(rdb *redis.Client, config util.Config) *socket.Handler {
-	service := socket.NewService()
+	service := socket.NewService(rdb)
 	handler := socket.NewHandler(service, rdb)
 	return handler
 }

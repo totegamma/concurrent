@@ -53,7 +53,7 @@ func (s *Service) PostMessage(objectStr string, signature string, streams []stri
     id := s.repo.Create(&message)
 
     for _, stream := range message.Streams {
-        s.stream.Post(stream, id, message.Author)
+        s.stream.Post(stream, id, message.Author, "")
     }
 
     return nil

@@ -120,6 +120,10 @@ func (s *Service) Post(stream string, id string, author string, host string) err
     if len(query) != 2 {
         return fmt.Errorf("Invalid format: %v", stream)
     }
+    
+    if (host == "") {
+        host = s.config.FQDN
+    }
 
     streamID, streamHost := query[0], query[1]
 

@@ -87,6 +87,8 @@ func (a *Agent)updateConnections() {
                 continue
             }
 
+            log.Printf("start connection to %v\n", u)
+
             a.connections[server] = c
 
             // launch a new goroutine for handling incoming messages
@@ -99,11 +101,15 @@ func (a *Agent)updateConnections() {
                         return
                     }
 
+                    log.Printf("get ws event: %v\n", message)
+
                     var event streamEvent
                     err = json.Unmarshal(message, &event)
                     if err != nil {
                         log.Printf("fail to Unmarshall redis message: %v", err)
                     }
+
+                    log.Printf("[relay] targetstream: %v\n", event.Stream)
 
                     // publish message to Redis
                     err = a.rdb.Publish(context.Background(), event.Stream, string(message)).Err()
@@ -117,8 +123,10 @@ func (a *Agent)updateConnections() {
             summarized[server],
         }
         err := websocket.WriteJSON(a.connections[server], request)
+        log.Printf("send subscribe request %v to %v\n", server, request)
         if err != nil {
             log.Printf("fail to send subscribe request to remote server %v: %v", server, err)
+            delete(a.connections, server)
         }
     }
 

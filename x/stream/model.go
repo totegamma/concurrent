@@ -27,6 +27,12 @@ type signedObject struct {
     Reader []string `json:"reader"`
 }
 
+type Event struct {
+    Type string `json:"type"`
+    Action string `json:"action"`
+    Body Element `json:"body"`
+}
+
 // Element is stream element
 type Element struct {
     Timestamp string `json:"timestamp"`

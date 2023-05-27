@@ -55,11 +55,13 @@ func (s *Service) PostAssociation(objectStr string, signature string, streams []
 
     targetMessage := s.message.GetMessage(association.TargetID)
     for _, stream := range targetMessage.Streams {
-        jsonstr, _ := json.Marshal(StreamEvent{
+        jsonstr, _ := json.Marshal(Event{
             Stream: stream,
             Type: "association",
             Action: "create",
-            Body: association,
+            Body: Element {
+                ID: association.TargetID,
+            },
         })
         err := s.rdb.Publish(context.Background(), stream, jsonstr).Err()
         if err != nil {
@@ -85,11 +87,13 @@ func (s *Service) Delete(id string) {
     deleted := s.repo.Delete(id)
     targetMessage := s.message.GetMessage(deleted.TargetID)
     for _, stream := range targetMessage.Streams {
-        jsonstr, _ := json.Marshal(StreamEvent{
+        jsonstr, _ := json.Marshal(Event{
             Stream: stream,
             Type: "association",
-            Action: "delete",
-            Body: deleted,
+            Action: "create",
+            Body: Element {
+                ID: deleted.TargetID,
+            },
         })
         err := s.rdb.Publish(context.Background(), stream, jsonstr).Err()
         if err != nil {

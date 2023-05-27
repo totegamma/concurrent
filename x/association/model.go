@@ -5,12 +5,16 @@ import (
     "github.com/totegamma/concurrent/x/core"
 )
 
-// StreamEvent is a message type which send to socket service
-type StreamEvent struct {
+// Event is a message type which send to socket service
+type Event struct {
     Stream string `json:"stream"`
     Type string `json:"type"`
     Action string `json:"action"`
-    Body core.Association `json:"body"`
+    Body Element `json:"body"`
+}
+
+type Element struct {
+    ID string `json:"id"`
 }
 
 type deleteQuery struct {

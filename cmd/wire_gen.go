@@ -11,6 +11,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/x/agent"
 	"github.com/totegamma/concurrent/x/association"
+	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/character"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/host"
@@ -90,6 +91,12 @@ func SetupAgent(db *gorm.DB, rdb *redis.Client, config util.Config) *agent.Agent
 	entityService := entity.NewService(entityRepository, config)
 	agentAgent := agent.NewAgent(rdb, config, service, entityService)
 	return agentAgent
+}
+
+func SetupAuthHandler(config util.Config) *auth.Handler {
+	service := auth.NewService(config)
+	handler := auth.NewHandler(service)
+	return handler
 }
 
 // wire.go:

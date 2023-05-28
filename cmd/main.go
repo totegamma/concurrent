@@ -64,6 +64,7 @@ func main() {
     streamHandler := SetupStreamHandler(db, rdb, config)
     hostHandler := SetupHostHandler(db, config)
     entityHandler := SetupEntityHandler(db, config)
+    authHandler := SetupAuthHandler(config)
 
     e.HideBanner = true
     e.Use(middleware.CORS())
@@ -94,6 +95,8 @@ func main() {
     apiV1.GET("/entity/:id", entityHandler.Get)
     apiV1.GET("/entity/list", entityHandler.List)
     apiV1.GET("/admin/sayhello/:fqdn", hostHandler.SayHello)
+
+    apiV1.GET("/auth/claim", authHandler.Claim)
 
     e.GET("/*", spa)
     e.GET("/health", func(c echo.Context) (err error) {

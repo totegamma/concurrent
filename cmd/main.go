@@ -64,7 +64,7 @@ func main() {
     streamHandler := SetupStreamHandler(db, rdb, config)
     hostHandler := SetupHostHandler(db, config)
     entityHandler := SetupEntityHandler(db, config)
-    authHandler := SetupAuthHandler(config)
+    authHandler := SetupAuthHandler(db, config)
 
     e.HideBanner = true
     e.Use(middleware.CORS())

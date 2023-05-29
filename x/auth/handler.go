@@ -2,7 +2,6 @@
 package auth
 
 import (
-    "fmt"
     "net/http"
     "github.com/labstack/echo/v4"
 )
@@ -20,11 +19,11 @@ func NewHandler(service *Service) *Handler {
 // Claim is used for get server signed jwt
 // input user signed jwt
 func (h *Handler) Claim(c echo.Context) error {
-    jwt := c.Request().Header.Get("Authentication")
-    claim, err := h.service.ValidateJWT(jwt)
+    request := c.Request().Header.Get("Authentication")
+    response, err := h.service.IssueJWT(request)
     if err != nil {
         return c.JSON(http.StatusUnauthorized, echo.Map{"error": err.Error()})
     }
-    return c.JSON(http.StatusOK, echo.Map{"message": fmt.Sprintf("hello %v!", claim.Issuer)})
+    return c.JSON(http.StatusOK, echo.Map{"jwt": response})
 }
 

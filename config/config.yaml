@@ -5,4 +5,6 @@ publickey: 04212ec2215d6182b2f57b3aef43611fb6afb117f32d0d2a897aeb4ab469cfb240f40
 privatekey: 17bfb1363aa33b4a476d01713b3bf74ff35f3bf8a070924e7c2c06d7333afdd6
 dsn: "host=db user=postgres password=postgres dbname=concurrent port=5432 sslmode=disable"
 redisAddr: "redis:6379"
+admins:
+  - CC73EA8CF2542a0E82EF555C294128ebEbb59AB6dC
 

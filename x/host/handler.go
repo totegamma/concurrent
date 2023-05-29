@@ -5,12 +5,14 @@ import (
     "errors"
     "net/http"
     "io/ioutil"
-    "gorm.io/gorm"
     "encoding/json"
 
+    "gorm.io/gorm"
+    "golang.org/x/exp/slices"
+
     "github.com/labstack/echo/v4"
-    "github.com/totegamma/concurrent/x/util"
     "github.com/totegamma/concurrent/x/core"
+    "github.com/totegamma/concurrent/x/util"
 )
 
 // Handler is handles websocket
@@ -114,8 +116,14 @@ func (h Handler) Hello(c echo.Context) error {
 }
 
 // SayHello iniciates a new host registration
+// Only Admin can call this
 func (h Handler) SayHello(c echo.Context) error {
     target := c.Param("fqdn")
+
+    claims := c.Get("jwtclaims").(util.JwtClaims)
+    if !slices.Contains(h.config.Admins, claims.Audience) {
+        return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action"})
+    }
 
     me := Profile{
         ID: h.config.FQDN,

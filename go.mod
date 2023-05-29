@@ -13,6 +13,7 @@ require (
 	github.com/redis/go-redis/v9 v9.0.3
 	github.com/rs/xid v1.5.0
 	golang.org/x/crypto v0.6.0
+	golang.org/x/exp v0.0.0-20230206171751-46f607a40771
 	gorm.io/driver/postgres v1.4.8
 	gorm.io/gorm v1.24.5
 )

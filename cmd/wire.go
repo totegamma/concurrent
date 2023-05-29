@@ -7,6 +7,7 @@ import (
     "github.com/google/wire"
     "github.com/redis/go-redis/v9"
 
+    "github.com/totegamma/concurrent/x/auth"
     "github.com/totegamma/concurrent/x/util"
     "github.com/totegamma/concurrent/x/host"
     "github.com/totegamma/concurrent/x/agent"
@@ -64,5 +65,10 @@ func SetupSocketHandler(rdb *redis.Client,  config util.Config) *socket.Handler 
 func SetupAgent(db *gorm.DB, rdb *redis.Client, config util.Config) *agent.Agent {
     wire.Build(agent.NewAgent, host.NewService, host.NewRepository, entity.NewService, entity.NewRepository)
     return &agent.Agent{}
+}
+
+func SetupAuthHandler(db *gorm.DB, config util.Config) *auth.Handler {
+    wire.Build(auth.NewHandler, auth.NewService, entity.NewService, entity.NewRepository)
+    return &auth.Handler{}
 }
 

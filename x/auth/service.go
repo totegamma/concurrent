@@ -44,7 +44,7 @@ func (s *Service) IssueJWT(request string) (string, error) {
 
     // create new jwt
     response, err := util.CreateJWT(util.JwtClaims {
-        Issuer: s.config.FQDN,
+        Issuer: s.config.CCAddr,
         Subject: "concurrent",
         Audience: claims.Issuer,
         ExpirationTime: strconv.FormatInt(time.Now().Add(6 * time.Hour).Unix(), 10),

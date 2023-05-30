@@ -90,6 +90,7 @@ func main() {
 
     apiV1R := apiV1.Group("", auth.JWT)
     apiV1R.POST("/messages", messageHandler.Post)
+    apiV1R.DELETE("/messages", messageHandler.Delete)
     apiV1R.PUT("/characters", characterHandler.Put)
     apiV1R.POST("/associations", associationHandler.Post)
     apiV1R.DELETE("/associations", associationHandler.Delete)

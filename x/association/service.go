@@ -53,7 +53,7 @@ func (s *Service) PostAssociation(objectStr string, signature string, streams []
         s.stream.Post(stream, association.ID, association.Author, "")
     }
 
-    targetMessage, err := s.message.GetMessage(association.TargetID)
+    targetMessage, err := s.message.Get(association.TargetID)
     if err != nil {
         return err
     }
@@ -91,7 +91,7 @@ func (s *Service) Delete(id string) error {
     if err != nil {
         return err
     }
-    targetMessage, err := s.message.GetMessage(deleted.TargetID)
+    targetMessage, err := s.message.Get(deleted.TargetID)
     if err != nil {
         return err
     }

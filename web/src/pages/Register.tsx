@@ -23,13 +23,27 @@ export const Register = (): JSX.Element => {
     const [loading, setLoading] = React.useState(false);
     const [success, setSuccess] = React.useState(false);
 
-    const ccaddr = searchParams.get('ccaddr')
+    const token = searchParams.get('token')
+    let ccaddr = ""
+    if (token) {
+        const split = token.split('.')
+        const encoded = split[1]
+        const payload = window.atob(
+            encoded.replace('-', '+').replace('_', '/') + '=='.slice((2 - encoded.length * 3) & 3)
+        )
+        const claims = JSON.parse(payload)
+        ccaddr = claims.iss
+    }
 
     const register = (meta: any): void => {
+        if (!token) return
         setLoading(true)
         const requestOptions = {
             method: 'POST',
-            headers: { 'content-type': 'application/json' },
+            headers: {
+                'content-type': 'application/json',
+                'authentication': 'Bearer ' + token
+            },
             body: JSON.stringify({
                 ccaddr,
                 meta: JSON.stringify(meta)
@@ -43,6 +57,11 @@ export const Register = (): JSX.Element => {
             .then(async (res) => await res.json())
             .then((data) => {
                 console.log(data)
+                if (data.error) {
+                    alert(data.error)
+                    setLoading(false)
+                    return
+                }
                 setLoading(false)
                 setSuccess(true)
             })

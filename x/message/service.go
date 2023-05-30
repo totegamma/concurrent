@@ -21,8 +21,8 @@ func NewService(rdb *redis.Client, repo *Repository, stream *stream.Service) *Se
     return &Service{rdb, repo, stream}
 }
 
-// GetMessage returns a message by ID
-func (s *Service) GetMessage(id string) (core.Message, error) {
+// Get returns a message by ID
+func (s *Service) Get(id string) (core.Message, error) {
     return s.repo.Get(id)
 }
 
@@ -60,8 +60,8 @@ func (s *Service) PostMessage(objectStr string, signature string, streams []stri
     return nil
 }
 
-// DeleteMessage deletes a message by ID
-func (s *Service) DeleteMessage(id string) (core.Message, error) {
+// Delete deletes a message by ID
+func (s *Service) Delete(id string) (core.Message, error) {
     return s.repo.Delete(id)
 }
 

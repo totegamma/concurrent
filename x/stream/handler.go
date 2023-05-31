@@ -98,7 +98,7 @@ func (h Handler) Checkpoint(c echo.Context) error {
         return err
     }
 
-    err = h.service.Post(packet.Stream, packet.ID, packet.Author, packet.Host)
+    err = h.service.Post(packet.Stream, packet.ID, packet.Type, packet.Author, packet.Host)
     if err != nil {
         return nil
     }

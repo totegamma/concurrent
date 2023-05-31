@@ -67,10 +67,23 @@ func (s *Service) GetRecent(streams []string, limit int) ([]Element, error) {
 
     for _, elem := range chopped {
         host, _ := s.entity.ResolveHost(elem.Values["author"].(string))
+        id, ok := elem.Values["id"].(string)
+        if !ok {
+            id = ""
+        }
+        typ, ok := elem.Values["type"].(string)
+        if !ok {
+            typ = "message"
+        }
+        author, ok := elem.Values["author"].(string)
+        if !ok {
+            author = ""
+        }
         result = append(result, Element{
             Timestamp: elem.ID,
-            ID: elem.Values["id"].(string),
-            Author: elem.Values["author"].(string),
+            ID: id,
+            Type: typ,
+            Author: author,
             Host: host,
         })
     }
@@ -105,10 +118,23 @@ func (s *Service) GetRange(streams []string, since string ,until string, limit i
 
     for _, elem := range chopped {
         host, _ := s.entity.ResolveHost(elem.Values["author"].(string))
+        id, ok := elem.Values["id"].(string)
+        if !ok {
+            id = ""
+        }
+        typ, ok := elem.Values["type"].(string)
+        if !ok {
+            typ = "message"
+        }
+        author, ok := elem.Values["author"].(string)
+        if !ok {
+            author = ""
+        }
         result = append(result, Element{
             Timestamp: elem.ID,
-            ID: elem.Values["id"].(string),
-            Author: elem.Values["author"].(string),
+            ID: id,
+            Type: typ,
+            Author: author,
             Host: host,
         })
     }
@@ -117,7 +143,7 @@ func (s *Service) GetRange(streams []string, since string ,until string, limit i
 }
 
 // Post posts to stream
-func (s *Service) Post(stream string, id string, author string, host string) error {
+func (s *Service) Post(stream string, id string, typ string, author string, host string) error {
     query := strings.Split(stream, "@")
     if len(query) != 2 {
         return fmt.Errorf("Invalid format: %v", stream)
@@ -136,6 +162,7 @@ func (s *Service) Post(stream string, id string, author string, host string) err
             ID: "*",
             Values: map[string]interface{}{
                 "id": id,
+                "type": typ,
                 "author": author,
             },
         }).Result()
@@ -146,11 +173,12 @@ func (s *Service) Post(stream string, id string, author string, host string) err
         // publish event to pubsub
         jsonstr, _ := json.Marshal(Event{
             Stream: stream,
-            Type: "message",
+            Type: typ,
             Action: "create",
             Body: Element{
                 Timestamp: timestamp,
                 ID: id,
+                Type: typ,
                 Author: author,
                 Host: host,
             },
@@ -163,6 +191,7 @@ func (s *Service) Post(stream string, id string, author string, host string) err
         packet := checkpointPacket{
             Stream: stream,
             ID: id,
+            Type: typ,
             Author: author,
             Host: s.config.FQDN,
         }
@@ -217,7 +246,7 @@ func (s *Service) Upsert(objectStr string, signature string, id string) (string,
     }
 
     s.repository.Upsert(&stream)
-    return stream.ID, nil
+    return stream.ID + "@" + s.config.FQDN, nil
 }
 
 // Get returns stream information by ID

@@ -54,7 +54,7 @@ func (s *Service) PostMessage(objectStr string, signature string, streams []stri
     }
 
     for _, stream := range message.Streams {
-        s.stream.Post(stream, id, message.Author, "")
+        s.stream.Post(stream, id, "message", message.Author, "")
     }
 
     return nil

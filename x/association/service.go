@@ -50,7 +50,7 @@ func (s *Service) PostAssociation(objectStr string, signature string, streams []
 
     s.repo.Create(&association)
     for _, stream := range association.Streams {
-        s.stream.Post(stream, association.ID, association.Author, "")
+        s.stream.Post(stream, association.ID, "association", association.Author, "")
     }
 
     targetMessage, err := s.message.Get(association.TargetID)

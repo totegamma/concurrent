@@ -38,6 +38,7 @@ type Event struct {
 type Element struct {
     Timestamp string `json:"timestamp"`
     ID string `json:"id"`
+    Type string `json:"type"`
     Author string `json:"author"`
     Host string `json:"currenthost"`
 }
@@ -45,6 +46,7 @@ type Element struct {
 type checkpointPacket struct {
     Stream string `json:"stream"`
     ID string `json:"id"`
+    Type string `json:"type"`
     Author string `json:"author"`
     Host string `json:"host"`
 }

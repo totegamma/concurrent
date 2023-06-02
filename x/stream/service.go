@@ -256,7 +256,11 @@ func (s *Service) Get(key string) (core.Stream, error) {
 
 // StreamListBySchema returns streamList by schema
 func (s *Service) StreamListBySchema(schema string) ([]core.Stream, error) {
-    return s.repository.GetList(schema)
+    streams, err := s.repository.GetList(schema)
+    for i := 0; i < len(streams); i++ {
+        streams[i].ID = streams[i].ID + "@" + s.config.FQDN
+    }
+    return streams, err
 }
 
 // Delete deletes 

@@ -232,6 +232,15 @@ func (s *Service) Upsert(objectStr string, signature string, id string) (string,
 
     if id == "" {
         id = xid.New().String()
+    } else {
+        split := strings.Split(id, "@")
+        if (len(split) != 2) {
+            return "", fmt.Errorf("invalid id")
+        }
+        if (split[1] != s.config.FQDN) {
+            return "", fmt.Errorf("invalid stream host")
+        }
+        id = split[0]
     }
 
     stream := core.Stream {

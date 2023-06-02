@@ -27,6 +27,7 @@ type signedObject struct {
     Reader []string `json:"reader"`
 }
 
+// Event is websocket root packet model
 type Event struct {
     Stream string `json:"stream"`
     Type string `json:"type"`

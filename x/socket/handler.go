@@ -11,8 +11,6 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-var ctx = context.Background()
-
 // Handler is handles websocket
 type Handler struct {
     service *Service
@@ -51,9 +49,11 @@ func (h Handler) Connect(c echo.Context) error {
         log.Println("Failed to upgrade WebSocket:", err)
         c.Logger().Error(err)
     }
-    defer func() {
-        ws.Close()
-    }()
+    defer ws.Close()
+
+    var ctx context.Context
+    var cancel context.CancelFunc
+    var pubsub *redis.PubSub
 
     for {
         var req ChannelRequest
@@ -63,9 +63,17 @@ func (h Handler) Connect(c echo.Context) error {
             break
         }
 
+        if cancel != nil {
+            cancel()
+        }
+        if pubsub != nil {
+            pubsub.Close()
+        }
+
+        ctx, cancel = context.WithCancel(context.Background())
+
         // Unsubscribe from all channels before subscribing to new ones
         pubsub := h.rdb.Subscribe(ctx)
-        pubsub.Unsubscribe(ctx)
 
         // Subscribe to new channels
         for _, ch := range req.Channels {
@@ -74,23 +82,44 @@ func (h Handler) Connect(c echo.Context) error {
         }
 
         // Read from channels
-        go func() {
+        go func(ctx context.Context, pubsub *redis.PubSub) {
             for {
-                msg, err := pubsub.ReceiveMessage(ctx)
-                if err != nil {
-                    log.Println("Error receiving message: ", err)
-                    break
-                }
-                log.Printf("Received message from channel %s: %s\n", msg.Channel, msg.Payload)
+                select {
+                case <-ctx.Done():
+                    log.Println("finish goroutine")
+                    return
+                default:
+                    msg, err := pubsub.ReceiveMessage(ctx)
+                    if ctx.Err() != nil {
+                        log.Println("context seems to be canceled")
+                        continue
+                    }
+                    if err != nil {
+                        log.Println("Error receiving message: ", err)
+                        break
+                    }
+                    log.Printf("Received message from channel %s: %s\n", msg.Channel, msg.Payload)
 
-                err = h.send(ws, msg.Payload)
-                if err != nil {
-                    log.Println("Error writing message: ", err)
-                    break
+                    err = h.send(ws, msg.Payload)
+                    if err != nil {
+                        log.Println("Error writing message: ", err)
+                        break
+                    }
                 }
             }
-        }()
+        }(ctx, pubsub)
+
     }
+
+    defer func() {
+        if cancel != nil {
+            cancel()
+        }
+        if pubsub != nil {
+            pubsub.Close()
+        }
+    }()
+
     return nil
 }
 

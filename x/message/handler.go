@@ -46,11 +46,11 @@ func (h Handler) Post(c echo.Context) error {
     if err != nil {
         return err
     }
-    err = h.service.PostMessage(request.SignedObject, request.Signature, request.Streams)
+    message, err := h.service.PostMessage(request.SignedObject, request.Signature, request.Streams)
     if err != nil {
         return err
     }
-    return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
+    return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": message})
 }
 
 // Delete deletes message. only auther can perform this.
@@ -72,11 +72,11 @@ func (h Handler) Delete(c echo.Context) error {
         return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action"})
     }
 
-    _, err = h.service.Delete(request.ID)
+    deleted, err := h.service.Delete(request.ID)
     if err != nil {
         return err
     }
-    return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
+    return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": deleted})
 }
 
 

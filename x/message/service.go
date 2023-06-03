@@ -27,17 +27,17 @@ func (s *Service) Get(id string) (core.Message, error) {
 }
 
 // PostMessage creates new message
-func (s *Service) PostMessage(objectStr string, signature string, streams []string) error {
+func (s *Service) PostMessage(objectStr string, signature string, streams []string) (core.Message, error) {
 
     var object signedObject
     err := json.Unmarshal([]byte(objectStr), &object)
     if err != nil {
-        return err
+        return core.Message{}, err
     }
 
     if err := util.VerifySignature(objectStr, object.Signer, signature); err != nil {
         log.Println("verify signature err: ", err)
-        return err
+        return core.Message{}, err
     }
 
     message := core.Message{
@@ -50,14 +50,14 @@ func (s *Service) PostMessage(objectStr string, signature string, streams []stri
 
     id, err := s.repo.Create(&message)
     if err != nil {
-        return err
+        return message, err
     }
 
     for _, stream := range message.Streams {
         s.stream.Post(stream, id, "message", message.Author, "")
     }
 
-    return nil
+    return message, nil
 }
 
 // Delete deletes a message by ID

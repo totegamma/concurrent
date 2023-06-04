@@ -156,6 +156,12 @@ func (s *Service) Post(stream string, id string, typ string, author string, host
     streamID, streamHost := query[0], query[1]
 
     if (streamHost == s.config.FQDN) {
+
+        // check if the user has write access to the stream
+        if !s.repository.HasWriteAccess(streamID, author) {
+            return fmt.Errorf("You don't have write access to %v", streamID)
+        }
+
         // add to stream
         timestamp, err := s.rdb.XAdd(ctx, &redis.XAddArgs{
             Stream: streamID,

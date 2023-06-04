@@ -2,6 +2,7 @@ package stream
 
 import (
     "gorm.io/gorm"
+    "golang.org/x/exp/slices"
     "github.com/totegamma/concurrent/x/core"
 )
 
@@ -34,4 +35,26 @@ func (r *Repository) GetList(schema string) ([]core.Stream, error) {
     err := r.db.Where("Schema = ?", schema).Find(&streams).Error
     return streams, err
 }
+
+
+// HasWriteAccess returns true if the user has write access
+func (r *Repository) HasWriteAccess(streamID string, userAddress string) bool {
+    var stream core.Stream
+    r.db.First(&stream, "id = ?", streamID)
+    if len(stream.Writer) == 0 {
+        return true
+    }
+    return slices.Contains(stream.Writer, userAddress)
+}
+
+// HasReadAccess returns true if the user has read access
+func (r *Repository) HasReadAccess(streamID string, userAddress string) bool {
+    var stream core.Stream
+    r.db.First(&stream, "id = ?", streamID)
+    if len(stream.Reader) == 0 {
+        return true
+    }
+    return slices.Contains(stream.Reader, userAddress)
+}
+
 

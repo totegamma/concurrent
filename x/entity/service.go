@@ -87,3 +87,13 @@ func (s *Service) ResolveHost(user string) (string, error) {
     return fqdn, nil
 }
 
+
+// IsUserExists returns true if user exists
+func (s *Service) IsUserExists(user string) bool {
+    entity, err := s.repository.Get(user)
+    if err != nil {
+        return false
+    }
+    return entity.ID != "" && entity.Host == ""
+}
+

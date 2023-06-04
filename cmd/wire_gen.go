@@ -18,6 +18,7 @@ import (
 	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/socket"
 	"github.com/totegamma/concurrent/x/stream"
+	"github.com/totegamma/concurrent/x/userkv"
 	"github.com/totegamma/concurrent/x/util"
 	"gorm.io/gorm"
 )
@@ -101,6 +102,15 @@ func SetupAuthHandler(db *gorm.DB, config util.Config) *auth.Handler {
 	return handler
 }
 
+func SetupUserkvHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *userkv.Handler {
+	repository := userkv.NewRepository(rdb)
+	service := userkv.NewService(repository)
+	entityRepository := entity.NewRepository(db)
+	entityService := entity.NewService(entityRepository, config)
+	handler := userkv.NewHandler(service, entityService)
+	return handler
+}
+
 // wire.go:
 
 var hostHandlerProvider = wire.NewSet(host.NewHandler, host.NewService, host.NewRepository)
@@ -114,3 +124,5 @@ var messageHandlerProvider = wire.NewSet(message.NewHandler, message.NewService,
 var characterHandlerProvider = wire.NewSet(character.NewHandler, character.NewService, character.NewRepository)
 
 var associationHandlerProvider = wire.NewSet(association.NewHandler, association.NewService, association.NewRepository, message.NewService, message.NewRepository)
+
+var userkvHandlerProvider = wire.NewSet(userkv.NewHandler, userkv.NewService, userkv.NewRepository)

@@ -66,6 +66,7 @@ func main() {
     hostHandler := SetupHostHandler(db, config)
     entityHandler := SetupEntityHandler(db, config)
     authHandler := SetupAuthHandler(db, config)
+    userkvHandler := SetupUserkvHandler(db, rdb, config)
 
     e.HideBanner = true
     e.Use(middleware.CORS())
@@ -100,6 +101,8 @@ func main() {
     apiV1R.POST("/host/hello", hostHandler.Hello)
     apiV1R.POST("/entity", entityHandler.Post)
     apiV1R.GET("/admin/sayhello/:fqdn", hostHandler.SayHello)
+    apiV1R.GET("/kv/:key", userkvHandler.Get)
+    apiV1R.PUT("/kv/:key", userkvHandler.Upsert)
 
     e.GET("/*", spa)
     e.GET("/health", func(c echo.Context) (err error) {

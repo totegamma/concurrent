@@ -129,7 +129,7 @@ func spa(c echo.Context) error {
     }
     fPath := filepath.Join(webFilePath, path)
     if _, err := os.Stat(fPath); os.IsNotExist(err) {
-        return c.File("/etc/www/concurrent/index.html")
+        return c.File(filepath.Join(webFilePath,"index.html"))
     }
     return c.File(fPath)
 }

@@ -26,7 +26,13 @@ func main() {
     e := echo.New()
 
     config := util.Config{}
-    err := config.Load("/etc/concurrent/config.yaml")
+
+    configPath := os.Getenv("CONCURRENT_CONFIG")
+    if configPath == "" {
+        configPath = "/etc/concurrent/config.yaml"
+    }
+    err := config.Load(configPath)
+
     if err != nil {
         e.Logger.Fatal(err)
     }
@@ -116,10 +122,15 @@ func main() {
 
 func spa(c echo.Context) error {
     path := c.Request().URL.Path
-    fpath := filepath.Join("/etc/www/concurrent", path)
-    if _, err := os.Stat(fpath); os.IsNotExist(err) {
+
+    webFilePath := os.Getenv("CONCURRENT_WEBUI")
+    if webFilePath == "" {
+        webFilePath = "/etc/www/concurrent"
+    }
+    fPath := filepath.Join(webFilePath, path)
+    if _, err := os.Stat(fPath); os.IsNotExist(err) {
         return c.File("/etc/www/concurrent/index.html")
     }
-    return c.File(fpath)
+    return c.File(fPath)
 }
 

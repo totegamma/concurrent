@@ -9,6 +9,7 @@ package main
 import (
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
+	"github.com/totegamma/concurrent/x/activitypub"
 	"github.com/totegamma/concurrent/x/agent"
 	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/auth"
@@ -108,6 +109,12 @@ func SetupUserkvHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *use
 	entityRepository := entity.NewRepository(db)
 	entityService := entity.NewService(entityRepository, config)
 	handler := userkv.NewHandler(service, entityService)
+	return handler
+}
+
+func SetupActivitypubHandler(db *gorm.DB, config util.Config) *activitypub.Handler {
+	repository := activitypub.NewRepository(db)
+	handler := activitypub.NewHandler(repository, config)
 	return handler
 }
 

@@ -17,6 +17,7 @@ import (
 	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
+	"github.com/totegamma/concurrent/x/activitypub"
 )
 
 func main() {
@@ -48,6 +49,7 @@ func main() {
         &core.Stream{},
         &core.Host{},
         &core.Entity{},
+        &activitypub.Entity{},
     )
 
     rdb := redis.NewClient(&redis.Options{
@@ -67,11 +69,15 @@ func main() {
     entityHandler := SetupEntityHandler(db, config)
     authHandler := SetupAuthHandler(db, config)
     userkvHandler := SetupUserkvHandler(db, rdb, config)
+    activitypubHandler := SetupActivitypubHandler(db, config)
 
     e.HideBanner = true
     e.Use(middleware.CORS())
     e.Use(middleware.Logger())
     e.Use(middleware.Recover())
+
+    e.GET("/.well-known/webfinger", activitypubHandler.WebFinger)
+    e.GET("/ap/:id", activitypubHandler.User)
 
     apiV1 := e.Group("/api/v1")
     apiV1.GET("/messages/:id", messageHandler.Get)
@@ -103,6 +109,7 @@ func main() {
     apiV1R.GET("/admin/sayhello/:fqdn", hostHandler.SayHello)
     apiV1R.GET("/kv/:key", userkvHandler.Get)
     apiV1R.PUT("/kv/:key", userkvHandler.Upsert)
+    apiV1R.PUT("/ap/entity", activitypubHandler.UpdateEntity)
 
     e.GET("/*", spa)
     e.GET("/health", func(c echo.Context) (err error) {

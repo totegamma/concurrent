@@ -1,17 +1,20 @@
 package activitypub
 
-// Entity is a db model of an ActivityPub entity.
-type Entity struct {
-    ID string `json:"id" gorm:"type:char(42)"`
+// ApEntity is a db model of an ActivityPub entity.
+type ApEntity struct {
+    ID string `json:"id" gorm:"type:text"`
+    CCAddr string `json:"ccaddr" gorm:"type:char(42)"`
+    Publickey string `json:"publickey" gorm:"type:text"`
+    Privatekey string `json:"privatekey" gorm:"type:text"`
+}
+
+// ApPerson is a db model of an ActivityPub entity.
+type ApPerson struct {
+    ID string `json:"id" gorm:"type:text"`
     Name string `json:"name" gorm:"type:text"`
     Summary string `json:"summary" gorm:"type:text"`
     ProfileURL string `json:"profile_url" gorm:"type:text"`
     IconURL string `json:"icon_url" gorm:"type:text"`
-}
-
-// TableName returns the table name of the model.
-func (Entity) TableName() string {
-    return "ap_entities"
 }
 
 // WebFinger is a struct for a WebFinger response.
@@ -27,8 +30,8 @@ type WebFingerLink struct {
     Href string `json:"href"`
 }
 
-// ActivityPub is a struct for an ActivityPub actor.
-type ActivityPub struct {
+// Person is a struct for an ActivityPub actor.
+type Person struct {
     Context string `json:"@context"`
     Type string `json:"type"`
     ID string `json:"id"`
@@ -42,6 +45,15 @@ type ActivityPub struct {
     Summary string `json:"summary"`
     URL string `json:"url"`
     Icon Icon `json:"icon"`
+    PublicKey Key `json:"publicKey"`
+}
+
+// Key is a struct for the publicKey field of an actor.
+type Key struct {
+    ID string `json:"id"`
+    Type string `json:"type"`
+    Owner string `json:"owner"`
+    PublicKeyPem string `json:"publicKeyPem"`
 }
 
 // Icon is a struct for the icon field of an actor.
@@ -51,29 +63,15 @@ type Icon struct {
     URL string `json:"url"`
 }
 
-// Message is a struct for the actor object.
-type Message struct {
-    Context string `json:"@context"`
-    Type string `json:"type"`
-    ID string `json:"id"`
-    Name string `json:"name"`
-    PreferredUsername string `json:"preferredUsername"`
-    Summary string `json:"summary"`
-    Inbox string `json:"inbox"`
-    Outbox string `json:"outbox"`
-    URL string `json:"url"`
-    Icon Icon `json:"icon"`
-}
-
-// Activity is a struct for an ActivityPub activity.
-type Activity struct {
+// Create is a struct for an ActivityPub create activity.
+type Create struct {
     Context string `json:"@context"`
     Type string `json:"type"`
     ID string `json:"id"`
     Actor string `json:"actor"`
     To []string `json:"to"`
     CC []string `json:"cc"`
-    Object string `json:"object"`
+    Object Object `json:"object"`
     Published string `json:"published"`
     Summary string `json:"summary"`
     Content string `json:"content"`
@@ -84,16 +82,21 @@ type Object struct {
     Context string `json:"@context"`
     Type string `json:"type"`
     ID string `json:"id"`
-    Name string `json:"name"`
     Content string `json:"content"`
-    URL string `json:"url"`
-    Attachment []Attachment `json:"attachment"`
 }
 
-// Attachment is a struct for an ActivityPub attachment.
-type Attachment struct {
+// Accept is a struct for an ActivityPub accept activity.
+type Accept struct {
+    Context string `json:"@context"`
     Type string `json:"type"`
-    MediaType string `json:"mediaType"`
-    URL string `json:"url"`
+    ID string `json:"id"`
+    Actor string `json:"actor"`
+    Object Object `json:"object"`
+}
+
+
+// CreateEntityRequest is a struct for a request to create an entity.
+type CreateEntityRequest struct {
+    ID string `json:"id"`
 }
 

@@ -49,7 +49,8 @@ func main() {
         &core.Stream{},
         &core.Host{},
         &core.Entity{},
-        &activitypub.Entity{},
+        &activitypub.ApEntity{},
+        &activitypub.ApPerson{},
     )
 
     rdb := redis.NewClient(&redis.Options{
@@ -94,6 +95,7 @@ func main() {
     apiV1.GET("/entity/:id", entityHandler.Get)
     apiV1.GET("/entity/list", entityHandler.List)
     apiV1.GET("/auth/claim", authHandler.Claim)
+    apiV1.GET("/ap/entity/:ccaddr", activitypubHandler.GetEntityID)
 
     apiV1R := apiV1.Group("", auth.JWT)
     apiV1R.POST("/messages", messageHandler.Post)
@@ -109,7 +111,8 @@ func main() {
     apiV1R.GET("/admin/sayhello/:fqdn", hostHandler.SayHello)
     apiV1R.GET("/kv/:key", userkvHandler.Get)
     apiV1R.PUT("/kv/:key", userkvHandler.Upsert)
-    apiV1R.PUT("/ap/entity", activitypubHandler.UpdateEntity)
+    apiV1R.POST("/ap/entity", activitypubHandler.CreateEntity)
+    apiV1R.PUT("/ap/person", activitypubHandler.UpdatePerson)
 
     e.GET("/*", spa)
     e.GET("/health", func(c echo.Context) (err error) {

@@ -1,2 +1,5 @@
 concurrent
 _composeData
+
+*.exe
+.idea/

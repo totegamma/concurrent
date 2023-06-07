@@ -3,11 +3,17 @@ package activitypub
 
 import (
     "fmt"
+    "time"
+    "bytes"
     "strings"
+    "net/url"
     "net/http"
     "io/ioutil"
     "encoding/pem"
+    "encoding/json"
+    "crypto/x509"
     "crypto/ed25519"
+    "github.com/go-fed/httpsig"
     "github.com/labstack/echo/v4"
     "github.com/totegamma/concurrent/x/util"
 )
@@ -83,9 +89,6 @@ func (h Handler) User(c echo.Context) error {
         ID: "https://" + h.config.FQDN + "/ap/" + id,
         Inbox: "https://" + h.config.FQDN + "/ap/" + id + "/inbox",
         Outbox: "https://" + h.config.FQDN + "/ap/" + id + "/outbox",
-        Followers: "https://" + h.config.FQDN + "/ap/" + id + "/followers",
-        Following: "https://" + h.config.FQDN + "/ap/" + id + "/following",
-        Liked: "https://" + h.config.FQDN + "/ap/" + id + "/liked",
         PreferredUsername: id,
         Name: person.Name,
         Summary: person.Summary,
@@ -153,13 +156,25 @@ func (h Handler) CreateEntity(c echo.Context) error {
 
     // create ed25519 keypair
     pub, priv, err := ed25519.GenerateKey(nil)
+
+    qb, err := x509.MarshalPKIXPublicKey(pub)
+    if err != nil {
+        return err
+    }
+
     q := pem.EncodeToMemory(&pem.Block{
         Type: "PUBLIC KEY",
-        Bytes: pub,
+        Bytes: qb,
     })
+
+    pb, err := x509.MarshalPKCS8PrivateKey(priv)
+    if err != nil {
+        return err
+    }
+
     p := pem.EncodeToMemory(&pem.Block{
         Type: "PRIVATE KEY",
-        Bytes: priv,
+        Bytes: pb,
     })
 
     created, err := h.repo.CreateEntity(ApEntity {
@@ -192,7 +207,6 @@ func (h Handler) GetEntityID(c echo.Context) error {
 }
 
 // Inbox handles inbox requests.
-/*
 func (h Handler) Inbox(c echo.Context) error {
     id := c.Param("id")
     if id == "" {
@@ -212,20 +226,72 @@ func (h Handler) Inbox(c echo.Context) error {
 
     // handle follow requests
     if object.Type == "Follow" {
+        requester, err := FetchPerson(object.Actor)
+        if err != nil {
+            return c.String(http.StatusInternalServerError, "Internal server error")
+        }
         accept := Accept{
             Context: "https://www.w3.org/ns/activitystreams",
+            ID: "https://" + h.config.FQDN + "/ap/" + id + "/follows/" + url.PathEscape(requester.ID),
             Type: "Accept",
             Actor: "https://" + h.config.FQDN + "/ap/" + id,
             Object: object,
+        }
+
+        json, err := json.Marshal(accept)
+        if err != nil {
+            return c.String(http.StatusInternalServerError, "Internal server error")
+        }
+
+        req, err := http.NewRequest("POST", requester.Inbox, bytes.NewBuffer(json))
+        if err != nil {
+            return c.String(http.StatusInternalServerError, "Internal server error")
+        }
+        req.Header.Set("Content-Type", "application/activity+json")
+        req.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
+        client := new(http.Client)
+
+
+        split := strings.Split(object.Object.(string), "/")
+        userID := split[len(split)-1]
+
+        entity, err := h.repo.GetEntityByID(userID)
+        //load private from pem
+        block, _ := pem.Decode([]byte(entity.Privatekey))
+        if block == nil {
+            return fmt.Errorf("failed to parse PEM block containing the key")
+        }
+
+        // parse ed25519 private key
+        priv, err := x509.ParsePKCS8PrivateKey(block.Bytes)
+        if err != nil {
+            return fmt.Errorf("failed to parse DER encoded private key: " + err.Error())
+        }
+
+        prefs := []httpsig.Algorithm{httpsig.ED25519}
+        digestAlgorithm := httpsig.DigestSha256
+        // The "Date" and "Digest" headers must already be set on r, as well as r.URL.
+        headersToSign := []string{httpsig.RequestTarget, "date", "digest"}
+        signer, _, err := httpsig.NewSigner(prefs, digestAlgorithm, headersToSign, httpsig.Signature, 0)
+        if err != nil {
+            return err
+        }
+        err = signer.SignRequest(priv, "https://" + h.config.FQDN + "/ap/" + id + "#main-key", req, json)
+        if err != nil {
+            return err
+        }
+
+        _, err = client.Do(req)
+        if err != nil {
+            return c.String(http.StatusInternalServerError, "Internal server error")
         }
     }
 
     return c.String(http.StatusOK, "ok")
 }
-*/
 
 // PrintRequest prints the request body.
-func PrintRequest(c echo.Context) error {
+func (h Handler) PrintRequest(c echo.Context) error {
 
     body := c.Request().Body
     bytes, err := ioutil.ReadAll(body)

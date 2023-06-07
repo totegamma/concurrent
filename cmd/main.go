@@ -76,9 +76,14 @@ func main() {
     e.Use(middleware.CORS())
     e.Use(middleware.Logger())
     e.Use(middleware.Recover())
+    e.Binder = &activitypub.Binder{}
 
     e.GET("/.well-known/webfinger", activitypubHandler.WebFinger)
-    e.GET("/ap/:id", activitypubHandler.User)
+
+    ap := e.Group("/ap")
+    ap.GET("/:id", activitypubHandler.User)
+    ap.POST("/:id/inbox", activitypubHandler.Inbox)
+    ap.POST("/:id/outbox", activitypubHandler.PrintRequest)
 
     apiV1 := e.Group("/api/v1")
     apiV1.GET("/messages/:id", messageHandler.Get)

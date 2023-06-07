@@ -32,7 +32,7 @@ type WebFingerLink struct {
 
 // Person is a struct for an ActivityPub actor.
 type Person struct {
-    Context string `json:"@context"`
+    Context interface{} `json:"@context"`
     Type string `json:"type"`
     ID string `json:"id"`
     Inbox string `json:"inbox"`
@@ -65,7 +65,7 @@ type Icon struct {
 
 // Create is a struct for an ActivityPub create activity.
 type Create struct {
-    Context string `json:"@context"`
+    Context interface{} `json:"@context"`
     Type string `json:"type"`
     ID string `json:"id"`
     Actor string `json:"actor"`
@@ -79,15 +79,17 @@ type Create struct {
 
 // Object is a struct for an ActivityPub object.
 type Object struct {
-    Context string `json:"@context"`
+    Context interface{} `json:"@context"`
     Type string `json:"type"`
     ID string `json:"id"`
     Content string `json:"content"`
+    Actor string `json:"actor"`
+    Object interface{} `json:"object"`
 }
 
 // Accept is a struct for an ActivityPub accept activity.
 type Accept struct {
-    Context string `json:"@context"`
+    Context interface{} `json:"@context"`
     Type string `json:"type"`
     ID string `json:"id"`
     Actor string `json:"actor"`

@@ -4,16 +4,14 @@ package activitypub
 import (
     "fmt"
     "time"
-    "bytes"
     "strings"
     "net/url"
     "net/http"
     "io/ioutil"
+    "crypto/x509"
     "encoding/pem"
     "encoding/json"
-    "crypto/x509"
     "crypto/ed25519"
-    "github.com/go-fed/httpsig"
     "github.com/labstack/echo/v4"
     "github.com/totegamma/concurrent/x/util"
     "github.com/totegamma/concurrent/x/message"
@@ -190,50 +188,10 @@ func (h Handler) Inbox(c echo.Context) error {
             Object: object,
         }
 
-        json, err := json.Marshal(accept)
-        if err != nil {
-            return c.String(http.StatusInternalServerError, "Internal server error")
-        }
-
-        req, err := http.NewRequest("POST", requester.Inbox, bytes.NewBuffer(json))
-        if err != nil {
-            return c.String(http.StatusInternalServerError, "Internal server error")
-        }
-        req.Header.Set("Content-Type", "application/activity+json")
-        req.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
-        client := new(http.Client)
-
-
         split := strings.Split(object.Object.(string), "/")
         userID := split[len(split)-1]
 
-        entity, err := h.repo.GetEntityByID(userID)
-        //load private from pem
-        block, _ := pem.Decode([]byte(entity.Privatekey))
-        if block == nil {
-            return fmt.Errorf("failed to parse PEM block containing the key")
-        }
-
-        // parse ed25519 private key
-        priv, err := x509.ParsePKCS8PrivateKey(block.Bytes)
-        if err != nil {
-            return fmt.Errorf("failed to parse DER encoded private key: " + err.Error())
-        }
-
-        prefs := []httpsig.Algorithm{httpsig.ED25519}
-        digestAlgorithm := httpsig.DigestSha256
-        // The "Date" and "Digest" headers must already be set on r, as well as r.URL.
-        headersToSign := []string{httpsig.RequestTarget, "date", "digest"}
-        signer, _, err := httpsig.NewSigner(prefs, digestAlgorithm, headersToSign, httpsig.Signature, 0)
-        if err != nil {
-            return err
-        }
-        err = signer.SignRequest(priv, "https://" + h.config.FQDN + "/ap/acct/" + id + "#main-key", req, json)
-        if err != nil {
-            return err
-        }
-
-        _, err = client.Do(req)
+        err = h.PostToInbox(requester.Inbox, accept, userID)
         if err != nil {
             return c.String(http.StatusInternalServerError, "Internal server error")
         }

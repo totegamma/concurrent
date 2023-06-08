@@ -67,14 +67,7 @@ type Icon struct {
 type Create struct {
     Context interface{} `json:"@context"`
     Type string `json:"type"`
-    ID string `json:"id"`
-    Actor string `json:"actor"`
-    To []string `json:"to"`
-    CC []string `json:"cc"`
-    Object Object `json:"object"`
-    Published string `json:"published"`
-    Summary string `json:"summary"`
-    Content string `json:"content"`
+    Object interface{} `json:"object"`
 }
 
 // Object is a struct for an ActivityPub object.

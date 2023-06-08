@@ -70,7 +70,7 @@ func main() {
     entityHandler := SetupEntityHandler(db, config)
     authHandler := SetupAuthHandler(db, config)
     userkvHandler := SetupUserkvHandler(db, rdb, config)
-    activitypubHandler := SetupActivitypubHandler(db, config)
+    activitypubHandler := SetupActivitypubHandler(db, rdb, config)
 
     e.HideBanner = true
     e.Use(middleware.CORS())
@@ -81,9 +81,10 @@ func main() {
     e.GET("/.well-known/webfinger", activitypubHandler.WebFinger)
 
     ap := e.Group("/ap")
-    ap.GET("/:id", activitypubHandler.User)
-    ap.POST("/:id/inbox", activitypubHandler.Inbox)
-    ap.POST("/:id/outbox", activitypubHandler.PrintRequest)
+    ap.GET("/acct/:id", activitypubHandler.User)
+    ap.POST("/acct/:id/inbox", activitypubHandler.Inbox)
+    ap.POST("/acct/:id/outbox", activitypubHandler.PrintRequest)
+    ap.GET("/note/:id", activitypubHandler.Note)
 
     apiV1 := e.Group("/api/v1")
     apiV1.GET("/messages/:id", messageHandler.Get)

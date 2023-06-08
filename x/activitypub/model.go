@@ -102,3 +102,14 @@ type CreateEntityRequest struct {
     ID string `json:"id"`
 }
 
+// Note is a struct for a note.
+type Note struct {
+    Context interface{} `json:"@context"`
+    Type string `json:"type"`
+    ID string `json:"id"`
+    AttributedTo string `json:"attributedTo"`
+    Content string `json:"content"`
+    Published string `json:"published"`
+    To []string `json:"to"`
+}
+

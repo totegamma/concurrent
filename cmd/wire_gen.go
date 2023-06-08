@@ -112,9 +112,15 @@ func SetupUserkvHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *use
 	return handler
 }
 
-func SetupActivitypubHandler(db *gorm.DB, config util.Config) *activitypub.Handler {
+func SetupActivitypubHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *activitypub.Handler {
 	repository := activitypub.NewRepository(db)
-	handler := activitypub.NewHandler(repository, config)
+	messageRepository := message.NewRepository(db)
+	streamRepository := stream.NewRepository(db)
+	entityRepository := entity.NewRepository(db)
+	service := entity.NewService(entityRepository, config)
+	streamService := stream.NewService(rdb, streamRepository, service, config)
+	messageService := message.NewService(rdb, messageRepository, streamService)
+	handler := activitypub.NewHandler(repository, messageService, config)
 	return handler
 }
 

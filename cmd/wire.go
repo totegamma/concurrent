@@ -80,8 +80,8 @@ func SetupUserkvHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *use
     return &userkv.Handler{}
 }
 
-func SetupActivitypubHandler(db *gorm.DB, config util.Config) *activitypub.Handler {
-    wire.Build(activitypub.NewHandler, activitypub.NewRepository)
+func SetupActivitypubHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *activitypub.Handler {
+    wire.Build(activitypub.NewHandler, activitypub.NewRepository, message.NewService, message.NewRepository, entity.NewService, entity.NewRepository, stream.NewService, stream.NewRepository)
     return &activitypub.Handler{}
 }
 

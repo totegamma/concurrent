@@ -26,7 +26,8 @@ type postRequest struct {
     Streams []string `json:"streams"`
 }
 
-type signedObject struct {
+// SignedObject is user sign unit
+type SignedObject struct {
     Signer string `json:"signer"`
     Type string `json:"type"`
     Schema string `json:"schema"`

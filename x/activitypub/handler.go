@@ -118,14 +118,33 @@ func (h Handler) Note(c echo.Context) error {
     if id == "" {
         return c.String(http.StatusBadRequest, "Invalid noteID")
     }
-    message, err := h.message.Get(id)
+    msg, err := h.message.Get(id)
     if err != nil {
         return c.String(http.StatusNotFound, "message not found")
     }
 
-    entity, err := h.repo.GetEntityByCCAddr(message.Author)
+    entity, err := h.repo.GetEntityByCCAddr(msg.Author)
     if err != nil {
         return c.String(http.StatusNotFound, "entity not found")
+    }
+
+    var signedObject message.SignedObject
+    err = json.Unmarshal([]byte(msg.Payload), &signedObject)
+    if err != nil {
+        return c.String(http.StatusInternalServerError, "Internal server error(payload parse error)")
+    }
+
+    body := signedObject.Body
+
+    var text string
+    if signedObject.Schema == "https://raw.githubusercontent.com/totegamma/concurrent-schemas/master/messages/note/0.0.1.json" {
+        t, ok := body.(map[string]interface{})["body"].(string)
+        if !ok {
+            return c.String(http.StatusInternalServerError, "Internal server error (body parse error)")
+        }
+        text = t
+    } else {
+        return c.String(http.StatusNotImplemented, "target message is not implemented for activitypub")
     }
 
     return c.JSON(http.StatusOK, Note{
@@ -133,8 +152,8 @@ func (h Handler) Note(c echo.Context) error {
         Type: "Note",
         ID: "https://" + h.config.FQDN + "/ap/note/" + id,
         AttributedTo: "https://" + h.config.FQDN + "/ap/acct/" + entity.ID,
-        Content: message.Payload,
-        Published: message.CDate.Format(time.RFC3339),
+        Content: text,
+        Published: msg.CDate.Format(time.RFC3339),
         To: []string{"https://www.w3.org/ns/activitystreams#Public"},
     })
 }

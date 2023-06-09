@@ -1,6 +1,7 @@
 package activitypub
 
 import (
+    "log"
     "fmt"
     "time"
     "bytes"
@@ -84,6 +85,11 @@ func (h Handler) PostToInbox(inbox string, object interface{}, signUser string) 
         return err
     }
     defer resp.Body.Close()
+
+    log.Printf("ap publish responce status: %v", resp.Status)
+
+    body, _ := ioutil.ReadAll(resp.Body)
+    log.Printf("ap publish responce body: %v", string(body))
 
     return nil
 }

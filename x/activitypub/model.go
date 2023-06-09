@@ -15,6 +15,7 @@ type ApPerson struct {
     Summary string `json:"summary" gorm:"type:text"`
     ProfileURL string `json:"profile_url" gorm:"type:text"`
     IconURL string `json:"icon_url" gorm:"type:text"`
+    HomeStream string `json:"homestream" gorm:"type:text"`
 }
 
 // ApFollow is a db model of an ActivityPub follow.
@@ -73,7 +74,10 @@ type Icon struct {
 // Create is a struct for an ActivityPub create activity.
 type Create struct {
     Context interface{} `json:"@context"`
+    ID string `json:"id"`
     Type string `json:"type"`
+    Actor string `json:"actor"`
+    To []string `json:"to"`
     Object interface{} `json:"object"`
 }
 

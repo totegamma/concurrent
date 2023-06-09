@@ -14,6 +14,7 @@ import (
     "encoding/json"
     "crypto/ed25519"
     "github.com/labstack/echo/v4"
+	"github.com/redis/go-redis/v9"
     "github.com/totegamma/concurrent/x/util"
     "github.com/totegamma/concurrent/x/message"
 )
@@ -21,13 +22,14 @@ import (
 // Handler is a handler for the WebFinger protocol.
 type Handler struct {
     repo *Repository
+    rdb *redis.Client
     message *message.Service
     config util.Config
 }
 
 // NewHandler returns a new Handler.
-func NewHandler(repo *Repository, message *message.Service, config util.Config) *Handler {
-    return &Handler{repo, message, config}
+func NewHandler(repo *Repository, rdb *redis.Client, message *message.Service, config util.Config) *Handler {
+    return &Handler{repo, rdb, message, config}
 }
 
 

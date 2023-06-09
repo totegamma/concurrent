@@ -52,6 +52,13 @@ func (r *Repository) SaveFollow(follow ApFollow) error {
     return r.db.Create(&follow).Error
 }
 
+// GetAllFollows returns all Follow actions
+func (r *Repository) GetAllFollows() ([]ApFollow, error) {
+    var follows []ApFollow
+    err := r.db.Find(&follows).Error
+    return follows, err
+}
+
 // Remove Follow action
 func (r *Repository) RemoveFollow(followID string) (ApFollow, error) {
     var follow ApFollow

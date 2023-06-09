@@ -127,6 +127,7 @@ func main() {
     })
 
     agent.Boot()
+    go activitypubHandler.Boot()
 
     e.Logger.Fatal(e.Start(":8000"))
 }

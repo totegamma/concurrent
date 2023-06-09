@@ -2,6 +2,7 @@
 package activitypub
 
 import (
+    "log"
     "fmt"
     "time"
     "strings"
@@ -174,30 +175,65 @@ func (h Handler) Inbox(c echo.Context) error {
         return c.String(http.StatusBadRequest, "Invalid request body")
     }
 
-    // handle follow requests
-    if object.Type == "Follow" {
-        requester, err := FetchPerson(object.Actor)
-        if err != nil {
-            return c.String(http.StatusInternalServerError, "Internal server error")
-        }
-        accept := Accept{
-            Context: "https://www.w3.org/ns/activitystreams",
-            ID: "https://" + h.config.FQDN + "/ap/acct/" + id + "/follows/" + url.PathEscape(requester.ID),
-            Type: "Accept",
-            Actor: "https://" + h.config.FQDN + "/ap/acct/" + id,
-            Object: object,
-        }
+    switch object.Type {
+        case "Follow":
+            requester, err := FetchPerson(object.Actor)
+            if err != nil {
+                return c.String(http.StatusInternalServerError, "Internal server error")
+            }
+            accept := Accept{
+                Context: "https://www.w3.org/ns/activitystreams",
+                ID: "https://" + h.config.FQDN + "/ap/acct/" + id + "/follows/" + url.PathEscape(requester.ID),
+                Type: "Accept",
+                Actor: "https://" + h.config.FQDN + "/ap/acct/" + id,
+                Object: object,
+            }
 
-        split := strings.Split(object.Object.(string), "/")
-        userID := split[len(split)-1]
+            split := strings.Split(object.Object.(string), "/")
+            userID := split[len(split)-1]
 
-        err = h.PostToInbox(requester.Inbox, accept, userID)
-        if err != nil {
-            return c.String(http.StatusInternalServerError, "Internal server error")
-        }
+            err = h.PostToInbox(requester.Inbox, accept, userID)
+            if err != nil {
+                return c.String(http.StatusInternalServerError, "Internal server error")
+            }
+
+            // save follow
+            err = h.repo.SaveFollow(ApFollow{
+                ID: object.ID,
+                SubscriberInbox: requester.Inbox,
+                PublisherUserID: userID,
+            })
+            if err != nil {
+                return c.String(http.StatusInternalServerError, "Internal server error (save follow error)")
+            }
+        case "Undo":
+            undoObject, ok := object.Object.(map[string]interface{})
+            if !ok {
+                log.Println("Invalid undo object", object.Object)
+                return c.String(http.StatusBadRequest, "Invalid request body")
+            }
+            undoType, ok := undoObject["type"].(string)
+            if !ok {
+                log.Println("Invalid undo object", object.Object)
+                return c.String(http.StatusBadRequest, "Invalid request body")
+            }
+            switch undoType {
+                case "Follow":
+                    id, ok := undoObject["id"].(string)
+                    if !ok {
+                        log.Println("Invalid undo object", object.Object)
+                        return c.String(http.StatusBadRequest, "Invalid request body")
+                    }
+                    h.repo.RemoveFollow(id)
+                    return c.String(http.StatusOK, "OK")
+                default:
+                    return c.String(http.StatusNotImplemented, "Not implemented")
+            }
+        default:
+            return c.String(http.StatusNotImplemented, "Not implemented")
     }
 
-    return c.String(http.StatusOK, "ok")
+    return c.String(http.StatusInternalServerError, "Internal server error")
 }
 
 // :: Database related functions ::

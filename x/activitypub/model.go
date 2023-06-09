@@ -17,6 +17,13 @@ type ApPerson struct {
     IconURL string `json:"icon_url" gorm:"type:text"`
 }
 
+// ApFollow is a db model of an ActivityPub follow.
+type ApFollow struct {
+    ID string `json:"id" gorm:"type:text"`
+    SubscriberInbox string `json:"subscriber_inbox" gorm:"type:text"`
+    PublisherUserID string `json:"publisher_user" gorm:"type:text"`
+}
+
 // WebFinger is a struct for a WebFinger response.
 type WebFinger struct {
     Subject string `json:"subject"`

@@ -47,3 +47,21 @@ func (r Repository) UpsertPerson(person ApPerson) (ApPerson, error) {
     return person, result.Error
 }
 
+// Save Follow action
+func (r *Repository) SaveFollow(follow ApFollow) error {
+    return r.db.Create(&follow).Error
+}
+
+// Remove Follow action
+func (r *Repository) RemoveFollow(followID string) (ApFollow, error) {
+    var follow ApFollow
+    if err := r.db.First(&follow, "id = ?", followID).Error; err != nil {
+        return ApFollow{}, err
+    }
+    err := r.db.Where("id = ?", followID).Delete(&ApFollow{}).Error
+    if err != nil {
+        return ApFollow{}, err
+    }
+    return follow, nil
+}
+

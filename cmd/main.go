@@ -51,6 +51,7 @@ func main() {
         &core.Entity{},
         &activitypub.ApEntity{},
         &activitypub.ApPerson{},
+        &activitypub.ApFollow{},
     )
 
     rdb := redis.NewClient(&redis.Options{

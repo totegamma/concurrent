@@ -52,6 +52,13 @@ func (r *Repository) SaveFollow(follow ApFollow) error {
     return r.db.Create(&follow).Error
 }
 
+// GetFollowByID returns follow by ID
+func (r *Repository) GetFollowByID(id string) (ApFollow, error) {
+    var follow ApFollow
+    result := r.db.Where("id = ?", id).First(&follow)
+    return follow, result.Error
+}
+
 // GetAllFollows returns all Follow actions
 func (r *Repository) GetAllFollows() ([]ApFollow, error) {
     var follows []ApFollow

@@ -14,7 +14,7 @@ import (
     "encoding/json"
     "crypto/ed25519"
     "github.com/labstack/echo/v4"
-	"github.com/redis/go-redis/v9"
+    "github.com/redis/go-redis/v9"
     "github.com/totegamma/concurrent/x/util"
     "github.com/totegamma/concurrent/x/message"
 )
@@ -179,6 +179,13 @@ func (h Handler) Inbox(c echo.Context) error {
 
     switch object.Type {
         case "Follow":
+
+            // check follow already exists
+            _, err := h.repo.GetFollowByID(object.ID)
+            if err == nil {
+                return c.String(http.StatusOK, "follow already exists")
+            }
+
             requester, err := FetchPerson(object.Actor)
             if err != nil {
                 return c.String(http.StatusInternalServerError, "Internal server error")
@@ -225,6 +232,11 @@ func (h Handler) Inbox(c echo.Context) error {
                     if !ok {
                         log.Println("Invalid undo object", object.Object)
                         return c.String(http.StatusBadRequest, "Invalid request body")
+                    }
+                    // check follow already deleted
+                    _, err := h.repo.GetFollowByID(id)
+                    if err != nil {
+                        return c.String(http.StatusOK, "follow already undoed")
                     }
                     h.repo.RemoveFollow(id)
                     return c.String(http.StatusOK, "OK")

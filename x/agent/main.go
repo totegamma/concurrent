@@ -78,7 +78,7 @@ func (a *Agent)updateConnections() {
     summarized := summarize(channels)
     var serverList []string
     for key := range summarized {
-        if key == a.config.FQDN{
+        if key == a.config.Concurrent.FQDN{
             continue
         }
         serverList = append(serverList, key)

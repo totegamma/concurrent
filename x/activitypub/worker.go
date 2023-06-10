@@ -88,14 +88,14 @@ func (h *Handler) Boot() {
                             create := Create {
                                 Context: []string{"https://www.w3.org/ns/activitystreams"},
                                 Type: "Create",
-                                ID: "https://" + h.config.FQDN + "/ap/note/" + msg.ID,
-                                Actor: "https://" + h.config.FQDN + "/ap/acct/" + job.PublisherUserID,
+                                ID: "https://" + h.config.Concurrent.FQDN + "/ap/note/" + msg.ID,
+                                Actor: "https://" + h.config.Concurrent.FQDN + "/ap/acct/" + job.PublisherUserID,
                                 To: []string{"https://www.w3.org/ns/activitystreams#Public"},
                                 Object: Note {
                                     Context: "https://www.w3.org/ns/activitystreams",
                                     Type: "Note",
-                                    ID: "https://" + h.config.FQDN + "/ap/note/" + msg.ID,
-                                    AttributedTo: "https://" + h.config.FQDN + "/ap/acct/" + job.PublisherUserID,
+                                    ID: "https://" + h.config.Concurrent.FQDN + "/ap/note/" + msg.ID,
+                                    AttributedTo: "https://" + h.config.Concurrent.FQDN + "/ap/acct/" + job.PublisherUserID,
                                     Content: text,
                                     Published: msg.CDate.Format(time.RFC3339),
                                     To: []string{"https://www.w3.org/ns/activitystreams#Public"},

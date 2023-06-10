@@ -32,9 +32,9 @@ func main() {
         e.Logger.Fatal(err)
     }
 
-    log.Print("Config loaded! I am: ", config.CCAddr)
+    log.Print("Config loaded! I am: ", config.Concurrent.CCAddr)
 
-    db, err := gorm.Open(postgres.Open(config.Dsn), &gorm.Config{})
+    db, err := gorm.Open(postgres.Open(config.Server.Dsn), &gorm.Config{})
     if err != nil {
         log.Println("failed to connect database");
         panic("failed to connect database")
@@ -55,7 +55,7 @@ func main() {
     )
 
     rdb := redis.NewClient(&redis.Options{
-        Addr:     config.RedisAddr,
+        Addr:     config.Server.RedisAddr,
         Password: "", // no password set
         DB:       0,  // use default DB
     })

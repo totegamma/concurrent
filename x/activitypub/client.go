@@ -77,7 +77,7 @@ func (h Handler) PostToInbox(inbox string, object interface{}, signUser string) 
     if err != nil {
         return err
     }
-    err = signer.SignRequest(priv, "https://" + h.config.FQDN + "/ap/key/" + signUser, req, objectBytes)
+    err = signer.SignRequest(priv, "https://" + h.config.Concurrent.FQDN + "/ap/key/" + signUser, req, objectBytes)
 
     resp, err := client.Do(req)
     if err != nil {

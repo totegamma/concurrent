@@ -32,7 +32,7 @@ func (s *Service) IssueJWT(request string) (string, error) {
     // TODO: check jti not used recently
 
     // check aud
-    if claims.Audience != s.config.FQDN {
+    if claims.Audience != s.config.Concurrent.FQDN {
         return "", fmt.Errorf("jwt is not for this host")
     }
 
@@ -44,14 +44,14 @@ func (s *Service) IssueJWT(request string) (string, error) {
 
     // create new jwt
     response, err := util.CreateJWT(util.JwtClaims {
-        Issuer: s.config.CCAddr,
+        Issuer: s.config.Concurrent.CCAddr,
         Subject: "concurrent",
         Audience: claims.Issuer,
         ExpirationTime: strconv.FormatInt(time.Now().Add(6 * time.Hour).Unix(), 10),
         NotBefore: strconv.FormatInt(time.Now().Unix(), 10),
         IssuedAt: strconv.FormatInt(time.Now().Unix(), 10),
         JWTID: xid.New().String(),
-    }, s.config.Prvkey)
+    }, s.config.Concurrent.Prvkey)
 
     if err != nil {
         return "", err

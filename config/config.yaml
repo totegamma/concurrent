@@ -1,10 +1,26 @@
 # this is example. you must replace ccaddress and keys before deploy.
-fqdn: example.tld
-ccaddr: CC1d2b5f1fE6Aa19c030B3148F87C0CA4DD269c325
-publickey: 04212ec2215d6182b2f57b3aef43611fb6afb117f32d0d2a897aeb4ab469cfb240f4067c90bb3ad2047156c433bd4f89bcf514ef0f878746449d811562b6119923
-privatekey: 17bfb1363aa33b4a476d01713b3bf74ff35f3bf8a070924e7c2c06d7333afdd6
-dsn: "host=db user=postgres password=postgres dbname=concurrent port=5432 sslmode=disable"
-redisAddr: "redis:6379"
-admins:
-  - CC73EA8CF2542a0E82EF555C294128ebEbb59AB6dC
+
+server:
+  dsn: "host=db user=postgres password=postgres dbname=concurrent port=5432 sslmode=disable"
+  redisAddr: "redis:6379"
+
+concurrent:
+  fqdn: example.tld
+  ccaddr: CC1d2b5f1fE6Aa19c030B3148F87C0CA4DD269c325
+  publickey: 04212ec2215d6182b2f57b3aef43611fb6afb117f32d0d2a897aeb4ab469cfb240f4067c90bb3ad2047156c433bd4f89bcf514ef0f878746449d811562b6119923
+  privatekey: 17bfb1363aa33b4a476d01713b3bf74ff35f3bf8a070924e7c2c06d7333afdd6
+  admins:
+    - CC73EA8CF2542a0E82EF555C294128ebEbb59AB6dC
+
+nodeinfo:
+  openRegistrations: true
+  metadata:
+    name: concurrent
+    nodeName: concurrent
+    nodeDescriptin: concurrent
+    description: concurrent
+    maintainer:
+      name: notset
+      email: notset@example.com
+    themeColoe: '#20193b'
 

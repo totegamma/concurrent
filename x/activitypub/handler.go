@@ -51,7 +51,7 @@ func (h Handler) WebFinger(c echo.Context) error {
         return c.String(http.StatusBadRequest, "Invalid resource")
     }
     username, domain := split[0], split[1]
-    if domain != h.config.FQDN {
+    if domain != h.config.Concurrent.FQDN {
         return c.String(http.StatusBadRequest, "Invalid resource")
     }
 
@@ -66,7 +66,7 @@ func (h Handler) WebFinger(c echo.Context) error {
             {
                 Rel: "self",
                 Type: "application/activity+json",
-                Href: "https://" + h.config.FQDN + "/ap/acct/" + username,
+                Href: "https://" + h.config.Concurrent.FQDN + "/ap/acct/" + username,
             },
         },
     })
@@ -92,9 +92,9 @@ func (h Handler) User(c echo.Context) error {
     return c.JSON(http.StatusOK, Person {
         Context: "https://www.w3.org/ns/activitystreams",
         Type: "Person",
-        ID: "https://" + h.config.FQDN + "/ap/acct/" + id,
-        Inbox: "https://" + h.config.FQDN + "/ap/acct/" + id + "/inbox",
-        Outbox: "https://" + h.config.FQDN + "/ap/acct/" + id + "/outbox",
+        ID: "https://" + h.config.Concurrent.FQDN + "/ap/acct/" + id,
+        Inbox: "https://" + h.config.Concurrent.FQDN + "/ap/acct/" + id + "/inbox",
+        Outbox: "https://" + h.config.Concurrent.FQDN + "/ap/acct/" + id + "/outbox",
         PreferredUsername: id,
         Name: person.Name,
         Summary: person.Summary,
@@ -105,9 +105,9 @@ func (h Handler) User(c echo.Context) error {
             URL: person.IconURL,
         },
         PublicKey: Key{
-            ID: "https://" + h.config.FQDN + "/ap/key/" + id,
+            ID: "https://" + h.config.Concurrent.FQDN + "/ap/key/" + id,
             Type: "Key",
-            Owner: "https://" + h.config.FQDN + "/ap/acct/" + id,
+            Owner: "https://" + h.config.Concurrent.FQDN + "/ap/acct/" + id,
             PublicKeyPem: entity.Publickey,
         },
     })
@@ -151,8 +151,8 @@ func (h Handler) Note(c echo.Context) error {
     return c.JSON(http.StatusOK, Note{
         Context: "https://www.w3.org/ns/activitystreams",
         Type: "Note",
-        ID: "https://" + h.config.FQDN + "/ap/note/" + id,
-        AttributedTo: "https://" + h.config.FQDN + "/ap/acct/" + entity.ID,
+        ID: "https://" + h.config.Concurrent.FQDN + "/ap/note/" + id,
+        AttributedTo: "https://" + h.config.Concurrent.FQDN + "/ap/acct/" + entity.ID,
         Content: text,
         Published: msg.CDate.Format(time.RFC3339),
         To: []string{"https://www.w3.org/ns/activitystreams#Public"},
@@ -192,9 +192,9 @@ func (h Handler) Inbox(c echo.Context) error {
             }
             accept := Accept{
                 Context: "https://www.w3.org/ns/activitystreams",
-                ID: "https://" + h.config.FQDN + "/ap/acct/" + id + "/follows/" + url.PathEscape(requester.ID),
+                ID: "https://" + h.config.Concurrent.FQDN + "/ap/acct/" + id + "/follows/" + url.PathEscape(requester.ID),
                 Type: "Accept",
-                Actor: "https://" + h.config.FQDN + "/ap/acct/" + id,
+                Actor: "https://" + h.config.Concurrent.FQDN + "/ap/acct/" + id,
                 Object: object,
             }
 

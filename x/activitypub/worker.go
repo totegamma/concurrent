@@ -36,9 +36,7 @@ func (h *Handler) Boot() {
                     log.Printf("error: %v", err)
                 }
                 home := person.HomeStream
-                log.Printf("home: %v", home)
                 if home == "" {
-                    log.Printf("home is empty. skip")
                     continue
                 }
                 pubsub := h.rdb.Subscribe(ctx)
@@ -58,7 +56,6 @@ func (h *Handler) Boot() {
                             if err != nil {
                                 log.Printf("error: %v", err)
                             }
-                            log.Printf("pubsubMsg: %v", pubsubMsg)
 
                             var streamEvent stream.Event
                             err = json.Unmarshal([]byte(pubsubMsg.Payload), &streamEvent)
@@ -105,22 +102,16 @@ func (h *Handler) Boot() {
                                 },
                             }
 
-                            log.Printf("to: %v", job.SubscriberInbox)
-                            log.Printf("create: %v", create)
-                            log.Printf("publisher: %v", job.PublisherUserID)
-
                             err = h.PostToInbox(job.SubscriberInbox, create, job.PublisherUserID)
                             if err != nil {
                                 log.Printf("error: %v", err)
                             }
-
-                            log.Printf("worker %v success", job.ID)
                         }
                     }
                 } (ctx, job)
             }
         }
-        
+
         // create job id list
         var jobIDs []string
         for _, job := range jobs {

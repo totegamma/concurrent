@@ -105,6 +105,7 @@ func main() {
     apiV1.GET("/entity/list", entityHandler.List)
     apiV1.GET("/auth/claim", authHandler.Claim)
     apiV1.GET("/ap/entity/:ccaddr", activitypubHandler.GetEntityID)
+    apiV1.GET("/ap/person/:id", activitypubHandler.GetPerson)
 
     apiV1R := apiV1.Group("", auth.JWT)
     apiV1R.POST("/messages", messageHandler.Post)

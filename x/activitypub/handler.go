@@ -257,6 +257,23 @@ func (h Handler) Inbox(c echo.Context) error {
 
 // :: Database related functions ::
 
+// GetPerson handles entity fetches.
+func (h Handler) GetPerson(c echo.Context) error {
+
+    id := c.Param("id")
+    if id == "" {
+        return c.String(http.StatusBadRequest, "Invalid username")
+    }
+
+    person, err := h.repo.GetPersonByID(id)
+    if err != nil {
+        return c.String(http.StatusNotFound, "entity not found")
+    }
+
+    return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": person})
+}
+
+
 // UpdatePerson handles entity updates.
 func (h Handler) UpdatePerson(c echo.Context) error {
 

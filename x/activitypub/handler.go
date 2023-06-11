@@ -184,7 +184,7 @@ func (h Handler) Inbox(c echo.Context) error {
 
             requester, err := FetchPerson(object.Actor)
             if err != nil {
-                return c.String(http.StatusInternalServerError, "Internal server error")
+                return c.String(http.StatusBadRequest, "Invalid request body")
             }
             accept := Accept{
                 Context: "https://www.w3.org/ns/activitystreams",
@@ -217,6 +217,9 @@ func (h Handler) Inbox(c echo.Context) error {
             if err != nil {
                 return c.String(http.StatusInternalServerError, "Internal server error (save follow error)")
             }
+
+            return c.String(http.StatusOK, "follow accepted")
+
         case "Undo":
             undoObject, ok := object.Object.(map[string]interface{})
             if !ok {
@@ -243,13 +246,13 @@ func (h Handler) Inbox(c echo.Context) error {
                     h.repo.RemoveFollow(id)
                     return c.String(http.StatusOK, "OK")
                 default:
-                    return c.String(http.StatusNotImplemented, "Not implemented")
+                    return c.String(http.StatusOK, "OK but not implemented")
             }
         default:
-            return c.String(http.StatusNotImplemented, "Not implemented")
+            return c.String(http.StatusOK, "OK but not implemented")
     }
 
-    return c.String(http.StatusInternalServerError, "Internal server error")
+    // return c.String(http.StatusInternalServerError, "Internal server error")
 }
 
 // :: Database related functions ::

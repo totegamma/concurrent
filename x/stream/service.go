@@ -150,12 +150,12 @@ func (s *Service) Post(stream string, id string, typ string, author string, host
     }
     
     if (host == "") {
-        host = s.config.FQDN
+        host = s.config.Concurrent.FQDN
     }
 
     streamID, streamHost := query[0], query[1]
 
-    if (streamHost == s.config.FQDN) {
+    if (streamHost == s.config.Concurrent.FQDN) {
 
         // check if the user has write access to the stream
         if !s.repository.HasWriteAccess(streamID, author) {
@@ -199,7 +199,7 @@ func (s *Service) Post(stream string, id string, typ string, author string, host
             ID: id,
             Type: typ,
             Author: author,
-            Host: s.config.FQDN,
+            Host: s.config.Concurrent.FQDN,
         }
         packetStr, err := json.Marshal(packet)
         if err != nil {
@@ -243,7 +243,7 @@ func (s *Service) Upsert(objectStr string, signature string, id string) (string,
         if (len(split) != 2) {
             return "", fmt.Errorf("invalid id")
         }
-        if (split[1] != s.config.FQDN) {
+        if (split[1] != s.config.Concurrent.FQDN) {
             return "", fmt.Errorf("invalid stream host")
         }
         id = split[0]
@@ -261,7 +261,7 @@ func (s *Service) Upsert(objectStr string, signature string, id string) (string,
     }
 
     s.repository.Upsert(&stream)
-    return stream.ID + "@" + s.config.FQDN, nil
+    return stream.ID + "@" + s.config.Concurrent.FQDN, nil
 }
 
 // Get returns stream information by ID
@@ -273,7 +273,7 @@ func (s *Service) Get(key string) (core.Stream, error) {
 func (s *Service) StreamListBySchema(schema string) ([]core.Stream, error) {
     streams, err := s.repository.GetList(schema)
     for i := 0; i < len(streams); i++ {
-        streams[i].ID = streams[i].ID + "@" + s.config.FQDN
+        streams[i].ID = streams[i].ID + "@" + s.config.Concurrent.FQDN
     }
     return streams, err
 }

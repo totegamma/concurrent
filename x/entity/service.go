@@ -82,7 +82,7 @@ func (s *Service) ResolveHost(user string) (string, error) {
     }
     fqdn := entity.Host
     if fqdn == "" {
-        fqdn = s.config.FQDN
+        fqdn = s.config.Concurrent.FQDN
     }
     return fqdn, nil
 }

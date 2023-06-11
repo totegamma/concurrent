@@ -29,7 +29,7 @@ func (s *Service) Get(id string) (core.Message, error) {
 // PostMessage creates new message
 func (s *Service) PostMessage(objectStr string, signature string, streams []string) (core.Message, error) {
 
-    var object signedObject
+    var object SignedObject
     err := json.Unmarshal([]byte(objectStr), &object)
     if err != nil {
         return core.Message{}, err

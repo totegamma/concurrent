@@ -18,6 +18,7 @@ import (
     "github.com/totegamma/concurrent/x/message"
     "github.com/totegamma/concurrent/x/character"
     "github.com/totegamma/concurrent/x/association"
+    "github.com/totegamma/concurrent/x/activitypub"
 )
 
 
@@ -77,5 +78,10 @@ func SetupAuthHandler(db *gorm.DB, config util.Config) *auth.Handler {
 func SetupUserkvHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *userkv.Handler {
     wire.Build(userkvHandlerProvider, entity.NewService, entity.NewRepository)
     return &userkv.Handler{}
+}
+
+func SetupActivitypubHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *activitypub.Handler {
+    wire.Build(activitypub.NewHandler, activitypub.NewRepository, message.NewService, message.NewRepository, entity.NewService, entity.NewRepository, stream.NewService, stream.NewRepository)
+    return &activitypub.Handler{}
 }
 

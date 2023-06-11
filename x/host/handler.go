@@ -66,9 +66,9 @@ func (h Handler) List(c echo.Context) error {
 // Profile returns server Profile
 func (h Handler) Profile(c echo.Context) error {
     return c.JSON(http.StatusOK, Profile{
-        ID: h.config.FQDN,
-        CCAddr: h.config.CCAddr,
-        Pubkey: h.config.Pubkey,
+        ID: h.config.Concurrent.FQDN,
+        CCAddr: h.config.Concurrent.CCAddr,
+        Pubkey: h.config.Concurrent.Pubkey,
     })
 }
 
@@ -109,9 +109,9 @@ func (h Handler) Hello(c echo.Context) error {
     })
 
     return c.JSON(http.StatusOK, Profile{
-        ID: h.config.FQDN,
-        CCAddr: h.config.CCAddr,
-        Pubkey: h.config.Pubkey,
+        ID: h.config.Concurrent.FQDN,
+        CCAddr: h.config.Concurrent.CCAddr,
+        Pubkey: h.config.Concurrent.Pubkey,
     })
 }
 
@@ -121,14 +121,14 @@ func (h Handler) SayHello(c echo.Context) error {
     target := c.Param("fqdn")
 
     claims := c.Get("jwtclaims").(util.JwtClaims)
-    if !slices.Contains(h.config.Admins, claims.Audience) {
+    if !slices.Contains(h.config.Concurrent.Admins, claims.Audience) {
         return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action"})
     }
 
     me := Profile{
-        ID: h.config.FQDN,
-        CCAddr: h.config.CCAddr,
-        Pubkey: h.config.Pubkey,
+        ID: h.config.Concurrent.FQDN,
+        CCAddr: h.config.Concurrent.CCAddr,
+        Pubkey: h.config.Concurrent.Pubkey,
     }
 
     meStr, err := json.Marshal(me)

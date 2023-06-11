@@ -8,13 +8,36 @@ import (
 
 // Config is Concurrent base configuration
 type Config struct {
+    Server Server `yaml:"server"`
+    Concurrent Concurrent `yaml:"concurrent"`
+    NodeInfo NodeInfo `yaml:"nodeinfo"`
+}
+
+type Server struct {
+    Dsn string `yaml:"dsn"`
+    RedisAddr string `yaml:"redisAddr"`
+}
+
+type Concurrent struct {
     FQDN string `yaml:"fqdn"`
     CCAddr string `yaml:"ccaddr"`
     Pubkey string `yaml:"publickey"`
     Prvkey string `yaml:"privatekey"`
-    Dsn string `yaml:"dsn"`
-    RedisAddr string `yaml:"redisAddr"`
     Admins []string `yaml:"admins"`
+}
+
+// NodeInfo is Activitypub NodeInfo
+type NodeInfo struct {
+    OpenRegistrations bool `yaml:"openRegistrations"`
+    Metadata struct {
+        NodeName string `yaml:"nodeName"`
+        NodeDescription string `yaml:"nodeDescription"`
+        Maintainer struct {
+            Name string `yaml:"name"`
+            Email string `yaml:"email"`
+        } `yaml:"maintainer"`
+        ThemeColor string `yaml:"themeColor"`
+    } `yaml:"metadata"`
 }
 
 // Load loads concurrent config from given path

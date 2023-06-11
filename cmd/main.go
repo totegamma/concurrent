@@ -17,6 +17,7 @@ import (
 	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
+	"github.com/totegamma/concurrent/x/activitypub"
 )
 
 func main() {
@@ -37,9 +38,9 @@ func main() {
         e.Logger.Fatal(err)
     }
 
-    log.Print("Config loaded! I am: ", config.CCAddr)
+    log.Print("Config loaded! I am: ", config.Concurrent.CCAddr)
 
-    db, err := gorm.Open(postgres.Open(config.Dsn), &gorm.Config{})
+    db, err := gorm.Open(postgres.Open(config.Server.Dsn), &gorm.Config{})
     if err != nil {
         log.Println("failed to connect database");
         panic("failed to connect database")
@@ -54,10 +55,13 @@ func main() {
         &core.Stream{},
         &core.Host{},
         &core.Entity{},
+        &activitypub.ApEntity{},
+        &activitypub.ApPerson{},
+        &activitypub.ApFollow{},
     )
 
     rdb := redis.NewClient(&redis.Options{
-        Addr:     config.RedisAddr,
+        Addr:     config.Server.RedisAddr,
         Password: "", // no password set
         DB:       0,  // use default DB
     })
@@ -73,11 +77,23 @@ func main() {
     entityHandler := SetupEntityHandler(db, config)
     authHandler := SetupAuthHandler(db, config)
     userkvHandler := SetupUserkvHandler(db, rdb, config)
+    activitypubHandler := SetupActivitypubHandler(db, rdb, config)
 
     e.HideBanner = true
     e.Use(middleware.CORS())
     e.Use(middleware.Logger())
     e.Use(middleware.Recover())
+    e.Binder = &activitypub.Binder{}
+
+    e.GET("/.well-known/webfinger", activitypubHandler.WebFinger)
+    e.GET("/.well-known/nodeinfo", activitypubHandler.NodeInfoWellKnown)
+    e.GET("/ap/nodeinfo/2.0", activitypubHandler.NodeInfo)
+
+    ap := e.Group("/ap")
+    ap.GET("/acct/:id", activitypubHandler.User)
+    ap.POST("/acct/:id/inbox", activitypubHandler.Inbox)
+    ap.POST("/acct/:id/outbox", activitypubHandler.PrintRequest)
+    ap.GET("/note/:id", activitypubHandler.Note)
 
     apiV1 := e.Group("/api/v1")
     apiV1.GET("/messages/:id", messageHandler.Get)
@@ -94,6 +110,8 @@ func main() {
     apiV1.GET("/entity/:id", entityHandler.Get)
     apiV1.GET("/entity/list", entityHandler.List)
     apiV1.GET("/auth/claim", authHandler.Claim)
+    apiV1.GET("/ap/entity/:ccaddr", activitypubHandler.GetEntityID)
+    apiV1.GET("/ap/person/:id", activitypubHandler.GetPerson)
 
     apiV1R := apiV1.Group("", auth.JWT)
     apiV1R.POST("/messages", messageHandler.Post)
@@ -109,6 +127,8 @@ func main() {
     apiV1R.GET("/admin/sayhello/:fqdn", hostHandler.SayHello)
     apiV1R.GET("/kv/:key", userkvHandler.Get)
     apiV1R.PUT("/kv/:key", userkvHandler.Upsert)
+    apiV1R.POST("/ap/entity", activitypubHandler.CreateEntity)
+    apiV1R.PUT("/ap/person", activitypubHandler.UpdatePerson)
 
     e.GET("/*", spa)
     e.GET("/health", func(c echo.Context) (err error) {
@@ -116,6 +136,7 @@ func main() {
     })
 
     agent.Boot()
+    go activitypubHandler.Boot()
 
     e.Logger.Fatal(e.Start(":8000"))
 }

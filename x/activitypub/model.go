@@ -25,6 +25,18 @@ type ApFollow struct {
     PublisherUserID string `json:"publisher_user" gorm:"type:text"`
 }
 
+// WellKnown is a struct for a well-known response.
+type WellKnown struct {
+    // Subject string `json:"subject"`
+    Links []WellKnownLink `json:"links"`
+}
+
+// WellKnownLink is a struct for the links field of a well-known response.
+type WellKnownLink struct {
+    Rel string `json:"rel"`
+    Href string `json:"href"`
+}
+
 // WebFinger is a struct for a WebFinger response.
 type WebFinger struct {
     Subject string `json:"subject"`
@@ -115,5 +127,34 @@ type Note struct {
     Content string `json:"content"`
     Published string `json:"published"`
     To []string `json:"to"`
+}
+
+// NodeInfo is a struct for a NodeInfo response.
+type NodeInfo struct {
+    Version string `json:"version"`
+    Software NodeInfoSoftware `json:"software"`
+    Protocols []string `json:"protocols"`
+    OpenRegistrations bool `json:"openRegistrations"`
+    Metadata NodeInfoMetadata `json:"metadata"`
+}
+
+// NodeInfoSoftware is a struct for the software field of a NodeInfo response.
+type NodeInfoSoftware struct {
+    Name string `json:"name"`
+    Version string `json:"version"`
+}
+
+// NodeInfoMetadata is a struct for the metadata field of a NodeInfo response.
+type NodeInfoMetadata struct {
+    NodeName string `json:"nodeName"`
+    NodeDescription string `json:"nodeDescription"`
+    Maintainer NodeInfoMetadataMaintainer `json:"maintainer"`
+    ThemeColor string `json:"themeColor"`
+}
+
+// NodeInfoMetadataMaintainer is a struct for the maintainer field of a NodeInfo response.
+type NodeInfoMetadataMaintainer struct {
+    Name string `json:"name"`
+    Email string `json:"email"`
 }
 

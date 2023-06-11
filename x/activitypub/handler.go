@@ -11,6 +11,7 @@ import (
     "io/ioutil"
     "crypto/x509"
     "encoding/pem"
+    "runtime/debug"
     "encoding/json"
     "crypto/ed25519"
     "github.com/labstack/echo/v4"
@@ -71,6 +72,7 @@ func (h Handler) WebFinger(c echo.Context) error {
         },
     })
 }
+
 
 // User handles user requests.
 func (h Handler) User(c echo.Context) error {
@@ -180,12 +182,6 @@ func (h Handler) Inbox(c echo.Context) error {
     switch object.Type {
         case "Follow":
 
-            // check follow already exists
-            _, err := h.repo.GetFollowByID(object.ID)
-            if err == nil {
-                return c.String(http.StatusOK, "follow already exists")
-            }
-
             requester, err := FetchPerson(object.Actor)
             if err != nil {
                 return c.String(http.StatusInternalServerError, "Internal server error")
@@ -204,6 +200,12 @@ func (h Handler) Inbox(c echo.Context) error {
             err = h.PostToInbox(requester.Inbox, accept, userID)
             if err != nil {
                 return c.String(http.StatusInternalServerError, "Internal server error")
+            }
+
+            // check follow already exists
+            _, err = h.repo.GetFollowByID(object.ID)
+            if err == nil {
+                return c.String(http.StatusOK, "follow already exists")
             }
 
             // save follow
@@ -351,7 +353,46 @@ func (h Handler) GetEntityID(c echo.Context) error {
     return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": entity.ID})
 }
 
+func (h Handler) NodeInfoWellKnown(c echo.Context) error {
+    return c.JSON(http.StatusOK, WellKnown{
+        Links: []WellKnownLink{
+            {
+                Rel: "http://nodeinfo.diaspora.software/ns/schema/2.0",
+                Href: "https://" + h.config.Concurrent.FQDN + "/ap/nodeinfo/2.0",
+            },
+        },
+    })
+}
 
+// NodeInfo handles nodeinfo requests
+func (h Handler) NodeInfo(c echo.Context) error {
+    buildinfo, ok := debug.ReadBuildInfo()
+    var version string = "unknown"
+    if ok {
+        version = buildinfo.Main.Version
+    }
+
+    return c.JSON(http.StatusOK, NodeInfo{
+        Version: "2.0",
+        Software: NodeInfoSoftware{
+            Name: "Concurrent",
+            Version: version,
+        },
+        Protocols: []string{
+            "activitypub",
+        },
+        OpenRegistrations: h.config.NodeInfo.OpenRegistrations,
+        Metadata: NodeInfoMetadata{
+            NodeName: h.config.NodeInfo.Metadata.NodeName,
+            NodeDescription: h.config.NodeInfo.Metadata.NodeDescription,
+            Maintainer: NodeInfoMetadataMaintainer{
+                Name: h.config.NodeInfo.Metadata.Maintainer.Name,
+                Email: h.config.NodeInfo.Metadata.Maintainer.Email,
+            },
+            ThemeColor: h.config.NodeInfo.Metadata.ThemeColor,
+        },
+    })
+}
 
 // PrintRequest prints the request body.
 func (h Handler) PrintRequest(c echo.Context) error {

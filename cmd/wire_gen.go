@@ -120,7 +120,7 @@ func SetupActivitypubHandler(db *gorm.DB, rdb *redis.Client, config util.Config)
 	service := entity.NewService(entityRepository, config)
 	streamService := stream.NewService(rdb, streamRepository, service, config)
 	messageService := message.NewService(rdb, messageRepository, streamService)
-	handler := activitypub.NewHandler(repository, messageService, config)
+	handler := activitypub.NewHandler(repository, rdb, messageService, config)
 	return handler
 }
 

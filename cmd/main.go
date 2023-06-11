@@ -80,6 +80,8 @@ func main() {
     e.Binder = &activitypub.Binder{}
 
     e.GET("/.well-known/webfinger", activitypubHandler.WebFinger)
+    e.GET("/.well-known/nodeinfo", activitypubHandler.NodeInfoWellKnown)
+    e.GET("/ap/nodeinfo/2.0", activitypubHandler.NodeInfo)
 
     ap := e.Group("/ap")
     ap.GET("/acct/:id", activitypubHandler.User)

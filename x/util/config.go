@@ -29,15 +29,9 @@ type Concurrent struct {
 // NodeInfo is Activitypub NodeInfo
 type NodeInfo struct {
     OpenRegistrations bool `yaml:"openRegistrations"`
-    Software struct {
-        Name string `yaml:"name"`
-        Version string `yaml:"version"`
-    } `yaml:"software"`
     Metadata struct {
-        Name string `yaml:"name"`
         NodeName string `yaml:"nodeName"`
         NodeDescription string `yaml:"nodeDescription"`
-        Description string `yaml:"description"`
         Maintainer struct {
             Name string `yaml:"name"`
             Email string `yaml:"email"`

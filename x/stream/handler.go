@@ -9,7 +9,10 @@ import (
 
     "gorm.io/gorm"
     "github.com/labstack/echo/v4"
+    "go.opentelemetry.io/otel"
 )
+
+var tracer = otel.Tracer("stream")
 
 // Handler handles Stream objects
 type Handler struct {
@@ -24,8 +27,11 @@ func NewHandler(service *Service) *Handler {
 
 // Get is for handling HTTP Get Method
 func (h Handler) Get(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerGet")
+    defer childSpan.End()
+
     streamStr := c.QueryParam("stream")
-    stream, err := h.service.Get(streamStr)
+    stream, err := h.service.Get(ctx, streamStr)
     if err != nil {
         if errors.Is(err, gorm.ErrRecordNotFound) {
             return c.JSON(http.StatusNotFound, echo.Map{"error": "User not found"})
@@ -37,13 +43,16 @@ func (h Handler) Get(c echo.Context) error {
 
 // Put is for handling HTTP Put Method
 func (h Handler) Put(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerPut")
+    defer childSpan.End()
+
     var request postRequest
     err := c.Bind(&request)
     if err != nil {
         return err
     }
 
-    id, err := h.service.Upsert(request.SignedObject, request.Signature, request.ID)
+    id, err := h.service.Upsert(ctx, request.SignedObject, request.Signature, request.ID)
     if err != nil {
         return err
     }
@@ -52,15 +61,21 @@ func (h Handler) Put(c echo.Context) error {
 
 // Recent returns recent messages in some streams
 func (h Handler) Recent(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerRecent")
+    defer childSpan.End()
+
     streamsStr := c.QueryParam("streams")
     streams := strings.Split(streamsStr, ",")
-    messages, _ := h.service.GetRecent(streams, 16)
+    messages, _ := h.service.GetRecent(ctx, streams, 16)
 
     return c.JSON(http.StatusOK, messages)
 }
 
 // Range returns messages since to until in specified streams
 func (h Handler) Range(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerRange")
+    defer childSpan.End()
+
     queryStreams := c.QueryParam("streams")
     streams := strings.Split(queryStreams, ",")
     querySince := c.QueryParam("since")
@@ -76,14 +91,17 @@ func (h Handler) Range(c echo.Context) error {
         until = queryUntil
     }
 
-    messages, _ := h.service.GetRange(streams, since, until, 16)
+    messages, _ := h.service.GetRange(ctx, streams, since, until, 16)
     return c.JSON(http.StatusOK, messages)
 }
 
 // List returns stream ids which filtered by specific schema
 func (h Handler) List(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerList")
+    defer childSpan.End()
+
     schema := c.QueryParam("schema")
-    list, err := h.service.StreamListBySchema(schema)
+    list, err := h.service.StreamListBySchema(ctx, schema)
     if err != nil {
         return err
     }
@@ -92,13 +110,16 @@ func (h Handler) List(c echo.Context) error {
 
 // Checkpoint used by cross server communication
 func (h Handler) Checkpoint(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerCheckpoint")
+    defer childSpan.End()
+
     var packet checkpointPacket
     err := c.Bind(&packet)
     if err != nil {
         return err
     }
 
-    err = h.service.Post(packet.Stream, packet.ID, packet.Type, packet.Author, packet.Host)
+    err = h.service.Post(ctx, packet.Stream, packet.ID, packet.Type, packet.Author, packet.Host)
     if err != nil {
         return nil
     }

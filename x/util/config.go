@@ -16,6 +16,9 @@ type Config struct {
 type Server struct {
     Dsn string `yaml:"dsn"`
     RedisAddr string `yaml:"redisAddr"`
+    EnableTrace bool `yaml:"enableTrace"`
+    TraceEndpoint string `yaml:"traceEndpoint"`
+    LogPath string `yaml:"logPath"`
 }
 
 type Concurrent struct {

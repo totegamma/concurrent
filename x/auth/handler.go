@@ -4,7 +4,10 @@ package auth
 import (
     "net/http"
     "github.com/labstack/echo/v4"
+    "go.opentelemetry.io/otel"
 )
+
+var tracer = otel.Tracer("auth")
 
 // Handler is handles websocket
 type Handler struct {
@@ -19,8 +22,11 @@ func NewHandler(service *Service) *Handler {
 // Claim is used for get server signed jwt
 // input user signed jwt
 func (h *Handler) Claim(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerClaim")
+    defer childSpan.End()
+
     request := c.Request().Header.Get("Authentication")
-    response, err := h.service.IssueJWT(request)
+    response, err := h.service.IssueJWT(ctx, request)
     if err != nil {
         return c.JSON(http.StatusUnauthorized, echo.Map{"error": err.Error()})
     }

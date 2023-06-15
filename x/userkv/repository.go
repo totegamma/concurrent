@@ -18,13 +18,19 @@ func NewRepository(rdb *redis.Client) *Repository {
 }
 
 // Get returns a userkv by ID
-func (r *Repository) Get(key string) (string, error) {
+func (r *Repository) Get(ctx context.Context, key string) (string, error) {
+    ctx, childSpan := tracer.Start(ctx, "RepositoryGet")
+    defer childSpan.End()
+
     key = "userkv:" + key
     return r.rdb.Get(r.ctx, key).Result()
 }
 
 // Upsert updates a userkv
-func (r *Repository) Upsert(key string, value string) error {
+func (r *Repository) Upsert(ctx context.Context, key string, value string) error {
+    ctx, childSpan := tracer.Start(ctx, "RepositoryUpsert")
+    defer childSpan.End()
+
     key = "userkv:" + key
     return r.rdb.Set(r.ctx, key, value, 0).Err()
 }

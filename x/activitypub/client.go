@@ -4,6 +4,7 @@ import (
     "fmt"
     "time"
     "bytes"
+    "context"
     "net/http"
     "io/ioutil"
     "crypto/x509"
@@ -14,6 +15,9 @@ import (
 
 // FetchPerson fetches a person from remote ap server.
 func FetchPerson(actor string) (Person, error) {
+	_, childSpan := tracer.Start(ctx, "FetchPerson")
+	defer childSpan.End()
+
     var person Person
     req, err := http.NewRequest("GET", actor, nil)
     if err != nil {
@@ -54,7 +58,7 @@ func (h Handler) PostToInbox(inbox string, object interface{}, signUser string) 
     client := new(http.Client)
 
 
-    entity, err := h.repo.GetEntityByID(signUser)
+    entity, err := h.repo.GetEntityByID(context.TODO(), signUser)
     if err != nil {
         return err
     }

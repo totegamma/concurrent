@@ -2,6 +2,7 @@ package entity
 
 import (
     "log"
+    "context"
     "net/http"
     "io/ioutil"
     "encoding/json"
@@ -22,8 +23,11 @@ func NewService(repository *Repository, config util.Config) *Service {
 
 
 // Create updates stream information
-func (s *Service) Create(ccaddr string, meta string) error {
-    return s.repository.Create(&core.Entity{
+func (s *Service) Create(ctx context.Context, ccaddr string, meta string) error {
+    ctx, childSpan := tracer.Start(ctx, "ServiceCreate")
+    defer childSpan.End()
+
+    return s.repository.Create(ctx, &core.Entity{
         ID: ccaddr,
         Role: "default",
         Meta: meta,
@@ -31,17 +35,26 @@ func (s *Service) Create(ccaddr string, meta string) error {
 }
 
 // Get returns stream information by ID
-func (s *Service) Get(key string) (core.Entity, error) {
-    return s.repository.Get(key)
+func (s *Service) Get(ctx context.Context, key string) (core.Entity, error) {
+    ctx, childSpan := tracer.Start(ctx, "ServiceGet")
+    defer childSpan.End()
+
+    return s.repository.Get(ctx, key)
 }
 
 // List returns streamList by schema
-func (s *Service) List() ([]SafeEntity, error) {
-    return s.repository.GetList()
+func (s *Service) List(ctx context.Context, ) ([]SafeEntity, error) {
+    ctx, childSpan := tracer.Start(ctx, "ServiceList")
+    defer childSpan.End()
+
+    return s.repository.GetList(ctx)
 }
 
 // PullRemoteEntities copies remote entities
-func (s *Service) PullRemoteEntities(host core.Host) error {
+func (s *Service) PullRemoteEntities(ctx context.Context, host core.Host) error {
+    ctx, childSpan := tracer.Start(ctx, "ServicePullRemoteEntities")
+    defer childSpan.End()
+
     req, err := http.NewRequest("GET", "https://" + host.ID + "/api/v1/entity/list", nil)
     if err != nil {
         return err
@@ -61,7 +74,7 @@ func (s *Service) PullRemoteEntities(host core.Host) error {
     log.Print(remoteEntities)
 
     for _, entity := range remoteEntities {
-        err := s.repository.Upsert(&core.Entity{
+        err := s.repository.Upsert(ctx, &core.Entity{
             ID: entity.ID,
             Host: host.ID,
             Meta: "null",
@@ -75,8 +88,11 @@ func (s *Service) PullRemoteEntities(host core.Host) error {
 }
 
 // ResolveHost resolves host from user address
-func (s *Service) ResolveHost(user string) (string, error) {
-    entity, err := s.repository.Get(user)
+func (s *Service) ResolveHost(ctx context.Context, user string) (string, error) {
+    ctx, childSpan := tracer.Start(ctx, "ServiceResolveHost")
+    defer childSpan.End()
+
+    entity, err := s.repository.Get(ctx, user)
     if err != nil {
         return "", err
     }
@@ -89,8 +105,11 @@ func (s *Service) ResolveHost(user string) (string, error) {
 
 
 // IsUserExists returns true if user exists
-func (s *Service) IsUserExists(user string) bool {
-    entity, err := s.repository.Get(user)
+func (s *Service) IsUserExists(ctx context.Context, user string) bool {
+    ctx, childSpan := tracer.Start(ctx, "ServiceIsUserExists")
+    defer childSpan.End()
+
+    entity, err := s.repository.Get(ctx, user)
     if err != nil {
         return false
     }

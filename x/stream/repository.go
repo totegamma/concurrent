@@ -1,6 +1,7 @@
 package stream
 
 import (
+    "context"
     "gorm.io/gorm"
     "golang.org/x/exp/slices"
     "github.com/totegamma/concurrent/x/core"
@@ -18,19 +19,28 @@ func NewRepository(db *gorm.DB) *Repository {
 }
 
 // Get returns a stream by ID
-func (r *Repository) Get(key string) (core.Stream, error) {
+func (r *Repository) Get(ctx context.Context, key string) (core.Stream, error) {
+    ctx, childSpan := tracer.Start(ctx, "RepositoryGet")
+    defer childSpan.End()
+
     var stream core.Stream
     err := r.db.First(&stream, "id = ?", key).Error
     return stream, err
 }
 
 // Upsert updates a stream
-func (r *Repository) Upsert(stream *core.Stream) error {
+func (r *Repository) Upsert(ctx context.Context, stream *core.Stream) error {
+    ctx, childSpan := tracer.Start(ctx, "RepositoryUpsert")
+    defer childSpan.End()
+
     return r.db.Save(&stream).Error
 }
 
 // GetList returns list of schemas by schema
-func (r *Repository) GetList(schema string) ([]core.Stream, error) {
+func (r *Repository) GetList(ctx context.Context, schema string) ([]core.Stream, error) {
+    ctx, childSpan := tracer.Start(ctx, "RepositoryGetList")
+    defer childSpan.End()
+
     var streams []core.Stream
     err := r.db.Where("Schema = ?", schema).Find(&streams).Error
     return streams, err
@@ -38,7 +48,10 @@ func (r *Repository) GetList(schema string) ([]core.Stream, error) {
 
 
 // HasWriteAccess returns true if the user has write access
-func (r *Repository) HasWriteAccess(streamID string, userAddress string) bool {
+func (r *Repository) HasWriteAccess(ctx context.Context, streamID string, userAddress string) bool {
+    ctx, childSpan := tracer.Start(ctx, "RepositoryHasWriteAccess")
+    defer childSpan.End()
+
     var stream core.Stream
     r.db.First(&stream, "id = ?", streamID)
     if len(stream.Writer) == 0 {
@@ -48,7 +61,10 @@ func (r *Repository) HasWriteAccess(streamID string, userAddress string) bool {
 }
 
 // HasReadAccess returns true if the user has read access
-func (r *Repository) HasReadAccess(streamID string, userAddress string) bool {
+func (r *Repository) HasReadAccess(ctx context.Context, streamID string, userAddress string) bool {
+    ctx, childSpan := tracer.Start(ctx, "RepositoryHasReadAccess")
+    defer childSpan.End()
+
     var stream core.Stream
     r.db.First(&stream, "id = ?", streamID)
     if len(stream.Reader) == 0 {

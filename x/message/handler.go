@@ -8,7 +8,10 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/x/util"
 	"gorm.io/gorm"
+    "go.opentelemetry.io/otel"
 )
+
+var tracer = otel.Tracer("message")
 
 // Handler handles Message objects
 type Handler struct {
@@ -24,9 +27,12 @@ func NewHandler(service *Service) *Handler {
 // Input: path parameter "id"
 // Output: Message Object
 func (h Handler) Get(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerGet")
+    defer childSpan.End()
+
     id := c.Param("id")
 
-    message, err := h.service.Get(id)
+    message, err := h.service.Get(ctx, id)
     if err != nil {
         if errors.Is(err, gorm.ErrRecordNotFound) {
             return c.JSON(http.StatusNotFound, echo.Map{"error": "Message not found"})
@@ -41,12 +47,15 @@ func (h Handler) Get(c echo.Context) error {
 // Output: nothing
 // Effect: register message object to database
 func (h Handler) Post(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerPost")
+    defer childSpan.End()
+
     var request postRequest
     err := c.Bind(&request)
     if err != nil {
         return err
     }
-    message, err := h.service.PostMessage(request.SignedObject, request.Signature, request.Streams)
+    message, err := h.service.PostMessage(ctx, request.SignedObject, request.Signature, request.Streams)
     if err != nil {
         return err
     }
@@ -55,13 +64,16 @@ func (h Handler) Post(c echo.Context) error {
 
 // Delete deletes message. only auther can perform this.
 func (h Handler) Delete(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerDelete")
+    defer childSpan.End()
+
     var request deleteQuery
     err := c.Bind(&request)
     if (err != nil) {
         return err
     }
 
-    target, err := h.service.Get(request.ID)
+    target, err := h.service.Get(ctx, request.ID)
     if err != nil {
         return c.JSON(http.StatusNotFound, echo.Map{"error": "target message not found"})
     }
@@ -72,7 +84,7 @@ func (h Handler) Delete(c echo.Context) error {
         return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action"})
     }
 
-    deleted, err := h.service.Delete(request.ID)
+    deleted, err := h.service.Delete(ctx, request.ID)
     if err != nil {
         return err
     }

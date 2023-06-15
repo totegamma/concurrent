@@ -1,5 +1,9 @@
 package userkv
 
+import (
+    "context"
+)
+
 // Service is userkv service
 type Service struct {
     repository *Repository
@@ -11,12 +15,18 @@ func NewService(repository *Repository) *Service {
 }
 
 // Get returns a userkv by ID
-func (s *Service) Get(userID string, key string) (string, error) {
-    return s.repository.Get(userID + ":" + key)
+func (s *Service) Get(ctx context.Context, userID string, key string) (string, error) {
+    ctx, childSpan := tracer.Start(ctx, "ServiceGet")
+    defer childSpan.End()
+
+    return s.repository.Get(ctx, userID + ":" + key)
 }
 
 // Upsert updates a userkv
-func (s *Service) Upsert(userID string, key string, value string) error {
-    return s.repository.Upsert(userID + ":" + key, value)
+func (s *Service) Upsert(ctx context.Context, userID string, key string, value string) error {
+    ctx, childSpan := tracer.Start(ctx, "ServiceUpsert")
+    defer childSpan.End()
+
+    return s.repository.Upsert(ctx, userID + ":" + key, value)
 }
 

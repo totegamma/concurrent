@@ -40,10 +40,11 @@ func NewAgent(rdb *redis.Client, config util.Config, host *host.Service, entity 
 
 
 func (a *Agent) collectUsers() {
-    hosts, _ := a.host.List()
+    ctx := context.Background()
+    hosts, _ := a.host.List(ctx)
     for _, host := range hosts {
         log.Printf("collect users for %v\n", host)
-        a.entity.PullRemoteEntities(host)
+        a.entity.PullRemoteEntities(ctx, host)
     }
 }
 

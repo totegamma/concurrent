@@ -2,4 +2,5 @@ concurrent
 _composeData
 
 *.exe
+*.log
 .idea/

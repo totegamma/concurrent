@@ -1,44 +1,67 @@
 package main
 
 import (
-	"fmt"
-	"log"
-	"net/http"
-	"os"
-	"path/filepath"
+    "os"
+    "fmt"
+    "log"
+    "bytes"
+    "context"
+    "net/http"
+    "runtime/debug"
+    "path/filepath"
 
-	"github.com/redis/go-redis/v9"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
+    "github.com/redis/go-redis/v9"
+    "gorm.io/driver/postgres"
+    "gorm.io/gorm"
 
-	"github.com/labstack/echo/v4"
-	"github.com/labstack/echo/v4/middleware"
+    "github.com/labstack/echo/v4"
+    "github.com/labstack/echo/v4/middleware"
 
-	"github.com/totegamma/concurrent/x/auth"
-	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/util"
-	"github.com/totegamma/concurrent/x/activitypub"
+    "github.com/totegamma/concurrent/x/auth"
+    "github.com/totegamma/concurrent/x/core"
+    "github.com/totegamma/concurrent/x/util"
+    "github.com/totegamma/concurrent/x/activitypub"
+
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+    "go.opentelemetry.io/otel/sdk/resource"
+    sdktrace "go.opentelemetry.io/otel/sdk/trace"
+    semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
+    "go.opentelemetry.io/otel/trace"
 )
+
 
 func main() {
 
     fmt.Print(concurrentBanner)
 
     e := echo.New()
-
     config := util.Config{}
-
     configPath := os.Getenv("CONCURRENT_CONFIG")
     if configPath == "" {
         configPath = "/etc/concurrent/config.yaml"
     }
-    err := config.Load(configPath)
 
+    err := config.Load(configPath)
     if err != nil {
         e.Logger.Fatal(err)
     }
 
+    buildinfo, ok := debug.ReadBuildInfo()
+    var version string = "unknown"
+    if ok {
+        version = buildinfo.Main.Version
+    }
+
+    log.Print("Concurrent ", version, " starting...")
     log.Print("Config loaded! I am: ", config.Concurrent.CCAddr)
+
+    // Setup tracing
+    cleanup, err := SetupTraceProvider(config.Server.TraceEndpoint, "api", version)
+    if err != nil {
+        panic(err)
+    }
+    defer cleanup()
 
     db, err := gorm.Open(postgres.Open(config.Server.Dsn), &gorm.Config{})
     if err != nil {
@@ -79,10 +102,37 @@ func main() {
     userkvHandler := SetupUserkvHandler(db, rdb, config)
     activitypubHandler := SetupActivitypubHandler(db, rdb, config)
 
+    logfile, err := os.OpenFile(filepath.Join(config.Server.LogPath, "access.log"), os.O_RDWR | os.O_CREATE | os.O_APPEND, 0666)
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer logfile.Close()
+
+    e.HidePort = true
     e.HideBanner = true
     e.Use(middleware.CORS())
-    e.Use(middleware.Logger())
+
+    e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
+        Skipper: func(c echo.Context) bool {
+            return c.Path() == "/metrics" || c.Path() == "/health"
+        },
+        Format: `{"time":"${time_rfc3339_nano}",${custom},"remote_ip":"${remote_ip}",` +
+                `"host":"${host}","method":"${method}","uri":"${uri}","status":${status},` +
+                `"error":"${error}","latency":${latency},"latency_human":"${latency_human}",` +
+                `"bytes_in":${bytes_in},"bytes_out":${bytes_out}}` + "\n",
+        CustomTagFunc: func(c echo.Context, buf *bytes.Buffer) (int, error) {
+            span := c.Get("span").(trace.Span)
+            buf.WriteString(fmt.Sprintf("\"%s\":\"%s\"", "traceID", span.SpanContext().TraceID().String()))
+            buf.WriteString(fmt.Sprintf(",\"%s\":\"%s\"", "spanID", span.SpanContext().SpanID().String()))
+            return 0, nil
+        },
+    }))
+
+    var tracer = otel.Tracer(config.Concurrent.FQDN + "/concurrent")
+    e.Use(Tracer(tracer))
+
     e.Use(middleware.Recover())
+    e.Logger.SetOutput(logfile)
     e.Binder = &activitypub.Binder{}
 
     e.GET("/.well-known/webfinger", activitypubHandler.WebFinger)
@@ -153,5 +203,60 @@ func spa(c echo.Context) error {
         return c.File(filepath.Join(webFilePath,"index.html"))
     }
     return c.File(fPath)
+}
+
+func Tracer(tracer trace.Tracer) echo.MiddlewareFunc {
+    return func(next echo.HandlerFunc) echo.HandlerFunc {
+        return func(c echo.Context) error {
+            ctx, span := tracer.Start(c.Request().Context(), c.Request().Method + "-" + c.Path())
+            defer span.End()
+            c.Set("span", span)
+
+            req := c.Request().WithContext(ctx)
+            c.SetRequest(req)
+
+            res := c.Response()
+
+            res.Header().Set("trace-id", span.SpanContext().TraceID().String())
+            res.Header().Set("span-id", span.SpanContext().SpanID().String())
+
+            return next(c)
+        }
+    }
+}
+
+func SetupTraceProvider(endpoint string, serviceName string, serviceVersion string) (func(), error) {
+
+    exporter, err := otlptracehttp.New(
+        context.Background(),
+        otlptracehttp.WithEndpoint(endpoint),
+        otlptracehttp.WithInsecure(),
+    )
+
+    if err != nil {
+        return nil, err
+    }
+
+    resource := resource.NewWithAttributes(
+        semconv.SchemaURL,
+        semconv.ServiceNameKey.String(serviceName),
+        semconv.ServiceVersionKey.String(serviceVersion),
+    )
+
+    tracerProvider := sdktrace.NewTracerProvider(
+        sdktrace.WithBatcher(exporter),
+        sdktrace.WithSampler(sdktrace.AlwaysSample()),
+        sdktrace.WithResource(resource),
+    )
+    otel.SetTracerProvider(tracerProvider)
+
+    cleanup := func() {
+        ctx, cancel := context.WithCancel(context.Background())
+        defer cancel()
+        if err := tracerProvider.Shutdown(ctx); err != nil {
+            log.Printf("Failed to shutdown tracer provider: %v", err)
+        }
+    }
+    return cleanup, nil
 }
 

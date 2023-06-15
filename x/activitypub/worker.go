@@ -21,7 +21,7 @@ func (h *Handler) Boot() {
     for {
         <-ticker10.C
 
-        jobs, err := h.repo.GetAllFollows()
+        jobs, err := h.repo.GetAllFollows(ctx)
         if err != nil {
             log.Printf("error: %v", err)
         }
@@ -31,7 +31,7 @@ func (h *Handler) Boot() {
                 log.Printf("start worker %v", job.ID)
                 ctx, cancel := context.WithCancel(context.Background())
                 workers[job.ID] = cancel
-                person, err := h.repo.GetPersonByID(job.PublisherUserID)
+                person, err := h.repo.GetPersonByID(ctx, job.PublisherUserID)
                 if err != nil {
                     log.Printf("error: %v", err)
                 }
@@ -63,7 +63,7 @@ func (h *Handler) Boot() {
                                 log.Printf("error: %v", err)
                             }
 
-                            msg, err := h.message.Get(streamEvent.Body.ID)
+                            msg, err := h.message.Get(context.TODO(), streamEvent.Body.ID)
                             if err != nil {
                                 log.Printf("error: %v", err)
                             }

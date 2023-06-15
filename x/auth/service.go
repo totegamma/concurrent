@@ -3,6 +3,7 @@ package auth
 import (
     "fmt"
     "time"
+    "context"
     "strconv"
     "github.com/rs/xid"
     "github.com/totegamma/concurrent/x/util"
@@ -22,7 +23,10 @@ func NewService(config util.Config, entity *entity.Service) *Service {
 
 
 // IssueJWT takes client signed JWT and returns server signed JWT
-func (s *Service) IssueJWT(request string) (string, error) {
+func (s *Service) IssueJWT(ctx context.Context, request string) (string, error) {
+    ctx, childSpan := tracer.Start(ctx, "ServiceIssueJWT")
+    defer childSpan.End()
+
     // check jwt basic info
     claims, err := util.ValidateJWT(request)
     if err != nil {
@@ -37,7 +41,7 @@ func (s *Service) IssueJWT(request string) (string, error) {
     }
 
     // check if issuer exists in this host
-    _, err = s.entity.Get(claims.Issuer)
+    _, err = s.entity.Get(ctx, claims.Issuer)
     if err != nil {
         return "", err
     }

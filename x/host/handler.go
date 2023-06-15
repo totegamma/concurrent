@@ -10,10 +10,13 @@ import (
     "gorm.io/gorm"
     "golang.org/x/exp/slices"
 
+    "go.opentelemetry.io/otel"
     "github.com/labstack/echo/v4"
     "github.com/totegamma/concurrent/x/core"
     "github.com/totegamma/concurrent/x/util"
 )
+
+var tracer = otel.Tracer("handler")
 
 // Handler is handles websocket
 type Handler struct {
@@ -28,8 +31,11 @@ func NewHandler(service *Service, config util.Config) *Handler {
 
 // Get returns a host by ID
 func (h Handler) Get(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerGet")
+    defer childSpan.End()
+
     id := c.Param("id")
-    host, err := h.service.Get(id)
+    host, err := h.service.Get(ctx, id)
     if err != nil {
         if errors.Is(err, gorm.ErrRecordNotFound) {
             return c.JSON(http.StatusNotFound, echo.Map{"error": "Host not found"})
@@ -42,12 +48,15 @@ func (h Handler) Get(c echo.Context) error {
 
 // Upsert updates Host registry
 func (h Handler) Upsert(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerUpsert")
+    defer childSpan.End()
+
     var host core.Host
     err := c.Bind(&host)
     if (err != nil) {
         return err
     }
-    err = h.service.Upsert(&host)
+    err = h.service.Upsert(ctx, &host)
     if err != nil {
         return err
     }
@@ -56,7 +65,10 @@ func (h Handler) Upsert(c echo.Context) error {
 
 // List returns all hosts
 func (h Handler) List(c echo.Context) error {
-    hosts, err := h.service.List()
+    ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerList")
+    defer childSpan.End()
+
+    hosts, err := h.service.List(ctx, )
     if err != nil {
         return err
     }
@@ -65,6 +77,9 @@ func (h Handler) List(c echo.Context) error {
 
 // Profile returns server Profile
 func (h Handler) Profile(c echo.Context) error {
+    _, childSpan := tracer.Start(c.Request().Context(), "HandlerProfile")
+    defer childSpan.End()
+
     return c.JSON(http.StatusOK, Profile{
         ID: h.config.Concurrent.FQDN,
         CCAddr: h.config.Concurrent.CCAddr,
@@ -74,6 +89,9 @@ func (h Handler) Profile(c echo.Context) error {
 
 // Hello iniciates a new host registration
 func (h Handler) Hello(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerHello")
+    defer childSpan.End()
+
     var newcomer Profile
     err := c.Bind(&newcomer)
     if err != nil {
@@ -101,7 +119,7 @@ func (h Handler) Hello(c echo.Context) error {
         return c.String(http.StatusBadRequest, "validation failed")
     }
 
-    h.service.Upsert(&core.Host{
+    h.service.Upsert(ctx, &core.Host{
         ID: newcomer.ID,
         CCAddr: newcomer.CCAddr,
         Role: "unassigned",
@@ -118,6 +136,9 @@ func (h Handler) Hello(c echo.Context) error {
 // SayHello iniciates a new host registration
 // Only Admin can call this
 func (h Handler) SayHello(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerSayHello")
+    defer childSpan.End()
+
     target := c.Param("fqdn")
 
     claims := c.Get("jwtclaims").(util.JwtClaims)
@@ -151,7 +172,7 @@ func (h Handler) SayHello(c echo.Context) error {
     var fetchedProf Profile
     json.Unmarshal(body, &fetchedProf)
 
-    h.service.Upsert(&core.Host{
+    h.service.Upsert(ctx, &core.Host{
         ID: fetchedProf.ID,
         CCAddr: fetchedProf.CCAddr,
         Role: "unassigned",

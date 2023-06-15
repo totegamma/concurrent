@@ -2,6 +2,7 @@ package character
 
 import (
     "log"
+    "context"
     "encoding/json"
     "github.com/totegamma/concurrent/x/util"
     "github.com/totegamma/concurrent/x/core"
@@ -18,8 +19,11 @@ func NewService(repo *Repository) *Service {
 }
 
 // GetCharacters returns characters by owner and schema
-func (s* Service) GetCharacters(owner string, schema string) ([]core.Character, error) {
-    characters, err := s.repo.Get(owner, schema)
+func (s* Service) GetCharacters(ctx context.Context, owner string, schema string) ([]core.Character, error) {
+    ctx, childSpan := tracer.Start(ctx, "ServicePostAssociation")
+    defer childSpan.End()
+
+    characters, err := s.repo.Get(ctx, owner, schema)
     if err != nil {
         log.Printf("error occured while GetCharacters in characterRepository. error: %v\n", err)
         return []core.Character{}, err
@@ -28,7 +32,9 @@ func (s* Service) GetCharacters(owner string, schema string) ([]core.Character, 
 }
 
 // PutCharacter creates new character if the signature is valid
-func (s* Service) PutCharacter(objectStr string, signature string, id string) error {
+func (s* Service) PutCharacter(ctx context.Context, objectStr string, signature string, id string) error {
+    ctx, childSpan := tracer.Start(ctx, "ServicePutCharacter")
+    defer childSpan.End()
 
     var object signedObject
     err := json.Unmarshal([]byte(objectStr), &object)
@@ -49,7 +55,7 @@ func (s* Service) PutCharacter(objectStr string, signature string, id string) er
         Signature: signature,
     }
 
-    err = s.repo.Upsert(character)
+    err = s.repo.Upsert(ctx, character)
     if err != nil {
         return err
     }

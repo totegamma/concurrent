@@ -31,8 +31,6 @@ func NewService(rdb *redis.Client, repository *Repository, entity *entity.Servic
     return &Service{ rdb, repository, entity, config }
 }
 
-var ctx = context.Background()
-
 func min(a, b int) int {
 	if a < b {
 		return a
@@ -41,7 +39,10 @@ func min(a, b int) int {
 }
 
 // GetRecent returns recent message from streams
-func (s *Service) GetRecent(streams []string, limit int) ([]Element, error) {
+func (s *Service) GetRecent(ctx context.Context, streams []string, limit int) ([]Element, error) {
+    ctx, childSpan := tracer.Start(ctx, "ServiceGetRecent")
+    defer childSpan.End()
+
     var messages []redis.XMessage
     for _, stream := range streams {
         cmd := s.rdb.XRevRangeN(ctx, stream, "+", "-", int64(limit))
@@ -66,7 +67,7 @@ func (s *Service) GetRecent(streams []string, limit int) ([]Element, error) {
     result := []Element{}
 
     for _, elem := range chopped {
-        host, _ := s.entity.ResolveHost(elem.Values["author"].(string))
+        host, _ := s.entity.ResolveHost(ctx, elem.Values["author"].(string))
         id, ok := elem.Values["id"].(string)
         if !ok {
             id = ""
@@ -92,7 +93,10 @@ func (s *Service) GetRecent(streams []string, limit int) ([]Element, error) {
 }
 
 // GetRange returns specified range messages from streams
-func (s *Service) GetRange(streams []string, since string ,until string, limit int) ([]Element, error) {
+func (s *Service) GetRange(ctx context.Context, streams []string, since string ,until string, limit int) ([]Element, error) {
+    ctx, childSpan := tracer.Start(ctx, "ServiceGetRange")
+    defer childSpan.End()
+
     var messages []redis.XMessage
     for _, stream := range streams {
         cmd := s.rdb.XRevRangeN(ctx, stream, until, since, int64(limit))
@@ -117,7 +121,7 @@ func (s *Service) GetRange(streams []string, since string ,until string, limit i
     result := []Element{}
 
     for _, elem := range chopped {
-        host, _ := s.entity.ResolveHost(elem.Values["author"].(string))
+        host, _ := s.entity.ResolveHost(ctx, elem.Values["author"].(string))
         id, ok := elem.Values["id"].(string)
         if !ok {
             id = ""
@@ -143,7 +147,10 @@ func (s *Service) GetRange(streams []string, since string ,until string, limit i
 }
 
 // Post posts to stream
-func (s *Service) Post(stream string, id string, typ string, author string, host string) error {
+func (s *Service) Post(ctx context.Context, stream string, id string, typ string, author string, host string) error {
+    ctx, childSpan := tracer.Start(ctx, "ServicePost")
+    defer childSpan.End()
+
     query := strings.Split(stream, "@")
     if len(query) != 2 {
         return fmt.Errorf("Invalid format: %v", stream)
@@ -158,7 +165,7 @@ func (s *Service) Post(stream string, id string, typ string, author string, host
     if (streamHost == s.config.Concurrent.FQDN) {
 
         // check if the user has write access to the stream
-        if !s.repository.HasWriteAccess(streamID, author) {
+        if !s.repository.HasWriteAccess(ctx, streamID, author) {
             return fmt.Errorf("You don't have write access to %v", streamID)
         }
 
@@ -224,7 +231,10 @@ func (s *Service) Post(stream string, id string, typ string, author string, host
 
 
 // Upsert updates stream information
-func (s *Service) Upsert(objectStr string, signature string, id string) (string, error) {
+func (s *Service) Upsert(ctx context.Context, objectStr string, signature string, id string) (string, error) {
+    ctx, childSpan := tracer.Start(ctx, "ServiceUpsert")
+    defer childSpan.End()
+
     var object signedObject
     err := json.Unmarshal([]byte(objectStr), &object)
     if err != nil {
@@ -260,18 +270,24 @@ func (s *Service) Upsert(objectStr string, signature string, id string) (string,
         Signature: signature,
     }
 
-    s.repository.Upsert(&stream)
+    s.repository.Upsert(ctx, &stream)
     return stream.ID + "@" + s.config.Concurrent.FQDN, nil
 }
 
 // Get returns stream information by ID
-func (s *Service) Get(key string) (core.Stream, error) {
-    return s.repository.Get(key)
+func (s *Service) Get(ctx context.Context, key string) (core.Stream, error) {
+    ctx, childSpan := tracer.Start(ctx, "ServiceGet")
+    defer childSpan.End()
+
+    return s.repository.Get(ctx, key)
 }
 
 // StreamListBySchema returns streamList by schema
-func (s *Service) StreamListBySchema(schema string) ([]core.Stream, error) {
-    streams, err := s.repository.GetList(schema)
+func (s *Service) StreamListBySchema(ctx context.Context, schema string) ([]core.Stream, error) {
+    ctx, childSpan := tracer.Start(ctx, "ServiceStreamListBySchema")
+    defer childSpan.End()
+
+    streams, err := s.repository.GetList(ctx, schema)
     for i := 0; i < len(streams); i++ {
         streams[i].ID = streams[i].ID + "@" + s.config.Concurrent.FQDN
     }
@@ -279,7 +295,10 @@ func (s *Service) StreamListBySchema(schema string) ([]core.Stream, error) {
 }
 
 // Delete deletes 
-func (s *Service) Delete(stream string, id string) {
+func (s *Service) Delete(ctx context.Context, stream string, id string) {
+    ctx, childSpan := tracer.Start(ctx, "ServiceDelete")
+    defer childSpan.End()
+
     s.rdb.XDel(ctx, stream, id)
 }
 

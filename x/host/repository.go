@@ -1,6 +1,7 @@
 package host
 
 import (
+    "context"
     "gorm.io/gorm"
     "github.com/totegamma/concurrent/x/core"
 )
@@ -16,19 +17,28 @@ func NewRepository(db *gorm.DB) *Repository {
 }
 
 // Get returns a host by ID
-func (r *Repository) Get(key string) (core.Host, error) {
+func (r *Repository) Get(ctx context.Context, key string) (core.Host, error) {
+    ctx, childSpan := tracer.Start(ctx, "RepositoryGet")
+    defer childSpan.End()
+
     var host core.Host
     err := r.db.First(&host, "id = ?", key).Error
     return host, err
 }
 
 // Upsert updates a stream
-func (r *Repository) Upsert(host *core.Host) error {
+func (r *Repository) Upsert(ctx context.Context, host *core.Host) error {
+    ctx, childSpan := tracer.Start(ctx, "RepositoryUpsert")
+    defer childSpan.End()
+
     return r.db.Save(&host).Error
 }
 
 // GetList returns list of schemas by schema
-func (r *Repository) GetList() ([]core.Host, error) {
+func (r *Repository) GetList(ctx context.Context, ) ([]core.Host, error) {
+    ctx, childSpan := tracer.Start(ctx, "RepositoryGetList")
+    defer childSpan.End()
+
     var hosts []core.Host
     err := r.db.Find(&hosts).Error
     return hosts, err

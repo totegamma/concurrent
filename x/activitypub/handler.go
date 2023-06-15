@@ -5,6 +5,7 @@ import (
     "log"
     "fmt"
     "time"
+    "context"
     "strings"
     "net/url"
     "net/http"
@@ -14,11 +15,14 @@ import (
     "runtime/debug"
     "encoding/json"
     "crypto/ed25519"
+    "go.opentelemetry.io/otel"
     "github.com/labstack/echo/v4"
     "github.com/redis/go-redis/v9"
     "github.com/totegamma/concurrent/x/util"
     "github.com/totegamma/concurrent/x/message"
 )
+
+var tracer = otel.Tracer("activitypub")
 
 // Handler is a handler for the WebFinger protocol.
 type Handler struct {
@@ -38,6 +42,9 @@ func NewHandler(repo *Repository, rdb *redis.Client, message *message.Service, c
 
 // WebFinger handles WebFinger requests.
 func (h Handler) WebFinger(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "WebFinger")
+    defer childSpan.End()
+
     resource := c.QueryParam("resource")
     split := strings.Split(resource, ":")
     if len(split) != 2 {
@@ -56,7 +63,7 @@ func (h Handler) WebFinger(c echo.Context) error {
         return c.String(http.StatusBadRequest, "Invalid resource")
     }
 
-    _, err := h.repo.GetEntityByID(username)
+    _, err := h.repo.GetEntityByID(ctx, username)
     if err != nil {
         return c.String(http.StatusNotFound, "entity not found")
     }
@@ -76,17 +83,20 @@ func (h Handler) WebFinger(c echo.Context) error {
 
 // User handles user requests.
 func (h Handler) User(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "User")
+    defer childSpan.End()
+
     id := c.Param("id")
     if id == "" {
         return c.String(http.StatusBadRequest, "Invalid username")
     }
 
-    entity, err := h.repo.GetEntityByID(id)
+    entity, err := h.repo.GetEntityByID(ctx, id)
     if err != nil {
         return c.String(http.StatusNotFound, "entity not found")
     }
 
-    person, err := h.repo.GetPersonByID(id)
+    person, err := h.repo.GetPersonByID(ctx, id)
     if err != nil {
         return c.String(http.StatusNotFound, "person not found")
     }
@@ -117,16 +127,19 @@ func (h Handler) User(c echo.Context) error {
 
 // Note handles note requests.
 func (h Handler) Note(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "Note")
+    defer childSpan.End()
+
     id := c.Param("id")
     if id == "" {
         return c.String(http.StatusBadRequest, "Invalid noteID")
     }
-    msg, err := h.message.Get(id)
+    msg, err := h.message.Get(context.TODO(), id)
     if err != nil {
         return c.String(http.StatusNotFound, "message not found")
     }
 
-    entity, err := h.repo.GetEntityByCCAddr(msg.Author)
+    entity, err := h.repo.GetEntityByCCAddr(ctx, msg.Author)
     if err != nil {
         return c.String(http.StatusNotFound, "entity not found")
     }
@@ -163,12 +176,15 @@ func (h Handler) Note(c echo.Context) error {
 
 // Inbox handles inbox requests.
 func (h Handler) Inbox(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "Inbox")
+    defer childSpan.End()
+
     id := c.Param("id")
     if id == "" {
         return c.String(http.StatusBadRequest, "Invalid username")
     }
 
-    _, err := h.repo.GetEntityByID(id)
+    _, err := h.repo.GetEntityByID(ctx, id)
     if err != nil {
         return c.String(http.StatusNotFound, "entity not found")
     }
@@ -203,13 +219,13 @@ func (h Handler) Inbox(c echo.Context) error {
             }
 
             // check follow already exists
-            _, err = h.repo.GetFollowByID(object.ID)
+            _, err = h.repo.GetFollowByID(ctx, object.ID)
             if err == nil {
                 return c.String(http.StatusOK, "follow already exists")
             }
 
             // save follow
-            err = h.repo.SaveFollow(ApFollow{
+            err = h.repo.SaveFollow(ctx, ApFollow{
                 ID: object.ID,
                 SubscriberInbox: requester.Inbox,
                 PublisherUserID: userID,
@@ -239,11 +255,11 @@ func (h Handler) Inbox(c echo.Context) error {
                         return c.String(http.StatusBadRequest, "Invalid request body")
                     }
                     // check follow already deleted
-                    _, err := h.repo.GetFollowByID(id)
+                    _, err := h.repo.GetFollowByID(ctx, id)
                     if err != nil {
                         return c.String(http.StatusOK, "follow already undoed")
                     }
-                    h.repo.RemoveFollow(id)
+                    h.repo.RemoveFollow(ctx, id)
                     return c.String(http.StatusOK, "OK")
                 default:
                     return c.String(http.StatusOK, "OK but not implemented")
@@ -259,13 +275,15 @@ func (h Handler) Inbox(c echo.Context) error {
 
 // GetPerson handles entity fetches.
 func (h Handler) GetPerson(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "GetPerson")
+    defer childSpan.End()
 
     id := c.Param("id")
     if id == "" {
         return c.String(http.StatusBadRequest, "Invalid username")
     }
 
-    person, err := h.repo.GetPersonByID(id)
+    person, err := h.repo.GetPersonByID(ctx, id)
     if err != nil {
         return c.String(http.StatusNotFound, "entity not found")
     }
@@ -276,11 +294,13 @@ func (h Handler) GetPerson(c echo.Context) error {
 
 // UpdatePerson handles entity updates.
 func (h Handler) UpdatePerson(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "UpdatePerson")
+    defer childSpan.End()
 
     claims := c.Get("jwtclaims").(util.JwtClaims)
     ccaddr := claims.Audience
 
-    entity, err := h.repo.GetEntityByCCAddr(ccaddr)
+    entity, err := h.repo.GetEntityByCCAddr(ctx, ccaddr)
     if err != nil {
         return c.String(http.StatusNotFound, "entity not found")
     }
@@ -295,7 +315,7 @@ func (h Handler) UpdatePerson(c echo.Context) error {
         return c.String(http.StatusBadRequest, "Invalid request body")
     }
 
-    created, err := h.repo.UpsertPerson(person)
+    created, err := h.repo.UpsertPerson(ctx, person)
     if err != nil {
         return c.String(http.StatusInternalServerError, "Internal server error")
     }
@@ -305,6 +325,8 @@ func (h Handler) UpdatePerson(c echo.Context) error {
 
 // CreateEntity handles entity creation.
 func (h Handler) CreateEntity(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "CreateEntity")
+    defer childSpan.End()
 
     claims := c.Get("jwtclaims").(util.JwtClaims)
     ccaddr := claims.Audience
@@ -316,7 +338,7 @@ func (h Handler) CreateEntity(c echo.Context) error {
     }
 
     // check if entity already exists
-    _, err = h.repo.GetEntityByCCAddr(ccaddr)
+    _, err = h.repo.GetEntityByCCAddr(ctx, ccaddr)
     if err == nil {
         return c.String(http.StatusBadRequest, "Entity already exists")
     }
@@ -344,7 +366,7 @@ func (h Handler) CreateEntity(c echo.Context) error {
         Bytes: pb,
     })
 
-    created, err := h.repo.CreateEntity(ApEntity {
+    created, err := h.repo.CreateEntity(ctx, ApEntity {
         ID: request.ID,
         CCAddr: ccaddr,
         Publickey: string(q),
@@ -360,12 +382,15 @@ func (h Handler) CreateEntity(c echo.Context) error {
 
 // GetEntityID handles entity id requests.
 func (h Handler) GetEntityID(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "GetEntityID")
+    defer childSpan.End()
+
     ccaddr := c.Param("ccaddr")
     if ccaddr == "" {
         return c.String(http.StatusBadRequest, "Invalid username")
     }
 
-    entity, err := h.repo.GetEntityByCCAddr(ccaddr)
+    entity, err := h.repo.GetEntityByCCAddr(ctx, ccaddr)
     if err != nil {
         return c.String(http.StatusNotFound, "entity not found")
     }
@@ -374,6 +399,9 @@ func (h Handler) GetEntityID(c echo.Context) error {
 }
 
 func (h Handler) NodeInfoWellKnown(c echo.Context) error {
+    _, childSpan := tracer.Start(c.Request().Context(), "NodeInfoWellKnown")
+    defer childSpan.End()
+
     return c.JSON(http.StatusOK, WellKnown{
         Links: []WellKnownLink{
             {
@@ -386,6 +414,9 @@ func (h Handler) NodeInfoWellKnown(c echo.Context) error {
 
 // NodeInfo handles nodeinfo requests
 func (h Handler) NodeInfo(c echo.Context) error {
+    _, childSpan := tracer.Start(c.Request().Context(), "NodeInfo")
+    defer childSpan.End()
+
     buildinfo, ok := debug.ReadBuildInfo()
     var version string = "unknown"
     if ok {

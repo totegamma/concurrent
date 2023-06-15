@@ -6,7 +6,10 @@ import (
     "net/http"
     "gorm.io/gorm"
     "github.com/labstack/echo/v4"
+    "go.opentelemetry.io/otel"
 )
+
+var tracer = otel.Tracer("character")
 
 // Handler is handles Character Object
 type Handler struct {
@@ -20,9 +23,12 @@ func NewHandler(service *Service) *Handler {
 
 // Get is for Handling HTTP Get Method
 func (h Handler) Get(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerGet")
+    defer childSpan.End()
+
     author := c.QueryParam("author")
     schema := c.QueryParam("schema")
-    characters, err := h.service.GetCharacters(author, schema)
+    characters, err := h.service.GetCharacters(ctx, author, schema)
     if err != nil {
         if errors.Is(err, gorm.ErrRecordNotFound) {
             return c.JSON(http.StatusNotFound, echo.Map{"error": "Character not found"})
@@ -37,6 +43,8 @@ func (h Handler) Get(c echo.Context) error {
 
 // Put is for Handling HTTP Put Method
 func (h Handler) Put(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerPut")
+    defer childSpan.End()
 
     var request postRequest
     err := c.Bind(&request)
@@ -44,7 +52,7 @@ func (h Handler) Put(c echo.Context) error {
         return err
     }
 
-    err = h.service.PutCharacter(request.SignedObject, request.Signature, request.ID)
+    err = h.service.PutCharacter(ctx, request.SignedObject, request.Signature, request.ID)
     if err != nil {
         return err
     }

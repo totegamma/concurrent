@@ -1,6 +1,7 @@
 package message
 
 import (
+    "context"
 	"gorm.io/gorm"
     "github.com/totegamma/concurrent/x/core"
 )
@@ -16,20 +17,29 @@ func NewRepository(db *gorm.DB) *Repository {
 }
 
 // Create creates new message
-func (r *Repository) Create(message *core.Message) (string, error) {
+func (r *Repository) Create(ctx context.Context, message *core.Message) (string, error) {
+    _, childSpan := tracer.Start(ctx, "RepositoryCreate")
+    defer childSpan.End()
+
     err := r.db.Create(&message).Error
     return message.ID, err
 }
 
 // Get returns a message with associaiton data
-func (r *Repository) Get(key string) (core.Message, error) {
+func (r *Repository) Get(ctx context.Context, key string) (core.Message, error) {
+    _, childSpan := tracer.Start(ctx, "RepositoryGet")
+    defer childSpan.End()
+
     var message core.Message
     err := r.db.Preload("Associations").First(&message, "id = ?", key).Error
     return message, err
 }
 
 // Delete deletes an message
-func (r *Repository) Delete(id string) (core.Message, error) {
+func (r *Repository) Delete(ctx context.Context, id string) (core.Message, error) {
+    _, childSpan := tracer.Start(ctx, "RepositoryDelete")
+    defer childSpan.End()
+
     var deleted core.Message
     err := r.db.Where("id = $1", id).Delete(&deleted).Error
     return deleted, err

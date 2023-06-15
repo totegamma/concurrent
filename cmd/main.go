@@ -56,12 +56,14 @@ func main() {
     log.Print("Concurrent ", version, " starting...")
     log.Print("Config loaded! I am: ", config.Concurrent.CCAddr)
 
-    // Setup tracing
-    cleanup, err := SetupTraceProvider(config.Server.TraceEndpoint, "api", version)
-    if err != nil {
-        panic(err)
+    if config.Server.EnableTrace {
+        // Setup tracing
+        cleanup, err := SetupTraceProvider(config.Server.TraceEndpoint, "api", version)
+        if err != nil {
+            panic(err)
+        }
+        defer cleanup()
     }
-    defer cleanup()
 
     db, err := gorm.Open(postgres.Open(config.Server.Dsn), &gorm.Config{})
     if err != nil {
@@ -131,7 +133,10 @@ func main() {
     var tracer = otel.Tracer(config.Concurrent.FQDN + "/concurrent")
     e.Use(Tracer(tracer))
 
-    e.Use(middleware.Recover())
+    if config.Server.EnableTrace {
+        e.Use(middleware.Recover())
+    }
+
     e.Logger.SetOutput(logfile)
     e.Binder = &activitypub.Binder{}
 

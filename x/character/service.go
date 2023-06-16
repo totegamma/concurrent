@@ -20,7 +20,7 @@ func NewService(repo *Repository) *Service {
 
 // GetCharacters returns characters by owner and schema
 func (s* Service) GetCharacters(ctx context.Context, owner string, schema string) ([]core.Character, error) {
-    ctx, childSpan := tracer.Start(ctx, "ServicePostAssociation")
+    ctx, childSpan := tracer.Start(ctx, "ServiceGetCharacters")
     defer childSpan.End()
 
     characters, err := s.repo.Get(ctx, owner, schema)

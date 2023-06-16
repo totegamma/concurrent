@@ -18,14 +18,14 @@ func NewRepository(db *gorm.DB) *Repository {
 
 // Upsert upserts existing character
 func (r *Repository) Upsert(ctx context.Context, character core.Character) error {
-    ctx, childSpan := tracer.Start(ctx, "ServicePutCharacter")
+    ctx, childSpan := tracer.Start(ctx, "RepositoryUpsert")
     defer childSpan.End()
     return r.db.WithContext(ctx).Save(&character).Error
 }
 
 // Get returns character list which matches specified owner and chema
 func (r *Repository) Get(ctx context.Context, owner string, schema string) ([]core.Character, error) {
-    ctx, childSpan := tracer.Start(ctx, "ServicePutCharacter")
+    ctx, childSpan := tracer.Start(ctx, "RepositoryGet")
     defer childSpan.End()
 
     var characters []core.Character

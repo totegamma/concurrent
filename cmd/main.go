@@ -28,6 +28,7 @@ import (
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
     semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
     "go.opentelemetry.io/otel/trace"
+    "go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 )
 
 
@@ -55,15 +56,6 @@ func main() {
 
     log.Print("Concurrent ", version, " starting...")
     log.Print("Config loaded! I am: ", config.Concurrent.CCAddr)
-
-    if config.Server.EnableTrace {
-        // Setup tracing
-        cleanup, err := SetupTraceProvider(config.Server.TraceEndpoint, "api", version)
-        if err != nil {
-            panic(err)
-        }
-        defer cleanup()
-    }
 
     db, err := gorm.Open(postgres.Open(config.Server.Dsn), &gorm.Config{})
     if err != nil {
@@ -114,6 +106,21 @@ func main() {
     e.HideBanner = true
     e.Use(middleware.CORS())
 
+    if config.Server.EnableTrace {
+        cleanup, err := setupTraceProvider(config.Server.TraceEndpoint, config.Concurrent.FQDN + "/concurrent", version)
+        if err != nil {
+            panic(err)
+        }
+        defer cleanup()
+
+        skipper := otelecho.WithSkipper(
+            func(c echo.Context) bool {
+                return c.Path() == "/metrics" || c.Path() == "/health"
+            },
+        )
+        e.Use(otelecho.Middleware("dev", skipper))
+    }
+
     e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
         Skipper: func(c echo.Context) bool {
             return c.Path() == "/metrics" || c.Path() == "/health"
@@ -123,19 +130,12 @@ func main() {
                 `"error":"${error}","latency":${latency},"latency_human":"${latency_human}",` +
                 `"bytes_in":${bytes_in},"bytes_out":${bytes_out}}` + "\n",
         CustomTagFunc: func(c echo.Context, buf *bytes.Buffer) (int, error) {
-            span := c.Get("span").(trace.Span)
+            span := trace.SpanFromContext(c.Request().Context())
             buf.WriteString(fmt.Sprintf("\"%s\":\"%s\"", "traceID", span.SpanContext().TraceID().String()))
             buf.WriteString(fmt.Sprintf(",\"%s\":\"%s\"", "spanID", span.SpanContext().SpanID().String()))
             return 0, nil
         },
     }))
-
-    var tracer = otel.Tracer(config.Concurrent.FQDN + "/concurrent")
-    e.Use(Tracer(tracer))
-
-    if config.Server.EnableTrace {
-        e.Use(middleware.Recover())
-    }
 
     e.Logger.SetOutput(logfile)
     e.Binder = &activitypub.Binder{}
@@ -210,27 +210,7 @@ func spa(c echo.Context) error {
     return c.File(fPath)
 }
 
-func Tracer(tracer trace.Tracer) echo.MiddlewareFunc {
-    return func(next echo.HandlerFunc) echo.HandlerFunc {
-        return func(c echo.Context) error {
-            ctx, span := tracer.Start(c.Request().Context(), c.Request().Method + "-" + c.Path())
-            defer span.End()
-            c.Set("span", span)
-
-            req := c.Request().WithContext(ctx)
-            c.SetRequest(req)
-
-            res := c.Response()
-
-            res.Header().Set("trace-id", span.SpanContext().TraceID().String())
-            res.Header().Set("span-id", span.SpanContext().SpanID().String())
-
-            return next(c)
-        }
-    }
-}
-
-func SetupTraceProvider(endpoint string, serviceName string, serviceVersion string) (func(), error) {
+func setupTraceProvider(endpoint string, serviceName string, serviceVersion string) (func(), error) {
 
     exporter, err := otlptracehttp.New(
         context.Background(),

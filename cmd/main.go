@@ -28,6 +28,7 @@ import (
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
     semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
     "go.opentelemetry.io/otel/trace"
+    "gorm.io/plugin/opentelemetry/tracing"
     "go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 )
 
@@ -56,45 +57,6 @@ func main() {
 
     log.Print("Concurrent ", version, " starting...")
     log.Print("Config loaded! I am: ", config.Concurrent.CCAddr)
-
-    db, err := gorm.Open(postgres.Open(config.Server.Dsn), &gorm.Config{})
-    if err != nil {
-        log.Println("failed to connect database");
-        panic("failed to connect database")
-    }
-
-    // Migrate the schema
-    log.Println("start migrate")
-    db.AutoMigrate(
-        &core.Message{},
-        &core.Character{},
-        &core.Association{},
-        &core.Stream{},
-        &core.Host{},
-        &core.Entity{},
-        &activitypub.ApEntity{},
-        &activitypub.ApPerson{},
-        &activitypub.ApFollow{},
-    )
-
-    rdb := redis.NewClient(&redis.Options{
-        Addr:     config.Server.RedisAddr,
-        Password: "", // no password set
-        DB:       0,  // use default DB
-    })
-
-    agent := SetupAgent(db, rdb, config)
-
-    socketHandler := SetupSocketHandler(rdb, config)
-    messageHandler := SetupMessageHandler(db, rdb, config)
-    characterHandler := SetupCharacterHandler(db, config)
-    associationHandler := SetupAssociationHandler(db, rdb, config)
-    streamHandler := SetupStreamHandler(db, rdb, config)
-    hostHandler := SetupHostHandler(db, config)
-    entityHandler := SetupEntityHandler(db, config)
-    authHandler := SetupAuthHandler(db, config)
-    userkvHandler := SetupUserkvHandler(db, rdb, config)
-    activitypubHandler := SetupActivitypubHandler(db, rdb, config)
 
     logfile, err := os.OpenFile(filepath.Join(config.Server.LogPath, "access.log"), os.O_RDWR | os.O_CREATE | os.O_APPEND, 0666)
     if err != nil {
@@ -139,6 +101,49 @@ func main() {
 
     e.Logger.SetOutput(logfile)
     e.Binder = &activitypub.Binder{}
+
+
+    db, err := gorm.Open(postgres.Open(config.Server.Dsn), &gorm.Config{})
+    if err != nil {
+        panic("failed to connect database")
+    }
+    err = db.Use(tracing.NewPlugin())
+    if err != nil {
+        panic("failed to setup tracing plugin")
+    }
+
+    // Migrate the schema
+    log.Println("start migrate")
+    db.AutoMigrate(
+        &core.Message{},
+        &core.Character{},
+        &core.Association{},
+        &core.Stream{},
+        &core.Host{},
+        &core.Entity{},
+        &activitypub.ApEntity{},
+        &activitypub.ApPerson{},
+        &activitypub.ApFollow{},
+    )
+
+    rdb := redis.NewClient(&redis.Options{
+        Addr:     config.Server.RedisAddr,
+        Password: "", // no password set
+        DB:       0,  // use default DB
+    })
+
+    agent := SetupAgent(db, rdb, config)
+
+    socketHandler := SetupSocketHandler(rdb, config)
+    messageHandler := SetupMessageHandler(db, rdb, config)
+    characterHandler := SetupCharacterHandler(db, config)
+    associationHandler := SetupAssociationHandler(db, rdb, config)
+    streamHandler := SetupStreamHandler(db, rdb, config)
+    hostHandler := SetupHostHandler(db, config)
+    entityHandler := SetupEntityHandler(db, config)
+    authHandler := SetupAuthHandler(db, config)
+    userkvHandler := SetupUserkvHandler(db, rdb, config)
+    activitypubHandler := SetupActivitypubHandler(db, rdb, config)
 
     e.GET("/.well-known/webfinger", activitypubHandler.WebFinger)
     e.GET("/.well-known/nodeinfo", activitypubHandler.NodeInfoWellKnown)

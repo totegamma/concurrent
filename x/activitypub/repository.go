@@ -21,7 +21,7 @@ func (r Repository) GetEntityByID(ctx context.Context, id string) (ApEntity, err
     defer childSpan.End()
 
     var entity ApEntity
-    result := r.db.Where("id = ?", id).First(&entity)
+    result := r.db.WithContext(ctx).Where("id = ?", id).First(&entity)
     return entity, result.Error
 }
 
@@ -31,7 +31,7 @@ func (r Repository) GetEntityByCCAddr(ctx context.Context, ccaddr string) (ApEnt
     defer childSpan.End()
 
     var entity ApEntity
-    result := r.db.Where("cc_addr = ?", ccaddr).First(&entity)
+    result := r.db.WithContext(ctx).Where("cc_addr = ?", ccaddr).First(&entity)
     return entity, result.Error
 }
 
@@ -40,7 +40,7 @@ func (r Repository) CreateEntity(ctx context.Context, entity ApEntity) (ApEntity
     ctx, childSpan := tracer.Start(ctx, "RepositoryCreateEntity")
     defer childSpan.End()
 
-    result := r.db.Create(&entity)
+    result := r.db.WithContext(ctx).Create(&entity)
     return entity, result.Error
 }
 
@@ -50,7 +50,7 @@ func (r Repository) GetPersonByID(ctx context.Context, id string) (ApPerson, err
     defer childSpan.End()
 
     var person ApPerson
-    result := r.db.Where("id = ?", id).First(&person)
+    result := r.db.WithContext(ctx).Where("id = ?", id).First(&person)
     return person, result.Error
 }
 
@@ -59,7 +59,7 @@ func (r Repository) UpsertPerson(ctx context.Context, person ApPerson) (ApPerson
     ctx, childSpan := tracer.Start(ctx, "RepositoryUpsertPerson")
     defer childSpan.End()
 
-    result := r.db.Save(&person)
+    result := r.db.WithContext(ctx).Save(&person)
     return person, result.Error
 }
 
@@ -68,7 +68,7 @@ func (r *Repository) SaveFollow(ctx context.Context, follow ApFollow) error {
     ctx, childSpan := tracer.Start(ctx, "RepositorySaveFollow")
     defer childSpan.End()
 
-    return r.db.Create(&follow).Error
+    return r.db.WithContext(ctx).Create(&follow).Error
 }
 
 // GetFollowByID returns follow by ID
@@ -77,7 +77,7 @@ func (r *Repository) GetFollowByID(ctx context.Context, id string) (ApFollow, er
     defer childSpan.End()
 
     var follow ApFollow
-    result := r.db.Where("id = ?", id).First(&follow)
+    result := r.db.WithContext(ctx).Where("id = ?", id).First(&follow)
     return follow, result.Error
 }
 
@@ -87,7 +87,7 @@ func (r *Repository) GetAllFollows(ctx context.Context) ([]ApFollow, error) {
     defer childSpan.End()
 
     var follows []ApFollow
-    err := r.db.Find(&follows).Error
+    err := r.db.WithContext(ctx).Find(&follows).Error
     return follows, err
 }
 
@@ -97,10 +97,10 @@ func (r *Repository) RemoveFollow(ctx context.Context, followID string) (ApFollo
     defer childSpan.End()
 
     var follow ApFollow
-    if err := r.db.First(&follow, "id = ?", followID).Error; err != nil {
+    if err := r.db.WithContext(ctx).First(&follow, "id = ?", followID).Error; err != nil {
         return ApFollow{}, err
     }
-    err := r.db.Where("id = ?", followID).Delete(&ApFollow{}).Error
+    err := r.db.WithContext(ctx).Where("id = ?", followID).Delete(&ApFollow{}).Error
     if err != nil {
         return ApFollow{}, err
     }

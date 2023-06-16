@@ -20,7 +20,7 @@ func NewRepository(db *gorm.DB) *Repository {
 func (r *Repository) Upsert(ctx context.Context, character core.Character) error {
     ctx, childSpan := tracer.Start(ctx, "ServicePutCharacter")
     defer childSpan.End()
-    return r.db.Save(&character).Error
+    return r.db.WithContext(ctx).Save(&character).Error
 }
 
 // Get returns character list which matches specified owner and chema
@@ -29,7 +29,7 @@ func (r *Repository) Get(ctx context.Context, owner string, schema string) ([]co
     defer childSpan.End()
 
     var characters []core.Character
-    if err := r.db.Where("author = $1 AND schema = $2", owner, schema).Find(&characters).Error; err != nil {
+    if err := r.db.WithContext(ctx).Where("author = $1 AND schema = $2", owner, schema).Find(&characters).Error; err != nil {
         return []core.Character{}, err
     }
     if characters == nil {

@@ -21,7 +21,7 @@ func (r *Repository) Create(ctx context.Context, message *core.Message) (string,
     _, childSpan := tracer.Start(ctx, "RepositoryCreate")
     defer childSpan.End()
 
-    err := r.db.Create(&message).Error
+    err := r.db.WithContext(ctx).Create(&message).Error
     return message.ID, err
 }
 
@@ -31,7 +31,7 @@ func (r *Repository) Get(ctx context.Context, key string) (core.Message, error) 
     defer childSpan.End()
 
     var message core.Message
-    err := r.db.Preload("Associations").First(&message, "id = ?", key).Error
+    err := r.db.WithContext(ctx).Preload("Associations").First(&message, "id = ?", key).Error
     return message, err
 }
 
@@ -41,7 +41,7 @@ func (r *Repository) Delete(ctx context.Context, id string) (core.Message, error
     defer childSpan.End()
 
     var deleted core.Message
-    err := r.db.Where("id = $1", id).Delete(&deleted).Error
+    err := r.db.WithContext(ctx).Where("id = $1", id).Delete(&deleted).Error
     return deleted, err
 }
 

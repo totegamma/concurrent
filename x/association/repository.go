@@ -23,7 +23,7 @@ func (r *Repository) Create(ctx context.Context, association *core.Association) 
     ctx, childSpan := tracer.Start(ctx, "RepositoryCreate")
     defer childSpan.End()
 
-    return r.db.Create(&association).Error
+    return r.db.WithContext(ctx).Create(&association).Error
 }
 
 // Get returns a Association by ID
@@ -32,7 +32,7 @@ func (r *Repository) Get(ctx context.Context, id string) (core.Association, erro
     defer childSpan.End()
 
     var association core.Association
-    err := r.db.Where("id = $1", id).First(&association).Error
+    err := r.db.WithContext(ctx).Where("id = $1", id).First(&association).Error
     return association, err
 }
 
@@ -42,7 +42,7 @@ func (r *Repository) GetOwn(ctx context.Context, author string) ([]core.Associat
     defer childSpan.End()
 
     var associations []core.Association
-    err := r.db.Where("author = $1", author).Error
+    err := r.db.WithContext(ctx).Where("author = $1", author).Error
     return associations, err
 }
 
@@ -52,11 +52,11 @@ func (r *Repository) Delete(ctx context.Context, id string) (core.Association, e
     defer childSpan.End()
 
     var deleted core.Association
-    if err := r.db.First(&deleted, "id = ?", id).Error; err != nil {
+    if err := r.db.WithContext(ctx).First(&deleted, "id = ?", id).Error; err != nil {
         fmt.Printf("Error finding association: %v\n", err)
         return core.Association{}, err
     }
-    err := r.db.Where("id = $1", id).Delete(&core.Association{}).Error
+    err := r.db.WithContext(ctx).Where("id = $1", id).Delete(&core.Association{}).Error
     if err != nil {
         fmt.Printf("Error deleting association: %v\n", err)
         return core.Association{}, err

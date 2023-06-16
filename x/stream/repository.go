@@ -24,7 +24,7 @@ func (r *Repository) Get(ctx context.Context, key string) (core.Stream, error) {
     defer childSpan.End()
 
     var stream core.Stream
-    err := r.db.First(&stream, "id = ?", key).Error
+    err := r.db.WithContext(ctx).First(&stream, "id = ?", key).Error
     return stream, err
 }
 
@@ -33,7 +33,7 @@ func (r *Repository) Upsert(ctx context.Context, stream *core.Stream) error {
     ctx, childSpan := tracer.Start(ctx, "RepositoryUpsert")
     defer childSpan.End()
 
-    return r.db.Save(&stream).Error
+    return r.db.WithContext(ctx).Save(&stream).Error
 }
 
 // GetList returns list of schemas by schema
@@ -42,7 +42,7 @@ func (r *Repository) GetList(ctx context.Context, schema string) ([]core.Stream,
     defer childSpan.End()
 
     var streams []core.Stream
-    err := r.db.Where("Schema = ?", schema).Find(&streams).Error
+    err := r.db.WithContext(ctx).Where("Schema = ?", schema).Find(&streams).Error
     return streams, err
 }
 
@@ -53,7 +53,7 @@ func (r *Repository) HasWriteAccess(ctx context.Context, streamID string, userAd
     defer childSpan.End()
 
     var stream core.Stream
-    r.db.First(&stream, "id = ?", streamID)
+    r.db.WithContext(ctx).First(&stream, "id = ?", streamID)
     if len(stream.Writer) == 0 {
         return true
     }
@@ -66,7 +66,7 @@ func (r *Repository) HasReadAccess(ctx context.Context, streamID string, userAdd
     defer childSpan.End()
 
     var stream core.Stream
-    r.db.First(&stream, "id = ?", streamID)
+    r.db.WithContext(ctx).First(&stream, "id = ?", streamID)
     if len(stream.Reader) == 0 {
         return true
     }

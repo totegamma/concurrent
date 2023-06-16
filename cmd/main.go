@@ -29,6 +29,7 @@ import (
     semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
     "go.opentelemetry.io/otel/trace"
     "gorm.io/plugin/opentelemetry/tracing"
+    "github.com/redis/go-redis/extra/redisotel/v9"
     "go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 )
 
@@ -131,6 +132,10 @@ func main() {
         Password: "", // no password set
         DB:       0,  // use default DB
     })
+    err = redisotel.InstrumentTracing(rdb)
+    if err != nil {
+        panic("failed to setup tracing plugin")
+    }
 
     agent := SetupAgent(db, rdb, config)
 

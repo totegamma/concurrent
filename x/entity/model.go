@@ -14,6 +14,7 @@ type postRequest struct {
 type SafeEntity struct {
     ID string `json:"ccaddr"`
     Role string `json:"role"`
+    Score int `json:"score"`
     Host string `json:"host"`
     CDate time.Time `json:"cdate"`
 }

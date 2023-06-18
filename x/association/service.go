@@ -3,6 +3,8 @@ package association
 import (
     "log"
     "context"
+    "encoding/hex"
+    "crypto/sha256"
     "encoding/json"
     "github.com/redis/go-redis/v9"
     "github.com/totegamma/concurrent/x/util"
@@ -40,6 +42,22 @@ func (s *Service) PostAssociation(ctx context.Context, objectStr string, signatu
         return err
     }
 
+    var content signedObject
+    err = json.Unmarshal([]byte(objectStr), &content)
+    if err != nil {
+        log.Println("unmarshal err: ", err)
+        return err
+    }
+
+    contentString, err := json.Marshal(content.Body)
+    if err != nil {
+        log.Println("marshal err: ", err)
+        return err
+    }
+
+    hash := sha256.Sum256(contentString)
+    contentHash := hex.EncodeToString(hash[:])
+
     association := core.Association {
         Author: object.Signer,
         Schema: object.Schema,
@@ -48,9 +66,13 @@ func (s *Service) PostAssociation(ctx context.Context, objectStr string, signatu
         Payload: objectStr,
         Signature: signature,
         Streams: streams,
+        ContentHash: contentHash,
     }
 
-    s.repo.Create(ctx, &association)
+    err = s.repo.Create(ctx, &association)
+    if err != nil {
+        return err // TODO: if err is duplicate key error, server should return 409
+    }
     for _, stream := range association.Streams {
         s.stream.Post(ctx, stream, association.ID, "association", association.Author, "")
     }

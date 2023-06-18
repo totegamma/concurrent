@@ -1,0 +1,23 @@
+env:
+  browser: true
+  es2021: true
+extends:
+  - plugin:react/recommended
+  - standard-with-typescript
+  - prettier
+overrides: []
+parserOptions:
+  ecmaVersion: latest
+  project:
+    - tsconfig.json
+  sourceType: module
+plugins:
+  - react
+rules:
+  '@typescript-eslint/no-dynamic-delete': ['off']
+  '@typescript-eslint/no-floating-promises': ['off']
+  '@typescript-eslint/no-unused-vars': ['warn']
+  '@typescript-eslint/promise-function-async': ['off']
+  '@typescript-eslint/strict-boolean-expressions': ['off']
+  '@typescript-eslint/triple-slash-reference': ['off']
+  'react/react-in-jsx-scope': ['off']

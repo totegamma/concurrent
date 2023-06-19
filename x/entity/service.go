@@ -6,6 +6,7 @@ import (
     "net/http"
     "io/ioutil"
     "encoding/json"
+    "golang.org/x/exp/slices"
     "github.com/totegamma/concurrent/x/core"
     "github.com/totegamma/concurrent/x/util"
 )
@@ -39,7 +40,16 @@ func (s *Service) Get(ctx context.Context, key string) (core.Entity, error) {
     ctx, childSpan := tracer.Start(ctx, "ServiceGet")
     defer childSpan.End()
 
-    return s.repository.Get(ctx, key)
+    entity, err := s.repository.Get(ctx, key)
+    if err != nil {
+        return core.Entity{}, err
+    }
+
+    if slices.Contains(s.config.Concurrent.Admins, entity.ID) {
+        entity.Role = "_admin"
+    }
+
+    return entity, nil
 }
 
 // List returns streamList by schema

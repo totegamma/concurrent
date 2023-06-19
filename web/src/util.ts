@@ -1,3 +1,4 @@
+import { Entity, Host } from "./model"
 
 export const fetchWithTimeout = async (
     url: RequestInfo,
@@ -41,13 +42,6 @@ export const getJWT = async (clientSignedToken: string): Promise<string> => {
         })
 }
 
-export interface Entity {
-    ccaddr: string
-    role: string
-    host: string
-    cdate: string
-}
-
 export const readEntity = async (ccid: string): Promise<Entity | undefined> => {
     return await  fetch(`api/v1/entity/${ccid}`, {
         method: 'GET',
@@ -70,5 +64,18 @@ export const fetchWithCredential = async (jwt: string, url: RequestInfo, init: R
         }
     }
     return await fetchWithTimeout(url, requestInit, timeoutMs)
+}
+
+
+export const getHosts = async (): Promise<Host[]> => {
+    return await fetch(`/api/v1/host/list`).then(async (data) => {
+        return await data.json()
+    })
+}
+
+export const getEntities = async (): Promise<Entity[]> => {
+    return await fetch(`/api/v1/entity/list`).then(async (data) => {
+        return await data.json()
+    })
 }
 

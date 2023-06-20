@@ -35,6 +35,11 @@ func (h *Handler) Boot() {
                 if err != nil {
                     log.Printf("error: %v", err)
                 }
+                entity, err := h.repo.GetEntityByID(ctx, job.PublisherUserID)
+                if err != nil {
+                    log.Printf("error: %v", err)
+                }
+                ownerID := entity.CCAddr
                 home := person.HomeStream
                 if home == "" {
                     continue
@@ -55,23 +60,31 @@ func (h *Handler) Boot() {
                             }
                             if err != nil {
                                 log.Printf("error: %v", err)
+                                continue
                             }
 
                             var streamEvent stream.Event
                             err = json.Unmarshal([]byte(pubsubMsg.Payload), &streamEvent)
                             if err != nil {
                                 log.Printf("error: %v", err)
+                                continue
+                            }
+
+                            if streamEvent.Body.Author != ownerID {
+                                continue
                             }
 
                             msg, err := h.message.Get(context.TODO(), streamEvent.Body.ID)
                             if err != nil {
                                 log.Printf("error: %v", err)
+                                continue
                             }
 
                             var signedObject message.SignedObject
                             err = json.Unmarshal([]byte(msg.Payload), &signedObject)
                             if err != nil {
                                 log.Printf("error: %v", err)
+                                continue
                             }
 
                             body := signedObject.Body
@@ -81,8 +94,11 @@ func (h *Handler) Boot() {
                                 t, ok := body.(map[string]interface{})["body"].(string)
                                 if !ok {
                                     log.Printf("parse error")
+                                    continue
                                 }
                                 text = t
+                            } else {
+                                continue
                             }
 
                             create := Create {
@@ -105,6 +121,7 @@ func (h *Handler) Boot() {
                             err = h.PostToInbox(job.SubscriberInbox, create, job.PublisherUserID)
                             if err != nil {
                                 log.Printf("error: %v", err)
+                                continue
                             }
                         }
                     }

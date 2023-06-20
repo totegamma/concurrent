@@ -27,32 +27,32 @@ func NewService(rdb *redis.Client, repo *Repository, stream *stream.Service, mes
 }
 
 // PostAssociation creates new association
-func (s *Service) PostAssociation(ctx context.Context, objectStr string, signature string, streams []string, targetType string) error {
+func (s *Service) PostAssociation(ctx context.Context, objectStr string, signature string, streams []string, targetType string) (core.Association, error) {
     ctx, childSpan := tracer.Start(ctx, "ServicePostAssociation")
     defer childSpan.End()
 
     var object signedObject
     err := json.Unmarshal([]byte(objectStr), &object)
     if err != nil {
-        return err
+        return core.Association{}, err
     }
 
     if err := util.VerifySignature(objectStr, object.Signer, signature); err != nil {
         log.Println("verify signature err: ", err)
-        return err
+        return core.Association{}, err
     }
 
     var content signedObject
     err = json.Unmarshal([]byte(objectStr), &content)
     if err != nil {
         log.Println("unmarshal err: ", err)
-        return err
+        return core.Association{}, err
     }
 
     contentString, err := json.Marshal(content.Body)
     if err != nil {
         log.Println("marshal err: ", err)
-        return err
+        return core.Association{}, err
     }
 
     hash := sha256.Sum256(contentString)
@@ -71,7 +71,7 @@ func (s *Service) PostAssociation(ctx context.Context, objectStr string, signatu
 
     err = s.repo.Create(ctx, &association)
     if err != nil {
-        return err // TODO: if err is duplicate key error, server should return 409
+        return association, err // TODO: if err is duplicate key error, server should return 409
     }
     for _, stream := range association.Streams {
         s.stream.Post(ctx, stream, association.ID, "association", association.Author, "")
@@ -79,7 +79,7 @@ func (s *Service) PostAssociation(ctx context.Context, objectStr string, signatu
 
     targetMessage, err := s.message.Get(ctx, association.TargetID)
     if err != nil {
-        return err
+        return association, err
     }
     for _, stream := range targetMessage.Streams {
         jsonstr, _ := json.Marshal(Event{
@@ -96,7 +96,7 @@ func (s *Service) PostAssociation(ctx context.Context, objectStr string, signatu
         }
     }
 
-    return nil
+    return association, nil
 }
 
 // Get returns an association by ID
@@ -116,17 +116,17 @@ func (s *Service) GetOwn(ctx context.Context, author string) ([]core.Association
 }
 
 // Delete deletes an association by ID
-func (s *Service) Delete(ctx context.Context, id string) error {
+func (s *Service) Delete(ctx context.Context, id string) (core.Association, error) {
     ctx, childSpan := tracer.Start(ctx, "ServiceDelete")
     defer childSpan.End()
 
     deleted, err := s.repo.Delete(ctx, id)
     if err != nil {
-        return err
+        return core.Association{}, err
     }
     targetMessage, err := s.message.Get(ctx, deleted.TargetID)
     if err != nil {
-        return err
+        return deleted, err
     }
     for _, stream := range targetMessage.Streams {
         jsonstr, _ := json.Marshal(Event{
@@ -140,9 +140,9 @@ func (s *Service) Delete(ctx context.Context, id string) error {
         err := s.rdb.Publish(context.Background(), stream, jsonstr).Err()
         if err != nil {
             log.Printf("fail to publish message to Redis: %v", err)
-            return err
+            return deleted, err
         }
     }
-    return nil
+    return deleted, nil
 }
 

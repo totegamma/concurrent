@@ -52,11 +52,11 @@ func (h Handler) Post(c echo.Context) error {
     if err != nil {
         return err
     }
-    err = h.service.PostAssociation(ctx, request.SignedObject, request.Signature, request.Streams, request.TargetType)
+    created, err := h.service.PostAssociation(ctx, request.SignedObject, request.Signature, request.Streams, request.TargetType)
     if err != nil {
         return err
     }
-    return c.String(http.StatusCreated, "{\"message\": \"accept\"}")
+    return c.JSON(http.StatusCreated, echo.Map{"status": "ok", "content": created})
 }
 
 // Delete is for Handling HTTP Delete Method
@@ -81,10 +81,10 @@ func (h Handler) Delete(c echo.Context) error {
         return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action"})
     }
 
-    err = h.service.Delete(ctx, request.ID)
+    deleted, err := h.service.Delete(ctx, request.ID)
     if err != nil {
         return err
     }
-    return c.String(http.StatusOK, "{\"message\": \"accept\"}")
+    return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": deleted})
 }
 

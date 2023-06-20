@@ -22,12 +22,13 @@ func NewHandler(service *Service) *Handler {
 // Claim is used for get server signed jwt
 // input user signed jwt
 func (h *Handler) Claim(c echo.Context) error {
-    ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerClaim")
-    defer childSpan.End()
+    ctx, span := tracer.Start(c.Request().Context(), "HandlerClaim")
+    defer span.End()
 
     request := c.Request().Header.Get("Authentication")
     response, err := h.service.IssueJWT(ctx, request)
     if err != nil {
+        span.RecordError(err)
         return c.JSON(http.StatusUnauthorized, echo.Map{"error": err.Error()})
     }
     return c.JSON(http.StatusOK, echo.Map{"jwt": response})

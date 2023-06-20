@@ -177,6 +177,7 @@ func main() {
     apiV1.GET("/auth/claim", authHandler.Claim)
     apiV1.GET("/ap/entity/:ccaddr", activitypubHandler.GetEntityID)
     apiV1.GET("/ap/person/:id", activitypubHandler.GetPerson)
+    apiV1.POST("/host/hello", hostHandler.Hello)
 
     apiV1R := apiV1.Group("", auth.JWT)
     apiV1R.POST("/messages", messageHandler.Post)
@@ -187,7 +188,6 @@ func main() {
     apiV1R.PUT("/stream", streamHandler.Put)
     apiV1R.POST("/stream/checkpoint", streamHandler.Checkpoint)
     apiV1R.PUT("/host", hostHandler.Upsert)
-    apiV1R.POST("/host/hello", hostHandler.Hello)
     apiV1R.POST("/entity", entityHandler.Post)
     apiV1R.GET("/admin/sayhello/:fqdn", hostHandler.SayHello)
     apiV1R.GET("/kv/:key", userkvHandler.Get)

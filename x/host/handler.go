@@ -89,8 +89,8 @@ func (h Handler) Profile(c echo.Context) error {
 
 // Hello iniciates a new host registration
 func (h Handler) Hello(c echo.Context) error {
-    ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerHello")
-    defer childSpan.End()
+    ctx, span := tracer.Start(c.Request().Context(), "HandlerHello")
+    defer span.End()
 
     var newcomer Profile
     err := c.Bind(&newcomer)
@@ -101,11 +101,13 @@ func (h Handler) Hello(c echo.Context) error {
     // challenge
     req, err := http.NewRequest("GET", "https://" + newcomer.ID + "/api/v1/host", nil)
     if err != nil {
+        span.RecordError(err)
         return c.String(http.StatusBadRequest, err.Error())
     }
     client := new(http.Client)
     resp, err := client.Do(req)
     if err != nil {
+        span.RecordError(err)
         return c.String(http.StatusBadRequest, err.Error())
     }
     defer resp.Body.Close()
@@ -136,8 +138,8 @@ func (h Handler) Hello(c echo.Context) error {
 // SayHello iniciates a new host registration
 // Only Admin can call this
 func (h Handler) SayHello(c echo.Context) error {
-    ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerSayHello")
-    defer childSpan.End()
+    ctx, span := tracer.Start(c.Request().Context(), "HandlerSayHello")
+    defer span.End()
 
     target := c.Param("fqdn")
 
@@ -157,6 +159,7 @@ func (h Handler) SayHello(c echo.Context) error {
     // challenge
     req, err := http.NewRequest("POST", "https://" + target + "/api/v1/host/hello", bytes.NewBuffer(meStr))
     if err != nil {
+        span.RecordError(err)
         return c.String(http.StatusBadRequest, err.Error())
     }
     req.Header.Add("content-type", "application/json")

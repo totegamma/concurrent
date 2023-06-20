@@ -79,3 +79,9 @@ export const getEntities = async (): Promise<Entity[]> => {
     })
 }
 
+export const sayHello = async (jwt: string, remote: string): Promise<string> => {
+    return await fetchWithCredential(jwt, `/api/v1/admin/sayhello/${remote}`, {}).then(async (data) => {
+        return await data.json()
+    })
+}
+

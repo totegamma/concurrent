@@ -2,6 +2,7 @@ package stream
 
 import (
     "fmt"
+    "time"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -16,6 +17,9 @@ import (
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/util"
 	"github.com/totegamma/concurrent/x/core"
+
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/propagation"
 )
 
 // Service is stream service
@@ -213,10 +217,25 @@ func (s *Service) Post(ctx context.Context, stream string, id string, typ string
             return err
         }
         req, err := http.NewRequest("POST", "https://" + streamHost + "/api/v1/stream/checkpoint", bytes.NewBuffer(packetStr))
+
         if err != nil {
             return err
         }
+
+        otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+
+        jwt, err := util.CreateJWT(util.JwtClaims {
+            Issuer: s.config.Concurrent.CCAddr,
+            Subject: "concurrent",
+            Audience: streamHost,
+            ExpirationTime: strconv.FormatInt(time.Now().Add(1 * time.Minute).Unix(), 10),
+            NotBefore: strconv.FormatInt(time.Now().Unix(), 10),
+            IssuedAt: strconv.FormatInt(time.Now().Unix(), 10),
+            JWTID: xid.New().String(),
+        }, s.config.Concurrent.Prvkey)
+
         req.Header.Add("content-type", "application/json")
+        req.Header.Add("authorization", "Bearer " + jwt)
         client := new(http.Client)
         resp, err := client.Do(req)
         if err != nil {

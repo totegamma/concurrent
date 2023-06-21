@@ -1,16 +1,20 @@
 package host
 
 import (
+    "time"
     "bytes"
     "errors"
+    "strconv"
     "net/http"
     "io/ioutil"
     "encoding/json"
 
     "gorm.io/gorm"
+    "github.com/rs/xid"
     "golang.org/x/exp/slices"
 
     "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/propagation"
     "github.com/labstack/echo/v4"
     "github.com/totegamma/concurrent/x/core"
     "github.com/totegamma/concurrent/x/util"
@@ -104,6 +108,9 @@ func (h Handler) Hello(c echo.Context) error {
         span.RecordError(err)
         return c.String(http.StatusBadRequest, err.Error())
     }
+    // Inject the current span context into the request
+    otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+
     client := new(http.Client)
     resp, err := client.Do(req)
     if err != nil {
@@ -157,12 +164,25 @@ func (h Handler) SayHello(c echo.Context) error {
     meStr, err := json.Marshal(me)
 
     // challenge
+    jwt, err := util.CreateJWT(util.JwtClaims {
+        Issuer: h.config.Concurrent.CCAddr,
+        Subject: "concurrent",
+        Audience: target,
+        ExpirationTime: strconv.FormatInt(time.Now().Add(1 * time.Minute).Unix(), 10),
+        NotBefore: strconv.FormatInt(time.Now().Unix(), 10),
+        IssuedAt: strconv.FormatInt(time.Now().Unix(), 10),
+        JWTID: xid.New().String(),
+    }, h.config.Concurrent.Prvkey)
+
+
     req, err := http.NewRequest("POST", "https://" + target + "/api/v1/host/hello", bytes.NewBuffer(meStr))
     if err != nil {
         span.RecordError(err)
         return c.String(http.StatusBadRequest, err.Error())
     }
+    otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
     req.Header.Add("content-type", "application/json")
+    req.Header.Add("authorization", "Bearer " + jwt)
     client := new(http.Client)
     resp, err := client.Do(req)
     if err != nil {

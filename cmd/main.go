@@ -177,7 +177,6 @@ func main() {
     apiV1.GET("/auth/claim", authHandler.Claim)
     apiV1.GET("/ap/entity/:ccaddr", activitypubHandler.GetEntityID)
     apiV1.GET("/ap/person/:id", activitypubHandler.GetPerson)
-    apiV1.POST("/host/hello", hostHandler.Hello)
 
     apiV1R := apiV1.Group("", auth.JWT)
     apiV1R.POST("/messages", messageHandler.Post)
@@ -194,6 +193,7 @@ func main() {
     apiV1R.PUT("/kv/:key", userkvHandler.Upsert)
     apiV1R.POST("/ap/entity", activitypubHandler.CreateEntity)
     apiV1R.PUT("/ap/person", activitypubHandler.UpdatePerson)
+    apiV1R.POST("/host/hello", hostHandler.Hello)
 
     e.GET("/*", spa)
     e.GET("/health", func(c echo.Context) (err error) {

@@ -11,6 +11,7 @@ import (
     "golang.org/x/exp/slices"
 
     "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/propagation"
     "github.com/labstack/echo/v4"
     "github.com/totegamma/concurrent/x/core"
     "github.com/totegamma/concurrent/x/util"
@@ -104,6 +105,9 @@ func (h Handler) Hello(c echo.Context) error {
         span.RecordError(err)
         return c.String(http.StatusBadRequest, err.Error())
     }
+    // Inject the current span context into the request
+    otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+
     client := new(http.Client)
     resp, err := client.Do(req)
     if err != nil {
@@ -162,6 +166,7 @@ func (h Handler) SayHello(c echo.Context) error {
         span.RecordError(err)
         return c.String(http.StatusBadRequest, err.Error())
     }
+    otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
     req.Header.Add("content-type", "application/json")
     client := new(http.Client)
     resp, err := client.Do(req)

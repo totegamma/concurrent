@@ -16,6 +16,9 @@ import (
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/util"
 	"github.com/totegamma/concurrent/x/core"
+
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/propagation"
 )
 
 // Service is stream service
@@ -213,9 +216,13 @@ func (s *Service) Post(ctx context.Context, stream string, id string, typ string
             return err
         }
         req, err := http.NewRequest("POST", "https://" + streamHost + "/api/v1/stream/checkpoint", bytes.NewBuffer(packetStr))
+
         if err != nil {
             return err
         }
+
+        otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+
         req.Header.Add("content-type", "application/json")
         client := new(http.Client)
         resp, err := client.Do(req)

@@ -9,6 +9,8 @@ import (
     "golang.org/x/exp/slices"
     "github.com/totegamma/concurrent/x/core"
     "github.com/totegamma/concurrent/x/util"
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/propagation"
 )
 
 // Service is entity service
@@ -69,6 +71,9 @@ func (s *Service) PullRemoteEntities(ctx context.Context, host core.Host) error 
     if err != nil {
         return err
     }
+
+    otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+
     client := new(http.Client)
     resp, err := client.Do(req)
     if err != nil {

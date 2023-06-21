@@ -11,6 +11,8 @@ import (
     "encoding/pem"
     "encoding/json"
     "github.com/go-fed/httpsig"
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/propagation"
 )
 
 // FetchPerson fetches a person from remote ap server.
@@ -23,6 +25,7 @@ func FetchPerson(actor string) (Person, error) {
     if err != nil {
         return person, err
     }
+    otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
     req.Header.Set("Accept", "application/activity+json")
     client := new(http.Client)
     resp, err := client.Do(req)
@@ -53,6 +56,7 @@ func (h Handler) PostToInbox(inbox string, object interface{}, signUser string) 
     if err != nil {
         return err
     }
+    otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
     req.Header.Set("Content-Type", "application/activity+json")
     req.Header.Set("Date", time.Now().UTC().Format(http.TimeFormat))
     client := new(http.Client)

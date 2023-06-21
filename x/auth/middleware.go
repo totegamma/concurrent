@@ -14,7 +14,11 @@ func JWT(next echo.HandlerFunc) echo.HandlerFunc {
     return func (c echo.Context) error {
         _, span := tracer.Start(c.Request().Context(), "auth.JWT")
         defer span.End()
-        authInfo := c.Request().Header.Get("Authentication")
+        authInfo := c.Request().Header.Get("authorization")
+        if authInfo == "" { // XXX for backward compatibility
+            authInfo = c.Request().Header.Get("Authentication")
+        }
+
         split := strings.Split(authInfo, " ")
         if len(split) != 2 {
             span.RecordError(fmt.Errorf("invalid authentication header"))

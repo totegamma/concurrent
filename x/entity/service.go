@@ -131,3 +131,11 @@ func (s *Service) IsUserExists(ctx context.Context, user string) bool {
     return entity.ID != "" && entity.Host == ""
 }
 
+// Delete deletes entity
+func (s *Service) Delete(ctx context.Context, id string) error {
+    ctx, childSpan := tracer.Start(ctx, "ServiceDelete")
+    defer childSpan.End()
+
+    return s.repository.Delete(ctx, id)
+}
+

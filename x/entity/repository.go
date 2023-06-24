@@ -52,3 +52,11 @@ func (r *Repository) GetList(ctx context.Context, ) ([]SafeEntity, error) {
     return entities, err
 }
 
+// Delete deletes a entity
+func (r *Repository) Delete(ctx context.Context, id string) error {
+    ctx, childSpan := tracer.Start(ctx, "RepositoryDelete")
+    defer childSpan.End()
+
+    return r.db.WithContext(ctx).Delete(&core.Entity{}, "id = ?", id).Error
+}
+

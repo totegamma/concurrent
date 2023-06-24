@@ -196,6 +196,9 @@ func main() {
     apiV1R.PUT("/ap/person", activitypubHandler.UpdatePerson)
     apiV1R.POST("/host/hello", hostHandler.Hello)
 
+    apiV1R.DELETE("/host/:id", hostHandler.Delete)
+    apiV1R.DELETE("/entity/:id", entityHandler.Delete)
+
     e.GET("/*", spa)
     e.GET("/health", func(c echo.Context) (err error) {
         return c.String(http.StatusOK, "ok")

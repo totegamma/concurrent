@@ -46,7 +46,7 @@ func (h Handler) Get(c echo.Context) error {
 }
 
 // Post is for Handling HTTP Post Method
-// Input: Message Object
+// Input: postRequset object
 // Output: nothing
 // Effect: register message object to database
 func (h Handler) Post(c echo.Context) error {
@@ -77,3 +77,15 @@ func (h Handler) List(c echo.Context) error {
     return c.JSON(http.StatusOK, entities)
 }
 
+// Delete is for Handling HTTP Delete Method
+func (h Handler) Delete(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerDelete")
+    defer childSpan.End()
+
+    id := c.Param("id")
+    err := h.service.Delete(ctx, id)
+    if err != nil {
+        return err
+    }
+    return c.String(http.StatusOK, "{\"message\": \"accept\"}")
+}

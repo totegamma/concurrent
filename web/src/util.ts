@@ -73,6 +73,21 @@ export const getHosts = async (): Promise<Host[]> => {
     })
 }
 
+export const createEntity = async (jwt: string, ccid: string): Promise<any> => {
+    return await fetchWithCredential(jwt, `/api/v1/entity`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            ccaddr: ccid,
+            meta: "{}"
+        })
+    }).then(async (data) => {
+        return await data.json()
+    })
+}
+
 export const getEntities = async (): Promise<Entity[]> => {
     return await fetch(`/api/v1/entity/list`).then(async (data) => {
         return await data.json()
@@ -81,6 +96,22 @@ export const getEntities = async (): Promise<Entity[]> => {
 
 export const sayHello = async (jwt: string, remote: string): Promise<string> => {
     return await fetchWithCredential(jwt, `/api/v1/admin/sayhello/${remote}`, {}).then(async (data) => {
+        return await data.json()
+    })
+}
+
+export const deleteEntity = async (jwt: string, ccid: string): Promise<string> => {
+    return await fetchWithCredential(jwt, `/api/v1/entity/${ccid}`, {
+        method: 'DELETE'
+    }).then(async (data) => {
+        return await data.json()
+    })
+}
+
+export const deleteHost = async (jwt: string, fqdn: string): Promise<string> => {
+    return await fetchWithCredential(jwt, `/api/v1/host/${fqdn}`, {
+        method: 'DELETE'
+    }).then(async (data) => {
         return await data.json()
     })
 }

@@ -178,6 +178,9 @@ func main() {
     apiV1.GET("/auth/claim", authHandler.Claim)
     apiV1.GET("/ap/entity/:ccaddr", activitypubHandler.GetEntityID)
     apiV1.GET("/ap/person/:id", activitypubHandler.GetPerson)
+    apiV1.GET("/profile", func (c echo.Context) error {
+        return c.JSON(http.StatusOK, config.Profile)
+    })
 
     apiV1R := apiV1.Group("", auth.JWT)
     apiV1R.POST("/messages", messageHandler.Post)

@@ -1,12 +1,12 @@
-import { Backdrop, CircularProgress, Typography } from '@mui/material'
+import { Backdrop, Box, CircularProgress, Divider, Paper, Typography } from '@mui/material'
 import type { RJSFSchema } from '@rjsf/utils'
 import Form from '@rjsf/mui'
 import validator from '@rjsf/validator-ajv8'
 import { useSearchParams } from 'react-router-dom'
 import React from 'react'
+import { DomainProfile } from '../model'
 
 const schema: RJSFSchema = {
-    title: 'Concurrent-<ホスト名> 登録フォーム',
     description: '情報はトラブル対応や本人確認にのみ用いられ、このホストの管理人以外には公開されません。',
     type: 'object',
     required: ['name', 'email', 'consent'],
@@ -14,11 +14,11 @@ const schema: RJSFSchema = {
         name: { type: 'string', title: '名前', description: 'ご連絡が必要になった場合に用いる宛名　ハンドルネーム推奨' },
         email: { type: 'string', title: 'メールアドレス', description: '最終的なご連絡先' },
         social: { type: 'string', title: 'その他連絡先', description: 'TwitterやMisskeyやMastodonなどの連絡先' },
-        consent: { type: 'boolean', title: '規約・規範に同意します', default: null, enum: [null, true]}
+        consent: { type: 'boolean', title: 'ルールを理解しました', default: null, enum: [null, true]}
     },
 }
 
-export const Register = (): JSX.Element => {
+export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Element => {
     const [searchParams] = useSearchParams()
     const [loading, setLoading] = React.useState(false);
     const [success, setSuccess] = React.useState(false);
@@ -73,8 +73,34 @@ export const Register = (): JSX.Element => {
             <Backdrop open={loading} sx={{zIndex: 1000}}>
                 <CircularProgress color="inherit" />
             </Backdrop>
-            <Typography variant="h1">Registration</Typography>
-            <Typography>for {ccaddr}</Typography>
+            <Box
+                display='flex'
+                flexDirection='column'
+                gap='20px'
+            >
+                <Box>
+                    <Typography variant="h4">Registration</Typography>
+                    <Typography>for {ccaddr}</Typography>
+                </Box>
+                <Divider />
+                <Box>
+                    <Typography variant="h5">{profile?.nickname}</Typography>
+                    <Typography>{profile?.description}</Typography>
+                </Box>
+                <Box>
+                    <Typography variant="h5">Rules</Typography>
+                    <Paper
+                        variant="outlined"
+                        sx={{
+                            px: '20px',
+                        }}
+                    >
+                        <pre>
+                            {profile?.rules}
+                        </pre>
+                    </Paper>
+                </Box>
+            </Box>
             {success ?
                 <>登録完了</>
             :

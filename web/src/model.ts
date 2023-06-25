@@ -16,3 +16,12 @@ export interface Host {
     cdate: Date
 }
 
+export interface DomainProfile {
+  nickname: string
+  description: string
+  logo: string
+  wordmark: string
+  rules: string
+  tosURL: string
+}
+

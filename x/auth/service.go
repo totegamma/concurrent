@@ -42,10 +42,15 @@ func (s *Service) IssueJWT(ctx context.Context, request string) (string, error) 
     }
 
     // check if issuer exists in this host
-    _, err = s.entity.Get(ctx, claims.Issuer)
+    ent, err := s.entity.Get(ctx, claims.Issuer)
     if err != nil {
         span.RecordError(err)
         return "", err
+    }
+
+    // check if the entity is local user
+    if ent.Host != "" {
+        return "", fmt.Errorf("requester is not a local user")
     }
 
     // create new jwt

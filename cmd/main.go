@@ -68,7 +68,11 @@ func main() {
 
     e.HidePort = true
     e.HideBanner = true
-    e.Use(middleware.CORS())
+    e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+        AllowOrigins: []string{"*"},
+        AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
+        ExposeHeaders: []string{"trace-id"},
+    }))
 
     if config.Server.EnableTrace {
         cleanup, err := setupTraceProvider(config.Server.TraceEndpoint, config.Concurrent.FQDN + "/concurrent", version)

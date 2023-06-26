@@ -6,6 +6,7 @@ import (
     "strings"
 
     "github.com/labstack/echo/v4"
+    "go.opentelemetry.io/otel/attribute"
     "github.com/totegamma/concurrent/x/util"
 )
 
@@ -37,6 +38,7 @@ func JWT(next echo.HandlerFunc) echo.HandlerFunc {
         }
 
         c.Set("jwtclaims", claims)
+        span.SetAttributes(attribute.String("Audience", claims.Audience))
 
         return next(c)
     }

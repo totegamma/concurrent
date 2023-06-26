@@ -83,6 +83,14 @@ func main() {
             },
         )
         e.Use(otelecho.Middleware("dev", skipper))
+
+        e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+            return func(c echo.Context) error {
+                span := trace.SpanFromContext(c.Request().Context())
+                c.Response().Header().Set("trace-id", span.SpanContext().TraceID().String())
+                return next(c)
+            }
+        })
     }
 
     e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{

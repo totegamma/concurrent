@@ -25,7 +25,11 @@ func (h *Handler) Claim(c echo.Context) error {
     ctx, span := tracer.Start(c.Request().Context(), "HandlerClaim")
     defer span.End()
 
-    request := c.Request().Header.Get("Authentication")
+    request := c.Request().Header.Get("authorization")
+    if request == "" { // XXX for backward compatibility
+        request = c.Request().Header.Get("Authentication")
+    }
+
     response, err := h.service.IssueJWT(ctx, request)
     if err != nil {
         span.RecordError(err)

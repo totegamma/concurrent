@@ -205,3 +205,16 @@ func (h Handler) SayHello(c echo.Context) error {
     return c.JSON(http.StatusOK, fetchedProf)
 }
 
+// Delete removes a host from the registry
+func (h Handler) Delete(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerDelete")
+    defer childSpan.End()
+
+    id := c.Param("id")
+    err := h.service.Delete(ctx, id)
+    if err != nil {
+        return err
+    }
+    return c.String(http.StatusOK, "{\"message\": \"accept\"}")
+}
+

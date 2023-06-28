@@ -23,6 +23,7 @@ import (
     "github.com/totegamma/concurrent/x/activitypub"
 
     "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/propagation"
     "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
     "go.opentelemetry.io/otel/sdk/resource"
     sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -67,7 +68,11 @@ func main() {
 
     e.HidePort = true
     e.HideBanner = true
-    e.Use(middleware.CORS())
+    e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
+        AllowOrigins: []string{"*"},
+        AllowHeaders: []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
+        ExposeHeaders: []string{"trace-id"},
+    }))
 
     if config.Server.EnableTrace {
         cleanup, err := setupTraceProvider(config.Server.TraceEndpoint, config.Concurrent.FQDN + "/concurrent", version)
@@ -82,6 +87,14 @@ func main() {
             },
         )
         e.Use(otelecho.Middleware("dev", skipper))
+
+        e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
+            return func(c echo.Context) error {
+                span := trace.SpanFromContext(c.Request().Context())
+                c.Response().Header().Set("trace-id", span.SpanContext().TraceID().String())
+                return next(c)
+            }
+        })
     }
 
     e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
@@ -177,6 +190,9 @@ func main() {
     apiV1.GET("/auth/claim", authHandler.Claim)
     apiV1.GET("/ap/entity/:ccaddr", activitypubHandler.GetEntityID)
     apiV1.GET("/ap/person/:id", activitypubHandler.GetPerson)
+    apiV1.GET("/profile", func (c echo.Context) error {
+        return c.JSON(http.StatusOK, config.Profile)
+    })
 
     apiV1R := apiV1.Group("", auth.JWT)
     apiV1R.POST("/messages", messageHandler.Post)
@@ -194,6 +210,9 @@ func main() {
     apiV1R.POST("/ap/entity", activitypubHandler.CreateEntity)
     apiV1R.PUT("/ap/person", activitypubHandler.UpdatePerson)
     apiV1R.POST("/host/hello", hostHandler.Hello)
+
+    apiV1R.DELETE("/host/:id", hostHandler.Delete)
+    apiV1R.DELETE("/entity/:id", entityHandler.Delete)
 
     e.GET("/*", spa)
     e.GET("/health", func(c echo.Context) (err error) {
@@ -244,6 +263,12 @@ func setupTraceProvider(endpoint string, serviceName string, serviceVersion stri
         sdktrace.WithResource(resource),
     )
     otel.SetTracerProvider(tracerProvider)
+
+    propagator := propagation.NewCompositeTextMapPropagator(
+        propagation.TraceContext{},
+        propagation.Baggage{},
+    )
+    otel.SetTextMapPropagator(propagator)
 
     cleanup := func() {
         ctx, cancel := context.WithCancel(context.Background())

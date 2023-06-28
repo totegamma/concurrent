@@ -44,3 +44,11 @@ func (r *Repository) GetList(ctx context.Context, ) ([]core.Host, error) {
     return hosts, err
 }
 
+// Delete deletes a host
+func (r *Repository) Delete(ctx context.Context, id string) error {
+    ctx, childSpan := tracer.Start(ctx, "RepositoryDelete")
+    defer childSpan.End()
+
+    return r.db.WithContext(ctx).Delete(&core.Host{}, "id = ?", id).Error
+}
+

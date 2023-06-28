@@ -11,6 +11,7 @@ type Config struct {
     Server Server `yaml:"server"`
     Concurrent Concurrent `yaml:"concurrent"`
     NodeInfo NodeInfo `yaml:"nodeinfo"`
+    Profile Profile `yaml:"profile"`
 }
 
 type Server struct {
@@ -27,6 +28,15 @@ type Concurrent struct {
     Pubkey string `yaml:"publickey"`
     Prvkey string `yaml:"privatekey"`
     Admins []string `yaml:"admins"`
+}
+
+type Profile struct {
+    Nickname string `yaml:"nickname" json:"nickname"`
+    Description string `yaml:"description" json:"description"`
+    Logo string `yaml:"logo" json:"logo"`
+    WordMark string `yaml:"wordmark" json:"wordmark"`
+    Rules string `yaml:"rules" json:"rules"`
+    TosURL string `yaml:"tosURL" json:"tosURL"`
 }
 
 // NodeInfo is Activitypub NodeInfo

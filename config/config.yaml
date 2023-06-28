@@ -3,6 +3,9 @@
 server:
   dsn: "host=localhost user=postgres password=postgres dbname=concurrent port=5432 sslmode=disable"
   redisAddr: "localhost:6379"
+  traceEndpoint: "localhost:4318"
+  enableTrace: false
+  logpath: ""
 
 concurrent:
   fqdn: changeme.example.tld
@@ -21,4 +24,18 @@ nodeinfo:
       name: notset
       email: notset@example.com
     themeColor: '#20193b'
+
+profile:
+  nickname: concurrent-domain
+  description: domain description
+  logo: ''
+  wordmark: ''
+  rules: |
+    - リスペクトを持って接しましょう
+      Treat everyone with respect
+    - スパムは禁止です
+      No spamming
+    - 攻撃的なプロフィール名・画像はやめましょう
+      No offensive names and profile pictures
+  tosURL: ''
 

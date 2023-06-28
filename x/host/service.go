@@ -40,3 +40,11 @@ func (s *Service) List(ctx context.Context, ) ([]core.Host, error) {
     return s.repository.GetList(ctx)
 }
 
+// Delete deletes a host
+func (s *Service) Delete(ctx context.Context, id string) error {
+    ctx, childSpan := tracer.Start(ctx, "ServiceDelete")
+    defer childSpan.End()
+
+    return s.repository.Delete(ctx, id)
+}
+

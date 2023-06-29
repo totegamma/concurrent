@@ -5,7 +5,6 @@ import (
     "log"
     "fmt"
     "time"
-    "context"
     "strings"
     "net/url"
     "net/http"
@@ -134,7 +133,7 @@ func (h Handler) Note(c echo.Context) error {
     if id == "" {
         return c.String(http.StatusBadRequest, "Invalid noteID")
     }
-    msg, err := h.message.Get(context.TODO(), id)
+    msg, err := h.message.Get(ctx, id)
     if err != nil {
         return c.String(http.StatusNotFound, "message not found")
     }
@@ -176,8 +175,8 @@ func (h Handler) Note(c echo.Context) error {
 
 // Inbox handles inbox requests.
 func (h Handler) Inbox(c echo.Context) error {
-    ctx, childSpan := tracer.Start(c.Request().Context(), "Inbox")
-    defer childSpan.End()
+    ctx, span := tracer.Start(c.Request().Context(), "HandlerAPInbox")
+    defer span.End()
 
     id := c.Param("id")
     if id == "" {
@@ -198,7 +197,7 @@ func (h Handler) Inbox(c echo.Context) error {
     switch object.Type {
         case "Follow":
 
-            requester, err := FetchPerson(object.Actor)
+            requester, err := FetchPerson(ctx, object.Actor)
             if err != nil {
                 return c.String(http.StatusBadRequest, "Invalid request body")
             }
@@ -213,7 +212,7 @@ func (h Handler) Inbox(c echo.Context) error {
             split := strings.Split(object.Object.(string), "/")
             userID := split[len(split)-1]
 
-            err = h.PostToInbox(requester.Inbox, accept, userID)
+            err = h.PostToInbox(ctx, requester.Inbox, accept, userID)
             if err != nil {
                 return c.String(http.StatusInternalServerError, "Internal server error")
             }

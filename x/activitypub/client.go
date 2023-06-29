@@ -16,7 +16,7 @@ import (
 )
 
 // FetchPerson fetches a person from remote ap server.
-func FetchPerson(actor string) (Person, error) {
+func FetchPerson(ctx context.Context, actor string) (Person, error) {
 	_, childSpan := tracer.Start(ctx, "FetchPerson")
 	defer childSpan.End()
 
@@ -45,7 +45,7 @@ func FetchPerson(actor string) (Person, error) {
 }
 
 // PostToInbox posts a message to remote ap server.
-func (h Handler) PostToInbox(inbox string, object interface{}, signUser string) error {
+func (h Handler) PostToInbox(ctx context.Context, inbox string, object interface{}, signUser string) error {
 
     objectBytes, err := json.Marshal(object)
     if err != nil {
@@ -62,7 +62,7 @@ func (h Handler) PostToInbox(inbox string, object interface{}, signUser string) 
     client := new(http.Client)
 
 
-    entity, err := h.repo.GetEntityByID(context.TODO(), signUser)
+    entity, err := h.repo.GetEntityByID(ctx, signUser)
     if err != nil {
         return err
     }

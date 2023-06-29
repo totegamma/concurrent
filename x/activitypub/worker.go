@@ -10,16 +10,17 @@ import (
     "github.com/totegamma/concurrent/x/stream"
 )
 
-var ctx = context.Background()
-
 // Boot starts agent
 func (h *Handler) Boot() {
 
     ticker10 := time.NewTicker(10 * time.Second)
     workers := make(map[string]context.CancelFunc)
 
+
     for {
         <-ticker10.C
+        ctx, cancel := context.WithTimeout(context.Background(), 20 * time.Second)
+        defer cancel()
 
         jobs, err := h.repo.GetAllFollows(ctx)
         if err != nil {
@@ -74,7 +75,7 @@ func (h *Handler) Boot() {
                                 continue
                             }
 
-                            msg, err := h.message.Get(context.TODO(), streamEvent.Body.ID)
+                            msg, err := h.message.Get(ctx, streamEvent.Body.ID)
                             if err != nil {
                                 log.Printf("error: %v", err)
                                 continue
@@ -118,7 +119,7 @@ func (h *Handler) Boot() {
                                 },
                             }
 
-                            err = h.PostToInbox(job.SubscriberInbox, create, job.PublisherUserID)
+                            err = h.PostToInbox(ctx, job.SubscriberInbox, create, job.PublisherUserID)
                             if err != nil {
                                 log.Printf("error: %v", err)
                                 continue

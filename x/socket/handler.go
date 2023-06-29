@@ -73,7 +73,7 @@ func (h Handler) Connect(c echo.Context) error {
         ctx, cancel = context.WithCancel(context.Background())
 
         // Unsubscribe from all channels before subscribing to new ones
-        pubsub := h.rdb.Subscribe(ctx)
+        pubsub = h.rdb.Subscribe(ctx)
 
         // Subscribe to new channels
         for _, ch := range req.Channels {

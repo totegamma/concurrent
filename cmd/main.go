@@ -216,6 +216,22 @@ func main() {
 
     e.GET("/*", spa)
     e.GET("/health", func(c echo.Context) (err error) {
+        sqlDB, err := db.DB()
+        if err != nil {
+            return c.String(http.StatusInternalServerError, "db error")
+        }
+        defer sqlDB.Close()
+
+        err = sqlDB.Ping()
+        if err != nil {
+            return c.String(http.StatusInternalServerError, "db error")
+        }
+
+        err = rdb.Ping(context.Background()).Err()
+        if err != nil {
+            return c.String(http.StatusInternalServerError, "redis error")
+        }
+
         return c.String(http.StatusOK, "ok")
     })
 

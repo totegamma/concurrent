@@ -41,6 +41,7 @@ type Element struct {
     ID string `json:"id"`
     Type string `json:"type"`
     Author string `json:"author"`
+    Owner string `json:"owner"`
     Host string `json:"currenthost"`
 }
 
@@ -50,6 +51,7 @@ type checkpointPacket struct {
     Type string `json:"type"`
     Author string `json:"author"`
     Host string `json:"host"`
+    Owner string `json:"owner"`
 }
 
 

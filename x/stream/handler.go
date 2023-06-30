@@ -119,7 +119,7 @@ func (h Handler) Checkpoint(c echo.Context) error {
         return err
     }
 
-    err = h.service.Post(ctx, packet.Stream, packet.ID, packet.Type, packet.Author, packet.Host)
+    err = h.service.Post(ctx, packet.Stream, packet.ID, packet.Type, packet.Author, packet.Host, packet.Owner)
     if err != nil {
         return nil
     }

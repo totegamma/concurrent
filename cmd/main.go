@@ -16,6 +16,7 @@ import (
 
     "github.com/labstack/echo/v4"
     "github.com/labstack/echo/v4/middleware"
+    "github.com/labstack/echo-contrib/echoprometheus"
 
     "github.com/totegamma/concurrent/x/auth"
     "github.com/totegamma/concurrent/x/core"
@@ -112,6 +113,9 @@ func main() {
             return 0, nil
         },
     }))
+
+    e.Use(echoprometheus.NewMiddleware("concurrent"))
+    e.Use(middleware.Recover())
 
     e.Logger.SetOutput(logfile)
     e.Binder = &activitypub.Binder{}
@@ -238,6 +242,8 @@ func main() {
 
         return c.String(http.StatusOK, "ok")
     })
+
+    e.GET("/metrics", echoprometheus.NewHandler())
 
     agent.Boot()
     go activitypubHandler.Boot()

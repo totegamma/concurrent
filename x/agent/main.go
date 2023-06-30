@@ -57,9 +57,7 @@ func (a *Agent) Boot() {
         for {
             select {
                 case <-ticker10.C:
-                    ctx, cancel := context.WithTimeout(context.Background(), 20 * time.Second)
-                    defer cancel()
-                    a.updateConnections(ctx)
+                    a.updateConnections(context.Background())
                     break
                 case <- ticker60.C:
                     ctx, cancel := context.WithTimeout(context.Background(), 120 * time.Second)

@@ -39,8 +39,7 @@ func NewAgent(rdb *redis.Client, config util.Config, host *host.Service, entity 
 }
 
 
-func (a *Agent) collectUsers() {
-    ctx := context.Background()
+func (a *Agent) collectUsers(ctx context.Context) {
     hosts, _ := a.host.List(ctx)
     for _, host := range hosts {
         log.Printf("collect users for %v\n", host)
@@ -58,10 +57,14 @@ func (a *Agent) Boot() {
         for {
             select {
                 case <-ticker10.C:
-                    a.updateConnections()
+                    ctx, cancel := context.WithTimeout(context.Background(), 20 * time.Second)
+                    defer cancel()
+                    a.updateConnections(ctx)
                     break
                 case <- ticker60.C:
-                    a.collectUsers()
+                    ctx, cancel := context.WithTimeout(context.Background(), 120 * time.Second)
+                    defer cancel()
+                    a.collectUsers(ctx)
                     break
             }
         }
@@ -69,11 +72,11 @@ func (a *Agent) Boot() {
 
 }
 
-func (a *Agent)updateConnections() {
+func (a *Agent)updateConnections(ctx context.Context) {
     a.mutex.Lock()
     defer a.mutex.Unlock()
 
-    query := a.rdb.PubSubChannels(context.Background(), "*")
+    query := a.rdb.PubSubChannels(ctx, "*")
     channels := query.Val()
 
     summarized := summarize(channels)
@@ -115,7 +118,7 @@ func (a *Agent)updateConnections() {
                     }
 
                     // publish message to Redis
-                    err = a.rdb.Publish(context.Background(), event.Stream, string(message)).Err()
+                    err = a.rdb.Publish(ctx, event.Stream, string(message)).Err()
                     if err != nil {
                         log.Printf("fail to publish message to Redis: %v", err)
                     }

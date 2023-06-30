@@ -151,7 +151,7 @@ func (s *Service) GetRange(ctx context.Context, streams []string, since string ,
 }
 
 // Post posts to stream
-func (s *Service) Post(ctx context.Context, stream string, id string, typ string, author string, host string) error {
+func (s *Service) Post(ctx context.Context, stream string, id string, typ string, author string, host string, owner string) error {
     ctx, childSpan := tracer.Start(ctx, "ServicePost")
     defer childSpan.End()
 
@@ -165,6 +165,10 @@ func (s *Service) Post(ctx context.Context, stream string, id string, typ string
     }
 
     streamID, streamHost := query[0], query[1]
+
+    if (owner == "") {
+        owner = author
+    }
 
     if (streamHost == s.config.Concurrent.FQDN) {
 
@@ -180,7 +184,7 @@ func (s *Service) Post(ctx context.Context, stream string, id string, typ string
             Values: map[string]interface{}{
                 "id": id,
                 "type": typ,
-                "author": author,
+                "author": owner,
             },
         }).Result()
         if err != nil {
@@ -197,6 +201,7 @@ func (s *Service) Post(ctx context.Context, stream string, id string, typ string
                 ID: id,
                 Type: typ,
                 Author: author,
+                Owner: owner,
                 Host: host,
             },
         })
@@ -211,6 +216,7 @@ func (s *Service) Post(ctx context.Context, stream string, id string, typ string
             Type: typ,
             Author: author,
             Host: s.config.Concurrent.FQDN,
+            Owner: owner,
         }
         packetStr, err := json.Marshal(packet)
         if err != nil {

@@ -73,14 +73,19 @@ func (s *Service) PostAssociation(ctx context.Context, objectStr string, signatu
     if err != nil {
         return association, err // TODO: if err is duplicate key error, server should return 409
     }
-    for _, stream := range association.Streams {
-        s.stream.Post(ctx, stream, association.ID, "association", association.Author, "")
-    }
 
     targetMessage, err := s.message.Get(ctx, association.TargetID)
     if err != nil {
         return association, err
     }
+
+    for _, stream := range association.Streams {
+        err = s.stream.Post(ctx, stream, association.ID, "association", association.Author, "", targetMessage.Author)
+        if err != nil {
+            log.Printf("fail to post stream: %v", err)
+        }
+    }
+
     for _, stream := range targetMessage.Streams {
         jsonstr, _ := json.Marshal(Event{
             Stream: stream,

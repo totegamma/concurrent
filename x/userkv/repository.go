@@ -9,12 +9,11 @@ import (
 // Repository is userkv repository
 type Repository struct {
     rdb *redis.Client
-    ctx context.Context
 }
 
 // NewRepository is for wire.go
 func NewRepository(rdb *redis.Client) *Repository {
-    return &Repository{rdb: rdb, ctx: context.Background()}
+    return &Repository{rdb: rdb}
 }
 
 // Get returns a userkv by ID
@@ -23,7 +22,7 @@ func (r *Repository) Get(ctx context.Context, key string) (string, error) {
     defer childSpan.End()
 
     key = "userkv:" + key
-    return r.rdb.Get(r.ctx, key).Result()
+    return r.rdb.Get(ctx, key).Result()
 }
 
 // Upsert updates a userkv
@@ -32,6 +31,6 @@ func (r *Repository) Upsert(ctx context.Context, key string, value string) error
     defer childSpan.End()
 
     key = "userkv:" + key
-    return r.rdb.Set(r.ctx, key, value, 0).Err()
+    return r.rdb.Set(ctx, key, value, 0).Err()
 }
 

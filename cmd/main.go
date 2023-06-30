@@ -121,6 +121,12 @@ func main() {
     if err != nil {
         panic("failed to connect database")
     }
+    sqlDB, err := db.DB() // for pinging
+    if err != nil {
+        panic("failed to connect database")
+    }
+    defer sqlDB.Close()
+
     err = db.Use(tracing.NewPlugin())
     if err != nil {
         panic("failed to setup tracing plugin")
@@ -214,14 +220,11 @@ func main() {
     apiV1R.DELETE("/host/:id", hostHandler.Delete)
     apiV1R.DELETE("/entity/:id", entityHandler.Delete)
 
+
+
     e.GET("/*", spa)
     e.GET("/health", func(c echo.Context) (err error) {
         ctx := c.Request().Context()
-        sqlDB, err := db.DB()
-        if err != nil {
-            return c.String(http.StatusInternalServerError, "db error")
-        }
-        defer sqlDB.Close()
 
         err = sqlDB.Ping()
         if err != nil {

@@ -1,38 +1,39 @@
 package main
 
 import (
-    "os"
-    "fmt"
-    "log"
-    "bytes"
-    "context"
-    "net/http"
-    "runtime/debug"
-    "path/filepath"
+	"bytes"
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"path/filepath"
+	"runtime/debug"
 
-    "github.com/redis/go-redis/v9"
-    "gorm.io/driver/postgres"
-    "gorm.io/gorm"
+	"github.com/redis/go-redis/v9"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 
-    "github.com/labstack/echo/v4"
-    "github.com/labstack/echo/v4/middleware"
-    "github.com/labstack/echo-contrib/echoprometheus"
+	"github.com/labstack/echo-contrib/echoprometheus"
+	"github.com/labstack/echo/v4"
+	"github.com/labstack/echo/v4/middleware"
 
-    "github.com/totegamma/concurrent/x/auth"
-    "github.com/totegamma/concurrent/x/core"
-    "github.com/totegamma/concurrent/x/util"
-    "github.com/totegamma/concurrent/x/activitypub"
+	"github.com/totegamma/concurrent/x/activitypub"
+	"github.com/totegamma/concurrent/x/auth"
+	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/util"
 
-    "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/propagation"
-    "go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
-    "go.opentelemetry.io/otel/sdk/resource"
-    sdktrace "go.opentelemetry.io/otel/sdk/trace"
-    semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
-    "go.opentelemetry.io/otel/trace"
-    "gorm.io/plugin/opentelemetry/tracing"
-    "github.com/redis/go-redis/extra/redisotel/v9"
-    "go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
+	"github.com/redis/go-redis/extra/redisotel/v9"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/sdk/resource"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
+	"go.opentelemetry.io/otel/trace"
+	"gorm.io/plugin/opentelemetry/tracing"
 )
 
 
@@ -131,7 +132,9 @@ func main() {
     }
     defer sqlDB.Close()
 
-    err = db.Use(tracing.NewPlugin())
+    err = db.Use(tracing.NewPlugin(
+        tracing.WithDBName("postgres"),
+    ))
     if err != nil {
         panic("failed to setup tracing plugin")
     }
@@ -155,7 +158,15 @@ func main() {
         Password: "", // no password set
         DB:       0,  // use default DB
     })
-    err = redisotel.InstrumentTracing(rdb)
+    err = redisotel.InstrumentTracing(
+        rdb,
+        redisotel.WithAttributes(
+            attribute.KeyValue{
+                Key: "db.name",
+                Value: attribute.StringValue("redis"),
+            },
+        ),
+    )
     if err != nil {
         panic("failed to setup tracing plugin")
     }

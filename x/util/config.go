@@ -37,6 +37,8 @@ type Profile struct {
     WordMark string `yaml:"wordmark" json:"wordmark"`
     Rules string `yaml:"rules" json:"rules"`
     TosURL string `yaml:"tosURL" json:"tosURL"`
+    Version string `yaml:"version" json:"version"`
+    Hash string `yaml:"hash" json:"hash"`
 }
 
 // NodeInfo is Activitypub NodeInfo

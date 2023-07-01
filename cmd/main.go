@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
-	"runtime/debug"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/postgres"
@@ -53,13 +52,7 @@ func main() {
         e.Logger.Fatal(err)
     }
 
-    buildinfo, ok := debug.ReadBuildInfo()
-    var version string = "unknown"
-    if ok {
-        version = buildinfo.Main.Version
-    }
-
-    log.Print("Concurrent ", version, " starting...")
+    log.Print("Concurrent ", util.GetFullVersion(), " starting...")
     log.Print("Config loaded! I am: ", config.Concurrent.CCAddr)
 
     logfile, err := os.OpenFile(filepath.Join(config.Server.LogPath, "access.log"), os.O_RDWR | os.O_CREATE | os.O_APPEND, 0666)
@@ -77,7 +70,7 @@ func main() {
     }))
 
     if config.Server.EnableTrace {
-        cleanup, err := setupTraceProvider(config.Server.TraceEndpoint, config.Concurrent.FQDN + "/concurrent", version)
+        cleanup, err := setupTraceProvider(config.Server.TraceEndpoint, config.Concurrent.FQDN + "/concurrent", util.GetFullVersion())
         if err != nil {
             panic(err)
         }
@@ -212,7 +205,10 @@ func main() {
     apiV1.GET("/ap/entity/:ccaddr", activitypubHandler.GetEntityID)
     apiV1.GET("/ap/person/:id", activitypubHandler.GetPerson)
     apiV1.GET("/profile", func (c echo.Context) error {
-        return c.JSON(http.StatusOK, config.Profile)
+        profile := config.Profile
+        profile.Version = util.GetVersion()
+        profile.Hash = util.GetGitHash()
+        return c.JSON(http.StatusOK, profile)
     })
 
     apiV1R := apiV1.Group("", auth.JWT)

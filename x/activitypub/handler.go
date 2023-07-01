@@ -11,7 +11,6 @@ import (
     "io/ioutil"
     "crypto/x509"
     "encoding/pem"
-    "runtime/debug"
     "encoding/json"
     "crypto/ed25519"
     "go.opentelemetry.io/otel"
@@ -416,17 +415,11 @@ func (h Handler) NodeInfo(c echo.Context) error {
     _, childSpan := tracer.Start(c.Request().Context(), "NodeInfo")
     defer childSpan.End()
 
-    buildinfo, ok := debug.ReadBuildInfo()
-    var version string = "unknown"
-    if ok {
-        version = buildinfo.Main.Version
-    }
-
     return c.JSON(http.StatusOK, NodeInfo{
         Version: "2.0",
         Software: NodeInfoSoftware{
             Name: "Concurrent",
-            Version: version,
+            Version: util.GetGitShortHash(),
         },
         Protocols: []string{
             "activitypub",

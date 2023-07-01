@@ -184,6 +184,9 @@ func main() {
     userkvHandler := SetupUserkvHandler(db, rdb, config)
     activitypubHandler := SetupActivitypubHandler(db, rdb, config)
 
+    //authService := SetupAuthService(db, config)
+    authService := auth.Service{}
+
     e.GET("/.well-known/webfinger", activitypubHandler.WebFinger)
     e.GET("/.well-known/nodeinfo", activitypubHandler.NodeInfoWellKnown)
     e.GET("/ap/nodeinfo/2.0", activitypubHandler.NodeInfo)
@@ -216,27 +219,24 @@ func main() {
     })
 
     apiV1R := apiV1.Group("", auth.JWT)
-    apiV1R.POST("/messages", messageHandler.Post)
-    apiV1R.DELETE("/messages", messageHandler.Delete)
-    apiV1R.PUT("/characters", characterHandler.Put)
-    apiV1R.POST("/associations", associationHandler.Post)
-    apiV1R.DELETE("/associations", associationHandler.Delete)
-    apiV1R.PUT("/stream", streamHandler.Put)
+    apiV1R.POST("/messages", messageHandler.Post, authService.Restrict(auth.ISLOCAL))
+    apiV1R.DELETE("/messages", messageHandler.Delete, authService.Restrict(auth.ISLOCAL))
+    apiV1R.PUT("/characters", characterHandler.Put, authService.Restrict(auth.ISLOCAL))
+    apiV1R.POST("/associations", associationHandler.Post, authService.Restrict(auth.ISKNOWN))
+    apiV1R.DELETE("/associations", associationHandler.Delete, authService.Restrict(auth.ISKNOWN))
+    apiV1R.PUT("/stream", streamHandler.Put, authService.Restrict(auth.ISLOCAL))
     apiV1R.POST("/stream/checkpoint", streamHandler.Checkpoint)
-    apiV1R.PUT("/host", hostHandler.Upsert)
+    apiV1R.PUT("/host", hostHandler.Upsert, authService.Restrict(auth.ISADMIN))
     apiV1R.POST("/entity", entityHandler.Post)
-    apiV1R.PUT("/entity", entityHandler.Update)
-    apiV1R.GET("/admin/sayhello/:fqdn", hostHandler.SayHello)
-    apiV1R.GET("/kv/:key", userkvHandler.Get)
-    apiV1R.PUT("/kv/:key", userkvHandler.Upsert)
-    apiV1R.POST("/ap/entity", activitypubHandler.CreateEntity)
-    apiV1R.PUT("/ap/person", activitypubHandler.UpdatePerson)
+    apiV1R.PUT("/entity", entityHandler.Update, authService.Restrict(auth.ISLOCAL))
+    apiV1R.GET("/admin/sayhello/:fqdn", hostHandler.SayHello, authService.Restrict(auth.ISADMIN))
+    apiV1R.GET("/kv/:key", userkvHandler.Get, authService.Restrict(auth.ISLOCAL))
+    apiV1R.PUT("/kv/:key", userkvHandler.Upsert, authService.Restrict(auth.ISLOCAL))
+    apiV1R.POST("/ap/entity", activitypubHandler.CreateEntity, authService.Restrict(auth.ISLOCAL))
+    apiV1R.PUT("/ap/person", activitypubHandler.UpdatePerson, authService.Restrict(auth.ISLOCAL))
     apiV1R.POST("/host/hello", hostHandler.Hello)
-
-    apiV1R.DELETE("/host/:id", hostHandler.Delete)
-    apiV1R.DELETE("/entity/:id", entityHandler.Delete)
-
-
+    apiV1R.DELETE("/host/:id", hostHandler.Delete, authService.Restrict(auth.ISADMIN))
+    apiV1R.DELETE("/entity/:id", entityHandler.Delete, authService.Restrict(auth.ISADMIN))
 
     e.GET("/*", spa)
     e.GET("/health", func(c echo.Context) (err error) {

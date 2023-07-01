@@ -225,6 +225,7 @@ func main() {
     apiV1R.POST("/stream/checkpoint", streamHandler.Checkpoint)
     apiV1R.PUT("/host", hostHandler.Upsert)
     apiV1R.POST("/entity", entityHandler.Post)
+    apiV1R.PUT("/entity", entityHandler.Update)
     apiV1R.GET("/admin/sayhello/:fqdn", hostHandler.SayHello)
     apiV1R.GET("/kv/:key", userkvHandler.Get)
     apiV1R.PUT("/kv/:key", userkvHandler.Upsert)

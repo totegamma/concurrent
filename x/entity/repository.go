@@ -60,3 +60,12 @@ func (r *Repository) Delete(ctx context.Context, id string) error {
     return r.db.WithContext(ctx).Delete(&core.Entity{}, "id = ?", id).Error
 }
 
+// Update updates a entity
+func (r *Repository) Update(ctx context.Context, entity *core.Entity) error {
+    ctx, span := tracer.Start(ctx, "RepositoryUpdate")
+    defer span.End()
+
+    return r.db.WithContext(ctx).Where("id = ?", entity.ID).Updates(&entity).Error
+}
+
+

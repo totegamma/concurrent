@@ -2,11 +2,13 @@
 package entity
 
 import (
-    "errors"
-    "net/http"
-    "gorm.io/gorm"
-    "github.com/labstack/echo/v4"
-    "go.opentelemetry.io/otel"
+	"errors"
+	"net/http"
+
+	"github.com/labstack/echo/v4"
+	"github.com/totegamma/concurrent/x/core"
+	"go.opentelemetry.io/otel"
+	"gorm.io/gorm"
 )
 
 var tracer = otel.Tracer("handler")
@@ -40,6 +42,7 @@ func (h Handler) Get(c echo.Context) error {
         ID: entity.ID,
         Role: entity.Role,
         Host: entity.Host,
+        Certs: entity.Certs,
         CDate: entity.CDate,
     }
     return c.JSON(http.StatusOK, publicInfo)
@@ -75,6 +78,23 @@ func (h Handler) List(c echo.Context) error {
         return err
     }
     return c.JSON(http.StatusOK, entities)
+}
+
+// Update updates entity information
+func (h Handler) Update(c echo.Context) error {
+    ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerUpdate")
+    defer childSpan.End()
+
+    var request core.Entity
+    err := c.Bind(&request)
+    if err != nil {
+        return err
+    }
+    err = h.service.Update(ctx, &request)
+    if err != nil {
+        return err
+    }
+    return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": request})
 }
 
 // Delete is for Handling HTTP Delete Method

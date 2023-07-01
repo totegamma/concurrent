@@ -118,6 +118,13 @@ func (s *Service) ResolveHost(ctx context.Context, user string) (string, error) 
     return fqdn, nil
 }
 
+// Update updates entity
+func (s *Service) Update(ctx context.Context, entity *core.Entity) error {
+    ctx, span := tracer.Start(ctx, "ServiceUpdate")
+    defer span.End()
+
+    return s.repository.Update(ctx, entity)
+}
 
 // IsUserExists returns true if user exists
 func (s *Service) IsUserExists(ctx context.Context, user string) bool {

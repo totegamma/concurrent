@@ -16,6 +16,7 @@ type SafeEntity struct {
     Role string `json:"role"`
     Score int `json:"score"`
     Host string `json:"host"`
+    Certs string `json:"certs"`
     CDate time.Time `json:"cdate"`
 }
 

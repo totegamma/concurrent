@@ -7,6 +7,7 @@ import (
     "strconv"
     "github.com/rs/xid"
     "github.com/totegamma/concurrent/x/util"
+    "github.com/totegamma/concurrent/x/host"
     "github.com/totegamma/concurrent/x/entity"
 )
 
@@ -14,11 +15,12 @@ import (
 type Service struct {
     config util.Config
     entity *entity.Service
+    host *host.Service
 }
 
 // NewService is for wire.go
-func NewService(config util.Config, entity *entity.Service) *Service {
-    return &Service{config, entity}
+func NewService(config util.Config, entity *entity.Service, host *host.Service) *Service {
+    return &Service{config, entity, host}
 }
 
 

@@ -15,6 +15,9 @@ const (
     ISADMIN = iota
     ISLOCAL
     ISKNOWN
+    ISUNKNOWN
+    ISUNITED
+    ISUNUNITED
 )
 
 func (s *Service) Restrict(principal Principal) echo.MiddlewareFunc {
@@ -22,27 +25,45 @@ func (s *Service) Restrict(principal Principal) echo.MiddlewareFunc {
         return func (c echo.Context) error {
             ctx, span := tracer.Start(c.Request().Context(), "auth.Restrict")
             defer span.End()
-            claims := c.Get("jwtclaims").(*util.JwtClaims)
+            claims, ok := c.Get("jwtclaims").(util.JwtClaims)
+            if !ok {
+                return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid authentication header"})
+            }
 
             switch principal {
-            case ISADMIN:
-                if !slices.Contains(s.config.Concurrent.Admins, claims.Audience) {
-                    return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action"})
-                }
-            case ISLOCAL:
-                ent, err := s.entity.Get(ctx, claims.Issuer)
-                if err != nil {
-                    return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action"})
-                }
+                case ISADMIN:
+                    if !slices.Contains(s.config.Concurrent.Admins, claims.Audience) {
+                        return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not admin"})
+                    }
+                case ISLOCAL:
+                    ent, err := s.entity.Get(ctx, claims.Audience)
+                    if err != nil {
+                        return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not known"})
+                    }
 
-                if ent.Host != "" {
-                    return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action"})
-                }
-            case ISKNOWN:
-                _, err := s.entity.Get(ctx, claims.Issuer)
-                if err != nil {
-                    return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action"})
-                }
+                    if ent.Host != "" {
+                        return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not local"})
+                    }
+                case ISKNOWN:
+                    _, err := s.entity.Get(ctx, claims.Audience)
+                    if err != nil {
+                        return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not known"})
+                    }
+                case ISUNKNOWN:
+                    _, err := s.entity.Get(ctx, claims.Audience)
+                    if err == nil {
+                        return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are already known"})
+                    }
+                case ISUNITED:
+                    _, err := s.host.Get(ctx, claims.Issuer)
+                    if err != nil {
+                        return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not united"})
+                    }
+                case ISUNUNITED:
+                    _, err := s.host.Get(ctx, claims.Issuer)
+                    if err == nil {
+                        return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are already united"})
+                    }
             }
             return next(c)
         }

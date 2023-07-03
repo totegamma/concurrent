@@ -49,13 +49,13 @@ func (h Handler) Put(c echo.Context) error {
     var request postRequest
     err := c.Bind(&request)
     if err != nil {
-        return err
+        return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request", "message": err.Error()})
     }
 
-    err = h.service.PutCharacter(ctx, request.SignedObject, request.Signature, request.ID)
+    updated, err := h.service.PutCharacter(ctx, request.SignedObject, request.Signature, request.ID)
     if err != nil {
-        return err
+        return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request", "message": err.Error()})
     }
-    return c.String(http.StatusCreated, "{\"message\": \"accept\"}")
+    return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": updated})
 }
 

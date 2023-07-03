@@ -32,19 +32,19 @@ func (s* Service) GetCharacters(ctx context.Context, owner string, schema string
 }
 
 // PutCharacter creates new character if the signature is valid
-func (s* Service) PutCharacter(ctx context.Context, objectStr string, signature string, id string) error {
+func (s* Service) PutCharacter(ctx context.Context, objectStr string, signature string, id string) (core.Character, error) {
     ctx, childSpan := tracer.Start(ctx, "ServicePutCharacter")
     defer childSpan.End()
 
     var object signedObject
     err := json.Unmarshal([]byte(objectStr), &object)
     if err != nil {
-        return err
+        return core.Character{}, err
     }
 
     if err := util.VerifySignature(objectStr, object.Signer, signature); err != nil {
         log.Println("verify signature err: ", err)
-        return err
+        return core.Character{}, err
     }
 
     character := core.Character {
@@ -57,9 +57,9 @@ func (s* Service) PutCharacter(ctx context.Context, objectStr string, signature 
 
     err = s.repo.Upsert(ctx, character)
     if err != nil {
-        return err
+        return core.Character{}, err
     }
 
-    return nil
+    return character, nil
 }
 

@@ -55,12 +55,12 @@ func (s *Service) Restrict(principal Principal) echo.MiddlewareFunc {
                         return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are already known"})
                     }
                 case ISUNITED:
-                    _, err := s.host.Get(ctx, claims.Issuer)
+                    _, err := s.host.GetByCCID(ctx, claims.Issuer)
                     if err != nil {
                         return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not united"})
                     }
                 case ISUNUNITED:
-                    _, err := s.host.Get(ctx, claims.Issuer)
+                    _, err := s.host.GetByCCID(ctx, claims.Issuer)
                     if err == nil {
                         return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are already united"})
                     }

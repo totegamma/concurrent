@@ -1,25 +1,27 @@
 package stream
 
 import (
-    "fmt"
-    "time"
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
-    "github.com/rs/xid"
 	"github.com/redis/go-redis/v9"
+	"github.com/rs/xid"
+	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/util"
-	"github.com/totegamma/concurrent/x/core"
 
-    "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/propagation"
+	"go.opentelemetry.io/otel/trace"
 )
 
 // Service is stream service
@@ -152,8 +154,8 @@ func (s *Service) GetRange(ctx context.Context, streams []string, since string ,
 
 // Post posts to stream
 func (s *Service) Post(ctx context.Context, stream string, id string, typ string, author string, host string, owner string) error {
-    ctx, childSpan := tracer.Start(ctx, "ServicePost")
-    defer childSpan.End()
+    ctx, span := tracer.Start(ctx, "ServicePost")
+    defer span.End()
 
     query := strings.Split(stream, "@")
     if len(query) != 2 {
@@ -250,6 +252,8 @@ func (s *Service) Post(ctx context.Context, stream string, id string, typ string
         defer resp.Body.Close()
 
         // TODO: response check
+        span.AddEvent("checkpoint response", trace.WithAttributes(attribute.String("response", resp.Status)))
+
     }
     return nil
 }

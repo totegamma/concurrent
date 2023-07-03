@@ -16,13 +16,23 @@ func NewRepository(db *gorm.DB) *Repository {
     return &Repository{db: db}
 }
 
-// Get returns a host by ID
-func (r *Repository) Get(ctx context.Context, key string) (core.Host, error) {
-    ctx, childSpan := tracer.Start(ctx, "RepositoryGet")
-    defer childSpan.End()
+// Get returns a host by FQDN
+func (r *Repository) GetByFQDN(ctx context.Context, key string) (core.Host, error) {
+    ctx, span := tracer.Start(ctx, "RepositoryGet")
+    defer span.End()
 
     var host core.Host
     err := r.db.WithContext(ctx).First(&host, "id = ?", key).Error
+    return host, err
+}
+
+// GetByCCID returns a host by CCID
+func (r *Repository) GetByCCID(ctx context.Context, ccid string) (core.Host, error) {
+    ctx, span := tracer.Start(ctx, "RepositoryGetByCCID")
+    defer span.End()
+
+    var host core.Host
+    err := r.db.WithContext(ctx).First(&host, "cc_addr = ?", ccid).Error
     return host, err
 }
 

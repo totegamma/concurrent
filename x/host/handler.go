@@ -39,7 +39,7 @@ func (h Handler) Get(c echo.Context) error {
     defer childSpan.End()
 
     id := c.Param("id")
-    host, err := h.service.Get(ctx, id)
+    host, err := h.service.GetByFQDN(ctx, id)
     if err != nil {
         if errors.Is(err, gorm.ErrRecordNotFound) {
             return c.JSON(http.StatusNotFound, echo.Map{"error": "Host not found"})

@@ -24,13 +24,22 @@ func (s *Service) Upsert(ctx context.Context, host *core.Host) error {
     return s.repository.Upsert(ctx, host)
 }
 
-// Get returns stream information by ID
-func (s *Service) Get(ctx context.Context, key string) (core.Host, error) {
+// Get returns stream information by FQDN
+func (s *Service) GetByFQDN(ctx context.Context, key string) (core.Host, error) {
     ctx, childSpan := tracer.Start(ctx, "ServiceGet")
     defer childSpan.End()
 
-    return s.repository.Get(ctx, key)
+    return s.repository.GetByFQDN(ctx, key)
 }
+
+// GetByCCID returns stream information by CCID
+func (s *Service) GetByCCID(ctx context.Context, key string) (core.Host, error) {
+    ctx, childSpan := tracer.Start(ctx, "ServiceGetByCCID")
+    defer childSpan.End()
+
+    return s.repository.GetByCCID(ctx, key)
+}
+
 
 // List returns streamList by schema
 func (s *Service) List(ctx context.Context, ) ([]core.Host, error) {

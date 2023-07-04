@@ -5,8 +5,7 @@ type ChannelRequest struct {
 }
 
 type StreamEvent struct {
-    Stream string `json:"stream"`
-    Type string `json:"type"`
-    Action string `json:"action"`
+	Stream string `json:"stream"`
+	Type   string `json:"type"`
+	Action string `json:"action"`
 }
-

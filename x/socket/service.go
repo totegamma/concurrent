@@ -1,7 +1,6 @@
 package socket
 
-import (
-)
+import ()
 
 // Service is socket service
 type Service struct {
@@ -9,9 +8,5 @@ type Service struct {
 
 // NewService is for wire.go
 func NewService() *Service {
-    return &Service{
-    }
+	return &Service{}
 }
-
-
-

@@ -3,7 +3,6 @@ package message
 import (
 	"context"
 	"encoding/json"
-	"log"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/x/core"

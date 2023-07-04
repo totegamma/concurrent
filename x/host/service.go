@@ -1,6 +1,7 @@
 package host
 
 import (
+    "time"
     "context"
     "github.com/totegamma/concurrent/x/core"
 )
@@ -56,4 +57,13 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 
     return s.repository.Delete(ctx, id)
 }
+
+//UpdateScrapeTime updates scrape time
+func (s *Service) UpdateScrapeTime(ctx context.Context, id string, scrapeTime time.Time) error {
+    ctx, childSpan := tracer.Start(ctx, "ServiceUpdateScrapeTime")
+    defer childSpan.End()
+
+    return s.repository.UpdateScrapeTime(ctx, id, scrapeTime)
+}
+
 

@@ -1,6 +1,7 @@
 package entity
 
 import (
+    "time"
     "context"
     "gorm.io/gorm"
     "github.com/totegamma/concurrent/x/core"
@@ -49,6 +50,16 @@ func (r *Repository) GetList(ctx context.Context, ) ([]SafeEntity, error) {
 
     var entities []SafeEntity
     err := r.db.WithContext(ctx).Model(&core.Entity{}).Where("host IS NULL or host = ''").Find(&entities).Error
+    return entities, err
+}
+
+// ListModified returns all entities which modified after given time
+func (r *Repository) ListModified(ctx context.Context, time time.Time) ([]SafeEntity, error) {
+    ctx, childSpan := tracer.Start(ctx, "RepositoryListModified")
+    defer childSpan.End()
+
+    var entities []SafeEntity
+    err := r.db.WithContext(ctx).Model(&core.Entity{}).Where("m_date > ?", time).Find(&entities).Error
     return entities, err
 }
 

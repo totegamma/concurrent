@@ -98,9 +98,20 @@ func SetupAgent(db *gorm.DB, rdb *redis.Client, config util.Config) *agent.Agent
 func SetupAuthHandler(db *gorm.DB, config util.Config) *auth.Handler {
 	repository := entity.NewRepository(db)
 	service := entity.NewService(repository, config)
-	authService := auth.NewService(config, service)
+	hostRepository := host.NewRepository(db)
+	hostService := host.NewService(hostRepository)
+	authService := auth.NewService(config, service, hostService)
 	handler := auth.NewHandler(authService)
 	return handler
+}
+
+func SetupAuthService(db *gorm.DB, config util.Config) *auth.Service {
+	repository := entity.NewRepository(db)
+	service := entity.NewService(repository, config)
+	hostRepository := host.NewRepository(db)
+	hostService := host.NewService(hostRepository)
+	authService := auth.NewService(config, service, hostService)
+	return authService
 }
 
 func SetupUserkvHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *userkv.Handler {

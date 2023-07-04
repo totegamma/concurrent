@@ -2,8 +2,10 @@
 package entity
 
 import (
+    "time"
 	"errors"
 	"net/http"
+    "strconv"
 
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/x/core"
@@ -73,11 +75,20 @@ func (h Handler) List(c echo.Context) error {
     ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerList")
     defer childSpan.End()
 
-    entities, err := h.service.List(ctx, )
+    since, err := strconv.ParseInt(c.QueryParam("since"), 10, 64)
     if err != nil {
-        return err
+        entities, err := h.service.List(ctx)
+        if err != nil {
+            return err
+        }
+        return c.JSON(http.StatusOK, entities)
+    } else {
+        entities, err := h.service.ListModified(ctx, time.Unix(since, 0))
+        if err != nil {
+            return err
+        }
+        return c.JSON(http.StatusOK, entities)
     }
-    return c.JSON(http.StatusOK, entities)
 }
 
 // Update updates entity information

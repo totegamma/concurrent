@@ -1,16 +1,11 @@
 package entity
 
 import (
-    "log"
+    "time"
     "context"
-    "net/http"
-    "io/ioutil"
-    "encoding/json"
     "golang.org/x/exp/slices"
     "github.com/totegamma/concurrent/x/core"
     "github.com/totegamma/concurrent/x/util"
-    "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/propagation"
 )
 
 // Service is entity service
@@ -55,51 +50,19 @@ func (s *Service) Get(ctx context.Context, key string) (core.Entity, error) {
 }
 
 // List returns streamList by schema
-func (s *Service) List(ctx context.Context, ) ([]SafeEntity, error) {
+func (s *Service) List(ctx context.Context) ([]SafeEntity, error) {
     ctx, childSpan := tracer.Start(ctx, "ServiceList")
     defer childSpan.End()
 
     return s.repository.GetList(ctx)
 }
 
-// PullRemoteEntities copies remote entities
-func (s *Service) PullRemoteEntities(ctx context.Context, host core.Host) error {
-    ctx, childSpan := tracer.Start(ctx, "ServicePullRemoteEntities")
+// ListModified returns stream which modified after given time
+func (s *Service) ListModified(ctx context.Context, time time.Time) ([]SafeEntity, error) {
+    ctx, childSpan := tracer.Start(ctx, "ServiceListModified")
     defer childSpan.End()
 
-    req, err := http.NewRequest("GET", "https://" + host.ID + "/api/v1/entity/list", nil)
-    if err != nil {
-        return err
-    }
-
-    otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
-
-    client := new(http.Client)
-    resp, err := client.Do(req)
-    if err != nil {
-        return err
-    }
-    defer resp.Body.Close()
-
-    body, _ := ioutil.ReadAll(resp.Body)
-
-    var remoteEntities []SafeEntity
-    json.Unmarshal(body, &remoteEntities)
-
-    log.Print(remoteEntities)
-
-    for _, entity := range remoteEntities {
-        err := s.repository.Upsert(ctx, &core.Entity{
-            ID: entity.ID,
-            Host: host.ID,
-            Meta: "null",
-        })
-        if err != nil {
-            log.Println(err)
-        }
-    }
-
-    return nil
+    return s.repository.ListModified(ctx, time)
 }
 
 // ResolveHost resolves host from user address

@@ -1,6 +1,7 @@
 package host
 
 import (
+    "time"
     "context"
     "gorm.io/gorm"
     "github.com/totegamma/concurrent/x/core"
@@ -61,4 +62,14 @@ func (r *Repository) Delete(ctx context.Context, id string) error {
 
     return r.db.WithContext(ctx).Delete(&core.Host{}, "id = ?", id).Error
 }
+
+
+// UpdateScrapeTime updates scrape time
+func (r *Repository) UpdateScrapeTime(ctx context.Context, id string, scrapeTime time.Time) error {
+    ctx, childSpan := tracer.Start(ctx, "RepositoryUpdateScrapeTime")
+    defer childSpan.End()
+
+    return r.db.WithContext(ctx).Model(&core.Host{}).Where("id = ?", id).Update("scrape_time", scrapeTime).Error
+}
+
 

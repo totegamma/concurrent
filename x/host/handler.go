@@ -20,7 +20,7 @@ import (
     "github.com/totegamma/concurrent/x/util"
 )
 
-var tracer = otel.Tracer("handler")
+var tracer = otel.Tracer("host")
 
 // Handler is handles websocket
 type Handler struct {

@@ -5,16 +5,24 @@ import (
     "log"
     "time"
     "sync"
+    "strconv"
     "context"
     "net/url"
     "strings"
+    "net/http"
+    "io/ioutil"
     "encoding/json"
 	"github.com/redis/go-redis/v9"
     "github.com/gorilla/websocket"
+    "go.opentelemetry.io/otel"
+    "go.opentelemetry.io/otel/propagation"
+	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
     "github.com/totegamma/concurrent/x/host"
     "github.com/totegamma/concurrent/x/entity"
 )
+
+var tracer = otel.Tracer("agent")
 
 // Agent is...
 type Agent struct {
@@ -43,7 +51,7 @@ func (a *Agent) collectUsers(ctx context.Context) {
     hosts, _ := a.host.List(ctx)
     for _, host := range hosts {
         log.Printf("collect users for %v\n", host)
-        a.entity.PullRemoteEntities(ctx, host)
+        a.pullRemoteEntities(ctx, host)
     }
 }
 
@@ -143,6 +151,49 @@ func (a *Agent)updateConnections(ctx context.Context) {
             delete(a.connections, server)
         }
     }
+}
+
+// PullRemoteEntities copies remote entities
+func (a *Agent) pullRemoteEntities(ctx context.Context, remote core.Host) error {
+    ctx, childSpan := tracer.Start(ctx, "ServicePullRemoteEntities")
+    defer childSpan.End()
+
+    req, err := http.NewRequest("GET", "https://" + remote.ID + "/api/v1/entity/list?since=" + strconv.FormatInt(remote.LastScraped.Unix(), 10), nil)
+    if err != nil {
+        return err
+    }
+
+    otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+
+    client := new(http.Client)
+    resp, err := client.Do(req)
+    if err != nil {
+        return err
+    }
+    defer resp.Body.Close()
+
+    body, _ := ioutil.ReadAll(resp.Body)
+
+    var remoteEntities []entity.SafeEntity
+    json.Unmarshal(body, &remoteEntities)
+
+    log.Print(remoteEntities)
+
+    for _, entity := range remoteEntities {
+        err := a.entity.Update(ctx, &core.Entity{
+            ID: entity.ID,
+            Host: remote.ID,
+            Certs: entity.Certs,
+            Meta: "null",
+        })
+        if err != nil {
+            log.Println(err)
+        }
+    }
+
+    a.host.UpdateScrapeTime(ctx, remote.ID, time.Now())
+
+    return nil
 }
 
 func isInList(server string, list []string) bool {

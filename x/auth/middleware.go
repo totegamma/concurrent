@@ -66,6 +66,7 @@ func (s *Service) Restrict(principal Principal) echo.MiddlewareFunc {
 					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are already united"})
 				}
 			}
+			c.SetRequest(c.Request().WithContext(ctx))
 			return next(c)
 		}
 	}
@@ -74,7 +75,7 @@ func (s *Service) Restrict(principal Principal) echo.MiddlewareFunc {
 // JWT is middleware which validate jwt
 func JWT(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		_, span := tracer.Start(c.Request().Context(), "auth.JWT")
+		ctx, span := tracer.Start(c.Request().Context(), "auth.JWT")
 		defer span.End()
 		authInfo := c.Request().Header.Get("authorization")
 		if authInfo == "" { // XXX for backward compatibility
@@ -101,6 +102,7 @@ func JWT(next echo.HandlerFunc) echo.HandlerFunc {
 		c.Set("jwtclaims", claims)
 		span.SetAttributes(attribute.String("Audience", claims.Audience))
 
+		c.SetRequest(c.Request().WithContext(ctx))
 		return next(c)
 	}
 }

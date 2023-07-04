@@ -89,11 +89,13 @@ func (h Handler) User(c echo.Context) error {
 
 	entity, err := h.repo.GetEntityByID(ctx, id)
 	if err != nil {
+		span.RecordError(err)
 		return c.String(http.StatusNotFound, "entity not found")
 	}
 
 	person, err := h.repo.GetPersonByID(ctx, id)
 	if err != nil {
+		span.RecordError(err)
 		return c.String(http.StatusNotFound, "person not found")
 	}
 
@@ -132,17 +134,20 @@ func (h Handler) Note(c echo.Context) error {
 	}
 	msg, err := h.message.Get(ctx, id)
 	if err != nil {
+		span.RecordError(err)
 		return c.String(http.StatusNotFound, "message not found")
 	}
 
 	entity, err := h.repo.GetEntityByCCAddr(ctx, msg.Author)
 	if err != nil {
+		span.RecordError(err)
 		return c.String(http.StatusNotFound, "entity not found")
 	}
 
 	var signedObject message.SignedObject
 	err = json.Unmarshal([]byte(msg.Payload), &signedObject)
 	if err != nil {
+		span.RecordError(err)
 		return c.String(http.StatusInternalServerError, "Internal server error(payload parse error)")
 	}
 
@@ -182,12 +187,14 @@ func (h Handler) Inbox(c echo.Context) error {
 
 	_, err := h.repo.GetEntityByID(ctx, id)
 	if err != nil {
+		span.RecordError(err)
 		return c.String(http.StatusNotFound, "entity not found")
 	}
 
 	var object Object
 	err = c.Bind(&object)
 	if err != nil {
+		span.RecordError(err)
 		return c.String(http.StatusBadRequest, "Invalid request body")
 	}
 
@@ -196,6 +203,7 @@ func (h Handler) Inbox(c echo.Context) error {
 
 		requester, err := FetchPerson(ctx, object.Actor)
 		if err != nil {
+			span.RecordError(err)
 			return c.String(http.StatusBadRequest, "Invalid request body")
 		}
 		accept := Accept{
@@ -211,6 +219,7 @@ func (h Handler) Inbox(c echo.Context) error {
 
 		err = h.PostToInbox(ctx, requester.Inbox, accept, userID)
 		if err != nil {
+			span.RecordError(err)
 			return c.String(http.StatusInternalServerError, "Internal server error")
 		}
 
@@ -227,6 +236,7 @@ func (h Handler) Inbox(c echo.Context) error {
 			PublisherUserID: userID,
 		})
 		if err != nil {
+			span.RecordError(err)
 			return c.String(http.StatusInternalServerError, "Internal server error (save follow error)")
 		}
 
@@ -281,6 +291,7 @@ func (h Handler) GetPerson(c echo.Context) error {
 
 	person, err := h.repo.GetPersonByID(ctx, id)
 	if err != nil {
+		span.RecordError(err)
 		return c.String(http.StatusNotFound, "entity not found")
 	}
 
@@ -297,6 +308,7 @@ func (h Handler) UpdatePerson(c echo.Context) error {
 
 	entity, err := h.repo.GetEntityByCCAddr(ctx, ccaddr)
 	if err != nil {
+		span.RecordError(err)
 		return c.String(http.StatusNotFound, "entity not found")
 	}
 
@@ -307,11 +319,13 @@ func (h Handler) UpdatePerson(c echo.Context) error {
 	var person ApPerson
 	err = c.Bind(&person)
 	if err != nil {
+		span.RecordError(err)
 		return c.String(http.StatusBadRequest, "Invalid request body")
 	}
 
 	created, err := h.repo.UpsertPerson(ctx, person)
 	if err != nil {
+		span.RecordError(err)
 		return c.String(http.StatusInternalServerError, "Internal server error")
 	}
 
@@ -329,12 +343,14 @@ func (h Handler) CreateEntity(c echo.Context) error {
 	var request CreateEntityRequest
 	err := c.Bind(&request)
 	if err != nil {
+		span.RecordError(err)
 		return c.String(http.StatusBadRequest, "Invalid request body")
 	}
 
 	// check if entity already exists
 	_, err = h.repo.GetEntityByCCAddr(ctx, ccaddr)
 	if err == nil {
+		span.RecordError(err)
 		return c.String(http.StatusBadRequest, "Entity already exists")
 	}
 
@@ -343,6 +359,7 @@ func (h Handler) CreateEntity(c echo.Context) error {
 
 	qb, err := x509.MarshalPKIXPublicKey(pub)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 
@@ -353,6 +370,7 @@ func (h Handler) CreateEntity(c echo.Context) error {
 
 	pb, err := x509.MarshalPKCS8PrivateKey(priv)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 
@@ -368,6 +386,7 @@ func (h Handler) CreateEntity(c echo.Context) error {
 		Privatekey: string(p),
 	})
 	if err != nil {
+		span.RecordError(err)
 		return c.String(http.StatusInternalServerError, "Internal server error")
 	}
 
@@ -386,6 +405,7 @@ func (h Handler) GetEntityID(c echo.Context) error {
 
 	entity, err := h.repo.GetEntityByCCAddr(ctx, ccaddr)
 	if err != nil {
+		span.RecordError(err)
 		return c.String(http.StatusNotFound, "entity not found")
 	}
 

@@ -157,6 +157,8 @@ func (s *Service) Post(ctx context.Context, stream string, id string, typ string
 	ctx, span := tracer.Start(ctx, "ServicePost")
 	defer span.End()
 
+	span.SetAttributes(attribute.String("stream", stream))
+
 	query := strings.Split(stream, "@")
 	if len(query) != 2 {
 		return fmt.Errorf("Invalid format: %v", stream)
@@ -190,6 +192,7 @@ func (s *Service) Post(ctx context.Context, stream string, id string, typ string
 			},
 		}).Result()
 		if err != nil {
+			span.RecordError(err)
 			log.Printf("fail to xadd: %v", err)
 		}
 
@@ -222,11 +225,13 @@ func (s *Service) Post(ctx context.Context, stream string, id string, typ string
 		}
 		packetStr, err := json.Marshal(packet)
 		if err != nil {
+			span.RecordError(err)
 			return err
 		}
 		req, err := http.NewRequest("POST", "https://"+streamHost+"/api/v1/stream/checkpoint", bytes.NewBuffer(packetStr))
 
 		if err != nil {
+			span.RecordError(err)
 			return err
 		}
 
@@ -247,6 +252,7 @@ func (s *Service) Post(ctx context.Context, stream string, id string, typ string
 		client := new(http.Client)
 		resp, err := client.Do(req)
 		if err != nil {
+			span.RecordError(err)
 			return err
 		}
 		defer resp.Body.Close()
@@ -266,11 +272,12 @@ func (s *Service) Upsert(ctx context.Context, objectStr string, signature string
 	var object signedObject
 	err := json.Unmarshal([]byte(objectStr), &object)
 	if err != nil {
+		span.RecordError(err)
 		return "", err
 	}
 
 	if err := util.VerifySignature(objectStr, object.Signer, signature); err != nil {
-		log.Println("verify signature err: ", err)
+		span.RecordError(err)
 		return "", err
 	}
 

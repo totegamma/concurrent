@@ -39,11 +39,12 @@ func (s *Service) PostMessage(ctx context.Context, objectStr string, signature s
 	var object SignedObject
 	err := json.Unmarshal([]byte(objectStr), &object)
 	if err != nil {
+		span.RecordError(err)
 		return core.Message{}, err
 	}
 
 	if err := util.VerifySignature(objectStr, object.Signer, signature); err != nil {
-		log.Println("verify signature err: ", err)
+		span.RecordError(err)
 		return core.Message{}, err
 	}
 
@@ -57,6 +58,7 @@ func (s *Service) PostMessage(ctx context.Context, objectStr string, signature s
 
 	id, err := s.repo.Create(ctx, &message)
 	if err != nil {
+		span.RecordError(err)
 		return message, err
 	}
 

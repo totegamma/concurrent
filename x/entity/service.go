@@ -38,6 +38,7 @@ func (s *Service) Get(ctx context.Context, key string) (core.Entity, error) {
 
 	entity, err := s.repository.Get(ctx, key)
 	if err != nil {
+		span.RecordError(err)
 		return core.Entity{}, err
 	}
 
@@ -71,6 +72,7 @@ func (s *Service) ResolveHost(ctx context.Context, user string) (string, error) 
 
 	entity, err := s.repository.Get(ctx, user)
 	if err != nil {
+		span.RecordError(err)
 		return "", err
 	}
 	fqdn := entity.Host

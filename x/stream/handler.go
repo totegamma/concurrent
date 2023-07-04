@@ -102,6 +102,7 @@ func (h Handler) List(c echo.Context) error {
 	schema := c.QueryParam("schema")
 	list, err := h.service.StreamListBySchema(ctx, schema)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 	return c.JSON(http.StatusOK, list)
@@ -115,11 +116,13 @@ func (h Handler) Checkpoint(c echo.Context) error {
 	var packet checkpointPacket
 	err := c.Bind(&packet)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 
 	err = h.service.Post(ctx, packet.Stream, packet.ID, packet.Type, packet.Author, packet.Host, packet.Owner)
 	if err != nil {
+		span.RecordError(err)
 		return nil
 	}
 

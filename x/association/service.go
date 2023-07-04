@@ -34,24 +34,25 @@ func (s *Service) PostAssociation(ctx context.Context, objectStr string, signatu
 	var object signedObject
 	err := json.Unmarshal([]byte(objectStr), &object)
 	if err != nil {
+		span.RecordError(err)
 		return core.Association{}, err
 	}
 
 	if err := util.VerifySignature(objectStr, object.Signer, signature); err != nil {
-		log.Println("verify signature err: ", err)
+		span.RecordError(err)
 		return core.Association{}, err
 	}
 
 	var content signedObject
 	err = json.Unmarshal([]byte(objectStr), &content)
 	if err != nil {
-		log.Println("unmarshal err: ", err)
+		span.RecordError(err)
 		return core.Association{}, err
 	}
 
 	contentString, err := json.Marshal(content.Body)
 	if err != nil {
-		log.Println("marshal err: ", err)
+		span.RecordError(err)
 		return core.Association{}, err
 	}
 
@@ -71,17 +72,20 @@ func (s *Service) PostAssociation(ctx context.Context, objectStr string, signatu
 
 	err = s.repo.Create(ctx, &association)
 	if err != nil {
+		span.RecordError(err)
 		return association, err // TODO: if err is duplicate key error, server should return 409
 	}
 
 	targetMessage, err := s.message.Get(ctx, association.TargetID)
 	if err != nil {
+		span.RecordError(err)
 		return association, err
 	}
 
 	for _, stream := range association.Streams {
 		err = s.stream.Post(ctx, stream, association.ID, "association", association.Author, "", targetMessage.Author)
 		if err != nil {
+			span.RecordError(err)
 			log.Printf("fail to post stream: %v", err)
 		}
 	}
@@ -97,6 +101,7 @@ func (s *Service) PostAssociation(ctx context.Context, objectStr string, signatu
 		})
 		err := s.rdb.Publish(context.Background(), stream, jsonstr).Err()
 		if err != nil {
+			span.RecordError(err)
 			log.Printf("fail to publish message to Redis: %v", err)
 		}
 	}
@@ -127,10 +132,12 @@ func (s *Service) Delete(ctx context.Context, id string) (core.Association, erro
 
 	deleted, err := s.repo.Delete(ctx, id)
 	if err != nil {
+		span.RecordError(err)
 		return core.Association{}, err
 	}
 	targetMessage, err := s.message.Get(ctx, deleted.TargetID)
 	if err != nil {
+		span.RecordError(err)
 		return deleted, err
 	}
 	for _, stream := range targetMessage.Streams {
@@ -145,6 +152,7 @@ func (s *Service) Delete(ctx context.Context, id string) (core.Association, erro
 		err := s.rdb.Publish(context.Background(), stream, jsonstr).Err()
 		if err != nil {
 			log.Printf("fail to publish message to Redis: %v", err)
+			span.RecordError(err)
 			return deleted, err
 		}
 	}

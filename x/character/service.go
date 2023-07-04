@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
-	"log"
 )
 
 // Service is service of characters
@@ -25,7 +24,7 @@ func (s *Service) GetCharacters(ctx context.Context, owner string, schema string
 
 	characters, err := s.repo.Get(ctx, owner, schema)
 	if err != nil {
-		log.Printf("error occured while GetCharacters in characterRepository. error: %v\n", err)
+		span.RecordError(err)
 		return []core.Character{}, err
 	}
 	return characters, nil
@@ -39,11 +38,12 @@ func (s *Service) PutCharacter(ctx context.Context, objectStr string, signature 
 	var object signedObject
 	err := json.Unmarshal([]byte(objectStr), &object)
 	if err != nil {
+		span.RecordError(err)
 		return core.Character{}, err
 	}
 
 	if err := util.VerifySignature(objectStr, object.Signer, signature); err != nil {
-		log.Println("verify signature err: ", err)
+		span.RecordError(err)
 		return core.Character{}, err
 	}
 
@@ -57,6 +57,7 @@ func (s *Service) PutCharacter(ctx context.Context, objectStr string, signature 
 
 	err = s.repo.Upsert(ctx, character)
 	if err != nil {
+		span.RecordError(err)
 		return core.Character{}, err
 	}
 

@@ -20,8 +20,8 @@ func NewService(repo *Repository) *Service {
 
 // GetCharacters returns characters by owner and schema
 func (s *Service) GetCharacters(ctx context.Context, owner string, schema string) ([]core.Character, error) {
-	ctx, childSpan := tracer.Start(ctx, "ServiceGetCharacters")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "ServiceGetCharacters")
+	defer span.End()
 
 	characters, err := s.repo.Get(ctx, owner, schema)
 	if err != nil {
@@ -33,8 +33,8 @@ func (s *Service) GetCharacters(ctx context.Context, owner string, schema string
 
 // PutCharacter creates new character if the signature is valid
 func (s *Service) PutCharacter(ctx context.Context, objectStr string, signature string, id string) (core.Character, error) {
-	ctx, childSpan := tracer.Start(ctx, "ServicePutCharacter")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "ServicePutCharacter")
+	defer span.End()
 
 	var object signedObject
 	err := json.Unmarshal([]byte(objectStr), &object)

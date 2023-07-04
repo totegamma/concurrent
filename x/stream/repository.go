@@ -19,8 +19,8 @@ func NewRepository(db *gorm.DB) *Repository {
 
 // Get returns a stream by ID
 func (r *Repository) Get(ctx context.Context, key string) (core.Stream, error) {
-	ctx, childSpan := tracer.Start(ctx, "RepositoryGet")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "RepositoryGet")
+	defer span.End()
 
 	var stream core.Stream
 	err := r.db.WithContext(ctx).First(&stream, "id = ?", key).Error
@@ -29,16 +29,16 @@ func (r *Repository) Get(ctx context.Context, key string) (core.Stream, error) {
 
 // Upsert updates a stream
 func (r *Repository) Upsert(ctx context.Context, stream *core.Stream) error {
-	ctx, childSpan := tracer.Start(ctx, "RepositoryUpsert")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "RepositoryUpsert")
+	defer span.End()
 
 	return r.db.WithContext(ctx).Save(&stream).Error
 }
 
 // GetList returns list of schemas by schema
 func (r *Repository) GetList(ctx context.Context, schema string) ([]core.Stream, error) {
-	ctx, childSpan := tracer.Start(ctx, "RepositoryGetList")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "RepositoryGetList")
+	defer span.End()
 
 	var streams []core.Stream
 	err := r.db.WithContext(ctx).Where("Schema = ?", schema).Find(&streams).Error
@@ -47,8 +47,8 @@ func (r *Repository) GetList(ctx context.Context, schema string) ([]core.Stream,
 
 // HasWriteAccess returns true if the user has write access
 func (r *Repository) HasWriteAccess(ctx context.Context, streamID string, userAddress string) bool {
-	ctx, childSpan := tracer.Start(ctx, "RepositoryHasWriteAccess")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "RepositoryHasWriteAccess")
+	defer span.End()
 
 	var stream core.Stream
 	r.db.WithContext(ctx).First(&stream, "id = ?", streamID)
@@ -60,8 +60,8 @@ func (r *Repository) HasWriteAccess(ctx context.Context, streamID string, userAd
 
 // HasReadAccess returns true if the user has read access
 func (r *Repository) HasReadAccess(ctx context.Context, streamID string, userAddress string) bool {
-	ctx, childSpan := tracer.Start(ctx, "RepositoryHasReadAccess")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "RepositoryHasReadAccess")
+	defer span.End()
 
 	var stream core.Stream
 	r.db.WithContext(ctx).First(&stream, "id = ?", streamID)

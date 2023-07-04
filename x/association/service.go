@@ -28,8 +28,8 @@ func NewService(rdb *redis.Client, repo *Repository, stream *stream.Service, mes
 
 // PostAssociation creates new association
 func (s *Service) PostAssociation(ctx context.Context, objectStr string, signature string, streams []string, targetType string) (core.Association, error) {
-	ctx, childSpan := tracer.Start(ctx, "ServicePostAssociation")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "ServicePostAssociation")
+	defer span.End()
 
 	var object signedObject
 	err := json.Unmarshal([]byte(objectStr), &object)
@@ -106,24 +106,24 @@ func (s *Service) PostAssociation(ctx context.Context, objectStr string, signatu
 
 // Get returns an association by ID
 func (s *Service) Get(ctx context.Context, id string) (core.Association, error) {
-	ctx, childSpan := tracer.Start(ctx, "ServiceGet")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "ServiceGet")
+	defer span.End()
 
 	return s.repo.Get(ctx, id)
 }
 
 // GetOwn returns associations by author
 func (s *Service) GetOwn(ctx context.Context, author string) ([]core.Association, error) {
-	ctx, childSpan := tracer.Start(ctx, "ServiceGetOwn")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "ServiceGetOwn")
+	defer span.End()
 
 	return s.repo.GetOwn(ctx, author)
 }
 
 // Delete deletes an association by ID
 func (s *Service) Delete(ctx context.Context, id string) (core.Association, error) {
-	ctx, childSpan := tracer.Start(ctx, "ServiceDelete")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "ServiceDelete")
+	defer span.End()
 
 	deleted, err := s.repo.Delete(ctx, id)
 	if err != nil {

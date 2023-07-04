@@ -25,8 +25,8 @@ func NewHandler(service *Service, entityService *entity.Service) *Handler {
 
 // Get returns a userkv by ID
 func (h Handler) Get(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerGet")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
+	defer span.End()
 
 	claims := c.Get("jwtclaims").(util.JwtClaims)
 	userID := claims.Audience
@@ -43,8 +43,8 @@ func (h Handler) Get(c echo.Context) error {
 
 // Upsert updates a userkv
 func (h Handler) Upsert(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerUpsert")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerUpsert")
+	defer span.End()
 
 	claims := c.Get("jwtclaims").(util.JwtClaims)
 	userID := claims.Audience

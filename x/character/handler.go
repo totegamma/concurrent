@@ -23,8 +23,8 @@ func NewHandler(service *Service) *Handler {
 
 // Get is for Handling HTTP Get Method
 func (h Handler) Get(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerGet")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
+	defer span.End()
 
 	author := c.QueryParam("author")
 	schema := c.QueryParam("schema")
@@ -43,8 +43,8 @@ func (h Handler) Get(c echo.Context) error {
 
 // Put is for Handling HTTP Put Method
 func (h Handler) Put(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerPut")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerPut")
+	defer span.End()
 
 	var request postRequest
 	err := c.Bind(&request)

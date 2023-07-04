@@ -16,16 +16,16 @@ func NewService(repository *Repository) *Service {
 
 // Get returns a userkv by ID
 func (s *Service) Get(ctx context.Context, userID string, key string) (string, error) {
-	ctx, childSpan := tracer.Start(ctx, "ServiceGet")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "ServiceGet")
+	defer span.End()
 
 	return s.repository.Get(ctx, userID+":"+key)
 }
 
 // Upsert updates a userkv
 func (s *Service) Upsert(ctx context.Context, userID string, key string, value string) error {
-	ctx, childSpan := tracer.Start(ctx, "ServiceUpsert")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "ServiceUpsert")
+	defer span.End()
 
 	return s.repository.Upsert(ctx, userID+":"+key, value)
 }

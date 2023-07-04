@@ -29,8 +29,8 @@ func NewHandler(service *Service) *Handler {
 // Input: path parameter "id"
 // Output: Message Object
 func (h Handler) Get(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerGet")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
+	defer span.End()
 
 	id := c.Param("id")
 	entity, err := h.service.Get(ctx, id)
@@ -55,8 +55,8 @@ func (h Handler) Get(c echo.Context) error {
 // Output: nothing
 // Effect: register message object to database
 func (h Handler) Post(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerPost")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerPost")
+	defer span.End()
 
 	var request postRequest
 	err := c.Bind(&request)
@@ -72,8 +72,8 @@ func (h Handler) Post(c echo.Context) error {
 
 // List returns all known entity list
 func (h Handler) List(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerList")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerList")
+	defer span.End()
 
 	since, err := strconv.ParseInt(c.QueryParam("since"), 10, 64)
 	if err != nil {
@@ -93,8 +93,8 @@ func (h Handler) List(c echo.Context) error {
 
 // Update updates entity information
 func (h Handler) Update(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerUpdate")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerUpdate")
+	defer span.End()
 
 	var request core.Entity
 	err := c.Bind(&request)
@@ -110,8 +110,8 @@ func (h Handler) Update(c echo.Context) error {
 
 // Delete is for Handling HTTP Delete Method
 func (h Handler) Delete(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerDelete")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerDelete")
+	defer span.End()
 
 	id := c.Param("id")
 	err := h.service.Delete(ctx, id)

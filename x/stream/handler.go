@@ -26,8 +26,8 @@ func NewHandler(service *Service) *Handler {
 
 // Get is for handling HTTP Get Method
 func (h Handler) Get(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerGet")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
+	defer span.End()
 
 	streamStr := c.QueryParam("stream")
 	stream, err := h.service.Get(ctx, streamStr)
@@ -42,8 +42,8 @@ func (h Handler) Get(c echo.Context) error {
 
 // Put is for handling HTTP Put Method
 func (h Handler) Put(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerPut")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerPut")
+	defer span.End()
 
 	var request postRequest
 	err := c.Bind(&request)
@@ -60,8 +60,8 @@ func (h Handler) Put(c echo.Context) error {
 
 // Recent returns recent messages in some streams
 func (h Handler) Recent(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerRecent")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerRecent")
+	defer span.End()
 
 	streamsStr := c.QueryParam("streams")
 	streams := strings.Split(streamsStr, ",")
@@ -72,8 +72,8 @@ func (h Handler) Recent(c echo.Context) error {
 
 // Range returns messages since to until in specified streams
 func (h Handler) Range(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerRange")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerRange")
+	defer span.End()
 
 	queryStreams := c.QueryParam("streams")
 	streams := strings.Split(queryStreams, ",")
@@ -96,8 +96,8 @@ func (h Handler) Range(c echo.Context) error {
 
 // List returns stream ids which filtered by specific schema
 func (h Handler) List(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerList")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerList")
+	defer span.End()
 
 	schema := c.QueryParam("schema")
 	list, err := h.service.StreamListBySchema(ctx, schema)
@@ -109,8 +109,8 @@ func (h Handler) List(c echo.Context) error {
 
 // Checkpoint used by cross server communication
 func (h Handler) Checkpoint(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerCheckpoint")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerCheckpoint")
+	defer span.End()
 
 	var packet checkpointPacket
 	err := c.Bind(&packet)

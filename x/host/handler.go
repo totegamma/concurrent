@@ -37,8 +37,8 @@ func NewHandler(service *Service, config util.Config) *Handler {
 
 // Get returns a host by ID
 func (h Handler) Get(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerGet")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
+	defer span.End()
 
 	id := c.Param("id")
 	host, err := h.service.GetByFQDN(ctx, id)
@@ -54,8 +54,8 @@ func (h Handler) Get(c echo.Context) error {
 
 // Upsert updates Host registry
 func (h Handler) Upsert(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerUpsert")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerUpsert")
+	defer span.End()
 
 	var host core.Host
 	err := c.Bind(&host)
@@ -71,8 +71,8 @@ func (h Handler) Upsert(c echo.Context) error {
 
 // List returns all hosts
 func (h Handler) List(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerList")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerList")
+	defer span.End()
 
 	hosts, err := h.service.List(ctx)
 	if err != nil {
@@ -83,8 +83,8 @@ func (h Handler) List(c echo.Context) error {
 
 // Profile returns server Profile
 func (h Handler) Profile(c echo.Context) error {
-	_, childSpan := tracer.Start(c.Request().Context(), "HandlerProfile")
-	defer childSpan.End()
+	_, span := tracer.Start(c.Request().Context(), "HandlerProfile")
+	defer span.End()
 
 	return c.JSON(http.StatusOK, Profile{
 		ID:     h.config.Concurrent.FQDN,
@@ -216,8 +216,8 @@ func (h Handler) SayHello(c echo.Context) error {
 
 // Delete removes a host from the registry
 func (h Handler) Delete(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerDelete")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerDelete")
+	defer span.End()
 
 	id := c.Param("id")
 	err := h.service.Delete(ctx, id)

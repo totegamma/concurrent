@@ -46,8 +46,8 @@ func min(a, b int) int {
 
 // GetRecent returns recent message from streams
 func (s *Service) GetRecent(ctx context.Context, streams []string, limit int) ([]Element, error) {
-	ctx, childSpan := tracer.Start(ctx, "ServiceGetRecent")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "ServiceGetRecent")
+	defer span.End()
 
 	var messages []redis.XMessage
 	for _, stream := range streams {
@@ -100,8 +100,8 @@ func (s *Service) GetRecent(ctx context.Context, streams []string, limit int) ([
 
 // GetRange returns specified range messages from streams
 func (s *Service) GetRange(ctx context.Context, streams []string, since string, until string, limit int) ([]Element, error) {
-	ctx, childSpan := tracer.Start(ctx, "ServiceGetRange")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "ServiceGetRange")
+	defer span.End()
 
 	var messages []redis.XMessage
 	for _, stream := range streams {
@@ -260,8 +260,8 @@ func (s *Service) Post(ctx context.Context, stream string, id string, typ string
 
 // Upsert updates stream information
 func (s *Service) Upsert(ctx context.Context, objectStr string, signature string, id string) (string, error) {
-	ctx, childSpan := tracer.Start(ctx, "ServiceUpsert")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "ServiceUpsert")
+	defer span.End()
 
 	var object signedObject
 	err := json.Unmarshal([]byte(objectStr), &object)
@@ -304,16 +304,16 @@ func (s *Service) Upsert(ctx context.Context, objectStr string, signature string
 
 // Get returns stream information by ID
 func (s *Service) Get(ctx context.Context, key string) (core.Stream, error) {
-	ctx, childSpan := tracer.Start(ctx, "ServiceGet")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "ServiceGet")
+	defer span.End()
 
 	return s.repository.Get(ctx, key)
 }
 
 // StreamListBySchema returns streamList by schema
 func (s *Service) StreamListBySchema(ctx context.Context, schema string) ([]core.Stream, error) {
-	ctx, childSpan := tracer.Start(ctx, "ServiceStreamListBySchema")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "ServiceStreamListBySchema")
+	defer span.End()
 
 	streams, err := s.repository.GetList(ctx, schema)
 	for i := 0; i < len(streams); i++ {
@@ -324,8 +324,8 @@ func (s *Service) StreamListBySchema(ctx context.Context, schema string) ([]core
 
 // Delete deletes
 func (s *Service) Delete(ctx context.Context, stream string, id string) {
-	ctx, childSpan := tracer.Start(ctx, "ServiceDelete")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "ServiceDelete")
+	defer span.End()
 
 	s.rdb.XDel(ctx, stream, id)
 }

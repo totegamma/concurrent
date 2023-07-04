@@ -19,16 +19,16 @@ func NewRepository(db *gorm.DB) *Repository {
 
 // Create creates new association
 func (r *Repository) Create(ctx context.Context, association *core.Association) error {
-	ctx, childSpan := tracer.Start(ctx, "RepositoryCreate")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "RepositoryCreate")
+	defer span.End()
 
 	return r.db.WithContext(ctx).Create(&association).Error
 }
 
 // Get returns a Association by ID
 func (r *Repository) Get(ctx context.Context, id string) (core.Association, error) {
-	ctx, childSpan := tracer.Start(ctx, "RepositoryGet")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "RepositoryGet")
+	defer span.End()
 
 	var association core.Association
 	err := r.db.WithContext(ctx).Where("id = $1", id).First(&association).Error
@@ -37,8 +37,8 @@ func (r *Repository) Get(ctx context.Context, id string) (core.Association, erro
 
 // GetOwn returns all associations which owned by specified owner
 func (r *Repository) GetOwn(ctx context.Context, author string) ([]core.Association, error) {
-	ctx, childSpan := tracer.Start(ctx, "RepositoryGetOwn")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "RepositoryGetOwn")
+	defer span.End()
 
 	var associations []core.Association
 	err := r.db.WithContext(ctx).Where("author = $1", author).Error
@@ -47,8 +47,8 @@ func (r *Repository) GetOwn(ctx context.Context, author string) ([]core.Associat
 
 // Delete deletes a association by ID
 func (r *Repository) Delete(ctx context.Context, id string) (core.Association, error) {
-	ctx, childSpan := tracer.Start(ctx, "RepositoryDelete")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "RepositoryDelete")
+	defer span.End()
 
 	var deleted core.Association
 	if err := r.db.WithContext(ctx).First(&deleted, "id = ?", id).Error; err != nil {

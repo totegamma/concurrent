@@ -17,8 +17,8 @@ import (
 
 // FetchPerson fetches a person from remote ap server.
 func FetchPerson(ctx context.Context, actor string) (Person, error) {
-	_, childSpan := tracer.Start(ctx, "FetchPerson")
-	defer childSpan.End()
+	_, span := tracer.Start(ctx, "FetchPerson")
+	defer span.End()
 
 	var person Person
 	req, err := http.NewRequest("GET", actor, nil)

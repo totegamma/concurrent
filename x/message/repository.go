@@ -18,8 +18,8 @@ func NewRepository(db *gorm.DB) *Repository {
 
 // Create creates new message
 func (r *Repository) Create(ctx context.Context, message *core.Message) (string, error) {
-	_, childSpan := tracer.Start(ctx, "RepositoryCreate")
-	defer childSpan.End()
+	_, span := tracer.Start(ctx, "RepositoryCreate")
+	defer span.End()
 
 	err := r.db.WithContext(ctx).Create(&message).Error
 	return message.ID, err
@@ -27,8 +27,8 @@ func (r *Repository) Create(ctx context.Context, message *core.Message) (string,
 
 // Get returns a message with associaiton data
 func (r *Repository) Get(ctx context.Context, key string) (core.Message, error) {
-	_, childSpan := tracer.Start(ctx, "RepositoryGet")
-	defer childSpan.End()
+	_, span := tracer.Start(ctx, "RepositoryGet")
+	defer span.End()
 
 	var message core.Message
 	err := r.db.WithContext(ctx).Preload("Associations").First(&message, "id = ?", key).Error
@@ -37,8 +37,8 @@ func (r *Repository) Get(ctx context.Context, key string) (core.Message, error) 
 
 // Delete deletes an message
 func (r *Repository) Delete(ctx context.Context, id string) (core.Message, error) {
-	_, childSpan := tracer.Start(ctx, "RepositoryDelete")
-	defer childSpan.End()
+	_, span := tracer.Start(ctx, "RepositoryDelete")
+	defer span.End()
 
 	var deleted core.Message
 	err := r.db.WithContext(ctx).Where("id = $1", id).Delete(&deleted).Error

@@ -25,16 +25,16 @@ func NewService(rdb *redis.Client, repo *Repository, stream *stream.Service) *Se
 
 // Get returns a message by ID
 func (s *Service) Get(ctx context.Context, id string) (core.Message, error) {
-	ctx, childSpan := tracer.Start(ctx, "ServiceGet")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "ServiceGet")
+	defer span.End()
 
 	return s.repo.Get(ctx, id)
 }
 
 // PostMessage creates new message
 func (s *Service) PostMessage(ctx context.Context, objectStr string, signature string, streams []string) (core.Message, error) {
-	ctx, childSpan := tracer.Start(ctx, "ServicePostMessage")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "ServicePostMessage")
+	defer span.End()
 
 	var object SignedObject
 	err := json.Unmarshal([]byte(objectStr), &object)
@@ -69,8 +69,8 @@ func (s *Service) PostMessage(ctx context.Context, objectStr string, signature s
 
 // Delete deletes a message by ID
 func (s *Service) Delete(ctx context.Context, id string) (core.Message, error) {
-	ctx, childSpan := tracer.Start(ctx, "ServiceDelete")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "ServiceDelete")
+	defer span.End()
 
 	return s.repo.Delete(ctx, id)
 }

@@ -25,8 +25,8 @@ func NewHandler(service *Service) *Handler {
 
 // Get is for Handling HTTP Get Method
 func (h Handler) Get(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerGet")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
+	defer span.End()
 	id := c.Param("id")
 
 	association, err := h.service.Get(ctx, id)
@@ -44,8 +44,8 @@ func (h Handler) Get(c echo.Context) error {
 
 // Post is for Handling HTTP Post Method
 func (h Handler) Post(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerPost")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerPost")
+	defer span.End()
 
 	var request postRequest
 	err := c.Bind(&request)
@@ -61,8 +61,8 @@ func (h Handler) Post(c echo.Context) error {
 
 // Delete is for Handling HTTP Delete Method
 func (h Handler) Delete(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerDelete")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerDelete")
+	defer span.End()
 
 	var request deleteQuery
 	err := c.Bind(&request)

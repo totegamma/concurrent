@@ -27,8 +27,8 @@ func NewHandler(service *Service) *Handler {
 // Input: path parameter "id"
 // Output: Message Object
 func (h Handler) Get(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerGet")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
+	defer span.End()
 
 	id := c.Param("id")
 
@@ -47,8 +47,8 @@ func (h Handler) Get(c echo.Context) error {
 // Output: nothing
 // Effect: register message object to database
 func (h Handler) Post(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerPost")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerPost")
+	defer span.End()
 
 	var request postRequest
 	err := c.Bind(&request)
@@ -64,8 +64,8 @@ func (h Handler) Post(c echo.Context) error {
 
 // Delete deletes message. only auther can perform this.
 func (h Handler) Delete(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "HandlerDelete")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerDelete")
+	defer span.End()
 
 	var request deleteQuery
 	err := c.Bind(&request)

@@ -39,8 +39,8 @@ func NewHandler(repo *Repository, rdb *redis.Client, message *message.Service, c
 
 // WebFinger handles WebFinger requests.
 func (h Handler) WebFinger(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "WebFinger")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "WebFinger")
+	defer span.End()
 
 	resource := c.QueryParam("resource")
 	split := strings.Split(resource, ":")
@@ -79,8 +79,8 @@ func (h Handler) WebFinger(c echo.Context) error {
 
 // User handles user requests.
 func (h Handler) User(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "User")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "User")
+	defer span.End()
 
 	id := c.Param("id")
 	if id == "" {
@@ -123,8 +123,8 @@ func (h Handler) User(c echo.Context) error {
 
 // Note handles note requests.
 func (h Handler) Note(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "Note")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "Note")
+	defer span.End()
 
 	id := c.Param("id")
 	if id == "" {
@@ -271,8 +271,8 @@ func (h Handler) Inbox(c echo.Context) error {
 
 // GetPerson handles entity fetches.
 func (h Handler) GetPerson(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "GetPerson")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "GetPerson")
+	defer span.End()
 
 	id := c.Param("id")
 	if id == "" {
@@ -289,8 +289,8 @@ func (h Handler) GetPerson(c echo.Context) error {
 
 // UpdatePerson handles entity updates.
 func (h Handler) UpdatePerson(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "UpdatePerson")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "UpdatePerson")
+	defer span.End()
 
 	claims := c.Get("jwtclaims").(util.JwtClaims)
 	ccaddr := claims.Audience
@@ -320,8 +320,8 @@ func (h Handler) UpdatePerson(c echo.Context) error {
 
 // CreateEntity handles entity creation.
 func (h Handler) CreateEntity(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "CreateEntity")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "CreateEntity")
+	defer span.End()
 
 	claims := c.Get("jwtclaims").(util.JwtClaims)
 	ccaddr := claims.Audience
@@ -376,8 +376,8 @@ func (h Handler) CreateEntity(c echo.Context) error {
 
 // GetEntityID handles entity id requests.
 func (h Handler) GetEntityID(c echo.Context) error {
-	ctx, childSpan := tracer.Start(c.Request().Context(), "GetEntityID")
-	defer childSpan.End()
+	ctx, span := tracer.Start(c.Request().Context(), "GetEntityID")
+	defer span.End()
 
 	ccaddr := c.Param("ccaddr")
 	if ccaddr == "" {
@@ -393,8 +393,8 @@ func (h Handler) GetEntityID(c echo.Context) error {
 }
 
 func (h Handler) NodeInfoWellKnown(c echo.Context) error {
-	_, childSpan := tracer.Start(c.Request().Context(), "NodeInfoWellKnown")
-	defer childSpan.End()
+	_, span := tracer.Start(c.Request().Context(), "NodeInfoWellKnown")
+	defer span.End()
 
 	return c.JSON(http.StatusOK, WellKnown{
 		Links: []WellKnownLink{
@@ -408,8 +408,8 @@ func (h Handler) NodeInfoWellKnown(c echo.Context) error {
 
 // NodeInfo handles nodeinfo requests
 func (h Handler) NodeInfo(c echo.Context) error {
-	_, childSpan := tracer.Start(c.Request().Context(), "NodeInfo")
-	defer childSpan.End()
+	_, span := tracer.Start(c.Request().Context(), "NodeInfo")
+	defer span.End()
 
 	return c.JSON(http.StatusOK, NodeInfo{
 		Version: "2.0",

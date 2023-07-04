@@ -21,8 +21,8 @@ func NewService(repository *Repository, config util.Config) *Service {
 
 // Create updates stream information
 func (s *Service) Create(ctx context.Context, ccaddr string, meta string) error {
-	ctx, childSpan := tracer.Start(ctx, "ServiceCreate")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "ServiceCreate")
+	defer span.End()
 
 	return s.repository.Create(ctx, &core.Entity{
 		ID:   ccaddr,
@@ -33,8 +33,8 @@ func (s *Service) Create(ctx context.Context, ccaddr string, meta string) error 
 
 // Get returns stream information by ID
 func (s *Service) Get(ctx context.Context, key string) (core.Entity, error) {
-	ctx, childSpan := tracer.Start(ctx, "ServiceGet")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "ServiceGet")
+	defer span.End()
 
 	entity, err := s.repository.Get(ctx, key)
 	if err != nil {
@@ -50,24 +50,24 @@ func (s *Service) Get(ctx context.Context, key string) (core.Entity, error) {
 
 // List returns streamList by schema
 func (s *Service) List(ctx context.Context) ([]SafeEntity, error) {
-	ctx, childSpan := tracer.Start(ctx, "ServiceList")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "ServiceList")
+	defer span.End()
 
 	return s.repository.GetList(ctx)
 }
 
 // ListModified returns stream which modified after given time
 func (s *Service) ListModified(ctx context.Context, time time.Time) ([]SafeEntity, error) {
-	ctx, childSpan := tracer.Start(ctx, "ServiceListModified")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "ServiceListModified")
+	defer span.End()
 
 	return s.repository.ListModified(ctx, time)
 }
 
 // ResolveHost resolves host from user address
 func (s *Service) ResolveHost(ctx context.Context, user string) (string, error) {
-	ctx, childSpan := tracer.Start(ctx, "ServiceResolveHost")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "ServiceResolveHost")
+	defer span.End()
 
 	entity, err := s.repository.Get(ctx, user)
 	if err != nil {
@@ -90,16 +90,16 @@ func (s *Service) Update(ctx context.Context, entity *core.Entity) error {
 
 // Upsert upserts entity
 func (s *Service) Upsert(ctx context.Context, entity *core.Entity) error {
-	ctx, childSpan := tracer.Start(ctx, "ServiceUpsert")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "ServiceUpsert")
+	defer span.End()
 
 	return s.repository.Upsert(ctx, entity)
 }
 
 // IsUserExists returns true if user exists
 func (s *Service) IsUserExists(ctx context.Context, user string) bool {
-	ctx, childSpan := tracer.Start(ctx, "ServiceIsUserExists")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "ServiceIsUserExists")
+	defer span.End()
 
 	entity, err := s.repository.Get(ctx, user)
 	if err != nil {
@@ -110,8 +110,8 @@ func (s *Service) IsUserExists(ctx context.Context, user string) bool {
 
 // Delete deletes entity
 func (s *Service) Delete(ctx context.Context, id string) error {
-	ctx, childSpan := tracer.Start(ctx, "ServiceDelete")
-	defer childSpan.End()
+	ctx, span := tracer.Start(ctx, "ServiceDelete")
+	defer span.End()
 
 	return s.repository.Delete(ctx, id)
 }

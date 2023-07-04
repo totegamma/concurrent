@@ -56,7 +56,7 @@ type Host struct {
     Pubkey string `json:"pubkey" gorm:"type:text"`
     CDate time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
     MDate time.Time `json:"mdate" gorm:"autoUpdateTime"`
-    LastScraped time.Time `json:"lastScraped" gorm:"type:timestamp with time zone;not null"`
+    LastScraped time.Time `json:"lastScraped" gorm:"type:timestamp with time zone"`
 }
 
 // Message is one of a concurrent base object

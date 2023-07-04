@@ -180,16 +180,22 @@ func (a *Agent) pullRemoteEntities(ctx context.Context, remote core.Host) error 
     var remoteEntities []entity.SafeEntity
     json.Unmarshal(body, &remoteEntities)
 
-    log.Print(remoteEntities)
 
     errored := false
     for _, entity := range remoteEntities {
+
+        certs := entity.Certs
+        if certs == "" {
+            certs = "null"
+        }
+
         err := a.entity.Upsert(ctx, &core.Entity{
             ID: entity.ID,
             Host: remote.ID,
-            Certs: entity.Certs,
+            Certs: certs,
             Meta: "null",
         })
+
         if err != nil {
             span.RecordError(err)
             errored = true

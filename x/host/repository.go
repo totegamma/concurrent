@@ -69,7 +69,7 @@ func (r *Repository) UpdateScrapeTime(ctx context.Context, id string, scrapeTime
     ctx, childSpan := tracer.Start(ctx, "RepositoryUpdateScrapeTime")
     defer childSpan.End()
 
-    return r.db.WithContext(ctx).Model(&core.Host{}).Where("id = ?", id).Update("scrape_time", scrapeTime).Error
+    return r.db.WithContext(ctx).Model(&core.Host{}).Where("id = ?", id).Update("last_scraped", scrapeTime).Error
 }
 
 

@@ -155,11 +155,13 @@ func (a *Agent)updateConnections(ctx context.Context) {
 
 // PullRemoteEntities copies remote entities
 func (a *Agent) pullRemoteEntities(ctx context.Context, remote core.Host) error {
-    ctx, childSpan := tracer.Start(ctx, "ServicePullRemoteEntities")
-    defer childSpan.End()
+    ctx, span := tracer.Start(ctx, "ServicePullRemoteEntities")
+    defer span.End()
 
+    requestTime := time.Now()
     req, err := http.NewRequest("GET", "https://" + remote.ID + "/api/v1/entity/list?since=" + strconv.FormatInt(remote.LastScraped.Unix(), 10), nil)
     if err != nil {
+        span.RecordError(err)
         return err
     }
 
@@ -168,6 +170,7 @@ func (a *Agent) pullRemoteEntities(ctx context.Context, remote core.Host) error 
     client := new(http.Client)
     resp, err := client.Do(req)
     if err != nil {
+        span.RecordError(err)
         return err
     }
     defer resp.Body.Close()
@@ -179,19 +182,24 @@ func (a *Agent) pullRemoteEntities(ctx context.Context, remote core.Host) error 
 
     log.Print(remoteEntities)
 
+    errored := false
     for _, entity := range remoteEntities {
-        err := a.entity.Update(ctx, &core.Entity{
+        err := a.entity.Upsert(ctx, &core.Entity{
             ID: entity.ID,
             Host: remote.ID,
             Certs: entity.Certs,
             Meta: "null",
         })
         if err != nil {
+            span.RecordError(err)
+            errored = true
             log.Println(err)
         }
     }
 
-    a.host.UpdateScrapeTime(ctx, remote.ID, time.Now())
+    if !errored {
+        a.host.UpdateScrapeTime(ctx, remote.ID, requestTime)
+    }
 
     return nil
 }

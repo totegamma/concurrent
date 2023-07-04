@@ -1,23 +1,25 @@
 package host
 
 import (
-    "time"
-    "bytes"
-    "errors"
-    "strconv"
-    "net/http"
-    "io/ioutil"
-    "encoding/json"
+	"bytes"
+	"encoding/json"
+	"errors"
+	"fmt"
+	"io/ioutil"
+	"net/http"
+	"strconv"
+	"time"
 
-    "gorm.io/gorm"
-    "github.com/rs/xid"
-    "golang.org/x/exp/slices"
+	"github.com/rs/xid"
+	"golang.org/x/exp/slices"
+	"gorm.io/gorm"
 
-    "go.opentelemetry.io/otel"
-    "go.opentelemetry.io/otel/propagation"
-    "github.com/labstack/echo/v4"
-    "github.com/totegamma/concurrent/x/core"
-    "github.com/totegamma/concurrent/x/util"
+	"github.com/labstack/echo/v4"
+	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/util"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/propagation"
 )
 
 var tracer = otel.Tracer("host")
@@ -178,6 +180,7 @@ func (h Handler) SayHello(c echo.Context) error {
     req, err := http.NewRequest("POST", "https://" + target + "/api/v1/host/hello", bytes.NewBuffer(meStr))
     if err != nil {
         span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
         return c.String(http.StatusBadRequest, err.Error())
     }
     otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
@@ -186,6 +189,8 @@ func (h Handler) SayHello(c echo.Context) error {
     client := new(http.Client)
     resp, err := client.Do(req)
     if err != nil {
+        span.RecordError(err)
+        span.SetStatus(codes.Error, err.Error())
         return c.String(http.StatusBadRequest, err.Error())
     }
     defer resp.Body.Close()
@@ -194,6 +199,11 @@ func (h Handler) SayHello(c echo.Context) error {
 
     var fetchedProf Profile
     json.Unmarshal(body, &fetchedProf)
+
+    if target != fetchedProf.ID {
+        span.SetStatus(codes.Error, fmt.Sprintf("target does not match fetched profile: %v", fetchedProf.ID))
+        return c.String(http.StatusBadRequest, "validation failed")
+    }
 
     h.service.Upsert(ctx, &core.Host{
         ID: fetchedProf.ID,

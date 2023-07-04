@@ -89,6 +89,14 @@ func (s *Service) Update(ctx context.Context, entity *core.Entity) error {
     return s.repository.Update(ctx, entity)
 }
 
+// Upsert upserts entity
+func (s *Service) Upsert(ctx context.Context, entity *core.Entity) error {
+    ctx, childSpan := tracer.Start(ctx, "ServiceUpsert")
+    defer childSpan.End()
+
+    return s.repository.Upsert(ctx, entity)
+}
+
 // IsUserExists returns true if user exists
 func (s *Service) IsUserExists(ctx context.Context, user string) bool {
     ctx, childSpan := tracer.Start(ctx, "ServiceIsUserExists")
@@ -108,4 +116,5 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 
     return s.repository.Delete(ctx, id)
 }
+
 

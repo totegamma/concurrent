@@ -440,15 +440,15 @@ func (h Handler) NodeInfo(c echo.Context) error {
 		Protocols: []string{
 			"activitypub",
 		},
-		OpenRegistrations: h.config.NodeInfo.OpenRegistrations,
+		OpenRegistrations: h.config.Profile.Registration == "open",
 		Metadata: NodeInfoMetadata{
-			NodeName:        h.config.NodeInfo.Metadata.NodeName,
-			NodeDescription: h.config.NodeInfo.Metadata.NodeDescription,
+			NodeName:        h.config.Profile.Nickname,
+			NodeDescription: h.config.Profile.Description,
 			Maintainer: NodeInfoMetadataMaintainer{
-				Name:  h.config.NodeInfo.Metadata.Maintainer.Name,
-				Email: h.config.NodeInfo.Metadata.Maintainer.Email,
+				Name:  h.config.Profile.MaintainerName,
+				Email: h.config.Profile.MaintainerEmail,
 			},
-			ThemeColor: h.config.NodeInfo.Metadata.ThemeColor,
+			ThemeColor: h.config.Profile.ThemeColor,
 		},
 	})
 }

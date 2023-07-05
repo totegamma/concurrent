@@ -49,6 +49,15 @@ func (s *Service) Register(ctx context.Context, ccaddr string, meta string, invi
 		if inviter == "" {
 			return fmt.Errorf("invitation code is required")
 		}
+
+		_, err := s.repository.Get(ctx, inviter)
+		if err != nil {
+			span.RecordError(err)
+			return err
+		}
+
+		// TODO: validate inviter role
+
 		return s.repository.Create(ctx, &core.Entity{
 			ID:      ccaddr,
 			Role:    "default",
@@ -56,7 +65,26 @@ func (s *Service) Register(ctx context.Context, ccaddr string, meta string, invi
 			Inviter: inviter,
 		})
 	} else {
-		return fmt.Errorf("registration is not allowed")
+		if inviter == "" {
+			return fmt.Errorf("registration is not allowed")
+		}
+
+		_, err := s.repository.Get(ctx, inviter)
+		if err != nil {
+			span.RecordError(err)
+			return fmt.Errorf("registration is not allowed")
+		}
+
+		if !slices.Contains(s.config.Concurrent.Admins, inviter) {
+			return fmt.Errorf("registration is not allowed")
+		}
+
+		return s.repository.Create(ctx, &core.Entity{
+			ID:      ccaddr,
+			Role:    "default",
+			Meta:    meta,
+			Inviter: inviter,
+		})
 	}
 }
 

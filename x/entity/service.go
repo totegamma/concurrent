@@ -2,10 +2,12 @@ package entity
 
 import (
 	"context"
+	"fmt"
+	"time"
+
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
 	"golang.org/x/exp/slices"
-	"time"
 )
 
 // Service is entity service
@@ -29,6 +31,33 @@ func (s *Service) Create(ctx context.Context, ccaddr string, meta string) error 
 		Role: "default",
 		Meta: meta,
 	})
+}
+
+// Create updates stream information
+func (s *Service) Register(ctx context.Context, ccaddr string, meta string, inviter string) error {
+	ctx, span := tracer.Start(ctx, "ServiceCreate")
+	defer span.End()
+
+	if s.config.Concurrent.Registration == "open" {
+		return s.repository.Create(ctx, &core.Entity{
+			ID:      ccaddr,
+			Role:    "default",
+			Meta:    meta,
+			Inviter: "",
+		})
+	} else if s.config.Concurrent.Registration == "invite" {
+		if inviter == "" {
+			return fmt.Errorf("invitation code is required")
+		}
+		return s.repository.Create(ctx, &core.Entity{
+			ID:      ccaddr,
+			Role:    "default",
+			Meta:    meta,
+			Inviter: inviter,
+		})
+	} else {
+		return fmt.Errorf("registration is not allowed")
+	}
 }
 
 // Get returns stream information by ID

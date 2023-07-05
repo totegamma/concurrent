@@ -9,6 +9,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/util"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
 )
@@ -54,8 +55,47 @@ func (h Handler) Get(c echo.Context) error {
 // Input: postRequset object
 // Output: nothing
 // Effect: register message object to database
-func (h Handler) Post(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerPost")
+func (h Handler) Register(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerRegister")
+	defer span.End()
+
+	var request postRequest
+	err := c.Bind(&request)
+	if err != nil {
+		return err
+	}
+
+	inviter := ""
+	jwtID := ""
+	if request.Token != "" {
+		claims, err := util.ValidateJWT(request.Token)
+		if err != nil {
+			span.RecordError(err)
+			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid token"})
+		}
+		if claims.Subject != "CONCURRENT_INVITE" {
+			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid token"})
+		}
+		// TODO: checkjti
+		inviter = claims.Issuer
+		jwtID = claims.JWTID
+	}
+
+	err = h.service.Register(ctx, request.CCAddr, request.Meta, inviter)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	if jwtID != "" {
+		//TODO: invalidate jti
+	}
+
+	return c.String(http.StatusCreated, "{\"message\": \"accept\"}")
+}
+
+func (h Handler) Create(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerCreate")
 	defer span.End()
 
 	var request postRequest

@@ -84,7 +84,7 @@ func (h Handler) Register(c echo.Context) error {
 	err = h.service.Register(ctx, request.CCAddr, request.Meta, inviter)
 	if err != nil {
 		span.RecordError(err)
-		return err
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
 	}
 
 	if jwtID != "" {

@@ -1,41 +1,41 @@
 # this is example. you must replace ccaddress and keys before deploy.
 
 server:
-  dsn: "host=localhost user=postgres password=postgres dbname=concurrent port=5432 sslmode=disable"
-  redisAddr: "localhost:6379"
+  dsn: "host=db user=postgres password=postgres dbname=concurrent port=5432 sslmode=disable"
+  redisAddr: "redis:6379"
   traceEndpoint: "localhost:4318"
   enableTrace: false
-  logpath: ""
+  logpath: "" # empty for default(/var/log/concurrent)
 
 concurrent:
+  # fqdn is instance ID
+  # It is really hard and not recommended to change this value after node started
   fqdn: changeme.example.tld
+  # 'open' or 'invite' or 'close'
+  registration: open
+  # server agent account
+  # it is handy to generate these info with concurrent.world devtool
   ccaddr: CCxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
   publickey: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
   privatekey: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  # server admin CCIDs
   admins:
     - CCxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-
-nodeinfo:
-  openRegistrations: true
-  metadata:
-    nodeName: concurrent
-    nodeDescription: concurrent activitypub integration
-    maintainer:
-      name: notset
-      email: notset@example.com
-    themeColor: '#20193b'
 
 profile:
   nickname: concurrent-domain
   description: domain description
   logo: ''
   wordmark: ''
+  themeColor: '#20193b'
   rules: |
-    - リスペクトを持って接しましょう
+    - 他のユーザーにリスペクトを持って接しましょう
       Treat everyone with respect
     - スパムは禁止です
       No spamming
     - 攻撃的なプロフィール名・画像はやめましょう
       No offensive names and profile pictures
   tosURL: ''
+  maintainerName: notset
+  maintainerEmail: notset@example.com
 

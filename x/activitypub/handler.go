@@ -440,7 +440,7 @@ func (h Handler) NodeInfo(c echo.Context) error {
 		Protocols: []string{
 			"activitypub",
 		},
-		OpenRegistrations: h.config.Profile.Registration == "open",
+		OpenRegistrations: h.config.Concurrent.Registration == "open",
 		Metadata: NodeInfoMetadata{
 			NodeName:        h.config.Profile.Nickname,
 			NodeDescription: h.config.Profile.Description,

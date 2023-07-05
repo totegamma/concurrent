@@ -206,6 +206,7 @@ func main() {
 	apiV1.GET("/ap/person/:id", activitypubHandler.GetPerson)
 	apiV1.GET("/profile", func(c echo.Context) error {
 		profile := config.Profile
+		profile.Registration = config.Concurrent.Registration
 		profile.Version = util.GetVersion()
 		profile.Hash = util.GetGitHash()
 		return c.JSON(http.StatusOK, profile)

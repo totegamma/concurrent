@@ -8,6 +8,7 @@ import (
 type postRequest struct {
 	CCAddr string `json:"ccaddr"`
 	Meta   string `json:"meta"`
+	Token  string `json:"token"`
 }
 
 // SafeEntity is safe verison of entity

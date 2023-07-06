@@ -36,14 +36,15 @@ type Character struct {
 // Entity is one of a concurrent base object
 // mutable
 type Entity struct {
-	ID    string    `json:"id" gorm:"type:char(42)"`
-	Role  string    `json:"role" gorm:"type:text;default:default"`
-	Host  string    `json:"host" gorm:"type:text"`
-	Certs string    `json:"certs" gorm:"type:json;default:'null'"`
-	Meta  string    `json:"meta" gorm:"type:json;default:'null'"`
-	Score int       `json:"score" gorm:"type:integer;default:0"`
-	CDate time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
-	MDate time.Time `json:"mdate" gorm:"autoUpdateTime"`
+	ID      string    `json:"id" gorm:"type:char(42)"`
+	Role    string    `json:"role" gorm:"type:text;default:default"`
+	Host    string    `json:"host" gorm:"type:text"`
+	Certs   string    `json:"certs" gorm:"type:json;default:'null'"`
+	Meta    string    `json:"meta" gorm:"type:json;default:'null'"`
+	Score   int       `json:"score" gorm:"type:integer;default:0"`
+	Inviter string    `json:"inviter" gorm:"type:char(42)"`
+	CDate   time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
+	MDate   time.Time `json:"mdate" gorm:"autoUpdateTime"`
 }
 
 // Host is one of a concurrent base object

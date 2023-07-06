@@ -10,7 +10,6 @@ import (
 type Config struct {
 	Server     Server     `yaml:"server"`
 	Concurrent Concurrent `yaml:"concurrent"`
-	NodeInfo   NodeInfo   `yaml:"nodeinfo"`
 	Profile    Profile    `yaml:"profile"`
 }
 
@@ -23,36 +22,30 @@ type Server struct {
 }
 
 type Concurrent struct {
-	FQDN   string   `yaml:"fqdn"`
-	CCAddr string   `yaml:"ccaddr"`
-	Pubkey string   `yaml:"publickey"`
-	Prvkey string   `yaml:"privatekey"`
-	Admins []string `yaml:"admins"`
+	FQDN         string   `yaml:"fqdn"`
+	CCAddr       string   `yaml:"ccaddr"`
+	Pubkey       string   `yaml:"publickey"`
+	Prvkey       string   `yaml:"privatekey"`
+	Admins       []string `yaml:"admins"`
+	Registration string   `yaml:"registration"` // open, invite, close
+	InviterRole  string   `yaml:"inviterRole"`
 }
 
 type Profile struct {
-	Nickname    string `yaml:"nickname" json:"nickname"`
-	Description string `yaml:"description" json:"description"`
-	Logo        string `yaml:"logo" json:"logo"`
-	WordMark    string `yaml:"wordmark" json:"wordmark"`
-	Rules       string `yaml:"rules" json:"rules"`
-	TosURL      string `yaml:"tosURL" json:"tosURL"`
-	Version     string `yaml:"version" json:"version"`
-	Hash        string `yaml:"hash" json:"hash"`
-}
+	Nickname        string `yaml:"nickname" json:"nickname"`
+	Description     string `yaml:"description" json:"description"`
+	Logo            string `yaml:"logo" json:"logo"`
+	WordMark        string `yaml:"wordmark" json:"wordmark"`
+	ThemeColor      string `yaml:"themeColor" json:"themeColor"`
+	Rules           string `yaml:"rules" json:"rules"`
+	TosURL          string `yaml:"tosURL" json:"tosURL"`
+	MaintainerName  string `yaml:"maintainerName" json:"maintainerName"`
+	MaintainerEmail string `yaml:"maintainerEmail" json:"maintainerEmail"`
 
-// NodeInfo is Activitypub NodeInfo
-type NodeInfo struct {
-	OpenRegistrations bool `yaml:"openRegistrations"`
-	Metadata          struct {
-		NodeName        string `yaml:"nodeName"`
-		NodeDescription string `yaml:"nodeDescription"`
-		Maintainer      struct {
-			Name  string `yaml:"name"`
-			Email string `yaml:"email"`
-		} `yaml:"maintainer"`
-		ThemeColor string `yaml:"themeColor"`
-	} `yaml:"metadata"`
+	// internal generated
+	Registration string `yaml:"registration" json:"registration"`
+	Version      string `yaml:"version" json:"version"`
+	Hash         string `yaml:"hash" json:"hash"`
 }
 
 // Load loads concurrent config from given path

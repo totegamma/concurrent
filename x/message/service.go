@@ -73,5 +73,27 @@ func (s *Service) Delete(ctx context.Context, id string) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "ServiceDelete")
 	defer span.End()
 
-	return s.repo.Delete(ctx, id)
+	deleted, err := s.repo.Delete(ctx, id)
+	if err != nil {
+		span.RecordError(err)
+		return core.Message{}, err
+	}
+
+	for _, deststream := range deleted.Streams {
+		jsonstr, _ := json.Marshal(stream.Event{
+			Stream: deststream,
+			Type:   "message",
+			Action: "delete",
+			Body: stream.Element{
+				ID: deleted.ID,
+			},
+		})
+		err := s.rdb.Publish(context.Background(), deststream, jsonstr).Err()
+		if err != nil {
+			span.RecordError(err)
+			return deleted, err
+		}
+	}
+
+	return deleted, err
 }

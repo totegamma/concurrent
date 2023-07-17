@@ -144,7 +144,7 @@ func (s *Service) Delete(ctx context.Context, id string) (core.Association, erro
 		jsonstr, _ := json.Marshal(Event{
 			Stream: stream,
 			Type:   "association",
-			Action: "create",
+			Action: "delete",
 			Body: Element{
 				ID: deleted.TargetID,
 			},

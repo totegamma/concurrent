@@ -1,4 +1,4 @@
-import { Backdrop, Box, CircularProgress, Divider, Paper, Typography } from '@mui/material'
+import { Backdrop, Box, CircularProgress, Divider, Paper, TextField, Typography } from '@mui/material'
 import type { RJSFSchema } from '@rjsf/utils'
 import Form from '@rjsf/mui'
 import validator from '@rjsf/validator-ajv8'
@@ -22,6 +22,7 @@ export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Elemen
     const [searchParams] = useSearchParams()
     const [loading, setLoading] = React.useState(false);
     const [success, setSuccess] = React.useState(false);
+    const [inviteCode, setInviteCode] = React.useState<string>("");
 
     const token = searchParams.get('token')
     let ccaddr = ""
@@ -46,7 +47,8 @@ export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Elemen
             },
             body: JSON.stringify({
                 ccaddr,
-                meta: JSON.stringify(meta)
+                meta: JSON.stringify(meta),
+                token: inviteCode
             })
         }
 
@@ -101,16 +103,31 @@ export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Elemen
                     </Paper>
                 </Box>
             </Box>
-            {success ?
+            {profile?.registration === 'close' ?
+                <Typography>登録は現在受け付けていません</Typography>
+            : (
+            success ?
                 <>登録完了</>
             :
+                <>
+                {profile?.registration === 'invite' &&
+                <TextField
+                    label="招待コード"
+                    variant="outlined"
+                    value={inviteCode}
+                    onChange={(e) => setInviteCode(e.target.value)}
+                    sx={{my: '20px'}}
+                    required
+                />
+                }
                 <Form
                     disabled={loading}
                     schema={schema}
                     validator={validator}
                     onSubmit={(e) => {register(e.formData)}}
                 />
-            }
+                </>
+            )}
         </>
     )
 }

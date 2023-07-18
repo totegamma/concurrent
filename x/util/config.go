@@ -1,74 +1,67 @@
 package util
 
 import (
-    "os"
-    "log"
-    "github.com/go-yaml/yaml"
+	"github.com/go-yaml/yaml"
+	"log"
+	"os"
 )
 
 // Config is Concurrent base configuration
 type Config struct {
-    Server Server `yaml:"server"`
-    Concurrent Concurrent `yaml:"concurrent"`
-    NodeInfo NodeInfo `yaml:"nodeinfo"`
-    Profile Profile `yaml:"profile"`
+	Server     Server     `yaml:"server"`
+	Concurrent Concurrent `yaml:"concurrent"`
+	Profile    Profile    `yaml:"profile"`
 }
 
 type Server struct {
-    Dsn string `yaml:"dsn"`
-    RedisAddr string `yaml:"redisAddr"`
-    EnableTrace bool `yaml:"enableTrace"`
-    TraceEndpoint string `yaml:"traceEndpoint"`
-    LogPath string `yaml:"logPath"`
+	Dsn           string `yaml:"dsn"`
+	RedisAddr     string `yaml:"redisAddr"`
+	EnableTrace   bool   `yaml:"enableTrace"`
+	TraceEndpoint string `yaml:"traceEndpoint"`
+	LogPath       string `yaml:"logPath"`
 }
 
 type Concurrent struct {
-    FQDN string `yaml:"fqdn"`
-    CCAddr string `yaml:"ccaddr"`
-    Pubkey string `yaml:"publickey"`
-    Prvkey string `yaml:"privatekey"`
-    Admins []string `yaml:"admins"`
+	FQDN         string   `yaml:"fqdn"`
+	CCAddr       string   `yaml:"ccaddr"`
+	Pubkey       string   `yaml:"publickey"`
+	Prvkey       string   `yaml:"privatekey"`
+	Admins       []string `yaml:"admins"`
+	Registration string   `yaml:"registration"` // open, invite, close
+	InviterRole  string   `yaml:"inviterRole"`
 }
 
 type Profile struct {
-    Nickname string `yaml:"nickname" json:"nickname"`
-    Description string `yaml:"description" json:"description"`
-    Logo string `yaml:"logo" json:"logo"`
-    WordMark string `yaml:"wordmark" json:"wordmark"`
-    Rules string `yaml:"rules" json:"rules"`
-    TosURL string `yaml:"tosURL" json:"tosURL"`
-}
+	Nickname        string `yaml:"nickname" json:"nickname"`
+	Description     string `yaml:"description" json:"description"`
+	Logo            string `yaml:"logo" json:"logo"`
+	WordMark        string `yaml:"wordmark" json:"wordmark"`
+	ThemeColor      string `yaml:"themeColor" json:"themeColor"`
+	Rules           string `yaml:"rules" json:"rules"`
+	TosURL          string `yaml:"tosURL" json:"tosURL"`
+	MaintainerName  string `yaml:"maintainerName" json:"maintainerName"`
+	MaintainerEmail string `yaml:"maintainerEmail" json:"maintainerEmail"`
 
-// NodeInfo is Activitypub NodeInfo
-type NodeInfo struct {
-    OpenRegistrations bool `yaml:"openRegistrations"`
-    Metadata struct {
-        NodeName string `yaml:"nodeName"`
-        NodeDescription string `yaml:"nodeDescription"`
-        Maintainer struct {
-            Name string `yaml:"name"`
-            Email string `yaml:"email"`
-        } `yaml:"maintainer"`
-        ThemeColor string `yaml:"themeColor"`
-    } `yaml:"metadata"`
+	// internal generated
+	Registration string `yaml:"registration" json:"registration"`
+	Version      string `yaml:"version" json:"version"`
+	Hash         string `yaml:"hash" json:"hash"`
 }
 
 // Load loads concurrent config from given path
-func (c *Config) Load (path string) error {
-    f, err := os.Open(path)
-    if err != nil {
-        log.Fatal("failed to open configuration file:", err)
-        return err
-    }
-    defer f.Close()
+func (c *Config) Load(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		log.Fatal("failed to open configuration file:", err)
+		return err
+	}
+	defer f.Close()
 
-    err = yaml.NewDecoder(f).Decode(&c)
-    if err != nil {
-        log.Fatal("failed to load configuration file:", err)
-        return err
-    }
+	err = yaml.NewDecoder(f).Decode(&c)
+	if err != nil {
+		log.Fatal("failed to load configuration file:", err)
+		return err
+	}
 
-    return nil
+	return nil
 }
-
-

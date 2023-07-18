@@ -1,59 +1,48 @@
 # Concurrent
 Concurrentは分散マイクロブログ基盤です。
 
-現在絶賛開発中につき、よく仕様が変わります。
-
 ## Motivation
 Concurrentは、「セルフホストでお一人様インスタンス建てたい！けどローカルが1人ぼっちなのは寂しい...」という問題を解決するために生まれました。
+個々のサーバーが所有しているタイムライン(mastodonやmisskeyで言うところのローカル)を別のサーバーから閲覧ないしは書き込みができます。
+また、自分が閲覧しているタイムラインに対して、どのサーバーの持ち物であってもリアルタイムなイベントを得ることができます。
 
-完全検閲フリーを目指しているnostrと比較すると、Concurrentは自分のメッセージ本体を格納するDBと、メッセージ送信先のストリームをホストするサーバーのガバナンス*の影響は受けてしまいます。
-しかし、前者はセルフホストすることで解決し、後者はそれはそれで正しいと考えているため問題にはなりません。
+これにより、どのサーバーにいても世界は一つであるように、壁のないコミュニケーションが可能です。
 
-<small>ガバナンス: ここで言うガバナンスとは、サービス終了によるデータの消失や、サーバー管理者に発言を削除されることを指します。</small>
-
-## Basics
+## How it works
 Concurrentでは公開鍵を用いて、エンティティ(ユーザー)が発行するメッセージ(Twitterで言うところのツイート)に署名を行います。
 
 これにより、そのツイートがその秘密鍵の持ち主によって行われたことが誰でも検証できるようになります。
 
 ConcurrentではユーザーのIDはConcurrentアドレス(cc-address)(例えば、`CC3E31b2957F984e378EC5cE84AaC3871147BD7bBF`)を用いて識別されます。
 
-### Schema
-Concurrentでやりとりするメッセージの型はjsonschemaで誰からでも確認できるようにします。メッセージにjsonschemaのIDを含めることで、これを識別します。
-
-## Objects
-### Entity
-Entityはいわゆるユーザーのことです。
-
-cc-addressにより識別されます。あらゆるオブジェクトの所有者になれます。
-
-### Message
-MessageはConcurrentで最も一般的なオブジェクトです。
-Twitterで言うところのツイート本文がこれに相当します。
-
-### Association
-Associationは「任意のMessageにアタッチする」タイプのオブジェクトです。これはTwitterで言うところのふぁぼ、Misskeyで言うところのリアクションに該当します。
-
-AssociationはアタッチされたメMessageのオーサーに対して通知を誘発できます。
-そのため、リプライやリツイート時に、元ツイートからそのリプライが参照できる逆参照および元ツイートのオーサーに対して通知を行うためにも使われます。
-
-### Character
-CharacterはEntity(ユーザー)の追加情報を提供するオブジェクトです。
-あるcc-addressの持ち主がどのような名前か、どのようなアバター(プロフィール画像)かなどの情報を提供します。
-
-様々なカスタムCharacterをそのEntityに付与することで、例えば基本SNSプロフィールの他にゲームのプロフィールなど、好きな情報を付与することができます。
-
-### Stream
-StreamはMessage及びAssociationの時系列データを扱うオブジェクトです。
-
-タイムライン・通知タイムラインを構築するのに便利です。
-
-書き込みできるEntityと読み込みできるEntityを個別に設定できるのでアナウンスチャンネルやDMチャンネルの構築に使えますが、Streamが提供するMessageID, AssociationID自体が保護されていなければタイムライン本体が見えなくても、Message自体は個別にクエリできてしまうので注意が必要です。
-
 ## Getting Started
-see dockerfile
+### インスタンスを立ち上げる
+
+#### with docker compose
+このレポジトリ内のcomposeファイルがそのまま使えます。
+
+`config/config.yaml`を編集します。
+
+concurrentのインスタンス用のCCID, privatekey, publickeyは、concurrent.worldのdevツールを使うと便利に生成できます。
+
+#### with k8s
+helmchartがあります: https://helmcharts.gammalab.net
+チャート本体のレポジトリ: https://github.com/totegamma/helmcharts/tree/master/charts/concurrent
+
+valuesに入れる値はdocker composeを使う場合のconfigの生成方法を参考にしてください。
+
+モニタリングを有効にする場合はValues.observabilityにgrafanacloudの各種認証情報を追加すると利用できます。
+
+### インスタンスを連合する
+インスタンスを立ち上げたら、好きなほかのサーバーと連合しましょう。
+連合は、インスタンスの管理画面から行うことができます。
+
+管理画面はブラウザから `<host>/login?token=<jwt>` にアクセスすることで可能です。ここで使うjwtは、config.yamlでadminとして指定したユーザーである必要があります。
+この画面はconcurrent.worldの設定タブにある"go to domain home"ボタンを使うと簡単にアクセスすることができます。
+
+まずは、hub.concurrent.worldと連合してみましょう。
+hostタブで`hub.concurrent.world`と入力し、goボタンを押すだけで連合が完了します。
 
 ## Contributing
-現在はコア機能開発中のため、バグ報告のみ受け付けています。
-
 コードのPRは必ずissueでその可否のコンセンサスをとってからにしてください(せっかく作ってくれたPRをcloseするのは心が痛いので)。
+

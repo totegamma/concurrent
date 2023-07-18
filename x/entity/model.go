@@ -1,21 +1,23 @@
 // Package entity handles concurrent object Entity
-package entity 
+package entity
 
 import (
-    "time"
+	"time"
 )
 
 type postRequest struct {
-    CCAddr string `json:"ccaddr"`
-    Meta string `json:"meta"`
+	CCAddr string `json:"ccaddr"`
+	Meta   string `json:"meta"`
+	Token  string `json:"token"`
 }
 
 // SafeEntity is safe verison of entity
 type SafeEntity struct {
-    ID string `json:"ccaddr"`
-    Role string `json:"role"`
-    Score int `json:"score"`
-    Host string `json:"host"`
-    CDate time.Time `json:"cdate"`
+	ID    string    `json:"ccaddr"`
+	Role  string    `json:"role"`
+	Score int       `json:"score"`
+	Host  string    `json:"host"`
+	Certs string    `json:"certs"`
+	CDate time.Time `json:"cdate"`
+	MDate time.Time `json:"mdate"`
 }
-

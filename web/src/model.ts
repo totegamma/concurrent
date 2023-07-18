@@ -21,7 +21,13 @@ export interface DomainProfile {
   description: string
   logo: string
   wordmark: string
+  themeColor: string
   rules: string
   tosURL: string
+  maintainerName: string
+  maintainerURL: string
+  registration: string
+  version: string
+  hash: string
 }
 

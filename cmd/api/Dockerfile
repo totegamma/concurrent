@@ -1,11 +1,11 @@
 FROM golang:latest AS coreBuilder
 WORKDIR /work
 
+RUN go install github.com/google/wire/cmd/wire@latest
 COPY ./go.mod ./go.sum ./
 RUN go mod download && go mod verify
 COPY ./ ./
-RUN go install github.com/google/wire/cmd/wire@latest \
- && wire ./cmd/api \
+RUN wire ./cmd/api \
  && go build -o ccapi ./cmd/api
 
 FROM node:18 AS webBuilder

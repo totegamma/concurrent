@@ -6,7 +6,6 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"path/filepath"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/postgres"
@@ -212,7 +211,6 @@ func main() {
 	apiV1R.POST("/ap/entity", activitypubHandler.CreateEntity, authService.Restrict(auth.ISLOCAL))
 	apiV1R.PUT("/ap/person", activitypubHandler.UpdatePerson, authService.Restrict(auth.ISLOCAL))
 
-	//e.GET("/*", spa)
 	e.GET("/health", func(c echo.Context) (err error) {
 		ctx := c.Request().Context()
 
@@ -235,20 +233,6 @@ func main() {
 	go activitypubHandler.Boot()
 
 	e.Logger.Fatal(e.Start(":8000"))
-}
-
-func spa(c echo.Context) error {
-	path := c.Request().URL.Path
-
-	webFilePath := os.Getenv("CONCURRENT_WEBUI")
-	if webFilePath == "" {
-		webFilePath = "/etc/www/concurrent"
-	}
-	fPath := filepath.Join(webFilePath, path)
-	if _, err := os.Stat(fPath); os.IsNotExist(err) {
-		return c.File(filepath.Join(webFilePath, "index.html"))
-	}
-	return c.File(fPath)
 }
 
 func setupTraceProvider(endpoint string, serviceName string, serviceVersion string) (func(), error) {

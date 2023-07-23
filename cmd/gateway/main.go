@@ -5,13 +5,13 @@ import (
 	"context"
 	"fmt"
 	"log"
-	"strings"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/postgres"
@@ -164,6 +164,7 @@ func main() {
 
 	// プロキシ設定
 	for _, service := range gwConf.Services {
+		service := service
 		targetUrl, err := url.Parse("http://" + service.Host + ":" + strconv.Itoa(service.Port))
 		if err != nil {
 			panic(err)
@@ -173,7 +174,11 @@ func main() {
 		proxy.Director = func(req *http.Request) {
 			req.URL.Scheme = targetUrl.Scheme
 			req.URL.Host = targetUrl.Host
-			req.URL.Path = singleJoiningSlash(targetUrl.Path, strings.TrimPrefix(req.URL.Path, service.Path))
+			if (service.PreservePath) {
+				req.URL.Path = singleJoiningSlash(targetUrl.Path, req.URL.Path)
+			} else {
+				req.URL.Path = singleJoiningSlash(targetUrl.Path, strings.TrimPrefix(req.URL.Path, service.Path))
+			}
 		}
 
 		e.Any(service.Path + "/*", func(c echo.Context) error {

@@ -1,4 +1,9 @@
 services:
+  - name: webui
+    host: ccwebui
+    port: 80
+    path: /web
+    preservePath: true
   - name: concurrent
     host: ccapi
     port: 8000

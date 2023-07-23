@@ -1,0 +1,5 @@
+services:
+  - name: concurrent
+    host: ccapi
+    port: 8000
+    path: /api/v1

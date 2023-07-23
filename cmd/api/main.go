@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"log"
@@ -54,22 +53,11 @@ func main() {
 	log.Print("Concurrent ", util.GetFullVersion(), " starting...")
 	log.Print("Config loaded! I am: ", config.Concurrent.CCAddr)
 
-	logfile, err := os.OpenFile(filepath.Join(config.Server.LogPath, "access.log"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer logfile.Close()
-
 	e.HidePort = true
 	e.HideBanner = true
-	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins:  []string{"*"},
-		AllowHeaders:  []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
-		ExposeHeaders: []string{"trace-id"},
-	}))
 
 	if config.Server.EnableTrace {
-		cleanup, err := setupTraceProvider(config.Server.TraceEndpoint, config.Concurrent.FQDN+"/concurrent", util.GetFullVersion())
+		cleanup, err := setupTraceProvider(config.Server.TraceEndpoint, config.Concurrent.FQDN+"/ccapi", util.GetFullVersion())
 		if err != nil {
 			panic(err)
 		}
@@ -91,26 +79,10 @@ func main() {
 		})
 	}
 
-	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
-		Skipper: func(c echo.Context) bool {
-			return c.Path() == "/metrics" || c.Path() == "/health"
-		},
-		Format: `{"time":"${time_rfc3339_nano}",${custom},"remote_ip":"${remote_ip}",` +
-			`"host":"${host}","method":"${method}","uri":"${uri}","status":${status},` +
-			`"error":"${error}","latency":${latency},"latency_human":"${latency_human}",` +
-			`"bytes_in":${bytes_in},"bytes_out":${bytes_out}}` + "\n",
-		CustomTagFunc: func(c echo.Context, buf *bytes.Buffer) (int, error) {
-			span := trace.SpanFromContext(c.Request().Context())
-			buf.WriteString(fmt.Sprintf("\"%s\":\"%s\"", "traceID", span.SpanContext().TraceID().String()))
-			buf.WriteString(fmt.Sprintf(",\"%s\":\"%s\"", "spanID", span.SpanContext().SpanID().String()))
-			return 0, nil
-		},
-	}))
-
-	e.Use(echoprometheus.NewMiddleware("concurrent"))
+	e.Use(echoprometheus.NewMiddleware("ccapi"))
+	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
-	e.Logger.SetOutput(logfile)
 	e.Binder = &activitypub.Binder{}
 
 	db, err := gorm.Open(postgres.Open(config.Server.Dsn), &gorm.Config{})
@@ -187,7 +159,7 @@ func main() {
 	ap.POST("/acct/:id/outbox", activitypubHandler.PrintRequest)
 	ap.GET("/note/:id", activitypubHandler.Note)
 
-	apiV1 := e.Group("/api/v1")
+	apiV1 := e.Group("")
 	apiV1.GET("/messages/:id", messageHandler.Get)
 	apiV1.GET("/characters", characterHandler.Get)
 	apiV1.GET("/associations/:id", associationHandler.Get)
@@ -240,7 +212,7 @@ func main() {
 	apiV1R.POST("/ap/entity", activitypubHandler.CreateEntity, authService.Restrict(auth.ISLOCAL))
 	apiV1R.PUT("/ap/person", activitypubHandler.UpdatePerson, authService.Restrict(auth.ISLOCAL))
 
-	e.GET("/*", spa)
+	//e.GET("/*", spa)
 	e.GET("/health", func(c echo.Context) (err error) {
 		ctx := c.Request().Context()
 

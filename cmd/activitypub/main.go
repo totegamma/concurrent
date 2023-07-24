@@ -2,9 +2,7 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log"
-	"net/http"
 	"os"
 
 	"github.com/redis/go-redis/v9"
@@ -15,9 +13,9 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
-	"github.com/totegamma/concurrent/x/auth"
-	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/activitypub"
 	"github.com/totegamma/concurrent/x/util"
+	"github.com/totegamma/concurrent/x/auth"
 
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
@@ -33,9 +31,6 @@ import (
 )
 
 func main() {
-
-	fmt.Print(concurrentBanner)
-
 	e := echo.New()
 	config := util.Config{}
 	configPath := os.Getenv("CONCURRENT_CONFIG")
@@ -81,6 +76,8 @@ func main() {
 	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
+	e.Binder = &activitypub.Binder{}
+
 	db, err := gorm.Open(postgres.Open(config.Server.Dsn), &gorm.Config{})
 	if err != nil {
 		panic("failed to connect database")
@@ -101,12 +98,9 @@ func main() {
 	// Migrate the schema
 	log.Println("start migrate")
 	db.AutoMigrate(
-		&core.Message{},
-		&core.Character{},
-		&core.Association{},
-		&core.Stream{},
-		&core.Host{},
-		&core.Entity{},
+		&activitypub.ApEntity{},
+		&activitypub.ApPerson{},
+		&activitypub.ApFollow{},
 	)
 
 	rdb := redis.NewClient(&redis.Options{
@@ -127,88 +121,28 @@ func main() {
 		panic("failed to setup tracing plugin")
 	}
 
-	agent := SetupAgent(db, rdb, config)
-
-	socketHandler := SetupSocketHandler(rdb, config)
-	messageHandler := SetupMessageHandler(db, rdb, config)
-	characterHandler := SetupCharacterHandler(db, config)
-	associationHandler := SetupAssociationHandler(db, rdb, config)
-	streamHandler := SetupStreamHandler(db, rdb, config)
-	hostHandler := SetupHostHandler(db, config)
-	entityHandler := SetupEntityHandler(db, config)
-	authHandler := SetupAuthHandler(db, config)
-	userkvHandler := SetupUserkvHandler(db, rdb, config)
-
 	authService := SetupAuthService(db, config)
+	activitypubHandler := SetupActivitypubHandler(db, rdb, config)
 
-	apiV1 := e.Group("")
-	apiV1.GET("/messages/:id", messageHandler.Get)
-	apiV1.GET("/characters", characterHandler.Get)
-	apiV1.GET("/associations/:id", associationHandler.Get)
-	apiV1.GET("/stream", streamHandler.Get)
-	apiV1.GET("/stream/recent", streamHandler.Recent)
-	apiV1.GET("/stream/list", streamHandler.List)
-	apiV1.GET("/stream/range", streamHandler.Range)
-	apiV1.GET("/socket", socketHandler.Connect)
-	apiV1.GET("/host/:id", hostHandler.Get) //TODO deprecated. remove later
-	apiV1.GET("/host", hostHandler.Profile)
-	apiV1.GET("/host/list", hostHandler.List)
-	apiV1.GET("/entity/:id", entityHandler.Get)
-	apiV1.GET("/entity/list", entityHandler.List)
-	apiV1.GET("/auth/claim", authHandler.Claim)
-	apiV1.GET("/profile", func(c echo.Context) error {
-		profile := config.Profile
-		profile.Registration = config.Concurrent.Registration
-		profile.Version = util.GetVersion()
-		profile.Hash = util.GetGitHash()
-		return c.JSON(http.StatusOK, profile)
-	})
+	e.GET("/.well-known/webfinger", activitypubHandler.WebFinger)
+	e.GET("/.well-known/nodeinfo", activitypubHandler.NodeInfoWellKnown)
 
-	apiV1R := apiV1.Group("", auth.JWT)
-	apiV1R.PUT("/host", hostHandler.Upsert, authService.Restrict(auth.ISADMIN))
-	apiV1R.POST("/host/hello", hostHandler.Hello, authService.Restrict(auth.ISUNUNITED))
-	apiV1R.DELETE("/host/:id", hostHandler.Delete, authService.Restrict(auth.ISADMIN))
-	apiV1R.GET("/admin/sayhello/:fqdn", hostHandler.SayHello, authService.Restrict(auth.ISADMIN))
+	ap := e.Group("/ap")
+	ap.GET("/nodeinfo/2.0", activitypubHandler.NodeInfo)
+	ap.GET("/acct/:id", activitypubHandler.User)
+	ap.POST("/acct/:id/inbox", activitypubHandler.Inbox)
+	ap.POST("/acct/:id/outbox", activitypubHandler.PrintRequest)
+	ap.GET("/note/:id", activitypubHandler.Note)
 
-	apiV1R.POST("/entity", entityHandler.Register, authService.Restrict(auth.ISUNKNOWN))
-	apiV1R.PUT("/entity", entityHandler.Update, authService.Restrict(auth.ISLOCAL))
-	apiV1R.DELETE("/entity/:id", entityHandler.Delete, authService.Restrict(auth.ISADMIN))
-	apiV1R.POST("/admin/entity", entityHandler.Register, authService.Restrict(auth.ISADMIN))
+	ap.GET("/api/entity/:ccaddr", activitypubHandler.GetEntityID)
+	ap.GET("/api/person/:id", activitypubHandler.GetPerson)
 
-	apiV1R.POST("/messages", messageHandler.Post, authService.Restrict(auth.ISLOCAL))
-	apiV1R.DELETE("/messages", messageHandler.Delete, authService.Restrict(auth.ISLOCAL))
+	// should be restricted
+	apR := ap.Group("", auth.JWT)
+	apR.POST("/api/entity", activitypubHandler.CreateEntity, authService.Restrict(auth.ISLOCAL)) // ISLOCAL
+	apR.PUT("/api/person", activitypubHandler.UpdatePerson, authService.Restrict(auth.ISLOCAL)) // ISLOCAL
 
-	apiV1R.PUT("/characters", characterHandler.Put, authService.Restrict(auth.ISLOCAL))
-
-	apiV1R.POST("/associations", associationHandler.Post, authService.Restrict(auth.ISKNOWN))
-	apiV1R.DELETE("/associations", associationHandler.Delete, authService.Restrict(auth.ISKNOWN))
-
-	apiV1R.PUT("/stream", streamHandler.Put, authService.Restrict(auth.ISLOCAL))
-	apiV1R.POST("/stream/checkpoint", streamHandler.Checkpoint, authService.Restrict(auth.ISUNITED))
-
-	apiV1R.GET("/kv/:key", userkvHandler.Get, authService.Restrict(auth.ISLOCAL))
-	apiV1R.PUT("/kv/:key", userkvHandler.Upsert, authService.Restrict(auth.ISLOCAL))
-
-
-	e.GET("/health", func(c echo.Context) (err error) {
-		ctx := c.Request().Context()
-
-		err = sqlDB.Ping()
-		if err != nil {
-			return c.String(http.StatusInternalServerError, "db error")
-		}
-
-		err = rdb.Ping(ctx).Err()
-		if err != nil {
-			return c.String(http.StatusInternalServerError, "redis error")
-		}
-
-		return c.String(http.StatusOK, "ok")
-	})
-
-	e.GET("/metrics", echoprometheus.NewHandler())
-
-	agent.Boot()
+	go activitypubHandler.Boot()
 
 	e.Logger.Fatal(e.Start(":8000"))
 }

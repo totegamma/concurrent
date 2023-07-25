@@ -1,8 +1,28 @@
 version: "3"
 
 services:
-  concurrent:
-    build: .
+  ccgateway:
+    build:
+      context: .
+      dockerfile: ./cmd/gateway/Dockerfile
+    restart: always
+    links:
+      - db
+      - redis
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config:/etc/concurrent/:ro
+
+  ccapi:
+    build:
+      context: .
+      dockerfile: ./cmd/api/Dockerfile
     restart: always
     links:
       - db
@@ -16,6 +36,31 @@ services:
       - "8000:8000"
     volumes:
       - ./config:/etc/concurrent/:ro
+
+  ccactivitypub:
+    build:
+      context: .
+      dockerfile: ./cmd/activitypub/Dockerfile
+    restart: always
+    links:
+      - db
+      - redis
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./config:/etc/concurrent/:ro
+
+  ccwebui:
+    build:
+      context: .
+      dockerfile: ./web/Dockerfile
+    restart: always
+    ports:
+      - "8001:80"
+
   db:
     restart: always
     image: postgres
@@ -30,6 +75,7 @@ services:
     environment:
       - "POSTGRES_PASSWORD=postgres"
       - "POSTGRES_DB=concurrent"
+
   redis:
     restart: always
     image: redis

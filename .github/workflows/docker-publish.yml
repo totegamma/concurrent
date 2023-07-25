@@ -33,7 +33,7 @@ jobs:
             image: ghcr.io/totegamma/ccapi
           - dockerfile: ./cmd/activitypub/Dockerfile
             image: ghcr.io/totegamma/ccactivitypub
-          - dockerfile: ./cmd/webui/Dockerfile
+          - dockerfile: ./web/Dockerfile
             image: ghcr.io/totegamma/ccwebui
 
     permissions:

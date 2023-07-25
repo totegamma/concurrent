@@ -90,7 +90,7 @@ function App(): JSX.Element {
                     flex: 1
                 }}
             >
-                <BrowserRouter>
+                <BrowserRouter basename="/web">
                     <Routes>
                         <Route path="/" element={<Home />} />
                         <Route path="/login" element={<Login />} />

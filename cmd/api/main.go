@@ -6,7 +6,7 @@ import (
 	"log"
 	"net/http"
 	"os"
-
+	"path/filepath"
 	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
@@ -50,6 +50,14 @@ func main() {
 
 	log.Print("Concurrent ", util.GetFullVersion(), " starting...")
 	log.Print("Config loaded! I am: ", config.Concurrent.CCAddr)
+
+	logfile, err := os.OpenFile(filepath.Join(config.Server.LogPath, "api-access.log"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer logfile.Close()
+
+	e.Logger.SetOutput(logfile)
 
 	e.HidePort = true
 	e.HideBanner = true

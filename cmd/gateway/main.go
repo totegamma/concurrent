@@ -66,11 +66,13 @@ func main() {
 	log.Print("Config loaded! I am: ", config.Concurrent.CCAddr)
 
 	// Echoの設定
-	logfile, err := os.OpenFile(filepath.Join(config.Server.LogPath, "access.log"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	logfile, err := os.OpenFile(filepath.Join(config.Server.LogPath, "gateway-access.log"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
 		log.Fatal(err)
 	}
 	defer logfile.Close()
+
+	e.Logger.SetOutput(logfile)
 
 	e.HidePort = true
 	e.HideBanner = true
@@ -122,7 +124,6 @@ func main() {
 	e.Use(echoprometheus.NewMiddleware("ccgateway"))
 	e.Use(middleware.Recover())
 
-	// e.Logger.SetOutput(logfile)
 	e.Binder = &activitypub.Binder{}
 
 	// Postrgresqlとの接続

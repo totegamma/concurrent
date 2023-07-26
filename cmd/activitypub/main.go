@@ -4,6 +4,7 @@ import (
 	"context"
 	"log"
 	"os"
+	"net/http"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/postgres"
@@ -141,6 +142,26 @@ func main() {
 	apR := ap.Group("", auth.JWT)
 	apR.POST("/api/entity", activitypubHandler.CreateEntity, authService.Restrict(auth.ISLOCAL)) // ISLOCAL
 	apR.PUT("/api/person", activitypubHandler.UpdatePerson, authService.Restrict(auth.ISLOCAL)) // ISLOCAL
+
+
+	e.GET("/health", func(c echo.Context) (err error) {
+		ctx := c.Request().Context()
+
+		err = sqlDB.Ping()
+		if err != nil {
+			return c.String(http.StatusInternalServerError, "db error")
+		}
+
+		err = rdb.Ping(ctx).Err()
+		if err != nil {
+			return c.String(http.StatusInternalServerError, "redis error")
+		}
+
+		return c.String(http.StatusOK, "ok")
+	})
+
+	e.GET("/metrics", echoprometheus.NewHandler())
+
 
 	go activitypubHandler.Boot()
 

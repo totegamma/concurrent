@@ -27,7 +27,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
-	"go.opentelemetry.io/otel/trace"
 	"gorm.io/plugin/opentelemetry/tracing"
 )
 
@@ -70,15 +69,7 @@ func main() {
 				return c.Path() == "/metrics" || c.Path() == "/health"
 			},
 		)
-		e.Use(otelecho.Middleware("dev", skipper))
-
-		e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
-			return func(c echo.Context) error {
-				span := trace.SpanFromContext(c.Request().Context())
-				c.Response().Header().Set("trace-id", span.SpanContext().TraceID().String())
-				return next(c)
-			}
-		})
+		e.Use(otelecho.Middleware(config.Concurrent.FQDN, skipper))
 	}
 
 	e.Use(echoprometheus.NewMiddleware("ccapi"))

@@ -33,6 +33,7 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/trace"
 	"gorm.io/plugin/opentelemetry/tracing"
 )
@@ -94,7 +95,7 @@ func main() {
 				return c.Path() == "/metrics" || c.Path() == "/health"
 			},
 		)
-		e.Use(otelecho.Middleware("dev", skipper))
+		e.Use(otelecho.Middleware(config.Concurrent.FQDN, skipper))
 
 		e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 			return func(c echo.Context) error {
@@ -180,7 +181,10 @@ func main() {
 			} else {
 				req.URL.Path = singleJoiningSlash(targetUrl.Path, strings.TrimPrefix(req.URL.Path, service.Path))
 			}
+			otel.GetTextMapPropagator().Inject(req.Context(), propagation.HeaderCarrier(req.Header))
 		}
+
+		proxy.Transport = otelhttp.NewTransport(http.DefaultTransport)
 
 		e.Any(service.Path + "/*", func(c echo.Context) error {
 			proxy.ServeHTTP(c.Response(), c.Request())

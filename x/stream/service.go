@@ -212,6 +212,7 @@ func (s *Service) Post(ctx context.Context, stream string, id string, typ string
 		})
 		err = s.rdb.Publish(context.Background(), stream, jsonstr).Err()
 		if err != nil {
+			span.RecordError(err)
 			log.Printf("fail to publish message to Redis: %v", err)
 		}
 	} else {
@@ -329,10 +330,39 @@ func (s *Service) StreamListBySchema(ctx context.Context, schema string) ([]core
 	return streams, err
 }
 
-// Delete deletes
-func (s *Service) Delete(ctx context.Context, stream string, id string) {
-	ctx, span := tracer.Start(ctx, "ServiceDelete")
+// GetElement returns stream element by ID
+func (s *Service) GetElement(ctx context.Context, stream string, id string) (Element, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetElement")
+	defer span.End()
+
+	result, err := s.rdb.XRange(ctx, stream, id, id).Result()
+	if err != nil {
+		span.RecordError(err)
+		return Element{}, err
+	}
+	if len(result) == 0 {
+		return Element{}, fmt.Errorf("element not found")
+	}
+	return Element{
+		Timestamp: result[0].ID,
+		ID:        result[0].Values["id"].(string),
+		Type:      result[0].Values["type"].(string),
+		Author:     result[0].Values["author"].(string),
+	}, nil
+}
+
+// Remove removes stream element by ID
+func (s *Service) Remove(ctx context.Context, stream string, id string) {
+	ctx, span := tracer.Start(ctx, "ServiceRemove")
 	defer span.End()
 
 	s.rdb.XDel(ctx, stream, id)
+}
+
+// Delete deletes
+func (s *Service) Delete(ctx context.Context, streamID string) error {
+	ctx, span := tracer.Start(ctx, "ServiceDelete")
+	defer span.End()
+
+	return s.repository.Delete(ctx, streamID)
 }

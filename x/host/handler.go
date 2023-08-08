@@ -168,7 +168,7 @@ func (h Handler) SayHello(c echo.Context) error {
 	// challenge
 	jwt, err := util.CreateJWT(util.JwtClaims{
 		Issuer:         h.config.Concurrent.CCAddr,
-		Subject:        "concurrent",
+		Subject:        "CONCURRENT_API",
 		Audience:       target,
 		ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
 		NotBefore:      strconv.FormatInt(time.Now().Unix(), 10),

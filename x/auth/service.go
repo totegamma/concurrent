@@ -37,6 +37,11 @@ func (s *Service) IssueJWT(ctx context.Context, request string) (string, error) 
 
 	// TODO: check jti not used recently
 
+	// check sub
+	if claims.Subject != "CONCURRENT_APICLAIM" {
+		return "", fmt.Errorf("invalid jwt subject")
+	}
+
 	// check aud
 	if claims.Audience != s.config.Concurrent.FQDN {
 		return "", fmt.Errorf("jwt is not for this host")
@@ -57,7 +62,7 @@ func (s *Service) IssueJWT(ctx context.Context, request string) (string, error) 
 	// create new jwt
 	response, err := util.CreateJWT(util.JwtClaims{
 		Issuer:         s.config.Concurrent.CCAddr,
-		Subject:        "concurrent",
+		Subject:        "CONCURRENT_API",
 		Audience:       claims.Issuer,
 		ExpirationTime: strconv.FormatInt(time.Now().Add(6*time.Hour).Unix(), 10),
 		NotBefore:      strconv.FormatInt(time.Now().Unix(), 10),

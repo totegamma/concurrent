@@ -240,7 +240,7 @@ func (s *Service) Post(ctx context.Context, stream string, id string, typ string
 
 		jwt, err := util.CreateJWT(util.JwtClaims{
 			Issuer:         s.config.Concurrent.CCAddr,
-			Subject:        "concurrent",
+			Subject:        "CONCURRENT_API",
 			Audience:       streamHost,
 			ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
 			NotBefore:      strconv.FormatInt(time.Now().Unix(), 10),

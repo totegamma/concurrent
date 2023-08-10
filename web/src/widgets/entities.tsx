@@ -1,9 +1,11 @@
+import { Entity } from "@concurrent-world/client/dist/types/model/core"
 import { Box, Button, Drawer, List, ListItem, ListItemButton, ListItemText, TextField, Typography } from "@mui/material"
 import { forwardRef, useEffect, useState } from "react"
-import { getEntities, deleteEntity, createEntity } from "../util"
-import { Entity } from "../model"
+import { useApi } from "../context/apiContext"
 
 export const Entities = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
+
+    const { api } = useApi()
 
     const token = localStorage.getItem("JWT")
     const [entities, setEntities] = useState<Entity[]>([])
@@ -13,7 +15,7 @@ export const Entities = forwardRef<HTMLDivElement>((props, ref): JSX.Element => 
     const [newScore, setNewScore] = useState<number>(0)
 
     useEffect(() => {
-        getEntities().then(setEntities)
+        api.getEntities().then(setEntities)
     }, [])
 
     return (
@@ -33,8 +35,7 @@ export const Entities = forwardRef<HTMLDivElement>((props, ref): JSX.Element => 
                     <Button
                         variant="contained"
                         onClick={(_) => {
-                            if (!token) return
-                            createEntity(token, newCCID)
+                            api.createEntityWithAdmin(newCCID)
                         }}
                     >
                         Register
@@ -50,12 +51,12 @@ export const Entities = forwardRef<HTMLDivElement>((props, ref): JSX.Element => 
                             <ListItemButton
                                 onClick={() => {
                                     setNewRole(entity.role)
-                                    setNewScore(entity.score)
+                                    // setNewScore(entity.score)
                                     setSelectedEntity(entity)
                                 }}
                             >
                                 <ListItemText primary={entity.ccaddr} secondary={`${entity.cdate}`} />
-                                <ListItemText>{`${entity.role}(${entity.score})`}</ListItemText>
+                                {/* <ListItemText>{`${entity.role}(${entity.score})`}</ListItemText> */}
                             </ListItemButton>
                         </ListItem>
                     ))}
@@ -106,9 +107,8 @@ export const Entities = forwardRef<HTMLDivElement>((props, ref): JSX.Element => 
                     <Button
                         variant="contained"
                         onClick={(_) => {
-                            if (!token) return
                             if (!selectedEntity) return
-                            deleteEntity(token, selectedEntity.ccaddr)
+                            api.deleteEntity(selectedEntity.ccaddr)
                             setSelectedEntity(null)
                         }}
                         color="error"

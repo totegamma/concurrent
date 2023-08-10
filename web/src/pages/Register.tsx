@@ -5,6 +5,7 @@ import validator from '@rjsf/validator-ajv8'
 import { useSearchParams } from 'react-router-dom'
 import React from 'react'
 import { DomainProfile } from '../model'
+import { useApi } from '../context/apiContext'
 
 const schema: RJSFSchema = {
     description: '情報はトラブル対応や本人確認にのみ用いられ、このホストの管理人以外には公開されません。',
@@ -19,6 +20,9 @@ const schema: RJSFSchema = {
 }
 
 export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Element => {
+
+    const { api, setJWT } = useApi()
+
     const [searchParams] = useSearchParams()
     const [loading, setLoading] = React.useState(false);
     const [success, setSuccess] = React.useState(false);
@@ -39,36 +43,21 @@ export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Elemen
     const register = (meta: any): void => {
         if (!token) return
         setLoading(true)
-        const requestOptions = {
-            method: 'POST',
-            headers: {
-                'content-type': 'application/json',
-                'authentication': 'Bearer ' + token
-            },
-            body: JSON.stringify({
-                ccaddr,
-                meta: JSON.stringify(meta),
-                token: inviteCode
-            })
-        }
+        setJWT(token)
 
-        fetch(
-            '/api/v1/entity',
-            requestOptions
-        )
-            .then(async (res) => await res.json())
-            .then((data) => {
-                console.log(data)
-                if (data.error) {
-                    alert(data.error)
-                    setLoading(false)
-                    return
-                }
+        api.createEntity(ccaddr, meta, inviteCode)
+        .then(async (res) => await res.json())
+        .then((data) => {
+            console.log(data)
+            if (data.error) {
+                alert(data.error)
                 setLoading(false)
-                setSuccess(true)
-            })
+                return
+            }
+            setLoading(false)
+            setSuccess(true)
+        })
     }
-
 
     return (
         <>

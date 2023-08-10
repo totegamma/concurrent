@@ -1,11 +1,12 @@
 import { Box, Button, Drawer, List, ListItem, ListItemButton, ListItemText, TextField, Typography } from "@mui/material"
 import { forwardRef, useEffect, useState } from "react"
-import { getHosts, sayHello, deleteHost } from "../util"
-import { Host } from "../model"
+import { useApi } from "../context/apiContext"
+import { Host } from "@concurrent-world/client/dist/types/model/core"
 
 export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
 
-    const token = localStorage.getItem("JWT")
+    const { api } = useApi()
+
     const [hosts, setHosts] = useState<Host[]>([])
     const [remoteFqdn, setRemoteFqdn] = useState('')
 
@@ -14,7 +15,7 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
     const [newScore, setNewScore] = useState<number>(0)
 
     useEffect(() => {
-        getHosts().then(setHosts)
+        api.getKnownHosts().then(setHosts)
     }, [])
 
     return (
@@ -33,8 +34,7 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
                     <Button
                         variant="contained"
                         onClick={(_) => {
-                            if (!token) return
-                            sayHello(token, remoteFqdn)
+                            api.sayHello(remoteFqdn)
                         }}
                     >
                         GO
@@ -51,12 +51,12 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
                             <ListItemButton
                                 onClick={() => {
                                     setNewRole(host.role)
-                                    setNewScore(host.score)
+                                    //setNewScore(host.score)
                                     setSelectedHost(host)
                                 }}
                             >
                                 <ListItemText primary={host.fqdn} secondary={`${host.ccaddr}`} />
-                                <ListItemText>{`${host.role}(${host.score})`}</ListItemText>
+                                {/* <ListItemText>{`${host.role}(${host.score})`}</ListItemText> */}
                             </ListItemButton>
                         </ListItem>
                     ))}
@@ -99,7 +99,7 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
                     <Button
                         variant="contained"
                         onClick={(_) => {
-                            if (!token) return
+                            /* TODO */
                         }}
                     >
                         Update
@@ -107,9 +107,8 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
                     <Button
                         variant="contained"
                         onClick={(_) => {
-                            if (!token) return
                             if (!selectedHost) return
-                            deleteHost(token, selectedHost.fqdn)
+                            api.deleteHost(selectedHost.fqdn)
                             setSelectedHost(null)
                         }}
                         color="error"

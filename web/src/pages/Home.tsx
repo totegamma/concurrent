@@ -1,9 +1,9 @@
 import { Box, Button, Fade, Tab, Tabs } from "@mui/material"
 import {  useState } from "react"
 import { Navigate, useLocation } from "react-router-dom"
-import { Entity } from "../model"
 import { Entities } from "../widgets/entities"
 import { Hosts } from "../widgets/hosts"
+import { Entity } from "@concurrent-world/client/dist/types/model/core"
 
 export const Home = (): JSX.Element => {
 

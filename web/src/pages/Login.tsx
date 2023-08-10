@@ -1,8 +1,10 @@
 import { useEffect, useState } from 'react';
 import { Navigate, useLocation, useSearchParams } from 'react-router-dom'
-import { getJWT, readEntity } from '../util';
+import { useApi } from '../context/apiContext';
 
 export const Login = (): JSX.Element => {
+
+    const { api, setJWT } = useApi()
     const [searchParams] = useSearchParams()
     const token = searchParams.get('token')
 
@@ -18,22 +20,15 @@ export const Login = (): JSX.Element => {
         const claims = JSON.parse(payload)
         const ccid = claims.iss
 
-        readEntity(ccid).then((entity) => {
+        api.readEntity(ccid).then((entity) => {
             if (!entity) {
                 alert("entity not found")
                 return
             }
             localStorage.setItem("ENTITY", JSON.stringify(entity))
-            getJWT(token).then((jwt) => {
-                if (!jwt) {
-                    alert("jwt not found")
-                    return
-                }
-                localStorage.setItem("JWT", jwt)
-                setLoading(false)
-            })
+            setJWT(token)
+            setLoading(false)
         })
-
     }, [token])
 
     return loading ? (

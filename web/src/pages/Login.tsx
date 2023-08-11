@@ -7,7 +7,7 @@ export const Login = (): JSX.Element => {
     const { api, setJWT } = useApi()
     const [searchParams] = useSearchParams()
     const token = searchParams.get('token')
-
+    const location = useLocation()
     const [loading, setLoading] = useState(true)
 
     useEffect(() => {
@@ -38,6 +38,6 @@ export const Login = (): JSX.Element => {
             <>oops! something went wrong</>
         )
     ) : (
-        <Navigate to='/' state={{ from: useLocation() }} replace={true} />
+        <Navigate to='/' state={{ from: location }} replace={true} />
     )
 }

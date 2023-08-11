@@ -3,7 +3,7 @@ import type { RJSFSchema } from '@rjsf/utils'
 import Form from '@rjsf/mui'
 import validator from '@rjsf/validator-ajv8'
 import { useSearchParams } from 'react-router-dom'
-import React from 'react'
+import React, { useEffect } from 'react'
 import { DomainProfile } from '../model'
 import { useApi } from '../context/apiContext'
 
@@ -40,10 +40,14 @@ export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Elemen
         ccaddr = claims.iss
     }
 
+    useEffect(() => {
+        if (!token) return
+        setJWT(token)
+    }, [setJWT, token])
+
     const register = (meta: any): void => {
         if (!token) return
         setLoading(true)
-        setJWT(token)
 
         api.createEntity(ccaddr, meta, inviteCode)
         .then(async (res) => await res.json())

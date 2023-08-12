@@ -13,11 +13,11 @@ import (
 	"github.com/totegamma/concurrent/x/stream"
 	"github.com/totegamma/concurrent/x/util"
 	"github.com/totegamma/concurrent/x/auth"
-	"github.com/totegamma/concurrent/x/host"
+	"github.com/totegamma/concurrent/x/domain"
 )
 
 func SetupAuthService(db *gorm.DB, config util.Config) *auth.Service {
-	wire.Build(auth.NewService, entity.NewService, entity.NewRepository, host.NewService, host.NewRepository)
+	wire.Build(auth.NewService, entity.NewService, entity.NewRepository, domain.NewService, domain.NewRepository)
 	return &auth.Service{}
 }
 

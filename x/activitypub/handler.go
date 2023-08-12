@@ -138,7 +138,7 @@ func (h Handler) Note(c echo.Context) error {
 		return c.String(http.StatusNotFound, "message not found")
 	}
 
-	entity, err := h.repo.GetEntityByCCAddr(ctx, msg.Author)
+	entity, err := h.repo.GetEntityByCCID(ctx, msg.Author)
 	if err != nil {
 		span.RecordError(err)
 		return c.String(http.StatusNotFound, "entity not found")
@@ -304,15 +304,15 @@ func (h Handler) UpdatePerson(c echo.Context) error {
 	defer span.End()
 
 	claims := c.Get("jwtclaims").(util.JwtClaims)
-	ccaddr := claims.Audience
+	ccid := claims.Audience
 
-	entity, err := h.repo.GetEntityByCCAddr(ctx, ccaddr)
+	entity, err := h.repo.GetEntityByCCID(ctx, ccid)
 	if err != nil {
 		span.RecordError(err)
 		return c.String(http.StatusNotFound, "entity not found")
 	}
 
-	if entity.CCAddr != ccaddr {
+	if entity.CCID != ccid {
 		return c.String(http.StatusUnauthorized, "unauthorized")
 	}
 
@@ -338,7 +338,7 @@ func (h Handler) CreateEntity(c echo.Context) error {
 	defer span.End()
 
 	claims := c.Get("jwtclaims").(util.JwtClaims)
-	ccaddr := claims.Audience
+	ccid := claims.Audience
 
 	var request CreateEntityRequest
 	err := c.Bind(&request)
@@ -348,7 +348,7 @@ func (h Handler) CreateEntity(c echo.Context) error {
 	}
 
 	// check if entity already exists
-	_, err = h.repo.GetEntityByCCAddr(ctx, ccaddr)
+	_, err = h.repo.GetEntityByCCID(ctx, ccid)
 	if err == nil {
 		span.RecordError(err)
 		return c.String(http.StatusBadRequest, "Entity already exists")
@@ -381,7 +381,7 @@ func (h Handler) CreateEntity(c echo.Context) error {
 
 	created, err := h.repo.CreateEntity(ctx, ApEntity{
 		ID:         request.ID,
-		CCAddr:     ccaddr,
+		CCID:       ccid,
 		Publickey:  string(q),
 		Privatekey: string(p),
 	})
@@ -398,12 +398,12 @@ func (h Handler) GetEntityID(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "GetEntityID")
 	defer span.End()
 
-	ccaddr := c.Param("ccaddr")
-	if ccaddr == "" {
+	ccid := c.Param("ccid")
+	if ccid == "" {
 		return c.String(http.StatusBadRequest, "Invalid username")
 	}
 
-	entity, err := h.repo.GetEntityByCCAddr(ctx, ccaddr)
+	entity, err := h.repo.GetEntityByCCID(ctx, ccid)
 	if err != nil {
 		span.RecordError(err)
 		return c.String(http.StatusNotFound, "entity not found")

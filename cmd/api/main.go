@@ -48,7 +48,7 @@ func main() {
 	}
 
 	log.Print("Concurrent ", util.GetFullVersion(), " starting...")
-	log.Print("Config loaded! I am: ", config.Concurrent.CCAddr)
+	log.Print("Config loaded! I am: ", config.Concurrent.CCID)
 
 	logfile, err := os.OpenFile(filepath.Join(config.Server.LogPath, "api-access.log"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
@@ -104,7 +104,7 @@ func main() {
 		&core.Character{},
 		&core.Association{},
 		&core.Stream{},
-		&core.Host{},
+		&core.Domain{},
 		&core.Entity{},
 	)
 
@@ -133,7 +133,7 @@ func main() {
 	characterHandler := SetupCharacterHandler(db, config)
 	associationHandler := SetupAssociationHandler(db, rdb, config)
 	streamHandler := SetupStreamHandler(db, rdb, config)
-	hostHandler := SetupHostHandler(db, config)
+	hostHandler := SetupDomainHandler(db, config)
 	entityHandler := SetupEntityHandler(db, config)
 	authHandler := SetupAuthHandler(db, config)
 	userkvHandler := SetupUserkvHandler(db, rdb, config)

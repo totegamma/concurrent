@@ -39,7 +39,7 @@ func (h *Handler) Boot() {
 				if err != nil {
 					log.Printf("error: %v", err)
 				}
-				ownerID := entity.CCAddr
+				ownerID := entity.CCID
 				home := person.HomeStream
 				if home == "" {
 					continue

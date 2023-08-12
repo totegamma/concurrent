@@ -91,7 +91,7 @@ func (s *Service) GetRecent(ctx context.Context, streams []string, limit int) ([
 			ID:        id,
 			Type:      typ,
 			Author:    author,
-			Host:      host,
+			Domain:    host,
 		})
 	}
 
@@ -145,7 +145,7 @@ func (s *Service) GetRange(ctx context.Context, streams []string, since string, 
 			ID:        id,
 			Type:      typ,
 			Author:    author,
-			Host:      host,
+			Domain:      host,
 		})
 	}
 
@@ -207,7 +207,7 @@ func (s *Service) Post(ctx context.Context, stream string, id string, typ string
 				Type:      typ,
 				Author:    author,
 				Owner:     owner,
-				Host:      host,
+				Domain:      host,
 			},
 		})
 		err = s.rdb.Publish(context.Background(), stream, jsonstr).Err()
@@ -239,7 +239,7 @@ func (s *Service) Post(ctx context.Context, stream string, id string, typ string
 		otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
 
 		jwt, err := util.CreateJWT(util.JwtClaims{
-			Issuer:         s.config.Concurrent.CCAddr,
+			Issuer:         s.config.Concurrent.CCID,
 			Subject:        "CONCURRENT_API",
 			Audience:       streamHost,
 			ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),

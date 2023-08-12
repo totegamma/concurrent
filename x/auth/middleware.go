@@ -49,7 +49,7 @@ func (s *Service) Restrict(principal Principal) echo.MiddlewareFunc {
 					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not known"})
 				}
 
-				if ent.Host != "" {
+				if ent.Domain != "" {
 					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not local"})
 				}
 			case ISKNOWN:
@@ -69,7 +69,7 @@ func (s *Service) Restrict(principal Principal) echo.MiddlewareFunc {
 				if claims.Subject != "CONCURRENT_API" {
 					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
 				}
-				_, err := s.host.GetByCCID(ctx, claims.Issuer)
+				_, err := s.domain.GetByCCID(ctx, claims.Issuer)
 				if err != nil {
 					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not united"})
 				}
@@ -77,7 +77,7 @@ func (s *Service) Restrict(principal Principal) echo.MiddlewareFunc {
 				if claims.Subject != "CONCURRENT_API" {
 					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
 				}
-				_, err := s.host.GetByCCID(ctx, claims.Issuer)
+				_, err := s.domain.GetByCCID(ctx, claims.Issuer)
 				if err == nil {
 					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are already united"})
 				}

@@ -42,7 +42,7 @@ type Element struct {
 	Type      string `json:"type"`
 	Author    string `json:"author"`
 	Owner     string `json:"owner"`
-	Host      string `json:"currenthost"`
+	Domain    string `json:"domain"`
 }
 
 type checkpointPacket struct {

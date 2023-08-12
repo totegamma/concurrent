@@ -132,7 +132,7 @@ func (s *Service) ResolveHost(ctx context.Context, user string) (string, error) 
 		span.RecordError(err)
 		return "", err
 	}
-	fqdn := entity.Host
+	fqdn := entity.Domain
 	if fqdn == "" {
 		fqdn = s.config.Concurrent.FQDN
 	}
@@ -164,7 +164,7 @@ func (s *Service) IsUserExists(ctx context.Context, user string) bool {
 	if err != nil {
 		return false
 	}
-	return entity.ID != "" && entity.Host == ""
+	return entity.ID != "" && entity.Domain == ""
 }
 
 // Delete deletes entity

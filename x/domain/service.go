@@ -1,4 +1,4 @@
-package host
+package domain
 
 import (
 	"context"
@@ -17,7 +17,7 @@ func NewService(repository *Repository) *Service {
 }
 
 // Upsert updates stream information
-func (s *Service) Upsert(ctx context.Context, host *core.Host) error {
+func (s *Service) Upsert(ctx context.Context, host *core.Domain) error {
 	ctx, span := tracer.Start(ctx, "ServiceUpsert")
 	defer span.End()
 
@@ -25,7 +25,7 @@ func (s *Service) Upsert(ctx context.Context, host *core.Host) error {
 }
 
 // Get returns stream information by FQDN
-func (s *Service) GetByFQDN(ctx context.Context, key string) (core.Host, error) {
+func (s *Service) GetByFQDN(ctx context.Context, key string) (core.Domain, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGet")
 	defer span.End()
 
@@ -33,7 +33,7 @@ func (s *Service) GetByFQDN(ctx context.Context, key string) (core.Host, error) 
 }
 
 // GetByCCID returns stream information by CCID
-func (s *Service) GetByCCID(ctx context.Context, key string) (core.Host, error) {
+func (s *Service) GetByCCID(ctx context.Context, key string) (core.Domain, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGetByCCID")
 	defer span.End()
 
@@ -41,7 +41,7 @@ func (s *Service) GetByCCID(ctx context.Context, key string) (core.Host, error) 
 }
 
 // List returns streamList by schema
-func (s *Service) List(ctx context.Context) ([]core.Host, error) {
+func (s *Service) List(ctx context.Context) ([]core.Domain, error) {
 	ctx, span := tracer.Start(ctx, "ServiceList")
 	defer span.End()
 
@@ -57,7 +57,7 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 }
 
 // Update updates a host
-func (s *Service) Update(ctx context.Context, host *core.Host) error {
+func (s *Service) Update(ctx context.Context, host *core.Domain) error {
 	ctx, span := tracer.Start(ctx, "ServiceUpdate")
 	defer span.End()
 

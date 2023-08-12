@@ -1,21 +1,21 @@
 import { Box, Button, Drawer, List, ListItem, ListItemButton, ListItemText, TextField, Typography } from "@mui/material"
 import { forwardRef, useEffect, useState } from "react"
 import { useApi } from "../context/apiContext"
-import { Host } from "@concurrent-world/client/dist/types/model/core"
+import { Domain } from "@concurrent-world/client/dist/types/model/core"
 
 export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
 
     const { api } = useApi()
 
-    const [hosts, setHosts] = useState<Host[]>([])
+    const [hosts, setHosts] = useState<Domain[]>([])
     const [remoteFqdn, setRemoteFqdn] = useState('')
 
-    const [selectedHost, setSelectedHost] = useState<Host | null>(null)
+    const [selectedHost, setSelectedHost] = useState<Domain | null>(null)
     const [newRole, setNewRole] = useState<string>('')
     const [newScore, setNewScore] = useState<number>(0)
 
     useEffect(() => {
-        api.getKnownHosts().then(setHosts)
+        api.getDomains().then(setHosts)
     }, [])
 
     return (
@@ -110,7 +110,7 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
                         variant="contained"
                         onClick={(_) => {
                             if (!selectedHost) return
-                            api.deleteHost(selectedHost.fqdn)
+                            api.deleteDomain(selectedHost.fqdn)
                             setSelectedHost(null)
                         }}
                         color="error"

@@ -141,19 +141,19 @@ func main() {
 	authService := SetupAuthService(db, config)
 
 	apiV1 := e.Group("")
-	apiV1.GET("/messages/:id", messageHandler.Get)
+	apiV1.GET("/message/:id", messageHandler.Get)
 	apiV1.GET("/characters", characterHandler.Get)
-	apiV1.GET("/associations/:id", associationHandler.Get)
-	apiV1.GET("/stream", streamHandler.Get)
-	apiV1.GET("/stream/recent", streamHandler.Recent)
-	apiV1.GET("/stream/list", streamHandler.List)
-	apiV1.GET("/stream/range", streamHandler.Range)
+	apiV1.GET("/association/:id", associationHandler.Get)
+	apiV1.GET("/stream/:id", streamHandler.Get)
+	apiV1.GET("/streams", streamHandler.List)
+	apiV1.GET("/streams/recent", streamHandler.Recent)
+	apiV1.GET("/streams/range", streamHandler.Range)
 	apiV1.GET("/socket", socketHandler.Connect)
-	apiV1.GET("/host/:id", domainHandler.Get) //TODO deprecated. remove later
-	apiV1.GET("/host", domainHandler.Profile)
-	apiV1.GET("/host/list", domainHandler.List)
+	apiV1.GET("/domain", domainHandler.Profile)
+	apiV1.GET("/domain/:id", domainHandler.Get)
+	apiV1.GET("/domains", domainHandler.List)
 	apiV1.GET("/entity/:id", entityHandler.Get)
-	apiV1.GET("/entity/list", entityHandler.List)
+	apiV1.GET("/entities", entityHandler.List)
 	apiV1.GET("/auth/claim", authHandler.Claim)
 	apiV1.GET("/profile", func(c echo.Context) error {
 		profile := config.Profile
@@ -164,9 +164,9 @@ func main() {
 	})
 
 	apiV1R := apiV1.Group("", auth.JWT)
-	apiV1R.PUT("/host", domainHandler.Upsert, authService.Restrict(auth.ISADMIN))
-	apiV1R.POST("/host/hello", domainHandler.Hello, authService.Restrict(auth.ISUNUNITED))
-	apiV1R.DELETE("/host/:id", domainHandler.Delete, authService.Restrict(auth.ISADMIN))
+	apiV1R.PUT("/domain", domainHandler.Upsert, authService.Restrict(auth.ISADMIN))
+	apiV1R.DELETE("/domain/:id", domainHandler.Delete, authService.Restrict(auth.ISADMIN))
+	apiV1R.POST("/domains/hello", domainHandler.Hello, authService.Restrict(auth.ISUNUNITED))
 	apiV1R.GET("/admin/sayhello/:fqdn", domainHandler.SayHello, authService.Restrict(auth.ISADMIN))
 
 	apiV1R.POST("/entity", entityHandler.Register, authService.Restrict(auth.ISUNKNOWN))
@@ -174,17 +174,17 @@ func main() {
 	apiV1R.PUT("/entity/:id", entityHandler.Update, authService.Restrict(auth.ISADMIN))
 	apiV1R.POST("/admin/entity", entityHandler.Register, authService.Restrict(auth.ISADMIN))
 
-	apiV1R.POST("/messages", messageHandler.Post, authService.Restrict(auth.ISLOCAL))
-	apiV1R.DELETE("/messages", messageHandler.Delete, authService.Restrict(auth.ISLOCAL))
+	apiV1R.POST("/message", messageHandler.Post, authService.Restrict(auth.ISLOCAL))
+	apiV1R.DELETE("/message/:id", messageHandler.Delete, authService.Restrict(auth.ISLOCAL))
 
-	apiV1R.PUT("/characters", characterHandler.Put, authService.Restrict(auth.ISLOCAL))
+	apiV1R.PUT("/character", characterHandler.Put, authService.Restrict(auth.ISLOCAL))
 
-	apiV1R.POST("/associations", associationHandler.Post, authService.Restrict(auth.ISKNOWN))
-	apiV1R.DELETE("/associations", associationHandler.Delete, authService.Restrict(auth.ISKNOWN))
+	apiV1R.POST("/association", associationHandler.Post, authService.Restrict(auth.ISKNOWN))
+	apiV1R.DELETE("/association/:id", associationHandler.Delete, authService.Restrict(auth.ISKNOWN))
 
-	apiV1R.PUT("/stream", streamHandler.Put, authService.Restrict(auth.ISLOCAL))
-	apiV1R.POST("/stream/checkpoint", streamHandler.Checkpoint, authService.Restrict(auth.ISUNITED))
-	apiV1R.DELETE("/stream/:stream", streamHandler.Delete, authService.Restrict(auth.ISLOCAL))
+	apiV1R.PUT("/stream/:id", streamHandler.Put, authService.Restrict(auth.ISLOCAL))
+	apiV1R.POST("/streams/checkpoint", streamHandler.Checkpoint, authService.Restrict(auth.ISUNITED))
+	apiV1R.DELETE("/stream/:id", streamHandler.Delete, authService.Restrict(auth.ISLOCAL))
 	apiV1R.DELETE("/stream/:stream/:element", streamHandler.Remove, authService.Restrict(auth.ISLOCAL))
 
 	apiV1R.GET("/kv/:key", userkvHandler.Get, authService.Restrict(auth.ISLOCAL))

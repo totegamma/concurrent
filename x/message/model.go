@@ -16,10 +16,6 @@ type messagesResponse struct {
 	Messages []core.Message `json:"messages"`
 }
 
-type deleteQuery struct {
-	ID string `json:"id"`
-}
-
 type postRequest struct {
 	SignedObject string   `json:"signedObject"`
 	Signature    string   `json:"signature"`

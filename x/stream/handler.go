@@ -30,8 +30,8 @@ func (h Handler) Get(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
 	defer span.End()
 
-	streamStr := c.QueryParam("stream")
-	stream, err := h.service.Get(ctx, streamStr)
+	streamID := c.Param("id")
+	stream, err := h.service.Get(ctx, streamID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return c.JSON(http.StatusNotFound, echo.Map{"error": "User not found"})
@@ -114,7 +114,7 @@ func (h Handler) Delete(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerDelete")
 	defer span.End()
 
-	streamID := c.Param("stream")
+	streamID := c.Param("id")
 	split := strings.Split(streamID, "@")
 	if len(split) == 2 {
 		streamID = split[0]

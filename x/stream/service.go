@@ -229,7 +229,7 @@ func (s *Service) Post(ctx context.Context, stream string, id string, typ string
 			span.RecordError(err)
 			return err
 		}
-		req, err := http.NewRequest("POST", "https://"+streamHost+"/api/v1/stream/checkpoint", bytes.NewBuffer(packetStr))
+		req, err := http.NewRequest("POST", "https://"+streamHost+"/api/v1/streams/checkpoint", bytes.NewBuffer(packetStr))
 
 		if err != nil {
 			span.RecordError(err)

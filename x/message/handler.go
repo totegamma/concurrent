@@ -67,13 +67,9 @@ func (h Handler) Delete(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerDelete")
 	defer span.End()
 
-	var request deleteQuery
-	err := c.Bind(&request)
-	if err != nil {
-		return err
-	}
+	messageID := c.Param("id")
 
-	target, err := h.service.Get(ctx, request.ID)
+	target, err := h.service.Get(ctx, messageID)
 	if err != nil {
 		return c.JSON(http.StatusNotFound, echo.Map{"error": "target message not found"})
 	}
@@ -84,7 +80,7 @@ func (h Handler) Delete(c echo.Context) error {
 		return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action"})
 	}
 
-	deleted, err := h.service.Delete(ctx, request.ID)
+	deleted, err := h.service.Delete(ctx, messageID)
 	if err != nil {
 		return err
 	}

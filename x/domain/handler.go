@@ -176,7 +176,7 @@ func (h Handler) SayHello(c echo.Context) error {
 		JWTID:          xid.New().String(),
 	}, h.config.Concurrent.Prvkey)
 
-	req, err := http.NewRequest("POST", "https://"+target+"/api/v1/host/hello", bytes.NewBuffer(meStr))
+	req, err := http.NewRequest("POST", "https://"+target+"/api/v1/domains/hello", bytes.NewBuffer(meStr))
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())

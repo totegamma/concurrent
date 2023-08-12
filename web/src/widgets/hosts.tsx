@@ -53,12 +53,12 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
                             <ListItemButton
                                 onClick={() => {
                                     setNewRole(host.role)
-                                    //setNewScore(host.score)
+                                    setNewScore(host.score)
                                     setSelectedHost(host)
                                 }}
                             >
                                 <ListItemText primary={host.fqdn} secondary={`${host.ccid}`} />
-                                {/* <ListItemText>{`${host.role}(${host.score})`}</ListItemText> */}
+                                <ListItemText>{`${host.role}(${host.score})`}</ListItemText>
                             </ListItemButton>
                         </ListItem>
                     ))}
@@ -101,7 +101,13 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
                     <Button
                         variant="contained"
                         onClick={(_) => {
-                            /* TODO */
+                            if (!selectedHost) return
+                            api.updateDomain({
+                                ...selectedHost,
+                                score: newScore,
+                                role: newRole
+                            })
+                            setSelectedHost(null)
                         }}
                     >
                         Update

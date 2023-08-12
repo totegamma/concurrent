@@ -133,7 +133,7 @@ func main() {
 	characterHandler := SetupCharacterHandler(db, config)
 	associationHandler := SetupAssociationHandler(db, rdb, config)
 	streamHandler := SetupStreamHandler(db, rdb, config)
-	hostHandler := SetupDomainHandler(db, config)
+	domainHandler := SetupDomainHandler(db, config)
 	entityHandler := SetupEntityHandler(db, config)
 	authHandler := SetupAuthHandler(db, config)
 	userkvHandler := SetupUserkvHandler(db, rdb, config)
@@ -149,9 +149,9 @@ func main() {
 	apiV1.GET("/stream/list", streamHandler.List)
 	apiV1.GET("/stream/range", streamHandler.Range)
 	apiV1.GET("/socket", socketHandler.Connect)
-	apiV1.GET("/host/:id", hostHandler.Get) //TODO deprecated. remove later
-	apiV1.GET("/host", hostHandler.Profile)
-	apiV1.GET("/host/list", hostHandler.List)
+	apiV1.GET("/host/:id", domainHandler.Get) //TODO deprecated. remove later
+	apiV1.GET("/host", domainHandler.Profile)
+	apiV1.GET("/host/list", domainHandler.List)
 	apiV1.GET("/entity/:id", entityHandler.Get)
 	apiV1.GET("/entity/list", entityHandler.List)
 	apiV1.GET("/auth/claim", authHandler.Claim)
@@ -164,10 +164,10 @@ func main() {
 	})
 
 	apiV1R := apiV1.Group("", auth.JWT)
-	apiV1R.PUT("/host", hostHandler.Upsert, authService.Restrict(auth.ISADMIN))
-	apiV1R.POST("/host/hello", hostHandler.Hello, authService.Restrict(auth.ISUNUNITED))
-	apiV1R.DELETE("/host/:id", hostHandler.Delete, authService.Restrict(auth.ISADMIN))
-	apiV1R.GET("/admin/sayhello/:fqdn", hostHandler.SayHello, authService.Restrict(auth.ISADMIN))
+	apiV1R.PUT("/host", domainHandler.Upsert, authService.Restrict(auth.ISADMIN))
+	apiV1R.POST("/host/hello", domainHandler.Hello, authService.Restrict(auth.ISUNUNITED))
+	apiV1R.DELETE("/host/:id", domainHandler.Delete, authService.Restrict(auth.ISADMIN))
+	apiV1R.GET("/admin/sayhello/:fqdn", domainHandler.SayHello, authService.Restrict(auth.ISADMIN))
 
 	apiV1R.POST("/entity", entityHandler.Register, authService.Restrict(auth.ISUNKNOWN))
 	apiV1R.DELETE("/entity/:id", entityHandler.Delete, authService.Restrict(auth.ISADMIN))

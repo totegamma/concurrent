@@ -243,4 +243,3 @@ func (h Handler) Update(c echo.Context) error {
 	}
 	return c.String(http.StatusOK, "{\"message\": \"accept\"}")
 }
-

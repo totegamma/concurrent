@@ -145,7 +145,7 @@ func (s *Service) GetRange(ctx context.Context, streams []string, since string, 
 			ID:        id,
 			Type:      typ,
 			Author:    author,
-			Domain:      host,
+			Domain:    host,
 		})
 	}
 
@@ -207,7 +207,7 @@ func (s *Service) Post(ctx context.Context, stream string, id string, typ string
 				Type:      typ,
 				Author:    author,
 				Owner:     owner,
-				Domain:      host,
+				Domain:    host,
 			},
 		})
 		err = s.rdb.Publish(context.Background(), stream, jsonstr).Err()
@@ -347,7 +347,7 @@ func (s *Service) GetElement(ctx context.Context, stream string, id string) (Ele
 		Timestamp: result[0].ID,
 		ID:        result[0].Values["id"].(string),
 		Type:      result[0].Values["type"].(string),
-		Author:     result[0].Values["author"].(string),
+		Author:    result[0].Values["author"].(string),
 	}, nil
 }
 

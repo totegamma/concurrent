@@ -42,11 +42,11 @@ func (h Handler) Get(c echo.Context) error {
 		return err
 	}
 	publicInfo := SafeEntity{
-		ID:    entity.ID,
-		Role:  entity.Role,
-		Domain:entity.Domain,
-		Certs: entity.Certs,
-		CDate: entity.CDate,
+		ID:     entity.ID,
+		Role:   entity.Role,
+		Domain: entity.Domain,
+		Certs:  entity.Certs,
+		CDate:  entity.CDate,
 	}
 	return c.JSON(http.StatusOK, publicInfo)
 }

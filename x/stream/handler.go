@@ -8,9 +8,9 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
+	"github.com/totegamma/concurrent/x/util"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
-	"github.com/totegamma/concurrent/x/util"
 )
 
 var tracer = otel.Tracer("stream")

@@ -7,8 +7,8 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/domain"
+	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/util"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -196,10 +196,10 @@ func (a *Agent) pullRemoteEntities(ctx context.Context, remote core.Domain) erro
 		}
 
 		err := a.entity.Upsert(ctx, &core.Entity{
-			ID:    entity.ID,
-			Domain:  hostname,
-			Certs: certs,
-			Meta:  "null",
+			ID:     entity.ID,
+			Domain: hostname,
+			Certs:  certs,
+			Meta:   "null",
 		})
 
 		if err != nil {

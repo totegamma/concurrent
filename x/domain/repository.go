@@ -78,4 +78,3 @@ func (r *Repository) Update(ctx context.Context, host *core.Domain) error {
 
 	return r.db.WithContext(ctx).Model(&core.Domain{}).Where("id = ?", host.ID).Updates(&host).Error
 }
-

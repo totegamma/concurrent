@@ -11,11 +11,11 @@ type GatewayConfig struct {
 }
 
 type Service struct {
-	Name string `yaml:"name"`
-	Host string `yaml:"host"`
-	Port int    `yaml:"port"`
-	Path string `yaml:"path"`
-	PreservePath bool `yaml:"preservePath"`
+	Name         string `yaml:"name"`
+	Host         string `yaml:"host"`
+	Port         int    `yaml:"port"`
+	Path         string `yaml:"path"`
+	PreservePath bool   `yaml:"preservePath"`
 }
 
 // Load loads concurrent config from given path

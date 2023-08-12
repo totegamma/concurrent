@@ -26,6 +26,7 @@ import (
 
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
@@ -33,7 +34,6 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
-	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel/trace"
 	"gorm.io/plugin/opentelemetry/tracing"
 )
@@ -176,7 +176,7 @@ func main() {
 		proxy.Director = func(req *http.Request) {
 			req.URL.Scheme = targetUrl.Scheme
 			req.URL.Host = targetUrl.Host
-			if (service.PreservePath) {
+			if service.PreservePath {
 				req.URL.Path = singleJoiningSlash(targetUrl.Path, req.URL.Path)
 			} else {
 				req.URL.Path = singleJoiningSlash(targetUrl.Path, strings.TrimPrefix(req.URL.Path, service.Path))
@@ -186,7 +186,7 @@ func main() {
 
 		proxy.Transport = otelhttp.NewTransport(http.DefaultTransport)
 
-		e.Any(service.Path + "/*", func(c echo.Context) error {
+		e.Any(service.Path+"/*", func(c echo.Context) error {
 			proxy.ServeHTTP(c.Response(), c.Request())
 			return nil
 		})
@@ -264,4 +264,3 @@ func singleJoiningSlash(a, b string) string {
 	}
 	return a + b
 }
-

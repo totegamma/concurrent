@@ -11,8 +11,8 @@ import (
 	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/character"
-	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/domain"
+	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/socket"
 	"github.com/totegamma/concurrent/x/stream"
@@ -82,4 +82,3 @@ func SetupUserkvHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *use
 	wire.Build(userkvHandlerProvider, entity.NewService, entity.NewRepository)
 	return &userkv.Handler{}
 }
-

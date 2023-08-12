@@ -226,3 +226,21 @@ func (h Handler) Delete(c echo.Context) error {
 	}
 	return c.String(http.StatusOK, "{\"message\": \"accept\"}")
 }
+
+// Update updates a host in the registry
+func (h Handler) Update(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerUpdate")
+	defer span.End()
+
+	var host core.Host
+	err := c.Bind(&host)
+	if err != nil {
+		return err
+	}
+	err = h.service.Update(ctx, &host)
+	if err != nil {
+		return err
+	}
+	return c.String(http.StatusOK, "{\"message\": \"accept\"}")
+}
+

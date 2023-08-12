@@ -14,13 +14,19 @@ export const Entities = forwardRef<HTMLDivElement>((props, ref): JSX.Element => 
     const [newRole, setNewRole] = useState<string>('')
     const [newScore, setNewScore] = useState<number>(0)
 
-    useEffect(() => {
+    const refresh = () => {
         api.getEntities().then(setEntities)
+    }
+
+    useEffect(() => {
+        refresh()
     }, [])
 
     return (
         <div ref={ref} {...props}>
-            <Box sx={{ position: 'absolute', width: '100%' }}>
+            <Box sx={{
+                width: '100%'
+            }}>
                 <Typography>Entities</Typography>
                 <Box sx={{ display: 'flex', gap: '10px' }}>
                     <TextField
@@ -45,18 +51,18 @@ export const Entities = forwardRef<HTMLDivElement>((props, ref): JSX.Element => 
                     disablePadding
                 >
                     {entities.map((entity) => (
-                        <ListItem key={entity.ccaddr}
+                        <ListItem key={entity.ccid}
                             disablePadding
                         >
                             <ListItemButton
                                 onClick={() => {
                                     setNewRole(entity.role)
-                                    // setNewScore(entity.score)
+                                    setNewScore(entity.score)
                                     setSelectedEntity(entity)
                                 }}
                             >
-                                <ListItemText primary={entity.ccaddr} secondary={`${entity.cdate}`} />
-                                {/* <ListItemText>{`${entity.role}(${entity.score})`}</ListItemText> */}
+                                <ListItemText primary={entity.ccid} secondary={`${entity.cdate}`} />
+                                <ListItemText>{`${entity.role}(${entity.score})`}</ListItemText>
                             </ListItemButton>
                         </ListItem>
                     ))}
@@ -69,6 +75,7 @@ export const Entities = forwardRef<HTMLDivElement>((props, ref): JSX.Element => 
                     setSelectedEntity(null)
                 }}
             >
+                {selectedEntity && 
                 <Box
                     width="50vw"
                     display="flex"
@@ -76,7 +83,7 @@ export const Entities = forwardRef<HTMLDivElement>((props, ref): JSX.Element => 
                     gap={1}
                     padding={2}
                 >
-                    <Typography>{selectedEntity?.ccaddr}</Typography>
+                    <Typography>{selectedEntity.ccid}</Typography>
                     <pre>{JSON.stringify(selectedEntity, null, 2)}</pre>
                     <TextField
                         label="new role"
@@ -100,6 +107,13 @@ export const Entities = forwardRef<HTMLDivElement>((props, ref): JSX.Element => 
                         variant="contained"
                         onClick={(_) => {
                             if (!token) return
+                            api.updateEntity({
+                                ...selectedEntity,
+                                role: newRole,
+                                score: newScore
+                            }).then(() => {
+                                refresh()
+                            })
                         }}
                     >
                         Update
@@ -108,14 +122,17 @@ export const Entities = forwardRef<HTMLDivElement>((props, ref): JSX.Element => 
                         variant="contained"
                         onClick={(_) => {
                             if (!selectedEntity) return
-                            api.deleteEntity(selectedEntity.ccaddr)
-                            setSelectedEntity(null)
+                            api.deleteEntity(selectedEntity.ccid).then(() => {
+                                setSelectedEntity(null)
+                                refresh()
+                            })
                         }}
                         color="error"
                     >
                         Delete
                     </Button>
                 </Box>
+                }
             </Drawer>
         </div>
     )

@@ -6,7 +6,7 @@ settings:
 
 dependencies:
   '@concurrent-world/client':
-    specifier: ^1.5.6
+    specifier: link:../../concurrent-client
     version: 1.5.6
   '@emotion/react':
     specifier: ^11.11.0

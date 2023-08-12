@@ -18,7 +18,7 @@ export const Login = (): JSX.Element => {
             encoded.replace('-', '+').replace('_', '/') + '=='.slice((2 - encoded.length * 3) & 3)
         )
         const claims = JSON.parse(payload)
-        const ccid = claims.iss
+        const ccid = claims.aud
 
         api.readEntity(ccid).then((entity) => {
             if (!entity) {

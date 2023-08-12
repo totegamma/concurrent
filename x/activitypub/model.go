@@ -3,7 +3,7 @@ package activitypub
 // ApEntity is a db model of an ActivityPub entity.
 type ApEntity struct {
 	ID         string `json:"id" gorm:"type:text"`
-	CCAddr     string `json:"ccaddr" gorm:"type:char(42)"`
+	CCID       string `json:"ccid" gorm:"type:char(42)"`
 	Publickey  string `json:"publickey" gorm:"type:text"`
 	Privatekey string `json:"privatekey" gorm:"type:text"`
 }

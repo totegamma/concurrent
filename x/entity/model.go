@@ -6,14 +6,14 @@ import (
 )
 
 type postRequest struct {
-	CCAddr string `json:"ccaddr"`
+	ID string `json:"id"`
 	Meta   string `json:"meta"`
 	Token  string `json:"token"`
 }
 
 // SafeEntity is safe verison of entity
 type SafeEntity struct {
-	ID    string    `json:"ccaddr"`
+	ID    string    `json:"id"`
 	Role  string    `json:"role"`
 	Score int       `json:"score"`
 	Host  string    `json:"host"`

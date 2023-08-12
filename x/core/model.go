@@ -51,7 +51,7 @@ type Entity struct {
 // mutable
 type Host struct {
 	ID          string    `json:"fqdn" gorm:"type:text"` // FQDN
-	CCAddr      string    `json:"ccaddr" gorm:"type:char(42)"`
+	CCID        string    `json:"ccid" gorm:"type:char(42)"`
 	Role        string    `json:"role" gorm:"type:text;default:default"`
 	Score       int       `json:"score" gorm:"type:integer;default:0"`
 	Pubkey      string    `json:"pubkey" gorm:"type:text"`

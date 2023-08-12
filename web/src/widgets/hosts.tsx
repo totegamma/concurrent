@@ -20,7 +20,9 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
 
     return (
         <div ref={ref} {...props}>
-            <Box sx={{ position: 'absolute', width: '100%' }}>
+            <Box
+                width="100%"
+            >
                 <Box sx={{ display: 'flex', gap: '10px' }}>
                     <TextField
                         label="remote fqdn"
@@ -45,7 +47,7 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
                     disablePadding
                 >
                     {hosts.map((host) => (
-                        <ListItem key={host.ccaddr}
+                        <ListItem key={host.ccid}
                             disablePadding
                         >
                             <ListItemButton
@@ -55,7 +57,7 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
                                     setSelectedHost(host)
                                 }}
                             >
-                                <ListItemText primary={host.fqdn} secondary={`${host.ccaddr}`} />
+                                <ListItemText primary={host.fqdn} secondary={`${host.ccid}`} />
                                 {/* <ListItemText>{`${host.role}(${host.score})`}</ListItemText> */}
                             </ListItemButton>
                         </ListItem>
@@ -76,7 +78,7 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
                     gap={1}
                     padding={2}
                 >
-                    <Typography>{selectedHost?.ccaddr}</Typography>
+                    <Typography>{selectedHost?.ccid}</Typography>
                     <pre>{JSON.stringify(selectedHost, null, 2)}</pre>
                     <TextField
                         label="new role"

@@ -56,6 +56,14 @@ func (s *Service) Delete(ctx context.Context, id string) error {
 	return s.repository.Delete(ctx, id)
 }
 
+// Update updates a host
+func (s *Service) Update(ctx context.Context, host *core.Host) error {
+	ctx, span := tracer.Start(ctx, "ServiceUpdate")
+	defer span.End()
+
+	return s.repository.Update(ctx, host)
+}
+
 // UpdateScrapeTime updates scrape time
 func (s *Service) UpdateScrapeTime(ctx context.Context, id string, scrapeTime time.Time) error {
 	ctx, span := tracer.Start(ctx, "ServiceUpdateScrapeTime")

@@ -25,13 +25,13 @@ func (r Repository) GetEntityByID(ctx context.Context, id string) (ApEntity, err
 	return entity, result.Error
 }
 
-// GetEntityByCCAddr returns an entity by CCAddr.
-func (r Repository) GetEntityByCCAddr(ctx context.Context, ccaddr string) (ApEntity, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetEntityByCCAddr")
+// GetEntityByCCID returns an entity by CCiD.
+func (r Repository) GetEntityByCCID(ctx context.Context, ccid string) (ApEntity, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryGetEntityByCCID")
 	defer span.End()
 
 	var entity ApEntity
-	result := r.db.WithContext(ctx).Where("cc_addr = ?", ccaddr).First(&entity)
+	result := r.db.WithContext(ctx).Where("cc_addr = ?", ccid).First(&entity)
 	return entity, result.Error
 }
 

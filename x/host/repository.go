@@ -70,3 +70,12 @@ func (r *Repository) UpdateScrapeTime(ctx context.Context, id string, scrapeTime
 
 	return r.db.WithContext(ctx).Model(&core.Host{}).Where("id = ?", id).Update("last_scraped", scrapeTime).Error
 }
+
+// Update is for updating host
+func (r *Repository) Update(ctx context.Context, host *core.Host) error {
+	ctx, span := tracer.Start(ctx, "RepositoryUpdate")
+	defer span.End()
+
+	return r.db.WithContext(ctx).Model(&core.Host{}).Where("id = ?", host.ID).Updates(&host).Error
+}
+

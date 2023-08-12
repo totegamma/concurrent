@@ -182,7 +182,7 @@ func main() {
 	apiV1R.POST("/association", associationHandler.Post, authService.Restrict(auth.ISKNOWN))
 	apiV1R.DELETE("/association/:id", associationHandler.Delete, authService.Restrict(auth.ISKNOWN))
 
-	apiV1R.PUT("/stream/:id", streamHandler.Put, authService.Restrict(auth.ISLOCAL))
+	apiV1R.PUT("/stream", streamHandler.Put, authService.Restrict(auth.ISLOCAL))
 	apiV1R.POST("/streams/checkpoint", streamHandler.Checkpoint, authService.Restrict(auth.ISUNITED))
 	apiV1R.DELETE("/stream/:id", streamHandler.Delete, authService.Restrict(auth.ISLOCAL))
 	apiV1R.DELETE("/stream/:stream/:element", streamHandler.Remove, authService.Restrict(auth.ISLOCAL))

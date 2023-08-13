@@ -24,8 +24,8 @@ type Association struct {
 // mutable
 type Character struct {
 	ID           string        `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
-	Author       string        `json:"author" gorm:"type:varchar(42);uniqueIndex:uniq_character"`
-	Schema       string        `json:"schema" gorm:"type:varchar(256);uniqueIndex:uniq_character"`
+	Author       string        `json:"author" gorm:"type:varchar(42)"`
+	Schema       string        `json:"schema" gorm:"type:varchar(256)"`
 	Payload      string        `json:"payload" gorm:"type:json"`
 	Signature    string        `json:"signature" gorm:"type:char(130)"`
 	Associations []Association `json:"associations" gorm:"polymorphic:Target"`

@@ -42,11 +42,11 @@ func (h Handler) Get(c echo.Context) error {
 		return err
 	}
 	publicInfo := SafeEntity{
-		ID:    entity.ID,
-		Role:  entity.Role,
-		Host:  entity.Host,
-		Certs: entity.Certs,
-		CDate: entity.CDate,
+		ID:     entity.ID,
+		Role:   entity.Role,
+		Domain: entity.Domain,
+		Certs:  entity.Certs,
+		CDate:  entity.CDate,
 	}
 	return c.JSON(http.StatusOK, publicInfo)
 }
@@ -81,7 +81,7 @@ func (h Handler) Register(c echo.Context) error {
 		jwtID = claims.JWTID
 	}
 
-	err = h.service.Register(ctx, request.CCAddr, request.Meta, inviter)
+	err = h.service.Register(ctx, request.CCID, request.Meta, inviter)
 	if err != nil {
 		span.RecordError(err)
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
@@ -103,7 +103,7 @@ func (h Handler) Create(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	err = h.service.Create(ctx, request.CCAddr, request.Meta)
+	err = h.service.Create(ctx, request.CCID, request.Meta)
 	if err != nil {
 		return err
 	}

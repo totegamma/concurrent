@@ -1,25 +1,28 @@
 import { Box, Button, Drawer, List, ListItem, ListItemButton, ListItemText, TextField, Typography } from "@mui/material"
 import { forwardRef, useEffect, useState } from "react"
-import { getHosts, sayHello, deleteHost } from "../util"
-import { Host } from "../model"
+import { useApi } from "../context/apiContext"
+import { Domain } from "@concurrent-world/client/dist/types/model/core"
 
 export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
 
-    const token = localStorage.getItem("JWT")
-    const [hosts, setHosts] = useState<Host[]>([])
+    const { api } = useApi()
+
+    const [hosts, setHosts] = useState<Domain[]>([])
     const [remoteFqdn, setRemoteFqdn] = useState('')
 
-    const [selectedHost, setSelectedHost] = useState<Host | null>(null)
+    const [selectedHost, setSelectedHost] = useState<Domain | null>(null)
     const [newRole, setNewRole] = useState<string>('')
     const [newScore, setNewScore] = useState<number>(0)
 
     useEffect(() => {
-        getHosts().then(setHosts)
+        api.getDomains().then(setHosts)
     }, [])
 
     return (
         <div ref={ref} {...props}>
-            <Box sx={{ position: 'absolute', width: '100%' }}>
+            <Box
+                width="100%"
+            >
                 <Box sx={{ display: 'flex', gap: '10px' }}>
                     <TextField
                         label="remote fqdn"
@@ -33,8 +36,7 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
                     <Button
                         variant="contained"
                         onClick={(_) => {
-                            if (!token) return
-                            sayHello(token, remoteFqdn)
+                            api.sayHello(remoteFqdn)
                         }}
                     >
                         GO
@@ -45,7 +47,7 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
                     disablePadding
                 >
                     {hosts.map((host) => (
-                        <ListItem key={host.ccaddr}
+                        <ListItem key={host.ccid}
                             disablePadding
                         >
                             <ListItemButton
@@ -55,7 +57,7 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
                                     setSelectedHost(host)
                                 }}
                             >
-                                <ListItemText primary={host.fqdn} secondary={`${host.ccaddr}`} />
+                                <ListItemText primary={host.fqdn} secondary={`${host.ccid}`} />
                                 <ListItemText>{`${host.role}(${host.score})`}</ListItemText>
                             </ListItemButton>
                         </ListItem>
@@ -76,7 +78,7 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
                     gap={1}
                     padding={2}
                 >
-                    <Typography>{selectedHost?.ccaddr}</Typography>
+                    <Typography>{selectedHost?.ccid}</Typography>
                     <pre>{JSON.stringify(selectedHost, null, 2)}</pre>
                     <TextField
                         label="new role"
@@ -99,7 +101,13 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
                     <Button
                         variant="contained"
                         onClick={(_) => {
-                            if (!token) return
+                            if (!selectedHost) return
+                            api.updateDomain({
+                                ...selectedHost,
+                                score: newScore,
+                                role: newRole
+                            })
+                            setSelectedHost(null)
                         }}
                     >
                         Update
@@ -107,9 +115,8 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
                     <Button
                         variant="contained"
                         onClick={(_) => {
-                            if (!token) return
                             if (!selectedHost) return
-                            deleteHost(token, selectedHost.fqdn)
+                            api.deleteDomain(selectedHost.fqdn)
                             setSelectedHost(null)
                         }}
                         color="error"

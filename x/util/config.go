@@ -23,7 +23,7 @@ type Server struct {
 
 type Concurrent struct {
 	FQDN         string   `yaml:"fqdn"`
-	CCAddr       string   `yaml:"ccaddr"`
+	CCID         string   `yaml:"ccid"`
 	Pubkey       string   `yaml:"publickey"`
 	Prvkey       string   `yaml:"privatekey"`
 	Admins       []string `yaml:"admins"`

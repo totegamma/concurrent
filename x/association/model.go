@@ -17,10 +17,6 @@ type Element struct {
 	ID string `json:"id"`
 }
 
-type deleteQuery struct {
-	ID string `json:"id"`
-}
-
 type postRequest struct {
 	SignedObject string   `json:"signedObject"`
 	Signature    string   `json:"signature"`

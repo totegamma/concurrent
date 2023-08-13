@@ -1,4 +1,4 @@
-package host
+package domain
 
 import (
 	"bytes"
@@ -44,7 +44,7 @@ func (h Handler) Get(c echo.Context) error {
 	host, err := h.service.GetByFQDN(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return c.JSON(http.StatusNotFound, echo.Map{"error": "Host not found"})
+			return c.JSON(http.StatusNotFound, echo.Map{"error": "Domain not found"})
 		}
 		return err
 	}
@@ -52,12 +52,12 @@ func (h Handler) Get(c echo.Context) error {
 
 }
 
-// Upsert updates Host registry
+// Upsert updates Domain registry
 func (h Handler) Upsert(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerUpsert")
 	defer span.End()
 
-	var host core.Host
+	var host core.Domain
 	err := c.Bind(&host)
 	if err != nil {
 		return err
@@ -88,7 +88,7 @@ func (h Handler) Profile(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, Profile{
 		ID:     h.config.Concurrent.FQDN,
-		CCAddr: h.config.Concurrent.CCAddr,
+		CCID:   h.config.Concurrent.CCID,
 		Pubkey: h.config.Concurrent.Pubkey,
 	})
 }
@@ -130,16 +130,16 @@ func (h Handler) Hello(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "validation failed")
 	}
 
-	h.service.Upsert(ctx, &core.Host{
+	h.service.Upsert(ctx, &core.Domain{
 		ID:     newcomer.ID,
-		CCAddr: newcomer.CCAddr,
+		CCID:   newcomer.CCID,
 		Role:   "unassigned",
 		Pubkey: newcomer.Pubkey,
 	})
 
 	return c.JSON(http.StatusOK, Profile{
 		ID:     h.config.Concurrent.FQDN,
-		CCAddr: h.config.Concurrent.CCAddr,
+		CCID:   h.config.Concurrent.CCID,
 		Pubkey: h.config.Concurrent.Pubkey,
 	})
 }
@@ -159,7 +159,7 @@ func (h Handler) SayHello(c echo.Context) error {
 
 	me := Profile{
 		ID:     h.config.Concurrent.FQDN,
-		CCAddr: h.config.Concurrent.CCAddr,
+		CCID:   h.config.Concurrent.CCID,
 		Pubkey: h.config.Concurrent.Pubkey,
 	}
 
@@ -167,8 +167,8 @@ func (h Handler) SayHello(c echo.Context) error {
 
 	// challenge
 	jwt, err := util.CreateJWT(util.JwtClaims{
-		Issuer:         h.config.Concurrent.CCAddr,
-		Subject:        "concurrent",
+		Issuer:         h.config.Concurrent.CCID,
+		Subject:        "CONCURRENT_API",
 		Audience:       target,
 		ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
 		NotBefore:      strconv.FormatInt(time.Now().Unix(), 10),
@@ -176,7 +176,7 @@ func (h Handler) SayHello(c echo.Context) error {
 		JWTID:          xid.New().String(),
 	}, h.config.Concurrent.Prvkey)
 
-	req, err := http.NewRequest("POST", "https://"+target+"/api/v1/host/hello", bytes.NewBuffer(meStr))
+	req, err := http.NewRequest("POST", "https://"+target+"/api/v1/domains/hello", bytes.NewBuffer(meStr))
 	if err != nil {
 		span.RecordError(err)
 		span.SetStatus(codes.Error, err.Error())
@@ -204,9 +204,9 @@ func (h Handler) SayHello(c echo.Context) error {
 		return c.String(http.StatusBadRequest, "validation failed")
 	}
 
-	h.service.Upsert(ctx, &core.Host{
+	h.service.Upsert(ctx, &core.Domain{
 		ID:     fetchedProf.ID,
-		CCAddr: fetchedProf.CCAddr,
+		CCID:   fetchedProf.CCID,
 		Role:   "unassigned",
 		Pubkey: fetchedProf.Pubkey,
 	})
@@ -221,6 +221,23 @@ func (h Handler) Delete(c echo.Context) error {
 
 	id := c.Param("id")
 	err := h.service.Delete(ctx, id)
+	if err != nil {
+		return err
+	}
+	return c.String(http.StatusOK, "{\"message\": \"accept\"}")
+}
+
+// Update updates a host in the registry
+func (h Handler) Update(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerUpdate")
+	defer span.End()
+
+	var host core.Domain
+	err := c.Bind(&host)
+	if err != nil {
+		return err
+	}
+	err = h.service.Update(ctx, &host)
 	if err != nil {
 		return err
 	}

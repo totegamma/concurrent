@@ -1,4 +1,4 @@
-# this is example. you must replace ccaddress and keys before deploy.
+# this is example. you must replace ccid and keys before deploy.
 
 server:
   dsn: "host=db user=postgres password=postgres dbname=concurrent port=5432 sslmode=disable"
@@ -15,7 +15,7 @@ concurrent:
   registration: open
   # server agent account
   # it is handy to generate these info with concurrent.world devtool
-  ccaddr: CCxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+  ccid: CCxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
   publickey: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
   privatekey: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
   # server admin CCIDs

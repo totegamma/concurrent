@@ -1,0 +1,20 @@
+services:
+  - name: webui
+    host: ccwebui
+    port: 80
+    path: /web
+    preservePath: true
+  - name: concurrent
+    host: ccapi
+    port: 8000
+    path: /api/v1
+  - name: activitypub
+    host: ccactivitypub
+    port: 8000
+    path: /ap
+    preservePath: true
+  - name: webfinger
+    host: ccactivitypub
+    port: 8000
+    path: /.well-known
+    preservePath: true

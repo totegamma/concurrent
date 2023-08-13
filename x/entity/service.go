@@ -22,25 +22,25 @@ func NewService(repository *Repository, config util.Config) *Service {
 }
 
 // Create updates stream information
-func (s *Service) Create(ctx context.Context, ccaddr string, meta string) error {
+func (s *Service) Create(ctx context.Context, ccid string, meta string) error {
 	ctx, span := tracer.Start(ctx, "ServiceCreate")
 	defer span.End()
 
 	return s.repository.Create(ctx, &core.Entity{
-		ID:   ccaddr,
+		ID:   ccid,
 		Role: "default",
 		Meta: meta,
 	})
 }
 
 // Create updates stream information
-func (s *Service) Register(ctx context.Context, ccaddr string, meta string, inviter string) error {
+func (s *Service) Register(ctx context.Context, ccid string, meta string, inviter string) error {
 	ctx, span := tracer.Start(ctx, "ServiceCreate")
 	defer span.End()
 
 	if s.config.Concurrent.Registration == "open" {
 		return s.repository.Create(ctx, &core.Entity{
-			ID:      ccaddr,
+			ID:      ccid,
 			Role:    "default",
 			Meta:    meta,
 			Inviter: "",
@@ -59,7 +59,7 @@ func (s *Service) Register(ctx context.Context, ccaddr string, meta string, invi
 		// TODO: validate inviter role
 
 		return s.repository.Create(ctx, &core.Entity{
-			ID:      ccaddr,
+			ID:      ccid,
 			Role:    "default",
 			Meta:    meta,
 			Inviter: inviter,
@@ -80,7 +80,7 @@ func (s *Service) Register(ctx context.Context, ccaddr string, meta string, invi
 		}
 
 		return s.repository.Create(ctx, &core.Entity{
-			ID:      ccaddr,
+			ID:      ccid,
 			Role:    "default",
 			Meta:    meta,
 			Inviter: inviter,
@@ -132,7 +132,7 @@ func (s *Service) ResolveHost(ctx context.Context, user string) (string, error) 
 		span.RecordError(err)
 		return "", err
 	}
-	fqdn := entity.Host
+	fqdn := entity.Domain
 	if fqdn == "" {
 		fqdn = s.config.Concurrent.FQDN
 	}
@@ -164,7 +164,7 @@ func (s *Service) IsUserExists(ctx context.Context, user string) bool {
 	if err != nil {
 		return false
 	}
-	return entity.ID != "" && entity.Host == ""
+	return entity.ID != "" && entity.Domain == ""
 }
 
 // Delete deletes entity

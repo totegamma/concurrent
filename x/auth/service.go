@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 	"github.com/rs/xid"
+	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
-	"github.com/totegamma/concurrent/x/host"
 	"github.com/totegamma/concurrent/x/util"
 	"strconv"
 	"time"
@@ -15,12 +15,12 @@ import (
 type Service struct {
 	config util.Config
 	entity *entity.Service
-	host   *host.Service
+	domain *domain.Service
 }
 
 // NewService is for wire.go
-func NewService(config util.Config, entity *entity.Service, host *host.Service) *Service {
-	return &Service{config, entity, host}
+func NewService(config util.Config, entity *entity.Service, domain *domain.Service) *Service {
+	return &Service{config, entity, domain}
 }
 
 // IssueJWT takes client signed JWT and returns server signed JWT
@@ -37,12 +37,17 @@ func (s *Service) IssueJWT(ctx context.Context, request string) (string, error) 
 
 	// TODO: check jti not used recently
 
-	// check aud
-	if claims.Audience != s.config.Concurrent.FQDN {
-		return "", fmt.Errorf("jwt is not for this host")
+	// check sub
+	if claims.Subject != "CONCURRENT_APICLAIM" {
+		return "", fmt.Errorf("invalid jwt subject")
 	}
 
-	// check if issuer exists in this host
+	// check aud
+	if claims.Audience != s.config.Concurrent.FQDN {
+		return "", fmt.Errorf("jwt is not for this domain")
+	}
+
+	// check if issuer exists in this domain
 	ent, err := s.entity.Get(ctx, claims.Issuer)
 	if err != nil {
 		span.RecordError(err)
@@ -50,14 +55,14 @@ func (s *Service) IssueJWT(ctx context.Context, request string) (string, error) 
 	}
 
 	// check if the entity is local user
-	if ent.Host != "" {
+	if ent.Domain != "" {
 		return "", fmt.Errorf("requester is not a local user")
 	}
 
 	// create new jwt
 	response, err := util.CreateJWT(util.JwtClaims{
-		Issuer:         s.config.Concurrent.CCAddr,
-		Subject:        "concurrent",
+		Issuer:         s.config.Concurrent.CCID,
+		Subject:        "CONCURRENT_API",
 		Audience:       claims.Issuer,
 		ExpirationTime: strconv.FormatInt(time.Now().Add(6*time.Hour).Unix(), 10),
 		NotBefore:      strconv.FormatInt(time.Now().Unix(), 10),

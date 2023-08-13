@@ -1,9 +1,9 @@
-import { Box, Button, Fade, Tab, Tabs } from "@mui/material"
+import { Box, Button, Tab, Tabs } from "@mui/material"
 import {  useState } from "react"
 import { Navigate, useLocation } from "react-router-dom"
-import { Entity } from "../model"
 import { Entities } from "../widgets/entities"
 import { Hosts } from "../widgets/hosts"
+import { Entity } from "@concurrent-world/client/dist/types/model/core"
 
 export const Home = (): JSX.Element => {
 
@@ -13,43 +13,61 @@ export const Home = (): JSX.Element => {
 
     if (!entity) return <Navigate to='/welcome' state={{ from: useLocation() }} replace={true} />
     return (
-        <>
-            hello {entity?.ccaddr}<br />
-            your role is {entity?.role}
-
-            <Tabs
-                value={tab}
-                onChange={(_, index) => {
-                    setTab(index)
-                }}
+        <Box
+            display='flex'
+            flexDirection='column'
+            overflow='hidden'
+            width='100%'
+        >
+            <Box
+                display='flex'
+                flexDirection='column'
+                width='100%'
             >
-                <Tab label='Hello' />
-                {entity?.role === '_admin' && <Tab label="Entities" />}
-                {entity?.role === '_admin' && <Tab label="Hosts" />}
-            </Tabs>
+                hello {entity?.ccid}<br />
+                your role is {entity?.role}
 
-            <Box sx={{ position: 'relative', mt: '20px' }}>
-                <Fade in={tab === 0} unmountOnExit>
+                <Tabs
+                    value={tab}
+                    onChange={(_, index) => {
+                        setTab(index)
+                    }}
+                >
+                    <Tab label='Hello' />
+                    {entity?.role === '_admin' && <Tab label="Entities" />}
+                    {entity?.role === '_admin' && <Tab label="Hosts" />}
+                </Tabs>
+            </Box>
+
+            <Box sx={{
+                display: 'flex',
+                flex: 1,
+                flexDirection: 'column',
+                mt: '20px',
+                overflowX: 'hidden',
+                overflowY: 'auto',
+                width: '100%'
+            }}>
+                {tab === 0 &&
                     <Box sx={{
-                        position: 'absolute',
-                        width: '100%',
                         display: 'flex',
                         flexDirection: 'column',
-                        gap: 1
+                        gap: 1,
+                        width: '100%'
                     }}>
                         まだ未実装の機能たち
                         <Button variant='contained'>招待コードの発行</Button>
                         <Button variant='contained'>アカウントの転出</Button>
                         <Button color='error' variant='contained'>アカウントの凍結</Button>
                     </Box>
-                </Fade>
-                <Fade in={tab === 1} unmountOnExit>
+                }
+                {tab === 1 &&
                     <Entities />
-                </Fade>
-                <Fade in={tab === 2} unmountOnExit>
+                }
+                {tab === 2 &&
                     <Hosts />
-                </Fade>
+                }
             </Box>
-        </>
+        </Box>
     )
 }

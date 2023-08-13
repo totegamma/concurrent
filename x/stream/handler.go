@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
+	"github.com/totegamma/concurrent/x/util"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
 )
@@ -29,8 +30,8 @@ func (h Handler) Get(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
 	defer span.End()
 
-	streamStr := c.QueryParam("stream")
-	stream, err := h.service.Get(ctx, streamStr)
+	streamID := c.Param("id")
+	stream, err := h.service.Get(ctx, streamID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return c.JSON(http.StatusNotFound, echo.Map{"error": "User not found"})
@@ -106,6 +107,69 @@ func (h Handler) List(c echo.Context) error {
 		return err
 	}
 	return c.JSON(http.StatusOK, list)
+}
+
+// Delete is for handling HTTP Delete Method
+func (h Handler) Delete(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerDelete")
+	defer span.End()
+
+	streamID := c.Param("id")
+	split := strings.Split(streamID, "@")
+	if len(split) == 2 {
+		streamID = split[0]
+	}
+
+	target, err := h.service.Get(ctx, streamID)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	claims := c.Get("jwtclaims").(util.JwtClaims)
+	requester := claims.Audience
+
+	if target.Author != requester {
+		return c.JSON(http.StatusForbidden, echo.Map{"error": "You are not owner of this stream"})
+	}
+
+	err = h.service.Delete(ctx, streamID)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+	return c.String(http.StatusOK, fmt.Sprintf("{\"message\": \"accept\"}"))
+}
+
+// Remove is remove stream element from stream
+func (h Handler) Remove(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerRemove")
+	defer span.End()
+
+	streamID := c.Param("stream")
+	split := strings.Split(streamID, "@")
+	if len(split) == 2 {
+		streamID = split[0]
+	}
+
+	elementID := c.Param("element")
+
+	target, err := h.service.GetElement(ctx, streamID, elementID)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	claims := c.Get("jwtclaims").(util.JwtClaims)
+	requester := claims.Audience
+
+	if target.Author != requester {
+		return c.JSON(http.StatusForbidden, echo.Map{"error": "You are not owner of this stream element"})
+	}
+
+	h.service.Remove(ctx, streamID, elementID)
+
+	return c.String(http.StatusOK, fmt.Sprintf("{\"message\": \"accept\"}"))
 }
 
 // Checkpoint used by cross server communication

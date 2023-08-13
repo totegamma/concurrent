@@ -24,8 +24,8 @@ type Association struct {
 // mutable
 type Character struct {
 	ID           string        `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
-	Author       string        `json:"author" gorm:"type:varchar(42);uniqueIndex:uniq_character"`
-	Schema       string        `json:"schema" gorm:"type:varchar(256);uniqueIndex:uniq_character"`
+	Author       string        `json:"author" gorm:"type:varchar(42)"`
+	Schema       string        `json:"schema" gorm:"type:varchar(256)"`
 	Payload      string        `json:"payload" gorm:"type:json"`
 	Signature    string        `json:"signature" gorm:"type:char(130)"`
 	Associations []Association `json:"associations" gorm:"polymorphic:Target"`
@@ -36,9 +36,9 @@ type Character struct {
 // Entity is one of a concurrent base object
 // mutable
 type Entity struct {
-	ID      string    `json:"id" gorm:"type:char(42)"`
+	ID      string    `json:"ccid" gorm:"type:char(42)"`
 	Role    string    `json:"role" gorm:"type:text;default:default"`
-	Host    string    `json:"host" gorm:"type:text"`
+	Domain  string    `json:"domain" gorm:"type:text"`
 	Certs   string    `json:"certs" gorm:"type:json;default:'null'"`
 	Meta    string    `json:"meta" gorm:"type:json;default:'null'"`
 	Score   int       `json:"score" gorm:"type:integer;default:0"`
@@ -47,11 +47,11 @@ type Entity struct {
 	MDate   time.Time `json:"mdate" gorm:"autoUpdateTime"`
 }
 
-// Host is one of a concurrent base object
+// Domain is one of a concurrent base object
 // mutable
-type Host struct {
+type Domain struct {
 	ID          string    `json:"fqdn" gorm:"type:text"` // FQDN
-	CCAddr      string    `json:"ccaddr" gorm:"type:char(42)"`
+	CCID        string    `json:"ccid" gorm:"type:char(42)"`
 	Role        string    `json:"role" gorm:"type:text;default:default"`
 	Score       int       `json:"score" gorm:"type:integer;default:0"`
 	Pubkey      string    `json:"pubkey" gorm:"type:text"`

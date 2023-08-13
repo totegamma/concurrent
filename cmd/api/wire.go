@@ -1,5 +1,4 @@
 //go:build wireinject
-// +build wireinject
 
 package main
 
@@ -8,13 +7,12 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
-	"github.com/totegamma/concurrent/x/activitypub"
 	"github.com/totegamma/concurrent/x/agent"
 	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/character"
+	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
-	"github.com/totegamma/concurrent/x/host"
 	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/socket"
 	"github.com/totegamma/concurrent/x/stream"
@@ -22,7 +20,7 @@ import (
 	"github.com/totegamma/concurrent/x/util"
 )
 
-var hostHandlerProvider = wire.NewSet(host.NewHandler, host.NewService, host.NewRepository)
+var domainHandlerProvider = wire.NewSet(domain.NewHandler, domain.NewService, domain.NewRepository)
 var entityHandlerProvider = wire.NewSet(entity.NewHandler, entity.NewService, entity.NewRepository)
 var streamHandlerProvider = wire.NewSet(stream.NewHandler, stream.NewService, stream.NewRepository, entity.NewService, entity.NewRepository)
 var messageHandlerProvider = wire.NewSet(message.NewHandler, message.NewService, message.NewRepository)
@@ -50,9 +48,9 @@ func SetupStreamHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *str
 	return &stream.Handler{}
 }
 
-func SetupHostHandler(db *gorm.DB, config util.Config) *host.Handler {
-	wire.Build(hostHandlerProvider)
-	return &host.Handler{}
+func SetupDomainHandler(db *gorm.DB, config util.Config) *domain.Handler {
+	wire.Build(domainHandlerProvider)
+	return &domain.Handler{}
 }
 
 func SetupEntityHandler(db *gorm.DB, config util.Config) *entity.Handler {
@@ -66,26 +64,21 @@ func SetupSocketHandler(rdb *redis.Client, config util.Config) *socket.Handler {
 }
 
 func SetupAgent(db *gorm.DB, rdb *redis.Client, config util.Config) *agent.Agent {
-	wire.Build(agent.NewAgent, host.NewService, host.NewRepository, entity.NewService, entity.NewRepository)
+	wire.Build(agent.NewAgent, domain.NewService, domain.NewRepository, entity.NewService, entity.NewRepository)
 	return &agent.Agent{}
 }
 
 func SetupAuthHandler(db *gorm.DB, config util.Config) *auth.Handler {
-	wire.Build(auth.NewHandler, auth.NewService, entity.NewService, entity.NewRepository, host.NewService, host.NewRepository)
+	wire.Build(auth.NewHandler, auth.NewService, entity.NewService, entity.NewRepository, domain.NewService, domain.NewRepository)
 	return &auth.Handler{}
 }
 
 func SetupAuthService(db *gorm.DB, config util.Config) *auth.Service {
-	wire.Build(auth.NewService, entity.NewService, entity.NewRepository, host.NewService, host.NewRepository)
+	wire.Build(auth.NewService, entity.NewService, entity.NewRepository, domain.NewService, domain.NewRepository)
 	return &auth.Service{}
 }
 
 func SetupUserkvHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *userkv.Handler {
 	wire.Build(userkvHandlerProvider, entity.NewService, entity.NewRepository)
 	return &userkv.Handler{}
-}
-
-func SetupActivitypubHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *activitypub.Handler {
-	wire.Build(activitypub.NewHandler, activitypub.NewRepository, message.NewService, message.NewRepository, entity.NewService, entity.NewRepository, stream.NewService, stream.NewRepository)
-	return &activitypub.Handler{}
 }

@@ -33,19 +33,29 @@ func (s *Service) Restrict(principal Principal) echo.MiddlewareFunc {
 
 			switch principal {
 			case ISADMIN:
+				if claims.Subject != "CONCURRENT_API" {
+					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
+				}
 				if !slices.Contains(s.config.Concurrent.Admins, claims.Audience) {
 					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not admin"})
 				}
 			case ISLOCAL:
+				if claims.Subject != "CONCURRENT_API" {
+					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
+				}
+
 				ent, err := s.entity.Get(ctx, claims.Audience)
 				if err != nil {
 					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not known"})
 				}
 
-				if ent.Host != "" {
+				if ent.Domain != "" {
 					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not local"})
 				}
 			case ISKNOWN:
+				if claims.Subject != "CONCURRENT_API" {
+					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
+				}
 				_, err := s.entity.Get(ctx, claims.Audience)
 				if err != nil {
 					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not known"})
@@ -56,12 +66,18 @@ func (s *Service) Restrict(principal Principal) echo.MiddlewareFunc {
 					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are already known"})
 				}
 			case ISUNITED:
-				_, err := s.host.GetByCCID(ctx, claims.Issuer)
+				if claims.Subject != "CONCURRENT_API" {
+					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
+				}
+				_, err := s.domain.GetByCCID(ctx, claims.Issuer)
 				if err != nil {
 					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not united"})
 				}
 			case ISUNUNITED:
-				_, err := s.host.GetByCCID(ctx, claims.Issuer)
+				if claims.Subject != "CONCURRENT_API" {
+					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
+				}
+				_, err := s.domain.GetByCCID(ctx, claims.Issuer)
 				if err == nil {
 					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are already united"})
 				}

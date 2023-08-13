@@ -7,8 +7,8 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
-	"github.com/totegamma/concurrent/x/host"
 	"github.com/totegamma/concurrent/x/util"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -28,18 +28,18 @@ var tracer = otel.Tracer("agent")
 type Agent struct {
 	rdb         *redis.Client
 	config      util.Config
-	host        *host.Service
+	domain      *domain.Service
 	entity      *entity.Service
 	mutex       *sync.Mutex
 	connections map[string]*websocket.Conn
 }
 
 // NewAgent is...
-func NewAgent(rdb *redis.Client, config util.Config, host *host.Service, entity *entity.Service) *Agent {
+func NewAgent(rdb *redis.Client, config util.Config, domain *domain.Service, entity *entity.Service) *Agent {
 	return &Agent{
 		rdb,
 		config,
-		host,
+		domain,
 		entity,
 		&sync.Mutex{},
 		make(map[string]*websocket.Conn),
@@ -47,7 +47,7 @@ func NewAgent(rdb *redis.Client, config util.Config, host *host.Service, entity 
 }
 
 func (a *Agent) collectUsers(ctx context.Context) {
-	hosts, _ := a.host.List(ctx)
+	hosts, _ := a.domain.List(ctx)
 	for _, host := range hosts {
 		log.Printf("collect users for %v\n", host)
 		a.pullRemoteEntities(ctx, host)
@@ -152,7 +152,7 @@ func (a *Agent) updateConnections(ctx context.Context) {
 }
 
 // PullRemoteEntities copies remote entities
-func (a *Agent) pullRemoteEntities(ctx context.Context, remote core.Host) error {
+func (a *Agent) pullRemoteEntities(ctx context.Context, remote core.Domain) error {
 	ctx, span := tracer.Start(ctx, "ServicePullRemoteEntities")
 	defer span.End()
 
@@ -186,7 +186,7 @@ func (a *Agent) pullRemoteEntities(ctx context.Context, remote core.Host) error 
 			certs = "null"
 		}
 
-		hostname := entity.Host
+		hostname := entity.Domain
 		if hostname == "" {
 			hostname = remote.ID
 		}
@@ -196,10 +196,10 @@ func (a *Agent) pullRemoteEntities(ctx context.Context, remote core.Host) error 
 		}
 
 		err := a.entity.Upsert(ctx, &core.Entity{
-			ID:    entity.ID,
-			Host:  hostname,
-			Certs: certs,
-			Meta:  "null",
+			ID:     entity.ID,
+			Domain: hostname,
+			Certs:  certs,
+			Meta:   "null",
 		})
 
 		if err != nil {
@@ -210,7 +210,7 @@ func (a *Agent) pullRemoteEntities(ctx context.Context, remote core.Host) error 
 	}
 
 	if !errored {
-		a.host.UpdateScrapeTime(ctx, remote.ID, requestTime)
+		a.domain.UpdateScrapeTime(ctx, remote.ID, requestTime)
 	}
 
 	return nil

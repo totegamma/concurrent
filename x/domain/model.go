@@ -1,9 +1,8 @@
-// Package host is...
-package host
+package domain
 
 // Profile is portable information of host
 type Profile struct {
 	ID     string `json:"fqdn" gorm:"type:text"`
-	CCAddr string `json:"ccaddr" gorm:"type:char(42)"`
+	CCID   string `json:"ccid" gorm:"type:char(42)"`
 	Pubkey string `json:"pubkey" gorm:"type:text"`
 }

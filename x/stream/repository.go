@@ -45,6 +45,14 @@ func (r *Repository) GetList(ctx context.Context, schema string) ([]core.Stream,
 	return streams, err
 }
 
+// Delete deletes a stream
+func (r *Repository) Delete(ctx context.Context, streamID string) error {
+	ctx, span := tracer.Start(ctx, "RepositoryDelete")
+	defer span.End()
+
+	return r.db.WithContext(ctx).Delete(&core.Stream{}, "id = ?", streamID).Error
+}
+
 // HasWriteAccess returns true if the user has write access
 func (r *Repository) HasWriteAccess(ctx context.Context, streamID string, userAddress string) bool {
 	ctx, span := tracer.Start(ctx, "RepositoryHasWriteAccess")

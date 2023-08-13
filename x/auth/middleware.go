@@ -63,7 +63,7 @@ func (s *Service) Restrict(principal Principal) echo.MiddlewareFunc {
 				}
 
 				// remote user must be checked if it's domain is not blocked
-				if claims.Issuer != s.config.Concurrent.FQDN {
+				if claims.Issuer != s.config.Concurrent.CCID {
 					domain, err := s.domain.GetByCCID(ctx, claims.Issuer)
 					if err != nil {
 						return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "your domain is not known"})

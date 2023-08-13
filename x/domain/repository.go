@@ -33,7 +33,7 @@ func (r *Repository) GetByCCID(ctx context.Context, ccid string) (core.Domain, e
 	defer span.End()
 
 	var host core.Domain
-	err := r.db.WithContext(ctx).First(&host, "ccid = ?", ccid).Error
+	err := r.db.WithContext(ctx).First(&host, "cc_id = ?", ccid).Error
 	return host, err
 }
 

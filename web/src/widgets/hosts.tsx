@@ -11,7 +11,7 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
     const [remoteFqdn, setRemoteFqdn] = useState('')
 
     const [selectedHost, setSelectedHost] = useState<Domain | null>(null)
-    const [newRole, setNewRole] = useState<string>('')
+    const [newTag, setNewTag] = useState<string>('')
     const [newScore, setNewScore] = useState<number>(0)
 
     useEffect(() => {
@@ -52,13 +52,13 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
                         >
                             <ListItemButton
                                 onClick={() => {
-                                    setNewRole(host.role)
+                                    setNewTag(host.tag)
                                     setNewScore(host.score)
                                     setSelectedHost(host)
                                 }}
                             >
                                 <ListItemText primary={host.fqdn} secondary={`${host.ccid}`} />
-                                <ListItemText>{`${host.role}(${host.score})`}</ListItemText>
+                                <ListItemText>{`${host.tag}(${host.score})`}</ListItemText>
                             </ListItemButton>
                         </ListItem>
                     ))}
@@ -81,12 +81,12 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
                     <Typography>{selectedHost?.ccid}</Typography>
                     <pre>{JSON.stringify(selectedHost, null, 2)}</pre>
                     <TextField
-                        label="new role"
+                        label="new tag"
                         variant="outlined"
-                        value={newRole}
+                        value={newTag}
                         sx={{ flexGrow: 1 }}
                         onChange={(e) => {
-                            setNewRole(e.target.value)
+                            setNewTag(e.target.value)
                         }}
                     />
                     <TextField
@@ -105,7 +105,7 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
                             api.updateDomain({
                                 ...selectedHost,
                                 score: newScore,
-                                role: newRole
+                                tag: newTag
                             })
                             setSelectedHost(null)
                         }}

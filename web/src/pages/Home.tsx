@@ -3,15 +3,16 @@ import {  useState } from "react"
 import { Navigate, useLocation } from "react-router-dom"
 import { Entities } from "../widgets/entities"
 import { Hosts } from "../widgets/hosts"
-import { Entity } from "@concurrent-world/client/dist/types/model/core"
+import { useApi } from "../context/apiContext"
 
 export const Home = (): JSX.Element => {
 
     const [tab, setTab] = useState(0)
-    const entityJson = localStorage.getItem("ENTITY")
-    const entity = entityJson ? (JSON.parse(entityJson) as Entity) : null
+    const { api } = useApi()
 
-    if (!entity) return <Navigate to='/welcome' state={{ from: useLocation() }} replace={true} />
+    const tags = api.getTokenClaims()?.tag?.split(',') ?? []
+
+    if (!api.token) return <Navigate to='/welcome' state={{ from: useLocation() }} replace={true} />
     return (
         <Box
             display='flex'
@@ -24,8 +25,8 @@ export const Home = (): JSX.Element => {
                 flexDirection='column'
                 width='100%'
             >
-                hello {entity?.ccid}<br />
-                your role is {entity?.role}
+                hello {api.getTokenClaims()?.aud}<br />
+                your tag is {api.getTokenClaims()?.tag}<br />
 
                 <Tabs
                     value={tab}
@@ -34,8 +35,8 @@ export const Home = (): JSX.Element => {
                     }}
                 >
                     <Tab label='Hello' />
-                    {entity?.role === '_admin' && <Tab label="Entities" />}
-                    {entity?.role === '_admin' && <Tab label="Hosts" />}
+                    {tags.includes("_admin") && <Tab label="Entities" />}
+                    {tags.includes("_admin") && <Tab label="Hosts" />}
                 </Tabs>
             </Box>
 

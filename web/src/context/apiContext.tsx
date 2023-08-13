@@ -20,8 +20,8 @@ export interface ApiProviderProps {
 
 export default function ApiProvider(props: ApiProviderProps): JSX.Element {
 
-    const [api, setApi] = useState<Api>(new Api({host: ''}))
     const [token, setToken] = usePersistent<string | undefined>("token", undefined)
+    const [api, setApi] = useState<Api>(new Api({host: '', token: token}))
 
     useEffect(() => {
         if (!token) return

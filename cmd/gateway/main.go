@@ -186,6 +186,11 @@ func main() {
 
 		proxy.Transport = otelhttp.NewTransport(http.DefaultTransport)
 
+		e.Any(service.Path, func(c echo.Context) error {
+			proxy.ServeHTTP(c.Response(), c.Request())
+			return nil
+		})
+
 		e.Any(service.Path+"/*", func(c echo.Context) error {
 			proxy.ServeHTTP(c.Response(), c.Request())
 			return nil

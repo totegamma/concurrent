@@ -134,7 +134,7 @@ func main() {
 	associationHandler := SetupAssociationHandler(db, rdb, config)
 	streamHandler := SetupStreamHandler(db, rdb, config)
 	domainHandler := SetupDomainHandler(db, config)
-	entityHandler := SetupEntityHandler(db, config)
+	entityHandler := SetupEntityHandler(db, rdb, config)
 	authHandler := SetupAuthHandler(db, config)
 	userkvHandler := SetupUserkvHandler(db, rdb, config)
 

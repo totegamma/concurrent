@@ -72,10 +72,10 @@ func SetupDomainHandler(db *gorm.DB, config util.Config) *domain.Handler {
 	return handler
 }
 
-func SetupEntityHandler(db *gorm.DB, config util.Config) *entity.Handler {
+func SetupEntityHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *entity.Handler {
 	repository := entity.NewRepository(db)
 	service := entity.NewService(repository, config)
-	handler := entity.NewHandler(service)
+	handler := entity.NewHandler(service, rdb)
 	return handler
 }
 

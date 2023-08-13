@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
 	"go.opentelemetry.io/otel"
@@ -19,11 +20,12 @@ var tracer = otel.Tracer("handler")
 // Handler handles Message objects
 type Handler struct {
 	service *Service
+	rdb     *redis.Client
 }
 
 // NewHandler is for wire.go
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+func NewHandler(service *Service, rdb *redis.Client) *Handler {
+	return &Handler{service: service, rdb: rdb}
 }
 
 // Get is for Handling HTTP Get Method
@@ -67,6 +69,7 @@ func (h Handler) Register(c echo.Context) error {
 
 	inviter := ""
 	jwtID := ""
+	expireAt := int64(0)
 	if request.Token != "" {
 		claims, err := util.ValidateJWT(request.Token)
 		if err != nil {
@@ -76,9 +79,15 @@ func (h Handler) Register(c echo.Context) error {
 		if claims.Subject != "CONCURRENT_INVITE" {
 			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid token"})
 		}
-		// TODO: checkjti
+		_, err = h.rdb.Get(ctx, "jti:" + claims.JWTID).Result()
+		if err == nil {
+			span.RecordError(err)
+			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "token is already used"})
+		}
+
 		inviter = claims.Issuer
 		jwtID = claims.JWTID
+		expireAt, _ = strconv.ParseInt(claims.ExpirationTime, 10, 64)
 	}
 
 	err = h.service.Register(ctx, request.CCID, request.Meta, inviter)
@@ -88,7 +97,12 @@ func (h Handler) Register(c echo.Context) error {
 	}
 
 	if jwtID != "" {
-		//TODO: invalidate jti
+		expiration := time.Until(time.Unix(int64(expireAt), 0))
+		err = h.rdb.Set(ctx, "jti:" + jwtID, "1", expiration).Err()
+		if err != nil {
+			span.RecordError(err)
+			return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+		}
 	}
 
 	return c.String(http.StatusCreated, "{\"message\": \"accept\"}")

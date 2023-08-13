@@ -2,7 +2,7 @@ import { Box, Button, Tab, Tabs } from "@mui/material"
 import {  useState } from "react"
 import { Navigate, useLocation } from "react-router-dom"
 import { Entities } from "../widgets/entities"
-import { Hosts } from "../widgets/hosts"
+import { Domains } from "../widgets/domains"
 import { useApi } from "../context/apiContext"
 
 export const Home = (): JSX.Element => {
@@ -66,7 +66,7 @@ export const Home = (): JSX.Element => {
                     <Entities />
                 }
                 {tab === 2 &&
-                    <Hosts />
+                    <Domains />
                 }
             </Box>
         </Box>

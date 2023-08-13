@@ -53,7 +53,7 @@ func SetupDomainHandler(db *gorm.DB, config util.Config) *domain.Handler {
 	return &domain.Handler{}
 }
 
-func SetupEntityHandler(db *gorm.DB, config util.Config) *entity.Handler {
+func SetupEntityHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *entity.Handler {
 	wire.Build(entityHandlerProvider)
 	return &entity.Handler{}
 }

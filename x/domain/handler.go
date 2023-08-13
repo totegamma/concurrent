@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/rs/xid"
-	"golang.org/x/exp/slices"
 	"gorm.io/gorm"
 
 	"github.com/labstack/echo/v4"
@@ -133,7 +132,7 @@ func (h Handler) Hello(c echo.Context) error {
 	h.service.Upsert(ctx, &core.Domain{
 		ID:     newcomer.ID,
 		CCID:   newcomer.CCID,
-		Role:   "unassigned",
+		Tag:    "",
 		Pubkey: newcomer.Pubkey,
 	})
 
@@ -145,17 +144,11 @@ func (h Handler) Hello(c echo.Context) error {
 }
 
 // SayHello iniciates a new host registration
-// Only Admin can call this
 func (h Handler) SayHello(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerSayHello")
 	defer span.End()
 
 	target := c.Param("fqdn")
-
-	claims := c.Get("jwtclaims").(util.JwtClaims)
-	if !slices.Contains(h.config.Concurrent.Admins, claims.Audience) {
-		return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action"})
-	}
 
 	me := Profile{
 		ID:     h.config.Concurrent.FQDN,
@@ -171,7 +164,6 @@ func (h Handler) SayHello(c echo.Context) error {
 		Subject:        "CONCURRENT_API",
 		Audience:       target,
 		ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
-		NotBefore:      strconv.FormatInt(time.Now().Unix(), 10),
 		IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
 		JWTID:          xid.New().String(),
 	}, h.config.Concurrent.Prvkey)
@@ -207,7 +199,7 @@ func (h Handler) SayHello(c echo.Context) error {
 	h.service.Upsert(ctx, &core.Domain{
 		ID:     fetchedProf.ID,
 		CCID:   fetchedProf.CCID,
-		Role:   "unassigned",
+		Tag:    "",
 		Pubkey: fetchedProf.Pubkey,
 	})
 

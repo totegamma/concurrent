@@ -14,7 +14,7 @@ type postRequest struct {
 // SafeEntity is safe verison of entity
 type SafeEntity struct {
 	ID     string    `json:"ccid"`
-	Role   string    `json:"role"`
+	Tag    string    `json:"tag"`
 	Score  int       `json:"score"`
 	Domain string    `json:"domain"`
 	Certs  string    `json:"certs"`

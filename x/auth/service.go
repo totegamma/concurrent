@@ -65,9 +65,9 @@ func (s *Service) IssueJWT(ctx context.Context, request string) (string, error) 
 		Subject:        "CONCURRENT_API",
 		Audience:       claims.Issuer,
 		ExpirationTime: strconv.FormatInt(time.Now().Add(6*time.Hour).Unix(), 10),
-		NotBefore:      strconv.FormatInt(time.Now().Unix(), 10),
 		IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
 		JWTID:          xid.New().String(),
+		Tag:            ent.Tag,
 	}, s.config.Concurrent.Prvkey)
 
 	if err != nil {

@@ -26,9 +26,7 @@ type Concurrent struct {
 	CCID         string   `yaml:"ccid"`
 	Pubkey       string   `yaml:"publickey"`
 	Prvkey       string   `yaml:"privatekey"`
-	Admins       []string `yaml:"admins"`
 	Registration string   `yaml:"registration"` // open, invite, close
-	InviterRole  string   `yaml:"inviterRole"`
 }
 
 type Profile struct {

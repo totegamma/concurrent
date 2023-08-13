@@ -37,7 +37,7 @@ type Character struct {
 // mutable
 type Entity struct {
 	ID      string    `json:"ccid" gorm:"type:char(42)"`
-	Role    string    `json:"role" gorm:"type:text;default:default"`
+	Tag     string    `json:"tag" gorm:"type:text;"`
 	Domain  string    `json:"domain" gorm:"type:text"`
 	Certs   string    `json:"certs" gorm:"type:json;default:'null'"`
 	Meta    string    `json:"meta" gorm:"type:json;default:'null'"`
@@ -52,7 +52,7 @@ type Entity struct {
 type Domain struct {
 	ID          string    `json:"fqdn" gorm:"type:text"` // FQDN
 	CCID        string    `json:"ccid" gorm:"type:char(42)"`
-	Role        string    `json:"role" gorm:"type:text;default:default"`
+	Tag         string    `json:"tag" gorm:"type:text;default:default"`
 	Score       int       `json:"score" gorm:"type:integer;default:0"`
 	Pubkey      string    `json:"pubkey" gorm:"type:text"`
 	CDate       time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`

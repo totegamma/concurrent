@@ -43,7 +43,7 @@ func (h Handler) Get(c echo.Context) error {
 	}
 	publicInfo := SafeEntity{
 		ID:     entity.ID,
-		Role:   entity.Role,
+		Tag:    entity.Tag,
 		Domain: entity.Domain,
 		Certs:  entity.Certs,
 		CDate:  entity.CDate,

@@ -36,7 +36,8 @@ func (s *Service) Restrict(principal Principal) echo.MiddlewareFunc {
 				if claims.Subject != "CONCURRENT_API" {
 					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
 				}
-				if !slices.Contains(s.config.Concurrent.Admins, claims.Audience) {
+				tags := strings.Split(claims.Tag, ",")
+				if !slices.Contains(tags, "_admin") {
 					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not admin"})
 				}
 			case ISLOCAL:

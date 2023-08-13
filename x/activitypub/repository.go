@@ -31,7 +31,7 @@ func (r Repository) GetEntityByCCID(ctx context.Context, ccid string) (ApEntity,
 	defer span.End()
 
 	var entity ApEntity
-	result := r.db.WithContext(ctx).Where("cc_addr = ?", ccid).First(&entity)
+	result := r.db.WithContext(ctx).Where("ccid = ?", ccid).First(&entity)
 	return entity, result.Error
 }
 

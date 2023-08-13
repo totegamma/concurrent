@@ -22,7 +22,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 )
 
-var tracer = otel.Tracer("host")
+var tracer = otel.Tracer("domain")
 
 // Handler is handles websocket
 type Handler struct {
@@ -105,7 +105,7 @@ func (h Handler) Hello(c echo.Context) error {
 	}
 
 	// challenge
-	req, err := http.NewRequest("GET", "https://"+newcomer.ID+"/api/v1/host", nil)
+	req, err := http.NewRequest("GET", "https://"+newcomer.ID+"/api/v1/domain", nil)
 	if err != nil {
 		span.RecordError(err)
 		return c.String(http.StatusBadRequest, err.Error())

@@ -6,8 +6,8 @@ settings:
 
 dependencies:
   '@concurrent-world/client':
-    specifier: ^2.0.2
-    version: 2.0.2
+    specifier: ^2.0.3
+    version: 2.0.3
   '@emotion/react':
     specifier: ^11.11.0
     version: 11.11.0(@types/react@18.0.28)(react@18.2.0)
@@ -41,6 +41,9 @@ dependencies:
   react-dom:
     specifier: ^18.2.0
     version: 18.2.0(react@18.2.0)
+  react-google-recaptcha-v3:
+    specifier: ^1.10.1
+    version: 1.10.1(react-dom@18.2.0)(react@18.2.0)
   react-router-dom:
     specifier: ^6.11.2
     version: 6.11.2(react-dom@18.2.0)(react@18.2.0)
@@ -153,8 +156,8 @@ packages:
       to-fast-properties: 2.0.0
     dev: false
 
-  /@concurrent-world/client@2.0.2:
-    resolution: {integrity: sha512-Rp2INcYq3IkB4WhTXhyngOuXHjuuXy4QEE6HelgpDhO62GtEOUJZOlTMLm/G7Mi0YM2e8xigIIDvbZ0kh5/YWw==}
+  /@concurrent-world/client@2.0.3:
+    resolution: {integrity: sha512-QyNE+myLEMfeKcRTDjm2TgE0PH9A6TgSWkzqh7NsHbxoBzbOGHaqO5knj2bt+L2+wvFO7ziwqjN6SmoGM+s0SQ==}
     dependencies:
       elliptic: 6.5.4
       ethers: 6.7.0
@@ -2676,6 +2679,17 @@ packages:
       loose-envify: 1.4.0
       react: 18.2.0
       scheduler: 0.23.0
+    dev: false
+
+  /react-google-recaptcha-v3@1.10.1(react-dom@18.2.0)(react@18.2.0):
+    resolution: {integrity: sha512-K3AYzSE0SasTn+XvV2tq+6YaxM+zQypk9rbCgG4OVUt7Rh4ze9basIKefoBz9sC0CNslJj9N1uwTTgRMJQbQJQ==}
+    peerDependencies:
+      react: ^16.3 || ^17.0 || ^18.0
+      react-dom: ^17.0 || ^18.0
+    dependencies:
+      hoist-non-react-statics: 3.3.2
+      react: 18.2.0
+      react-dom: 18.2.0(react@18.2.0)
     dev: false
 
   /react-is@16.13.1:

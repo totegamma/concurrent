@@ -41,7 +41,7 @@ export const Entities = forwardRef<HTMLDivElement>((props, ref): JSX.Element => 
                     <Button
                         variant="contained"
                         onClick={(_) => {
-                            api.createEntityWithAdmin(newCCID)
+                            api.createEntity(newCCID)
                         }}
                     >
                         Register

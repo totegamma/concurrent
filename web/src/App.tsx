@@ -37,7 +37,6 @@ function App(): JSX.Element {
             display='flex'
             flexDirection='column'
             alignItems='center'
-            justifyContent='center'
             padding='30px'
             gap='20px'
         >

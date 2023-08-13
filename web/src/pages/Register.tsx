@@ -1,11 +1,12 @@
-import { Backdrop, Box, CircularProgress, Divider, Paper, TextField, Typography } from '@mui/material'
+import { Backdrop, Box, Button, CircularProgress, Divider, Paper, TextField, Typography } from '@mui/material'
 import type { RJSFSchema } from '@rjsf/utils'
 import Form from '@rjsf/mui'
 import validator from '@rjsf/validator-ajv8'
 import { useSearchParams } from 'react-router-dom'
-import React, { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { DomainProfile } from '../model'
 import { useApi } from '../context/apiContext'
+import { GoogleReCaptcha, GoogleReCaptchaProvider } from 'react-google-recaptcha-v3'
 
 const schema: RJSFSchema = {
     description: '情報はトラブル対応や本人確認にのみ用いられ、このホストの管理人以外には公開されません。',
@@ -24,9 +25,11 @@ export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Elemen
     const { api, setJWT } = useApi()
 
     const [searchParams] = useSearchParams()
-    const [loading, setLoading] = React.useState(false);
-    const [success, setSuccess] = React.useState(false);
-    const [inviteCode, setInviteCode] = React.useState<string>("");
+    const [loading, setLoading] = useState(false);
+    const [success, setSuccess] = useState(false);
+    const [inviteCode, setInviteCode] = useState<string>("");
+    const [captcha, setCaptcha] = useState<string>("")
+    const [formData, setFormData] = useState<any>({})
 
     const token = searchParams.get('token')
     let ccaddr = ""
@@ -49,19 +52,19 @@ export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Elemen
         if (!token) return
         setLoading(true)
 
-        api.createEntity(ccaddr, meta, inviteCode)
+        api.register(ccaddr, meta, inviteCode, captcha)
         .then(async (res) => await res.json())
         .then((data) => {
             console.log(data)
-            if (data.error) {
-                alert(data.error)
-                setLoading(false)
-                return
-            }
-            setLoading(false)
             setSuccess(true)
+        }).catch((e) => {
+            alert(e)
+        }).finally(() => {
+            setLoading(false)
         })
     }
+
+    if (!profile) return <>Loading...</>
 
     return (
         <>
@@ -79,8 +82,8 @@ export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Elemen
                 </Box>
                 <Divider />
                 <Box>
-                    <Typography variant="h5">{profile?.nickname}</Typography>
-                    <Typography>{profile?.description}</Typography>
+                    <Typography variant="h5">{profile.nickname}</Typography>
+                    <Typography>{profile.description}</Typography>
                 </Box>
                 <Box>
                     <Typography variant="h5">Rules</Typography>
@@ -91,19 +94,19 @@ export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Elemen
                         }}
                     >
                         <pre>
-                            {profile?.rules}
+                            {profile.rules}
                         </pre>
                     </Paper>
                 </Box>
             </Box>
-            {profile?.registration === 'close' ?
+            {profile.registration === 'close' ?
                 <Typography>登録は現在受け付けていません</Typography>
             : (
             success ?
                 <>登録完了</>
             :
                 <>
-                {profile?.registration === 'invite' &&
+                {profile.registration === 'invite' &&
                 <TextField
                     label="招待コード"
                     variant="outlined"
@@ -118,8 +121,30 @@ export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Elemen
                     schema={schema}
                     validator={validator}
                     onSubmit={(e) => {register(e.formData)}}
-                />
+                    formData={formData}
+                    onChange={(e) => setFormData(e.formData)}
+                >
+                    {profile.captchaSiteKey &&
+                        <GoogleReCaptchaProvider
+                            reCaptchaKey={profile.captchaSiteKey}
+                        >
+                            <GoogleReCaptcha
+                                onVerify={token => {
+                                    setCaptcha(token);
+                                }}
+                            />
+                        </GoogleReCaptchaProvider>
+                    }
+                    <Button
+                        type='submit'
+                        variant='contained'
+                        disabled={(!!profile.captchaSiteKey) && (captcha === "")}
+                    >
+                        Submit
+                    </Button>
+                </Form>
                 </>
+
             )}
         </>
     )

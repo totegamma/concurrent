@@ -157,7 +157,7 @@ func (a *Agent) pullRemoteEntities(ctx context.Context, remote core.Domain) erro
 	defer span.End()
 
 	requestTime := time.Now()
-	req, err := http.NewRequest("GET", "https://"+remote.ID+"/api/v1/entity/list?since="+strconv.FormatInt(remote.LastScraped.Unix(), 10), nil) // TODO: add except parameter
+	req, err := http.NewRequest("GET", "https://"+remote.ID+"/api/v1/entities?since="+strconv.FormatInt(remote.LastScraped.Unix(), 10), nil) // TODO: add except parameter
 	if err != nil {
 		span.RecordError(err)
 		return err

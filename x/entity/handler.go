@@ -2,6 +2,7 @@
 package entity
 
 import (
+	"fmt"
 	"errors"
 	"net/http"
 	"strconv"
@@ -13,6 +14,7 @@ import (
 	"github.com/totegamma/concurrent/x/util"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
+	"github.com/xinguang/go-recaptcha"
 )
 
 var tracer = otel.Tracer("handler")
@@ -21,11 +23,12 @@ var tracer = otel.Tracer("handler")
 type Handler struct {
 	service *Service
 	rdb     *redis.Client
+	config  util.Config
 }
 
 // NewHandler is for wire.go
-func NewHandler(service *Service, rdb *redis.Client) *Handler {
-	return &Handler{service: service, rdb: rdb}
+func NewHandler(service *Service, rdb *redis.Client, config util.Config) *Handler {
+	return &Handler{service: service, rdb: rdb, config: config}
 }
 
 // Get is for Handling HTTP Get Method
@@ -61,10 +64,23 @@ func (h Handler) Register(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerRegister")
 	defer span.End()
 
-	var request postRequest
+	var request registerRequest
 	err := c.Bind(&request)
 	if err != nil {
 		return err
+	}
+
+	if h.config.Server.CaptchaSecret != "" {
+		validator, err := recaptcha.NewWithSecert(h.config.Server.CaptchaSecret)
+		if err != nil {
+			span.RecordError(err)
+			return fmt.Errorf("failed to create recaptcha validator")
+		}
+		err = validator.Verify(request.Captcha)
+		if err != nil {
+			span.RecordError(err)
+			return fmt.Errorf("invalid captcha")
+		}
 	}
 
 	inviter := ""
@@ -112,7 +128,7 @@ func (h Handler) Create(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerCreate")
 	defer span.End()
 
-	var request postRequest
+	var request createRequest
 	err := c.Bind(&request)
 	if err != nil {
 		return err

@@ -5,10 +5,16 @@ import (
 	"time"
 )
 
-type postRequest struct {
+type createRequest struct {
+	CCID  string `json:"ccid"`
+	Meta  string `json:"meta"`
+}
+
+type registerRequest struct {
 	CCID  string `json:"ccid"`
 	Meta  string `json:"meta"`
 	Token string `json:"token"`
+	Captcha string `json:"captcha"`
 }
 
 // SafeEntity is safe verison of entity

@@ -6,6 +6,8 @@ server:
   traceEndpoint: "localhost:4318"
   enableTrace: false
   logpath: "" # empty for default(/var/log/concurrent)
+  captchaSitekey: "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI" # !! this is test sitekey !!
+  captchaSecret: "6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe"  # !! this is test secret !!
 
 concurrent:
   # fqdn is instance ID
@@ -18,9 +20,6 @@ concurrent:
   ccid: CCxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
   publickey: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
   privatekey: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-  # server admin CCIDs
-  admins:
-    - CCxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 profile:
   nickname: concurrent-domain

@@ -160,6 +160,7 @@ func main() {
 		profile.Registration = config.Concurrent.Registration
 		profile.Version = util.GetVersion()
 		profile.Hash = util.GetGitHash()
+		profile.SiteKey = config.Server.CaptchaSitekey
 		return c.JSON(http.StatusOK, profile)
 	})
 

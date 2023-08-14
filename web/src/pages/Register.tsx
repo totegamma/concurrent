@@ -6,7 +6,7 @@ import { useSearchParams } from 'react-router-dom'
 import { useEffect, useState } from 'react'
 import { DomainProfile } from '../model'
 import { useApi } from '../context/apiContext'
-import { GoogleReCaptcha, GoogleReCaptchaProvider } from 'react-google-recaptcha-v3'
+import ReCAPTCHA from "react-google-recaptcha";
 
 const schema: RJSFSchema = {
     description: '情報はトラブル対応や本人確認にのみ用いられ、このホストの管理人以外には公開されません。',
@@ -125,15 +125,10 @@ export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Elemen
                     onChange={(e) => setFormData(e.formData)}
                 >
                     {profile.captchaSiteKey &&
-                        <GoogleReCaptchaProvider
-                            reCaptchaKey={profile.captchaSiteKey}
-                        >
-                            <GoogleReCaptcha
-                                onVerify={token => {
-                                    setCaptcha(token);
-                                }}
-                            />
-                        </GoogleReCaptchaProvider>
+                        <ReCAPTCHA
+                          sitekey={profile.captchaSiteKey}
+                          onChange={(e) => setCaptcha(e ?? '')}
+                        />
                     }
                     <Button
                         type='submit'

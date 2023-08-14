@@ -7,6 +7,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/x/util"
+	"github.com/totegamma/concurrent/x/message"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
 )
@@ -16,6 +17,7 @@ var tracer = otel.Tracer("association")
 // Handler handles Association objects
 type Handler struct {
 	service *Service
+	message *message.Service
 }
 
 // NewHandler is for wire.go
@@ -66,15 +68,18 @@ func (h Handler) Delete(c echo.Context) error {
 
 	associationID := c.Param("id")
 
-	target, err := h.service.Get(ctx, associationID)
+	association, err := h.service.Get(ctx, associationID)
 	if err != nil {
 		return c.JSON(http.StatusNotFound, echo.Map{"error": "target association not found"})
 	}
 
-	claims := c.Get("jwtclaims").(util.JwtClaims)
-	requester := claims.Audience
-	if target.Author != requester {
-		return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action"})
+	message, err := h.message.Get(ctx, association.TargetID)
+	if err != nil {
+		claims := c.Get("jwtclaims").(util.JwtClaims)
+		requester := claims.Audience
+		if (association.Author != requester) && (message.Author != requester) {
+			return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action"})
+		}
 	}
 
 	deleted, err := h.service.Delete(ctx, associationID)

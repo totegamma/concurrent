@@ -243,7 +243,6 @@ func (s *Service) Post(ctx context.Context, stream string, id string, typ string
 			Subject:        "CONCURRENT_API",
 			Audience:       streamHost,
 			ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
-			NotBefore:      strconv.FormatInt(time.Now().Unix(), 10),
 			IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
 			JWTID:          xid.New().String(),
 		}, s.config.Concurrent.Prvkey)

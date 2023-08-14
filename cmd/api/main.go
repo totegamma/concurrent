@@ -134,7 +134,7 @@ func main() {
 	associationHandler := SetupAssociationHandler(db, rdb, config)
 	streamHandler := SetupStreamHandler(db, rdb, config)
 	domainHandler := SetupDomainHandler(db, config)
-	entityHandler := SetupEntityHandler(db, config)
+	entityHandler := SetupEntityHandler(db, rdb, config)
 	authHandler := SetupAuthHandler(db, config)
 	userkvHandler := SetupUserkvHandler(db, rdb, config)
 
@@ -160,6 +160,7 @@ func main() {
 		profile.Registration = config.Concurrent.Registration
 		profile.Version = util.GetVersion()
 		profile.Hash = util.GetGitHash()
+		profile.SiteKey = config.Server.CaptchaSitekey
 		return c.JSON(http.StatusOK, profile)
 	})
 

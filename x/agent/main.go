@@ -20,6 +20,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"math/rand"
 )
 
 var tracer = otel.Tracer("agent")
@@ -48,10 +49,9 @@ func NewAgent(rdb *redis.Client, config util.Config, domain *domain.Service, ent
 
 func (a *Agent) collectUsers(ctx context.Context) {
 	hosts, _ := a.domain.List(ctx)
-	for _, host := range hosts {
-		log.Printf("collect users for %v\n", host)
-		a.pullRemoteEntities(ctx, host)
-	}
+	host := hosts[rand.Intn(len(hosts))]
+	log.Printf("collecting users of %v\n", host)
+	a.pullRemoteEntities(ctx, host)
 }
 
 // Boot starts agent
@@ -157,7 +157,7 @@ func (a *Agent) pullRemoteEntities(ctx context.Context, remote core.Domain) erro
 	defer span.End()
 
 	requestTime := time.Now()
-	req, err := http.NewRequest("GET", "https://"+remote.ID+"/api/v1/entity/list?since="+strconv.FormatInt(remote.LastScraped.Unix(), 10), nil) // TODO: add except parameter
+	req, err := http.NewRequest("GET", "https://"+remote.ID+"/api/v1/entities?since="+strconv.FormatInt(remote.LastScraped.Unix(), 10), nil) // TODO: add except parameter
 	if err != nil {
 		span.RecordError(err)
 		return err

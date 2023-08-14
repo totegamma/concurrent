@@ -11,7 +11,7 @@ export const Entities = forwardRef<HTMLDivElement>((props, ref): JSX.Element => 
     const [entities, setEntities] = useState<Entity[]>([])
     const [newCCID, setNewCCID] = useState<string>('')
     const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null)
-    const [newRole, setNewRole] = useState<string>('')
+    const [newTag, setNewTag] = useState<string>('')
     const [newScore, setNewScore] = useState<number>(0)
 
     const refresh = () => {
@@ -41,7 +41,7 @@ export const Entities = forwardRef<HTMLDivElement>((props, ref): JSX.Element => 
                     <Button
                         variant="contained"
                         onClick={(_) => {
-                            api.createEntityWithAdmin(newCCID)
+                            api.createEntity(newCCID)
                         }}
                     >
                         Register
@@ -56,13 +56,13 @@ export const Entities = forwardRef<HTMLDivElement>((props, ref): JSX.Element => 
                         >
                             <ListItemButton
                                 onClick={() => {
-                                    setNewRole(entity.role)
+                                    setNewTag(entity.tag)
                                     setNewScore(entity.score)
                                     setSelectedEntity(entity)
                                 }}
                             >
                                 <ListItemText primary={entity.ccid} secondary={`${entity.cdate}`} />
-                                <ListItemText>{`${entity.role}(${entity.score})`}</ListItemText>
+                                <ListItemText>{`${entity.tag}(${entity.score})`}</ListItemText>
                             </ListItemButton>
                         </ListItem>
                     ))}
@@ -86,12 +86,12 @@ export const Entities = forwardRef<HTMLDivElement>((props, ref): JSX.Element => 
                     <Typography>{selectedEntity.ccid}</Typography>
                     <pre>{JSON.stringify(selectedEntity, null, 2)}</pre>
                     <TextField
-                        label="new role"
+                        label="new tag"
                         variant="outlined"
-                        value={newRole}
+                        value={newTag}
                         sx={{ flexGrow: 1 }}
                         onChange={(e) => {
-                            setNewRole(e.target.value)
+                            setNewTag(e.target.value)
                         }}
                     />
                     <TextField
@@ -109,7 +109,7 @@ export const Entities = forwardRef<HTMLDivElement>((props, ref): JSX.Element => 
                             if (!token) return
                             api.updateEntity({
                                 ...selectedEntity,
-                                role: newRole,
+                                tag: newTag,
                                 score: newScore
                             }).then(() => {
                                 refresh()

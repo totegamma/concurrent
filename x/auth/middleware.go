@@ -30,13 +30,14 @@ func (s *Service) Restrict(principal Principal) echo.MiddlewareFunc {
 			if !ok {
 				return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid authentication header"})
 			}
+			tags := strings.Split(claims.Tag, ",")
 
 			switch principal {
 			case ISADMIN:
 				if claims.Subject != "CONCURRENT_API" {
 					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
 				}
-				if !slices.Contains(s.config.Concurrent.Admins, claims.Audience) {
+				if !slices.Contains(tags, "_admin") {
 					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not admin"})
 				}
 			case ISLOCAL:
@@ -60,6 +61,18 @@ func (s *Service) Restrict(principal Principal) echo.MiddlewareFunc {
 				if err != nil {
 					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not known"})
 				}
+
+				// remote user must be checked if it's domain is not blocked
+				if claims.Issuer != s.config.Concurrent.CCID {
+					domain, err := s.domain.GetByCCID(ctx, claims.Issuer)
+					if err != nil {
+						return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "your domain is not known"})
+					}
+					domainTags := strings.Split(domain.Tag, ",")
+					if slices.Contains(domainTags, "_blocked") {
+						return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "your domain is blocked"})
+					}
+				}
 			case ISUNKNOWN:
 				_, err := s.entity.Get(ctx, claims.Audience)
 				if err == nil {
@@ -69,9 +82,13 @@ func (s *Service) Restrict(principal Principal) echo.MiddlewareFunc {
 				if claims.Subject != "CONCURRENT_API" {
 					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
 				}
-				_, err := s.domain.GetByCCID(ctx, claims.Issuer)
+				domain, err := s.domain.GetByCCID(ctx, claims.Issuer)
 				if err != nil {
 					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not united"})
+				}
+				domainTags := strings.Split(domain.Tag, ",")
+				if slices.Contains(domainTags, "_blocked") {
+					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not blocked"})
 				}
 			case ISUNUNITED:
 				if claims.Subject != "CONCURRENT_API" {

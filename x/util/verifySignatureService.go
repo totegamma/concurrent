@@ -146,18 +146,6 @@ func ValidateJWT(jwt string) (JwtClaims, error) {
 		return claims, err
 	}
 
-	// check nbf
-	if claims.NotBefore != "" {
-		nbf, err := strconv.ParseInt(claims.NotBefore, 10, 64)
-		if err != nil {
-			return claims, err
-		}
-		now := time.Now().Unix()
-		if now < nbf {
-			return claims, fmt.Errorf("jwt is not valid yet")
-		}
-	}
-
 	// check exp
 	if claims.ExpirationTime != "" {
 		exp, err := strconv.ParseInt(claims.ExpirationTime, 10, 64)
@@ -197,7 +185,7 @@ type JwtClaims struct {
 	Subject        string `json:"sub"` // 用途
 	Audience       string `json:"aud"` // 想定利用者
 	ExpirationTime string `json:"exp"` // 失効時刻
-	NotBefore      string `json:"nbf"` // 有効になる時刻
 	IssuedAt       string `json:"iat"` // 発行時刻
 	JWTID          string `json:"jti"` // JWT ID
+	Tag            string `json:"tag"` // タグ
 }

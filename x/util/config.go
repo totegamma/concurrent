@@ -19,6 +19,8 @@ type Server struct {
 	EnableTrace   bool   `yaml:"enableTrace"`
 	TraceEndpoint string `yaml:"traceEndpoint"`
 	LogPath       string `yaml:"logPath"`
+	CaptchaSitekey string `yaml:"captchaSitekey"`
+	CaptchaSecret  string `yaml:"captchaSecret"`
 }
 
 type Concurrent struct {
@@ -26,9 +28,7 @@ type Concurrent struct {
 	CCID         string   `yaml:"ccid"`
 	Pubkey       string   `yaml:"publickey"`
 	Prvkey       string   `yaml:"privatekey"`
-	Admins       []string `yaml:"admins"`
 	Registration string   `yaml:"registration"` // open, invite, close
-	InviterRole  string   `yaml:"inviterRole"`
 }
 
 type Profile struct {
@@ -46,6 +46,7 @@ type Profile struct {
 	Registration string `yaml:"registration" json:"registration"`
 	Version      string `yaml:"version" json:"version"`
 	Hash         string `yaml:"hash" json:"hash"`
+	SiteKey      string `yaml:"captchaSiteKey" json:"captchaSiteKey"`
 }
 
 // Load loads concurrent config from given path

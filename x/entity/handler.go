@@ -2,16 +2,19 @@
 package entity
 
 import (
+	"fmt"
 	"errors"
 	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
+	"github.com/xinguang/go-recaptcha"
 )
 
 var tracer = otel.Tracer("handler")
@@ -19,11 +22,13 @@ var tracer = otel.Tracer("handler")
 // Handler handles Message objects
 type Handler struct {
 	service *Service
+	rdb     *redis.Client
+	config  util.Config
 }
 
 // NewHandler is for wire.go
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+func NewHandler(service *Service, rdb *redis.Client, config util.Config) *Handler {
+	return &Handler{service: service, rdb: rdb, config: config}
 }
 
 // Get is for Handling HTTP Get Method
@@ -43,7 +48,7 @@ func (h Handler) Get(c echo.Context) error {
 	}
 	publicInfo := SafeEntity{
 		ID:     entity.ID,
-		Role:   entity.Role,
+		Tag:    entity.Tag,
 		Domain: entity.Domain,
 		Certs:  entity.Certs,
 		CDate:  entity.CDate,
@@ -59,14 +64,28 @@ func (h Handler) Register(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerRegister")
 	defer span.End()
 
-	var request postRequest
+	var request registerRequest
 	err := c.Bind(&request)
 	if err != nil {
 		return err
 	}
 
+	if h.config.Server.CaptchaSecret != "" {
+		validator, err := recaptcha.NewWithSecert(h.config.Server.CaptchaSecret)
+		if err != nil {
+			span.RecordError(err)
+			return fmt.Errorf("failed to create recaptcha validator")
+		}
+		err = validator.Verify(request.Captcha)
+		if err != nil {
+			span.RecordError(err)
+			return fmt.Errorf("invalid captcha")
+		}
+	}
+
 	inviter := ""
 	jwtID := ""
+	expireAt := int64(0)
 	if request.Token != "" {
 		claims, err := util.ValidateJWT(request.Token)
 		if err != nil {
@@ -76,9 +95,15 @@ func (h Handler) Register(c echo.Context) error {
 		if claims.Subject != "CONCURRENT_INVITE" {
 			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid token"})
 		}
-		// TODO: checkjti
+		_, err = h.rdb.Get(ctx, "jti:" + claims.JWTID).Result()
+		if err == nil {
+			span.RecordError(err)
+			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "token is already used"})
+		}
+
 		inviter = claims.Issuer
 		jwtID = claims.JWTID
+		expireAt, _ = strconv.ParseInt(claims.ExpirationTime, 10, 64)
 	}
 
 	err = h.service.Register(ctx, request.CCID, request.Meta, inviter)
@@ -88,7 +113,12 @@ func (h Handler) Register(c echo.Context) error {
 	}
 
 	if jwtID != "" {
-		//TODO: invalidate jti
+		expiration := time.Until(time.Unix(int64(expireAt), 0))
+		err = h.rdb.Set(ctx, "jti:" + jwtID, "1", expiration).Err()
+		if err != nil {
+			span.RecordError(err)
+			return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+		}
 	}
 
 	return c.String(http.StatusCreated, "{\"message\": \"accept\"}")
@@ -98,7 +128,7 @@ func (h Handler) Create(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerCreate")
 	defer span.End()
 
-	var request postRequest
+	var request createRequest
 	err := c.Bind(&request)
 	if err != nil {
 		return err

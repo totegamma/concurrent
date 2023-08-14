@@ -3,19 +3,23 @@ import { forwardRef, useEffect, useState } from "react"
 import { useApi } from "../context/apiContext"
 import { Domain } from "@concurrent-world/client/dist/types/model/core"
 
-export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
+export const Domains = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
 
     const { api } = useApi()
 
-    const [hosts, setHosts] = useState<Domain[]>([])
+    const [domains, setDomains] = useState<Domain[]>([])
     const [remoteFqdn, setRemoteFqdn] = useState('')
 
-    const [selectedHost, setSelectedHost] = useState<Domain | null>(null)
-    const [newRole, setNewRole] = useState<string>('')
+    const [selectedDomain, setSelectedDomain] = useState<Domain | null>(null)
+    const [newTag, setNewTag] = useState<string>('')
     const [newScore, setNewScore] = useState<number>(0)
 
+    const refresh = () => {
+        api.getDomains().then(setDomains)
+    }
+
     useEffect(() => {
-        api.getDomains().then(setHosts)
+        refresh()
     }, [])
 
     return (
@@ -42,23 +46,23 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
                         GO
                     </Button>
                 </Box>
-                <Typography>Hosts</Typography>
+                <Typography>Domains</Typography>
                 <List
                     disablePadding
                 >
-                    {hosts.map((host) => (
-                        <ListItem key={host.ccid}
+                    {domains.map((domain) => (
+                        <ListItem key={domain.ccid}
                             disablePadding
                         >
                             <ListItemButton
                                 onClick={() => {
-                                    setNewRole(host.role)
-                                    setNewScore(host.score)
-                                    setSelectedHost(host)
+                                    setNewTag(domain.tag)
+                                    setNewScore(domain.score)
+                                    setSelectedDomain(domain)
                                 }}
                             >
-                                <ListItemText primary={host.fqdn} secondary={`${host.ccid}`} />
-                                <ListItemText>{`${host.role}(${host.score})`}</ListItemText>
+                                <ListItemText primary={domain.fqdn} secondary={`${domain.ccid}`} />
+                                <ListItemText>{`${domain.tag}(${domain.score})`}</ListItemText>
                             </ListItemButton>
                         </ListItem>
                     ))}
@@ -66,9 +70,9 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
             </Box>
             <Drawer
                 anchor="right"
-                open={selectedHost !== null}
+                open={selectedDomain !== null}
                 onClose={() => {
-                    setSelectedHost(null)
+                    setSelectedDomain(null)
                 }}
             >
                 <Box
@@ -78,15 +82,15 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
                     gap={1}
                     padding={2}
                 >
-                    <Typography>{selectedHost?.ccid}</Typography>
-                    <pre>{JSON.stringify(selectedHost, null, 2)}</pre>
+                    <Typography>{selectedDomain?.ccid}</Typography>
+                    <pre>{JSON.stringify(selectedDomain, null, 2)}</pre>
                     <TextField
-                        label="new role"
+                        label="new tag"
                         variant="outlined"
-                        value={newRole}
+                        value={newTag}
                         sx={{ flexGrow: 1 }}
                         onChange={(e) => {
-                            setNewRole(e.target.value)
+                            setNewTag(e.target.value)
                         }}
                     />
                     <TextField
@@ -101,13 +105,15 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
                     <Button
                         variant="contained"
                         onClick={(_) => {
-                            if (!selectedHost) return
+                            if (!selectedDomain) return
                             api.updateDomain({
-                                ...selectedHost,
+                                ...selectedDomain,
                                 score: newScore,
-                                role: newRole
+                                tag: newTag
+                            }).then(() => {
+                                refresh()
+                                setSelectedDomain(null)
                             })
-                            setSelectedHost(null)
                         }}
                     >
                         Update
@@ -115,9 +121,11 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
                     <Button
                         variant="contained"
                         onClick={(_) => {
-                            if (!selectedHost) return
-                            api.deleteDomain(selectedHost.fqdn)
-                            setSelectedHost(null)
+                            if (!selectedDomain) return
+                            api.deleteDomain(selectedDomain.fqdn).then(() => {
+                                refresh()
+                                setSelectedDomain(null)
+                            })
                         }}
                         color="error"
                     >
@@ -129,5 +137,5 @@ export const Hosts = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
     )
 })
 
-Hosts.displayName = "Hosts"
+Domains.displayName = "Domains"
 

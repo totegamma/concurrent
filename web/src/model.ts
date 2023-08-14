@@ -12,5 +12,6 @@ export interface DomainProfile {
   registration: string
   version: string
   hash: string
+  captchaSiteKey: string
 }
 

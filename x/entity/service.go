@@ -1,6 +1,7 @@
 package entity
 
 import (
+	"strings"
 	"context"
 	"fmt"
 	"time"
@@ -28,63 +29,47 @@ func (s *Service) Create(ctx context.Context, ccid string, meta string) error {
 
 	return s.repository.Create(ctx, &core.Entity{
 		ID:   ccid,
-		Role: "default",
+		Tag:  "",
 		Meta: meta,
 	})
 }
 
 // Create updates stream information
-func (s *Service) Register(ctx context.Context, ccid string, meta string, inviter string) error {
+func (s *Service) Register(ctx context.Context, ccid string, meta string, inviterID string) error {
 	ctx, span := tracer.Start(ctx, "ServiceCreate")
 	defer span.End()
 
 	if s.config.Concurrent.Registration == "open" {
 		return s.repository.Create(ctx, &core.Entity{
 			ID:      ccid,
-			Role:    "default",
+			Tag:     "",
 			Meta:    meta,
 			Inviter: "",
 		})
 	} else if s.config.Concurrent.Registration == "invite" {
-		if inviter == "" {
+		if inviterID == "" {
 			return fmt.Errorf("invitation code is required")
 		}
 
-		_, err := s.repository.Get(ctx, inviter)
+		inviter, err := s.repository.Get(ctx, inviterID)
 		if err != nil {
 			span.RecordError(err)
 			return err
 		}
 
-		// TODO: validate inviter role
+		inviterTags := strings.Split(inviter.Tag, ",")
+		if !slices.Contains(inviterTags, "_invite") {
+			return fmt.Errorf("inviter is not allowed to invite")
+		}
 
 		return s.repository.Create(ctx, &core.Entity{
 			ID:      ccid,
-			Role:    "default",
+			Tag:     "",
 			Meta:    meta,
-			Inviter: inviter,
+			Inviter: inviterID,
 		})
 	} else {
-		if inviter == "" {
-			return fmt.Errorf("registration is not allowed")
-		}
-
-		_, err := s.repository.Get(ctx, inviter)
-		if err != nil {
-			span.RecordError(err)
-			return fmt.Errorf("registration is not allowed")
-		}
-
-		if !slices.Contains(s.config.Concurrent.Admins, inviter) {
-			return fmt.Errorf("registration is not allowed")
-		}
-
-		return s.repository.Create(ctx, &core.Entity{
-			ID:      ccid,
-			Role:    "default",
-			Meta:    meta,
-			Inviter: inviter,
-		})
+		return fmt.Errorf("registration is not open")
 	}
 }
 
@@ -97,10 +82,6 @@ func (s *Service) Get(ctx context.Context, key string) (core.Entity, error) {
 	if err != nil {
 		span.RecordError(err)
 		return core.Entity{}, err
-	}
-
-	if slices.Contains(s.config.Concurrent.Admins, entity.ID) {
-		entity.Role = "_admin"
 	}
 
 	return entity, nil

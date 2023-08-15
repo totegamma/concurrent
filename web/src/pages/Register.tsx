@@ -52,6 +52,7 @@ export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Elemen
         if (!token) return
         setLoading(true)
 
+
         api.register(ccaddr, meta, inviteCode, captcha)
         .then(async (res) => await res.json())
         .then((data) => {

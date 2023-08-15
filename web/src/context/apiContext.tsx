@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState } from 'react'
+import { createContext, useContext, useMemo, useState } from 'react'
 import { Api } from '@concurrent-world/client'
 import { usePersistent } from '../hooks/usePersistent'
 
@@ -22,11 +22,6 @@ export default function ApiProvider(props: ApiProviderProps): JSX.Element {
 
     const [token, setToken] = usePersistent<string | undefined>("token", undefined)
     const [api, setApi] = useState<Api>(new Api({host: '', token: token}))
-
-    useEffect(() => {
-        if (!token) return
-        setApi(new Api({host: '', token: token}))
-    }, [])
 
     const setJWT = useMemo(() => (jwt: string) => {
         setToken(jwt)

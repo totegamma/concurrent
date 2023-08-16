@@ -134,7 +134,7 @@ func main() {
 	ap.POST("/acct/:id/outbox", activitypubHandler.PrintRequest)
 	ap.GET("/note/:id", activitypubHandler.Note)
 
-	ap.GET("/api/entity/:ccaddr", activitypubHandler.GetEntityID)
+	ap.GET("/api/entity/:ccid", activitypubHandler.GetEntityID)
 	ap.GET("/api/person/:id", activitypubHandler.GetPerson)
 
 	// should be restricted

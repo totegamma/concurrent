@@ -37,12 +37,16 @@ jobs:
     - name: Run tests with coverage
       run: go test -coverprofile=coverage.out ./...
 
-    - name: Generate html report
-      run : go tool cover -html=coverage.out -o coverage.html
+    - name: create dist directory
+      run: mkdir dist
 
-    - name: Host coverage report
-      uses: actions/upload-artifact@v2
+    - name: Generate html report
+      run : go tool cover -html=coverage.out -o ./dist/coverage.html
+
+    - name: Deploy
+      uses: peaceiris/actions-gh-pages@v3
+      if: ${{ github.ref == 'refs/heads/main' }}
       with:
-        name: coverage-report
-        path: coverage.html
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: ./dist
 

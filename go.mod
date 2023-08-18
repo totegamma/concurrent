@@ -6,6 +6,7 @@ require (
 	github.com/ethereum/go-ethereum v1.11.6
 	github.com/go-fed/httpsig v1.1.0
 	github.com/go-yaml/yaml v2.1.0+incompatible
+	github.com/golang/mock v1.4.4
 	github.com/google/wire v0.5.0
 	github.com/gorilla/websocket v1.4.2
 	github.com/labstack/echo-contrib v0.15.0

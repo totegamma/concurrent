@@ -5,6 +5,11 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+type IRepository interface {
+	Get(ctx context.Context, key string) (string, error)
+	Upsert(ctx context.Context, key string, value string) error
+}
+
 // Repository is userkv repository
 type Repository struct {
 	rdb *redis.Client

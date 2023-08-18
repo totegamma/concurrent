@@ -4,13 +4,18 @@ import (
 	"context"
 )
 
+type IService interface {
+	Get(ctx context.Context, userID string, key string) (string, error)
+	Upsert(ctx context.Context, userID string, key string, value string) error
+}
+
 // Service is userkv service
 type Service struct {
-	repository *Repository
+	repository IRepository
 }
 
 // NewService is for wire.go
-func NewService(repository *Repository) *Service {
+func NewService(repository IRepository) *Service {
 	return &Service{repository: repository}
 }
 

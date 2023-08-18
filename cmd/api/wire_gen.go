@@ -52,7 +52,7 @@ func SetupAssociationHandler(db *gorm.DB, rdb *redis.Client, config util.Config)
 	messageRepository := message.NewRepository(db)
 	messageService := message.NewService(rdb, messageRepository, streamService)
 	associationService := association.NewService(rdb, repository, streamService, messageService)
-	handler := association.NewHandler(associationService)
+	handler := association.NewHandler(associationService, messageService)
 	return handler
 }
 
@@ -75,7 +75,7 @@ func SetupDomainHandler(db *gorm.DB, config util.Config) *domain.Handler {
 func SetupEntityHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *entity.Handler {
 	repository := entity.NewRepository(db)
 	service := entity.NewService(repository, config)
-	handler := entity.NewHandler(service, rdb)
+	handler := entity.NewHandler(service, rdb, config)
 	return handler
 }
 

@@ -15,6 +15,10 @@ permissions:
 
 jobs:
   test:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
     runs-on: ubuntu-latest
 
     steps:
@@ -48,13 +52,14 @@ jobs:
     - name: Generate html report
       run : go tool cover -html=coverage.out -o ./dist/coverage.html
 
-
     - name: Setup Pages
       uses: actions/configure-pages@v3
+
     - name: Upload artifact
       uses: actions/upload-pages-artifact@v2
       with:
         path: './dist'
+
     - name: Deploy to GitHub Pages
       id: deployment
       uses: actions/deploy-pages@v2

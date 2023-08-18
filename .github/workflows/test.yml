@@ -31,17 +31,17 @@ jobs:
     - name: Check out code
       uses: actions/checkout@v2
 
-    - name: Setup wire.go
-      run: go install github.com/google/wire/cmd/wire@latest
+#   - name: Setup wire.go
+#     run: go install github.com/google/wire/cmd/wire@latest
 
-    - name: Setup gomock
-      run: go install github.com/golang/mock/mockgen@latest
+#   - name: Setup gomock
+#     run: go install github.com/golang/mock/mockgen@latest
 
-    - name: Generate wire
-      run: |
-        wire gen ./cmd/api
-        wire gen ./cmd/gateway
-        wire gen ./cmd/activitypub
+#   - name: Generate wire
+#     run: |
+#       wire gen ./cmd/api
+#       wire gen ./cmd/gateway
+#       wire gen ./cmd/activitypub
 
     - name: Run tests with coverage
       run: go test -coverprofile=coverage.out ./...

@@ -114,10 +114,10 @@ func SetupAuthService(db *gorm.DB, config util.Config) *auth.Service {
 }
 
 func SetupUserkvHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *userkv.Handler {
-	repository := userkv.NewRepository(rdb)
-	service := userkv.NewService(repository)
-	entityRepository := entity.NewRepository(db)
-	entityService := entity.NewService(entityRepository, config)
+	iRepository := userkv.NewRepository(rdb)
+	service := userkv.NewService(iRepository)
+	repository := entity.NewRepository(db)
+	entityService := entity.NewService(repository, config)
 	handler := userkv.NewHandler(service, entityService)
 	return handler
 }

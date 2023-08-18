@@ -16,7 +16,7 @@ type Repository struct {
 }
 
 // NewRepository is for wire.go
-func NewRepository(rdb *redis.Client) *Repository {
+func NewRepository(rdb *redis.Client) IRepository {
 	return &Repository{rdb: rdb}
 }
 

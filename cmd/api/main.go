@@ -1,3 +1,4 @@
+//go:generate go run github.com/google/wire/cmd/wire gen .
 package main
 
 import (

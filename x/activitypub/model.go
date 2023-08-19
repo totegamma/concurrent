@@ -101,6 +101,15 @@ type Object struct {
 	Content string      `json:"content"`
 	Actor   string      `json:"actor"`
 	Object  interface{} `json:"object"`
+	Tag	    []Tag       `json:"tag"`
+}
+
+// Tag is a struct for an ActivityPub tag.
+type Tag struct {
+	Type string `json:"type"`
+	ID   string `json:"id"`
+	Name string `json:"name"`
+	Icon Icon   `json:"icon"`
 }
 
 // Accept is a struct for an ActivityPub accept activity.

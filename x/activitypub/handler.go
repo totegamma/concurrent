@@ -271,6 +271,13 @@ func (h Handler) Inbox(c echo.Context) error {
 			return c.String(http.StatusOK, "OK but not implemented")
 		}
 	default:
+		// print request body
+		b, err := json.Marshal(object)
+		if err != nil {
+			span.RecordError(err)
+			return c.String(http.StatusInternalServerError, "Internal server error (json marshal error)")
+		}
+		log.Println(string(b))
 		return c.String(http.StatusOK, "OK but not implemented")
 	}
 

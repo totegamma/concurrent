@@ -29,7 +29,7 @@ type associationResponse struct {
 	Association core.Association `json:"association"`
 }
 
-type signedObject struct {
+type SignedObject struct {
 	Signer   string      `json:"signer"`
 	Type     string      `json:"type"`
 	Schema   string      `json:"schema"`

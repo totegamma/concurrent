@@ -10,6 +10,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/x/message"
+	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/util"
 	"go.opentelemetry.io/otel"
 	"io/ioutil"
@@ -27,12 +28,21 @@ type Handler struct {
 	repo    *Repository
 	rdb     *redis.Client
 	message *message.Service
+	association *association.Service
 	config  util.Config
+	apconfig APConfig
 }
 
 // NewHandler returns a new Handler.
-func NewHandler(repo *Repository, rdb *redis.Client, message *message.Service, config util.Config) *Handler {
-	return &Handler{repo, rdb, message, config}
+func NewHandler(
+		repo *Repository,
+		rdb *redis.Client,
+		message *message.Service,
+		association *association.Service,
+		config util.Config,
+		apconfig APConfig,
+	) *Handler {
+	return &Handler{repo, rdb, message, association, config, apconfig}
 }
 
 // :: Activitypub Related Functions ::
@@ -242,6 +252,50 @@ func (h Handler) Inbox(c echo.Context) error {
 
 		return c.String(http.StatusOK, "follow accepted")
 
+	case "Like":
+		targetID := strings.Replace(object.Object.(string), "https://"+h.config.Concurrent.FQDN+"/ap/note/", "", 1)
+		_, err := h.message.Get(ctx, targetID)
+		if err != nil {
+			span.RecordError(err)
+			return c.String(http.StatusNotFound, "message not found")
+		}
+
+		b := association.SignedObject {
+			Signer: h.apconfig.ProxyCCID,
+			Type: "Association",
+			Schema: "https://raw.githubusercontent.com/totegamma/concurrent-schemas/master/associations/emoji/0.0.1.json",
+			Body: map[string]interface{}{
+				"shortcode": object.Tag[0].Name,
+				"imageUrl": object.Tag[0].Icon.URL,
+			},
+			Meta: map[string]interface{}{
+				"apActor": object.Actor,
+			},
+			SignedAt: time.Now(),
+			Target: targetID,
+		}
+
+		objb, err := json.Marshal(b)
+		if err != nil {
+			span.RecordError(err)
+			return c.String(http.StatusInternalServerError, "Internal server error (json marshal error)")
+		}
+
+		objstr := string(objb)
+		objsig, err := util.SignBytes(objb, h.apconfig.ProxyPrivateKey)
+		if err != nil {
+			span.RecordError(err)
+			return c.String(http.StatusInternalServerError, "Internal server error (sign error)")
+		}
+
+		_, err = h.association.PostAssociation(ctx, objstr, objsig, []string{}, "messages")
+		if err != nil {
+			span.RecordError(err)
+			return c.String(http.StatusInternalServerError, "Internal server error (post association error)")
+		}
+
+		return c.String(http.StatusOK, "like accepted")
+
 	case "Undo":
 		undoObject, ok := object.Object.(map[string]interface{})
 		if !ok {
@@ -268,6 +322,13 @@ func (h Handler) Inbox(c echo.Context) error {
 			h.repo.RemoveFollow(ctx, id)
 			return c.String(http.StatusOK, "OK")
 		default:
+			// print request body
+			b, err := json.Marshal(object)
+			if err != nil {
+				span.RecordError(err)
+				return c.String(http.StatusInternalServerError, "Internal server error (json marshal error)")
+			}
+			log.Println(string(b))
 			return c.String(http.StatusOK, "OK but not implemented")
 		}
 	default:

@@ -1,5 +1,13 @@
 package activitypub
 
+import (
+	"log"
+	"os"
+	"github.com/go-yaml/yaml"
+	"github.com/ethereum/go-ethereum/crypto"
+	"encoding/hex"
+)
+
 // ApEntity is a db model of an ActivityPub entity.
 type ApEntity struct {
 	ID         string `json:"id" gorm:"type:text"`
@@ -165,3 +173,42 @@ type NodeInfoMetadataMaintainer struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
 }
+
+type APConfig struct {
+	ProxyPrivateKey string `yaml:"workerPrivateKey"`
+
+	// internal generated
+	ProxyCCID	  string
+	ProxyPublicKey string
+}
+
+// Load loads concurrent config from given path
+func (c *APConfig) Load(path string) error {
+	f, err := os.Open(path)
+	if err != nil {
+		log.Fatal("failed to open configuration file:", err)
+		return err
+	}
+	defer f.Close()
+
+	err = yaml.NewDecoder(f).Decode(&c)
+	if err != nil {
+		log.Fatal("failed to load configuration file:", err)
+		return err
+	}
+
+	// generate worker public key
+	proxyPrivateKey, err := crypto.HexToECDSA(c.ProxyPrivateKey)
+	if err != nil {
+		log.Fatal("failed to parse worker private key:", err)
+		return err
+	}
+	c.ProxyPublicKey = hex.EncodeToString(crypto.FromECDSAPub(&proxyPrivateKey.PublicKey))
+
+	// generate worker WorkerCCID
+	addr := crypto.PubkeyToAddress(proxyPrivateKey.PublicKey)
+	c.ProxyCCID = "CC" + addr.Hex()[2:]
+
+	return nil
+}
+

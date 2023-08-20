@@ -44,8 +44,20 @@ func main() {
 		e.Logger.Fatal(err)
 	}
 
+	apConf := activitypub.APConfig{}
+	apConfPath := os.Getenv("GATEWAY_CONFIG")
+	if apConfPath == "" {
+		apConfPath = "/etc/concurrent/activitypub.yaml"
+	}
+	err = apConf.Load(apConfPath)
+	if err != nil {
+		e.Logger.Fatal(err)
+	}
+
 	log.Print("Concurrent ", util.GetFullVersion(), " starting...")
 	log.Print("Config loaded! I am: ", config.Concurrent.CCID)
+
+	log.Print("ApConfig loaded! Proxy: ", apConf.ProxyCCID)
 
 	logfile, err := os.OpenFile(filepath.Join(config.Server.LogPath, "activitypub-access.log"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
 	if err != nil {
@@ -123,7 +135,7 @@ func main() {
 	}
 
 	authService := SetupAuthService(db, config)
-	activitypubHandler := SetupActivitypubHandler(db, rdb, config)
+	activitypubHandler := SetupActivitypubHandler(db, rdb, config, apConf)
 
 	e.GET("/.well-known/webfinger", activitypubHandler.WebFinger)
 	e.GET("/.well-known/nodeinfo", activitypubHandler.NodeInfoWellKnown)

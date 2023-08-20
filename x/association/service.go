@@ -31,7 +31,7 @@ func (s *Service) PostAssociation(ctx context.Context, objectStr string, signatu
 	ctx, span := tracer.Start(ctx, "ServicePostAssociation")
 	defer span.End()
 
-	var object signedObject
+	var object SignedObject
 	err := json.Unmarshal([]byte(objectStr), &object)
 	if err != nil {
 		span.RecordError(err)
@@ -43,7 +43,7 @@ func (s *Service) PostAssociation(ctx context.Context, objectStr string, signatu
 		return core.Association{}, err
 	}
 
-	var content signedObject
+	var content SignedObject
 	err = json.Unmarshal([]byte(objectStr), &content)
 	if err != nil {
 		span.RecordError(err)

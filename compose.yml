@@ -53,13 +53,13 @@ services:
     volumes:
       - ./config:/etc/concurrent/:ro
 
-        #  ccwebui:
-        #    build:
-        #      context: .
-        #      dockerfile: ./web/Dockerfile
-        #    restart: always
-        #    ports:
-        #      - "8001:80"
+  ccwebui:
+    build:
+      context: .
+      dockerfile: ./web/Dockerfile
+    restart: always
+    ports:
+      - "8001:80"
 
   db:
     restart: always

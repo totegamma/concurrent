@@ -260,6 +260,12 @@ func (h Handler) Inbox(c echo.Context) error {
 			return c.String(http.StatusNotFound, "message not found")
 		}
 
+		person, err := FetchPerson(ctx, object.Actor)
+		if err != nil {
+			span.RecordError(err)
+			return c.String(http.StatusBadRequest, "failed to fetch actor")
+		}
+
 		b := association.SignedObject {
 			Signer: h.apconfig.ProxyCCID,
 			Type: "Association",
@@ -267,6 +273,12 @@ func (h Handler) Inbox(c echo.Context) error {
 			Body: map[string]interface{}{
 				"shortcode": object.Tag[0].Name,
 				"imageUrl": object.Tag[0].Icon.URL,
+				"profileOverride": map[string]interface{}{
+					"username": person.Name,
+					"avatar": person.Icon.URL,
+					"description": person.Summary,
+					"link": object.Actor,
+				},
 			},
 			Meta: map[string]interface{}{
 				"apActor": object.Actor,

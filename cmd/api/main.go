@@ -1,3 +1,4 @@
+//go:generate go run github.com/google/wire/cmd/wire gen .
 package main
 
 import (
@@ -173,7 +174,7 @@ func main() {
 	apiV1R.POST("/entity", entityHandler.Register, authService.Restrict(auth.ISUNKNOWN))
 	apiV1R.DELETE("/entity/:id", entityHandler.Delete, authService.Restrict(auth.ISADMIN))
 	apiV1R.PUT("/entity/:id", entityHandler.Update, authService.Restrict(auth.ISADMIN))
-	apiV1R.POST("/admin/entity", entityHandler.Register, authService.Restrict(auth.ISADMIN))
+	apiV1R.POST("/admin/entity", entityHandler.Create, authService.Restrict(auth.ISADMIN))
 
 	apiV1R.POST("/message", messageHandler.Post, authService.Restrict(auth.ISLOCAL))
 	apiV1R.DELETE("/message/:id", messageHandler.Delete, authService.Restrict(auth.ISLOCAL))

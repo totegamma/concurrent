@@ -112,6 +112,26 @@ func CreateJWT(claims JwtClaims, privatekey string) (string, error) {
 
 }
 
+func SignBytes(bytes []byte, privatekey string) (string, error) {
+	
+	hash := sha3.NewLegacyKeccak256()
+	hash.Write(bytes)
+	hashedMessage := hash.Sum(nil)
+
+	serverkey, err := crypto.HexToECDSA(privatekey)
+	if err != nil {
+		return "", err
+	}
+	signatureBytes, err := crypto.Sign([]byte(hashedMessage), serverkey)
+	if err != nil {
+		return "", err
+	}
+
+	encoded := hex.EncodeToString(signatureBytes)
+
+	return encoded, nil
+}
+
 // ValidateJWT checks is jwt signature valid and not expired
 func ValidateJWT(jwt string) (JwtClaims, error) {
 

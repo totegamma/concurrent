@@ -1,3 +1,4 @@
+//go:generate go run go.uber.org/mock/mockgen -source=repository.go -destination=mock/repository.go
 package userkv
 
 import (
@@ -5,13 +6,18 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+type IRepository interface {
+	Get(ctx context.Context, key string) (string, error)
+	Upsert(ctx context.Context, key string, value string) error
+}
+
 // Repository is userkv repository
 type Repository struct {
 	rdb *redis.Client
 }
 
 // NewRepository is for wire.go
-func NewRepository(rdb *redis.Client) *Repository {
+func NewRepository(rdb *redis.Client) IRepository {
 	return &Repository{rdb: rdb}
 }
 

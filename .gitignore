@@ -4,3 +4,5 @@ _composeData
 *.exe
 *.log
 .idea/
+wire_gen.go
+mock/

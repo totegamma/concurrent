@@ -21,8 +21,8 @@ type Handler struct {
 }
 
 // NewHandler is for wire.go
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+func NewHandler(service *Service, message *message.Service) *Handler {
+	return &Handler{service: service, message: message}
 }
 
 // Get is for Handling HTTP Get Method
@@ -74,7 +74,7 @@ func (h Handler) Delete(c echo.Context) error {
 	}
 
 	message, err := h.message.Get(ctx, association.TargetID)
-	if err != nil {
+	if err == nil { // if target message exists
 		claims := c.Get("jwtclaims").(util.JwtClaims)
 		requester := claims.Audience
 		if (association.Author != requester) && (message.Author != requester) {

@@ -11,6 +11,7 @@ import (
 	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/character"
+	"github.com/totegamma/concurrent/x/collection"
 	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/message"
@@ -27,6 +28,8 @@ var messageHandlerProvider = wire.NewSet(message.NewHandler, message.NewService,
 var characterHandlerProvider = wire.NewSet(character.NewHandler, character.NewService, character.NewRepository)
 var associationHandlerProvider = wire.NewSet(association.NewHandler, association.NewService, association.NewRepository, message.NewService, message.NewRepository)
 var userkvHandlerProvider = wire.NewSet(userkv.NewHandler, userkv.NewService, userkv.NewRepository)
+var collectionHandlerProvider = wire.NewSet(collection.NewHandler, collection.NewService, collection.NewRepository)
+
 
 func SetupMessageHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *message.Handler {
 	wire.Build(messageHandlerProvider, stream.NewService, stream.NewRepository, entity.NewService, entity.NewRepository)
@@ -81,4 +84,9 @@ func SetupAuthService(db *gorm.DB, config util.Config) *auth.Service {
 func SetupUserkvHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *userkv.Handler {
 	wire.Build(userkvHandlerProvider, entity.NewService, entity.NewRepository)
 	return &userkv.Handler{}
+}
+
+func SetupCollectionHandler(db *gorm.DB, rdb *redis.Client, config util.Config) collection.IHandler {
+	wire.Build(collectionHandlerProvider)
+	return &collection.Handler{}
 }

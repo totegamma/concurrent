@@ -76,6 +76,10 @@ func (s *Service) PostAssociation(ctx context.Context, objectStr string, signatu
 		return association, err // TODO: if err is duplicate key error, server should return 409
 	}
 
+	if targetType != "messages" { // distribute is needed only when targetType is messages
+		return association, nil
+	}
+
 	targetMessage, err := s.message.Get(ctx, association.TargetID)
 	if err != nil {
 		span.RecordError(err)
@@ -135,6 +139,11 @@ func (s *Service) Delete(ctx context.Context, id string) (core.Association, erro
 		span.RecordError(err)
 		return core.Association{}, err
 	}
+
+	if deleted.TargetType != "messages" { // distribute is needed only when targetType is messages
+		return deleted, nil
+	}
+
 	targetMessage, err := s.message.Get(ctx, deleted.TargetID)
 	if err != nil {
 		span.RecordError(err)

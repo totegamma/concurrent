@@ -107,6 +107,8 @@ func main() {
 		&core.Stream{},
 		&core.Domain{},
 		&core.Entity{},
+		&core.Collection{},
+		&core.CollectionItem{},
 	)
 
 	rdb := redis.NewClient(&redis.Options{
@@ -138,6 +140,7 @@ func main() {
 	entityHandler := SetupEntityHandler(db, rdb, config)
 	authHandler := SetupAuthHandler(db, config)
 	userkvHandler := SetupUserkvHandler(db, rdb, config)
+	collectionHandler := SetupCollectionHandler(db, rdb, config)
 
 	authService := SetupAuthService(db, config)
 
@@ -191,6 +194,16 @@ func main() {
 
 	apiV1R.GET("/kv/:key", userkvHandler.Get, authService.Restrict(auth.ISLOCAL))
 	apiV1R.PUT("/kv/:key", userkvHandler.Upsert, authService.Restrict(auth.ISLOCAL))
+
+	apiV1R.POST("/collection", collectionHandler.CreateCollection, authService.Restrict(auth.ISLOCAL))
+	apiV1R.GET("/collection/:id", collectionHandler.GetCollection)
+	apiV1R.PUT("/collection/:id", collectionHandler.UpdateCollection, authService.Restrict(auth.ISLOCAL))
+	apiV1R.DELETE("/collection/:id", collectionHandler.DeleteCollection, authService.Restrict(auth.ISLOCAL))
+
+	apiV1R.POST("/collection/:collection", collectionHandler.CreateItem, authService.Restrict(auth.ISLOCAL))
+	apiV1R.GET("/collection/:collection/:item", collectionHandler.GetItem)
+	apiV1R.PUT("/collection/:collection/:item", collectionHandler.UpdateItem, authService.Restrict(auth.ISLOCAL))
+	apiV1R.DELETE("/collection/:collection/:item", collectionHandler.DeleteItem, authService.Restrict(auth.ISLOCAL))
 
 	e.GET("/health", func(c echo.Context) (err error) {
 		ctx := c.Request().Context()

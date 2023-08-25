@@ -29,7 +29,7 @@ func (r *Repository) Get(ctx context.Context, owner string, schema string) ([]co
 	defer span.End()
 
 	var characters []core.Character
-	if err := r.db.WithContext(ctx).Where("author = $1 AND schema = $2", owner, schema).Find(&characters).Error; err != nil {
+	if err := r.db.WithContext(ctx).Preload("Associations").Where("author = $1 AND schema = $2", owner, schema).Find(&characters).Error; err != nil {
 		return []core.Character{}, err
 	}
 	if characters == nil {

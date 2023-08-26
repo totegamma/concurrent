@@ -143,6 +143,7 @@ type Note struct {
 	Content      string      `json:"content"`
 	Published    string      `json:"published"`
 	To           []string    `json:"to"`
+	Tag		     []Tag       `json:"tag"`
 }
 
 // NodeInfo is a struct for a NodeInfo response.
@@ -172,6 +173,10 @@ type NodeInfoMetadata struct {
 type NodeInfoMetadataMaintainer struct {
 	Name  string `json:"name"`
 	Email string `json:"email"`
+}
+
+type WorldEmoji struct {
+	imageURL string
 }
 
 type APConfig struct {

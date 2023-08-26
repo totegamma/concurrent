@@ -90,13 +90,33 @@ func (h *Handler) Boot() {
 							body := signedObject.Body
 
 							var text string
+							var emojis []Tag
 							if signedObject.Schema == "https://raw.githubusercontent.com/totegamma/concurrent-schemas/master/messages/note/0.0.1.json" {
 								t, ok := body.(map[string]interface{})["body"].(string)
-								if !ok {
-									log.Printf("parse error")
-									continue
+								if ok {
+									text = t
 								}
-								text = t
+
+								e, ok := body.(map[string]interface{})["emojis"].(map[string]interface{})
+								if ok {
+									for k, v := range e {
+										imageURL, ok := v.(map[string]interface{})["imageURL"].(string)
+										if !ok {
+											continue
+										}
+										emoji := Tag{
+											ID: imageURL,
+											Type: "Emoji",
+											Name: ":" + k + ":",
+											Icon: Icon{
+												Type:      "Image",
+												MediaType: "image/png",
+												URL:       imageURL,
+											},
+										}
+										emojis = append(emojis, emoji)
+									}
+								}
 							} else {
 								continue
 							}
@@ -115,6 +135,7 @@ func (h *Handler) Boot() {
 									Content:      text,
 									Published:    msg.CDate.Format(time.RFC3339),
 									To:           []string{"https://www.w3.org/ns/activitystreams#Public"},
+									Tag:          emojis,
 								},
 							}
 

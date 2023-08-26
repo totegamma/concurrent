@@ -1,9 +1,9 @@
 package entity
 
 import (
-	"strings"
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/totegamma/concurrent/x/core"

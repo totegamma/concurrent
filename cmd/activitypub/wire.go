@@ -8,13 +8,13 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/totegamma/concurrent/x/activitypub"
+	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/stream"
 	"github.com/totegamma/concurrent/x/util"
-	"github.com/totegamma/concurrent/x/association"
 )
 
 func SetupAuthService(db *gorm.DB, config util.Config) *auth.Service {

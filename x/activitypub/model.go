@@ -1,11 +1,11 @@
 package activitypub
 
 import (
+	"encoding/hex"
+	"github.com/ethereum/go-ethereum/crypto"
+	"github.com/go-yaml/yaml"
 	"log"
 	"os"
-	"github.com/go-yaml/yaml"
-	"github.com/ethereum/go-ethereum/crypto"
-	"encoding/hex"
 )
 
 // ApEntity is a db model of an ActivityPub entity.
@@ -109,7 +109,7 @@ type Object struct {
 	Content string      `json:"content"`
 	Actor   string      `json:"actor"`
 	Object  interface{} `json:"object"`
-	Tag	    []Tag       `json:"tag"`
+	Tag     []Tag       `json:"tag"`
 }
 
 // Tag is a struct for an ActivityPub tag.
@@ -143,7 +143,7 @@ type Note struct {
 	Content      string      `json:"content"`
 	Published    string      `json:"published"`
 	To           []string    `json:"to"`
-	Tag		     []Tag       `json:"tag"`
+	Tag          []Tag       `json:"tag"`
 }
 
 // NodeInfo is a struct for a NodeInfo response.
@@ -183,7 +183,7 @@ type APConfig struct {
 	ProxyPrivateKey string `yaml:"workerPrivateKey"`
 
 	// internal generated
-	ProxyCCID	  string
+	ProxyCCID      string
 	ProxyPublicKey string
 }
 
@@ -216,4 +216,3 @@ func (c *APConfig) Load(path string) error {
 
 	return nil
 }
-

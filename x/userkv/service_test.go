@@ -2,9 +2,9 @@ package userkv
 
 import (
 	"context"
-	"testing"
-	"go.uber.org/mock/gomock"
 	"github.com/totegamma/concurrent/x/userkv/mock"
+	"go.uber.org/mock/gomock"
+	"testing"
 )
 
 func TestServiceGet(t *testing.T) {
@@ -39,5 +39,3 @@ func TestServiceUpsert(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-
-

@@ -1,8 +1,8 @@
 package collection
 
 import (
-	"fmt"
 	"context"
+	"fmt"
 	"github.com/rs/xid"
 	"github.com/totegamma/concurrent/x/core"
 )
@@ -94,4 +94,3 @@ func (s *Service) DeleteItem(ctx context.Context, id string, itemId string) (cor
 
 	return s.repo.DeleteItem(ctx, id, itemId)
 }
-

@@ -9,8 +9,8 @@ import (
 	"fmt"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
-	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/association"
+	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/util"
 	"go.opentelemetry.io/otel"
 	"io/ioutil"
@@ -25,23 +25,23 @@ var tracer = otel.Tracer("activitypub")
 
 // Handler is a handler for the WebFinger protocol.
 type Handler struct {
-	repo    *Repository
-	rdb     *redis.Client
-	message *message.Service
+	repo        *Repository
+	rdb         *redis.Client
+	message     *message.Service
 	association *association.Service
-	config  util.Config
-	apconfig APConfig
+	config      util.Config
+	apconfig    APConfig
 }
 
 // NewHandler returns a new Handler.
 func NewHandler(
-		repo *Repository,
-		rdb *redis.Client,
-		message *message.Service,
-		association *association.Service,
-		config util.Config,
-		apconfig APConfig,
-	) *Handler {
+	repo *Repository,
+	rdb *redis.Client,
+	message *message.Service,
+	association *association.Service,
+	config util.Config,
+	apconfig APConfig,
+) *Handler {
 	return &Handler{repo, rdb, message, association, config, apconfig}
 }
 
@@ -266,25 +266,25 @@ func (h Handler) Inbox(c echo.Context) error {
 			return c.String(http.StatusBadRequest, "failed to fetch actor")
 		}
 
-		b := association.SignedObject {
+		b := association.SignedObject{
 			Signer: h.apconfig.ProxyCCID,
-			Type: "Association",
+			Type:   "Association",
 			Schema: "https://raw.githubusercontent.com/totegamma/concurrent-schemas/master/associations/emoji/0.0.1.json",
 			Body: map[string]interface{}{
 				"shortcode": object.Tag[0].Name,
-				"imageUrl": object.Tag[0].Icon.URL,
+				"imageUrl":  object.Tag[0].Icon.URL,
 				"profileOverride": map[string]interface{}{
-					"username": person.Name,
-					"avatar": person.Icon.URL,
+					"username":    person.Name,
+					"avatar":      person.Icon.URL,
 					"description": person.Summary,
-					"link": object.Actor,
+					"link":        object.Actor,
 				},
 			},
 			Meta: map[string]interface{}{
 				"apActor": object.Actor,
 			},
 			SignedAt: time.Now(),
-			Target: targetID,
+			Target:   targetID,
 		}
 
 		objb, err := json.Marshal(b)

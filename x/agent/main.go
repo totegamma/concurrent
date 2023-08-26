@@ -14,13 +14,13 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 	"io/ioutil"
 	"log"
+	"math/rand"
 	"net/http"
 	"net/url"
 	"strconv"
 	"strings"
 	"sync"
 	"time"
-	"math/rand"
 )
 
 var tracer = otel.Tracer("agent")

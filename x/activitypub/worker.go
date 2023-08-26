@@ -105,7 +105,7 @@ func (h *Handler) Boot() {
 											continue
 										}
 										emoji := Tag{
-											ID: imageURL,
+											ID:   imageURL,
 											Type: "Emoji",
 											Name: ":" + k + ":",
 											Icon: Icon{

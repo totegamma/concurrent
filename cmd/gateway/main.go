@@ -77,11 +77,6 @@ func main() {
 
 	e.HidePort = true
 	e.HideBanner = true
-	e.Use(middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins:  []string{"*"},
-		AllowHeaders:  []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
-		ExposeHeaders: []string{"trace-id"},
-	}))
 
 	if config.Server.EnableTrace {
 		cleanup, err := setupTraceProvider(config.Server.TraceEndpoint, config.Concurrent.FQDN+"/ccgateway", util.GetFullVersion())
@@ -164,6 +159,12 @@ func main() {
 		panic("failed to setup tracing plugin")
 	}
 
+	cors := middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins:  []string{"*"},
+		AllowHeaders:  []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
+		ExposeHeaders: []string{"trace-id"},
+	})
+
 	// プロキシ設定
 	for _, service := range gwConf.Services {
 		service := service
@@ -186,15 +187,28 @@ func main() {
 
 		proxy.Transport = otelhttp.NewTransport(http.DefaultTransport)
 
-		e.Any(service.Path, func(c echo.Context) error {
-			proxy.ServeHTTP(c.Response(), c.Request())
-			return nil
-		})
+		injectCors := service.InjectCors
+		if injectCors {
+			e.Any(service.Path, func(c echo.Context) error {
+				proxy.ServeHTTP(c.Response(), c.Request())
+				return nil
+			}, cors)
 
-		e.Any(service.Path+"/*", func(c echo.Context) error {
-			proxy.ServeHTTP(c.Response(), c.Request())
-			return nil
-		})
+			e.Any(service.Path+"/*", func(c echo.Context) error {
+				proxy.ServeHTTP(c.Response(), c.Request())
+				return nil
+			}, cors)
+		} else {
+			e.Any(service.Path, func(c echo.Context) error {
+				proxy.ServeHTTP(c.Response(), c.Request())
+				return nil
+			})
+
+			e.Any(service.Path+"/*", func(c echo.Context) error {
+				proxy.ServeHTTP(c.Response(), c.Request())
+				return nil
+			})
+		}
 	}
 
 	e.GET("/services", func(c echo.Context) (err error) {

@@ -20,6 +20,7 @@ type Service struct {
 	Port         int    `yaml:"port"`
 	Path         string `yaml:"path"`
 	PreservePath bool   `yaml:"preservePath"`
+	InjectCors   bool   `yaml:"injectCors"`
 }
 
 // Load loads concurrent config from given path

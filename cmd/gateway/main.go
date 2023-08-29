@@ -197,6 +197,16 @@ func main() {
 		})
 	}
 
+	e.GET("/services", func(c echo.Context) (err error) {
+		services := make(map[string]ServiceInfo)
+		for _, service := range gwConf.Services {
+			services[service.Name] = ServiceInfo{
+				Path: service.Path,
+			}
+		}
+		return c.JSON(http.StatusOK, services)
+	})
+
 	e.GET("/health", func(c echo.Context) (err error) {
 		ctx := c.Request().Context()
 

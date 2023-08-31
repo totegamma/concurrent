@@ -21,7 +21,6 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
-	"github.com/totegamma/concurrent/x/activitypub"
 	"github.com/totegamma/concurrent/x/util"
 
 	"github.com/redis/go-redis/extra/redisotel/v9"
@@ -119,8 +118,6 @@ func main() {
 
 	e.Use(echoprometheus.NewMiddleware("ccgateway"))
 	e.Use(middleware.Recover())
-
-	e.Binder = &activitypub.Binder{}
 
 	// Postrgresqlとの接続
 	db, err := gorm.Open(postgres.Open(config.Server.Dsn), &gorm.Config{})

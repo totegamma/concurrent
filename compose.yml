@@ -37,22 +37,6 @@ services:
     volumes:
       - ./config:/etc/concurrent/:ro
 
-  ccactivitypub:
-    build:
-      context: .
-      dockerfile: ./cmd/activitypub/Dockerfile
-    restart: always
-    links:
-      - db
-      - redis
-    depends_on:
-      db:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
-    volumes:
-      - ./config:/etc/concurrent/:ro
-
   ccwebui:
     build:
       context: .

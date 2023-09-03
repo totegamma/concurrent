@@ -25,6 +25,7 @@ type signedObject struct {
 	Maintainer []string    `json:"maintainer"`
 	Writer     []string    `json:"writer"`
 	Reader     []string    `json:"reader"`
+	Visible    bool        `json:"visible"`
 }
 
 // Event is websocket root packet model

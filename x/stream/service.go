@@ -297,6 +297,7 @@ func (s *Service) Upsert(ctx context.Context, objectStr string, signature string
 	stream := core.Stream{
 		ID:         id,
 		Author:     object.Signer,
+		Visible:	object.Visible,
 		Maintainer: object.Maintainer,
 		Writer:     object.Writer,
 		Reader:     object.Reader,
@@ -322,7 +323,19 @@ func (s *Service) StreamListBySchema(ctx context.Context, schema string) ([]core
 	ctx, span := tracer.Start(ctx, "ServiceStreamListBySchema")
 	defer span.End()
 
-	streams, err := s.repository.GetList(ctx, schema)
+	streams, err := s.repository.GetListBySchema(ctx, schema)
+	for i := 0; i < len(streams); i++ {
+		streams[i].ID = streams[i].ID + "@" + s.config.Concurrent.FQDN
+	}
+	return streams, err
+}
+
+// StreamListByAuthor returns streamList by author
+func (s *Service) StreamListByAuthor(ctx context.Context, author string) ([]core.Stream, error) {
+	ctx, span := tracer.Start(ctx, "ServiceStreamListByAuthor")
+	defer span.End()
+
+	streams, err := s.repository.GetListByAuthor(ctx, author)
 	for i := 0; i < len(streams); i++ {
 		streams[i].ID = streams[i].ID + "@" + s.config.Concurrent.FQDN
 	}

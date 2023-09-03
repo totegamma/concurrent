@@ -35,13 +35,23 @@ func (r *Repository) Upsert(ctx context.Context, stream *core.Stream) error {
 	return r.db.WithContext(ctx).Save(&stream).Error
 }
 
-// GetList returns list of schemas by schema
-func (r *Repository) GetList(ctx context.Context, schema string) ([]core.Stream, error) {
+// GetListBySchema returns list of schemas by schema
+func (r *Repository) GetListBySchema(ctx context.Context, schema string) ([]core.Stream, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGetList")
 	defer span.End()
 
 	var streams []core.Stream
-	err := r.db.WithContext(ctx).Where("Schema = ?", schema).Find(&streams).Error
+	err := r.db.WithContext(ctx).Where("Schema = ? and visible = true", schema).Find(&streams).Error
+	return streams, err
+}
+
+// GetListByAuthor returns list of schemas by owner
+func (r *Repository) GetListByAuthor(ctx context.Context, author string) ([]core.Stream, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryGetList")
+	defer span.End()
+
+	var streams []core.Stream
+	err := r.db.WithContext(ctx).Where("Author = ?", author).Find(&streams).Error
 	return streams, err
 }
 

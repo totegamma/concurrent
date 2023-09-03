@@ -77,7 +77,7 @@ type Message struct {
 // mutable
 type Stream struct {
 	ID         string         `json:"id" gorm:"primaryKey;type:char(20);"`
-	Public     bool           `json:"public" gorm:"type:boolean;default:false"`
+	Visible    bool           `json:"visible" gorm:"type:boolean;default:false"`
 	Author     string         `json:"author" gorm:"type:char(42)"`
 	Maintainer pq.StringArray `json:"maintainer" gorm:"type:char(42)[];default:'{}'"`
 	Writer     pq.StringArray `json:"writer" gorm:"type:char(42)[];default:'{}'"`
@@ -93,7 +93,7 @@ type Stream struct {
 // mutable
 type Collection struct {
 	ID         string           `json:"id" gorm:"primaryKey;type:char(20);"`
-	Public     bool             `json:"public" gorm:"type:boolean;default:false"`
+	Visible    bool             `json:"visible" gorm:"type:boolean;default:false"`
 	Author     string           `json:"author" gorm:"type:char(42)"`
 	Maintainer pq.StringArray   `json:"maintainer" gorm:"type:char(42)[];default:'{}'"`
 	Writer     pq.StringArray   `json:"writer" gorm:"type:char(42)[];default:'{}'"`

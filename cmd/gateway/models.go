@@ -10,12 +10,17 @@ type GatewayConfig struct {
 	Services []Service `json:"services"`
 }
 
+type ServiceInfo struct {
+	Path string `json:"path"`
+}
+
 type Service struct {
 	Name         string `yaml:"name"`
 	Host         string `yaml:"host"`
 	Port         int    `yaml:"port"`
 	Path         string `yaml:"path"`
 	PreservePath bool   `yaml:"preservePath"`
+	InjectCors   bool   `yaml:"injectCors"`
 }
 
 // Load loads concurrent config from given path

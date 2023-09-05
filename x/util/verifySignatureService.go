@@ -113,7 +113,7 @@ func CreateJWT(claims JwtClaims, privatekey string) (string, error) {
 }
 
 func SignBytes(bytes []byte, privatekey string) (string, error) {
-	
+
 	hash := sha3.NewLegacyKeccak256()
 	hash.Write(bytes)
 	hashedMessage := hash.Sum(nil)

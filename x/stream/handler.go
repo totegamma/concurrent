@@ -109,6 +109,22 @@ func (h Handler) List(c echo.Context) error {
 	return c.JSON(http.StatusOK, list)
 }
 
+// ListMine returns stream ids which filtered by specific schema
+func (h Handler) ListMine(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerListMine")
+	defer span.End()
+
+	claims := c.Get("jwtclaims").(util.JwtClaims)
+	requester := claims.Audience
+
+	list, err := h.service.StreamListByAuthor(ctx, requester)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+	return c.JSON(http.StatusOK, list)
+}
+
 // Delete is for handling HTTP Delete Method
 func (h Handler) Delete(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerDelete")

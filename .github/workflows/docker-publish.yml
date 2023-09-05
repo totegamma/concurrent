@@ -28,8 +28,6 @@ jobs:
             image: ghcr.io/totegamma/ccgateway
           - dockerfile: ./cmd/api/Dockerfile
             image: ghcr.io/totegamma/ccapi
-          - dockerfile: ./cmd/activitypub/Dockerfile
-            image: ghcr.io/totegamma/ccactivitypub
           - dockerfile: ./web/Dockerfile
             image: ghcr.io/totegamma/ccwebui
 

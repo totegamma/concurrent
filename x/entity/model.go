@@ -6,14 +6,14 @@ import (
 )
 
 type createRequest struct {
-	CCID  string `json:"ccid"`
-	Meta  string `json:"meta"`
+	CCID string `json:"ccid"`
+	Meta string `json:"meta"`
 }
 
 type registerRequest struct {
-	CCID  string `json:"ccid"`
-	Meta  string `json:"meta"`
-	Token string `json:"token"`
+	CCID    string `json:"ccid"`
+	Meta    string `json:"meta"`
+	Token   string `json:"token"`
 	Captcha string `json:"captcha"`
 }
 

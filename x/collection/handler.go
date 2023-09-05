@@ -1,12 +1,12 @@
 package collection
 
 import (
-	"log"
-	"io/ioutil"
-	"net/http"
-	"go.opentelemetry.io/otel"
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/x/core"
+	"go.opentelemetry.io/otel"
+	"io/ioutil"
+	"log"
+	"net/http"
 )
 
 var tracer = otel.Tracer("collection")
@@ -116,7 +116,7 @@ func (h *Handler) CreateItem(c echo.Context) error {
 
 	created, err := h.service.CreateItem(ctx, core.CollectionItem{
 		Collection: collectionID,
-		Payload: value,
+		Payload:    value,
 	})
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"status": "error", "message": err.Error()})
@@ -155,9 +155,9 @@ func (h *Handler) UpdateItem(c echo.Context) error {
 	value := string(bytes)
 
 	updated, err := h.service.UpdateItem(ctx, core.CollectionItem{
-		ID: itemID,
+		ID:         itemID,
 		Collection: collectionID,
-		Payload: value,
+		Payload:    value,
 	})
 
 	if err != nil {
@@ -183,4 +183,3 @@ func (h *Handler) DeleteItem(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": deleted})
 }
-

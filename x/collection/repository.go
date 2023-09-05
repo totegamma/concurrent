@@ -2,8 +2,8 @@ package collection
 
 import (
 	"context"
-	"gorm.io/gorm"
 	"github.com/totegamma/concurrent/x/core"
+	"gorm.io/gorm"
 )
 
 type IRepository interface {
@@ -82,7 +82,7 @@ func (r *Repository) DeleteItem(ctx context.Context, id string, itemId string) (
 	ctx, span := tracer.Start(ctx, "RepositoryDeleteItem")
 	defer span.End()
 
-	// get deleted 
+	// get deleted
 	var deleted core.CollectionItem
 	err := r.db.WithContext(ctx).First(&deleted, "collection = ? and id = ?", id, itemId).Error
 	if err != nil {
@@ -93,4 +93,3 @@ func (r *Repository) DeleteItem(ctx context.Context, id string, itemId string) (
 
 	return deleted, err
 }
-

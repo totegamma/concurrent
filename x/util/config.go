@@ -14,21 +14,21 @@ type Config struct {
 }
 
 type Server struct {
-	Dsn           string `yaml:"dsn"`
-	RedisAddr     string `yaml:"redisAddr"`
-	EnableTrace   bool   `yaml:"enableTrace"`
-	TraceEndpoint string `yaml:"traceEndpoint"`
-	LogPath       string `yaml:"logPath"`
+	Dsn            string `yaml:"dsn"`
+	RedisAddr      string `yaml:"redisAddr"`
+	EnableTrace    bool   `yaml:"enableTrace"`
+	TraceEndpoint  string `yaml:"traceEndpoint"`
+	LogPath        string `yaml:"logPath"`
 	CaptchaSitekey string `yaml:"captchaSitekey"`
 	CaptchaSecret  string `yaml:"captchaSecret"`
 }
 
 type Concurrent struct {
-	FQDN         string   `yaml:"fqdn"`
-	CCID         string   `yaml:"ccid"`
-	Pubkey       string   `yaml:"publickey"`
-	Prvkey       string   `yaml:"privatekey"`
-	Registration string   `yaml:"registration"` // open, invite, close
+	FQDN         string `yaml:"fqdn"`
+	CCID         string `yaml:"ccid"`
+	Pubkey       string `yaml:"publickey"`
+	Prvkey       string `yaml:"privatekey"`
+	Registration string `yaml:"registration"` // open, invite, close
 }
 
 type Profile struct {

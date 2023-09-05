@@ -77,7 +77,7 @@ type Message struct {
 // mutable
 type Stream struct {
 	ID         string         `json:"id" gorm:"primaryKey;type:char(20);"`
-	Public     bool           `json:"public" gorm:"type:boolean;default:false"`
+	Visible    bool           `json:"visible" gorm:"type:boolean;default:false"`
 	Author     string         `json:"author" gorm:"type:char(42)"`
 	Maintainer pq.StringArray `json:"maintainer" gorm:"type:char(42)[];default:'{}'"`
 	Writer     pq.StringArray `json:"writer" gorm:"type:char(42)[];default:'{}'"`
@@ -92,23 +92,22 @@ type Stream struct {
 // Collection is one of a base object of concurrent
 // mutable
 type Collection struct {
-	ID         string         `json:"id" gorm:"primaryKey;type:char(20);"`
-	Public     bool           `json:"public" gorm:"type:boolean;default:false"`
-	Author     string         `json:"author" gorm:"type:char(42)"`
-	Maintainer pq.StringArray `json:"maintainer" gorm:"type:char(42)[];default:'{}'"`
-	Writer     pq.StringArray `json:"writer" gorm:"type:char(42)[];default:'{}'"`
-	Reader     pq.StringArray `json:"reader" gorm:"type:char(42)[];default:'{}'"`
-	Schema     string         `json:"schema" gorm:"type:varchar(256)"`
-	CDate      time.Time      `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
-	MDate      time.Time      `json:"mdate" gorm:"autoUpdateTime"`
+	ID         string           `json:"id" gorm:"primaryKey;type:char(20);"`
+	Visible    bool             `json:"visible" gorm:"type:boolean;default:false"`
+	Author     string           `json:"author" gorm:"type:char(42)"`
+	Maintainer pq.StringArray   `json:"maintainer" gorm:"type:char(42)[];default:'{}'"`
+	Writer     pq.StringArray   `json:"writer" gorm:"type:char(42)[];default:'{}'"`
+	Reader     pq.StringArray   `json:"reader" gorm:"type:char(42)[];default:'{}'"`
+	Schema     string           `json:"schema" gorm:"type:varchar(256)"`
+	CDate      time.Time        `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
+	MDate      time.Time        `json:"mdate" gorm:"autoUpdateTime"`
 	Items      []CollectionItem `json:"items" gorm:"foreignKey:Collection"`
 }
 
 // CollectionItem is one of a base object of concurrent
 // mutable
 type CollectionItem struct {
-	ID         string         `json:"id" gorm:"primaryKey;type:char(20);"`
-	Collection string         `json:"collection" gorm:"type:char(20)"`
-	Payload	   string         `json:"payload" gorm:"type:json;default:'{}'"`
+	ID         string `json:"id" gorm:"primaryKey;type:char(20);"`
+	Collection string `json:"collection" gorm:"type:char(20)"`
+	Payload    string `json:"payload" gorm:"type:json;default:'{}'"`
 }
-

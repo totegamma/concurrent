@@ -2,8 +2,8 @@
 package entity
 
 import (
-	"fmt"
 	"errors"
+	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -12,9 +12,9 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
+	"github.com/xinguang/go-recaptcha"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
-	"github.com/xinguang/go-recaptcha"
 )
 
 var tracer = otel.Tracer("handler")
@@ -95,7 +95,7 @@ func (h Handler) Register(c echo.Context) error {
 		if claims.Subject != "CONCURRENT_INVITE" {
 			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid token"})
 		}
-		_, err = h.rdb.Get(ctx, "jti:" + claims.JWTID).Result()
+		_, err = h.rdb.Get(ctx, "jti:"+claims.JWTID).Result()
 		if err == nil {
 			span.RecordError(err)
 			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "token is already used"})
@@ -114,7 +114,7 @@ func (h Handler) Register(c echo.Context) error {
 
 	if jwtID != "" {
 		expiration := time.Until(time.Unix(int64(expireAt), 0))
-		err = h.rdb.Set(ctx, "jti:" + jwtID, "1", expiration).Err()
+		err = h.rdb.Set(ctx, "jti:"+jwtID, "1", expiration).Err()
 		if err != nil {
 			span.RecordError(err)
 			return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})

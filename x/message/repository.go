@@ -18,7 +18,7 @@ func NewRepository(db *gorm.DB) *Repository {
 
 // Create creates new message
 func (r *Repository) Create(ctx context.Context, message *core.Message) (string, error) {
-	_, span := tracer.Start(ctx, "RepositoryCreate")
+	ctx, span := tracer.Start(ctx, "RepositoryCreate")
 	defer span.End()
 
 	err := r.db.WithContext(ctx).Create(&message).Error
@@ -27,7 +27,7 @@ func (r *Repository) Create(ctx context.Context, message *core.Message) (string,
 
 // Get returns a message with associaiton data
 func (r *Repository) Get(ctx context.Context, key string) (core.Message, error) {
-	_, span := tracer.Start(ctx, "RepositoryGet")
+	ctx, span := tracer.Start(ctx, "RepositoryGet")
 	defer span.End()
 
 	var message core.Message
@@ -37,7 +37,7 @@ func (r *Repository) Get(ctx context.Context, key string) (core.Message, error) 
 
 // Delete deletes an message
 func (r *Repository) Delete(ctx context.Context, id string) (core.Message, error) {
-	_, span := tracer.Start(ctx, "RepositoryDelete")
+	ctx, span := tracer.Start(ctx, "RepositoryDelete")
 	defer span.End()
 
 	var deleted core.Message

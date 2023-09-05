@@ -30,7 +30,6 @@ var associationHandlerProvider = wire.NewSet(association.NewHandler, association
 var userkvHandlerProvider = wire.NewSet(userkv.NewHandler, userkv.NewService, userkv.NewRepository)
 var collectionHandlerProvider = wire.NewSet(collection.NewHandler, collection.NewService, collection.NewRepository)
 
-
 func SetupMessageHandler(db *gorm.DB, rdb *redis.Client, config util.Config) *message.Handler {
 	wire.Build(messageHandlerProvider, stream.NewService, stream.NewRepository, entity.NewService, entity.NewRepository)
 	return &message.Handler{}

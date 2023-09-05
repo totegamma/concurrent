@@ -208,6 +208,38 @@ func main() {
 		}
 	}
 
+	e.GET("/", func(c echo.Context) (err error) {
+		return c.HTML(http.StatusOK, `<!DOCTYPE html>
+<html>
+	<head>
+		<title>ccgateway</title>
+		<meta charset="utf-8">
+		<link rel="icon" href="`+config.Profile.Logo+`">
+	</head>
+	<body>
+		<h1>Concurrent Domain - ` + config.Concurrent.FQDN + `</h1>
+		Yay! You're on ccgateway!<br>
+		You might looking for <a href="https://concurrent.world">concurrent.world</a>.<br>
+		This domain is currently registration: ` + config.Concurrent.Registration + `<br>
+		<h2>Information</h2>
+		CCID: <br>` + config.Concurrent.CCID + `<br>
+		PUBKEY: <br>` + config.Concurrent.Pubkey[:len(config.Concurrent.Pubkey)/2] + `<br>` +
+		                config.Concurrent.Pubkey[len(config.Concurrent.Pubkey)/2:] + `<br>
+		<h2>Services</h2>
+		<ul>
+		` + func() string {
+			var services string
+			for _, service := range gwConf.Services {
+				services += `<li><a href="` + service.Path + `">` + service.Name + `</a></li>`
+			}
+			return services
+		}() + `
+		</ul>
+	</body>
+</html>
+`)
+	})
+
 	e.GET("/services", func(c echo.Context) (err error) {
 		services := make(map[string]ServiceInfo)
 		for _, service := range gwConf.Services {

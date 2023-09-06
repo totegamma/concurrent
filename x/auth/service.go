@@ -9,22 +9,28 @@ import (
 	"github.com/totegamma/concurrent/x/util"
 	"strconv"
 	"time"
+	"github.com/labstack/echo/v4"
 )
 
-// Service is entity service
-type Service struct {
-	config util.Config
-	entity *entity.Service
-	domain *domain.Service
+// Service is the interface for auth service
+type Service interface {
+    IssueJWT(ctx context.Context, request string) (string, error)
+    Restrict(principal Principal) echo.MiddlewareFunc
 }
 
-// NewService is for wire.go
-func NewService(config util.Config, entity *entity.Service, domain *domain.Service) *Service {
-	return &Service{config, entity, domain}
+type service struct {
+	config util.Config
+	entity entity.Service
+	domain domain.Service
+}
+
+// NewService creates a new auth service
+func NewService(config util.Config, entity entity.Service, domain domain.Service) Service {
+	return &service{config, entity, domain}
 }
 
 // IssueJWT takes client signed JWT and returns server signed JWT
-func (s *Service) IssueJWT(ctx context.Context, request string) (string, error) {
+func (s *service) IssueJWT(ctx context.Context, request string) (string, error) {
 	ctx, span := tracer.Start(ctx, "ServiceIssueJWT")
 	defer span.End()
 

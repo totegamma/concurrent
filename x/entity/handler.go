@@ -19,22 +19,29 @@ import (
 
 var tracer = otel.Tracer("handler")
 
-// Handler handles Message objects
-type Handler struct {
-	service *Service
+// Handler is the interface for handling HTTP requests
+type Handler interface {
+    Get(c echo.Context) error
+    Register(c echo.Context) error
+    Create(c echo.Context) error
+    List(c echo.Context) error
+    Update(c echo.Context) error
+    Delete(c echo.Context) error
+}
+
+type handler struct {
+	service Service
 	rdb     *redis.Client
 	config  util.Config
 }
 
-// NewHandler is for wire.go
-func NewHandler(service *Service, rdb *redis.Client, config util.Config) *Handler {
-	return &Handler{service: service, rdb: rdb, config: config}
+// NewHandler creates a new handler
+func NewHandler(service Service, rdb *redis.Client, config util.Config) Handler {
+	return &handler{service: service, rdb: rdb, config: config}
 }
 
-// Get is for Handling HTTP Get Method
-// Input: path parameter "id"
-// Output: Message Object
-func (h Handler) Get(c echo.Context) error {
+// Get returns an entity by ID
+func (h handler) Get(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
 	defer span.End()
 
@@ -56,11 +63,11 @@ func (h Handler) Get(c echo.Context) error {
 	return c.JSON(http.StatusOK, publicInfo)
 }
 
-// Post is for Handling HTTP Post Method
-// Input: postRequset object
-// Output: nothing
-// Effect: register message object to database
-func (h Handler) Register(c echo.Context) error {
+// Register creates a new entity
+// only accepts when the server registration is open
+// validate captcha if captcha secret is set
+// returns the created entity
+func (h handler) Register(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerRegister")
 	defer span.End()
 
@@ -124,7 +131,8 @@ func (h Handler) Register(c echo.Context) error {
 	return c.String(http.StatusCreated, "{\"message\": \"accept\"}")
 }
 
-func (h Handler) Create(c echo.Context) error {
+// Create creates a new entity
+func (h handler) Create(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerCreate")
 	defer span.End()
 
@@ -140,8 +148,8 @@ func (h Handler) Create(c echo.Context) error {
 	return c.String(http.StatusCreated, "{\"message\": \"accept\"}")
 }
 
-// List returns all known entity list
-func (h Handler) List(c echo.Context) error {
+// List returns a list of entities
+func (h handler) List(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerList")
 	defer span.End()
 
@@ -161,8 +169,8 @@ func (h Handler) List(c echo.Context) error {
 	}
 }
 
-// Update updates entity information
-func (h Handler) Update(c echo.Context) error {
+// Update updates an entity
+func (h handler) Update(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerUpdate")
 	defer span.End()
 
@@ -178,8 +186,8 @@ func (h Handler) Update(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": request})
 }
 
-// Delete is for Handling HTTP Delete Method
-func (h Handler) Delete(c echo.Context) error {
+// Delete deletes an entity
+func (h handler) Delete(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerDelete")
 	defer span.End()
 

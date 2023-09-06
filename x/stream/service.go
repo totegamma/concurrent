@@ -24,17 +24,30 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-// Service is stream service
-type Service struct {
+// Service is the interface for stream service
+type Service interface {
+    GetRecent(ctx context.Context, streams []string, limit int) ([]Element, error)
+    GetRange(ctx context.Context, streams []string, since string, until string, limit int) ([]Element, error)
+    Post(ctx context.Context, stream string, id string, typ string, author string, host string, owner string) error
+    Upsert(ctx context.Context, objectStr string, signature string, id string) (string, error)
+    Get(ctx context.Context, key string) (core.Stream, error)
+    StreamListBySchema(ctx context.Context, schema string) ([]core.Stream, error)
+    StreamListByAuthor(ctx context.Context, author string) ([]core.Stream, error)
+    GetElement(ctx context.Context, stream string, id string) (Element, error)
+    Remove(ctx context.Context, stream string, id string)
+    Delete(ctx context.Context, streamID string) error
+}
+
+type service struct {
 	rdb        *redis.Client
-	repository *Repository
-	entity     *entity.Service
+	repository Repository
+	entity     entity.Service
 	config     util.Config
 }
 
-// NewService is for wire.go
-func NewService(rdb *redis.Client, repository *Repository, entity *entity.Service, config util.Config) *Service {
-	return &Service{rdb, repository, entity, config}
+// NewService creates a new service
+func NewService(rdb *redis.Client, repository Repository, entity entity.Service, config util.Config) Service {
+	return &service{rdb, repository, entity, config}
 }
 
 func min(a, b int) int {
@@ -45,12 +58,12 @@ func min(a, b int) int {
 }
 
 // GetRecent returns recent message from streams
-func (s *Service) GetRecent(ctx context.Context, streams []string, limit int) ([]Element, error) {
+func (s *service) GetRecent(ctx context.Context, streams []string, limit int) ([]Element, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGetRecent")
 	defer span.End()
 
 	var messages []redis.XMessage
-	for _, stream := range streams {
+    for _, stream := range streams { // TODO: use pipeline
 		cmd := s.rdb.XRevRangeN(ctx, stream, "+", "-", int64(limit))
 		messages = append(messages, cmd.Val()...)
 	}
@@ -99,12 +112,12 @@ func (s *Service) GetRecent(ctx context.Context, streams []string, limit int) ([
 }
 
 // GetRange returns specified range messages from streams
-func (s *Service) GetRange(ctx context.Context, streams []string, since string, until string, limit int) ([]Element, error) {
+func (s *service) GetRange(ctx context.Context, streams []string, since string, until string, limit int) ([]Element, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGetRange")
 	defer span.End()
 
 	var messages []redis.XMessage
-	for _, stream := range streams {
+	for _, stream := range streams { // TODO: use pipeline
 		cmd := s.rdb.XRevRangeN(ctx, stream, until, since, int64(limit))
 		messages = append(messages, cmd.Val()...)
 	}
@@ -152,8 +165,10 @@ func (s *Service) GetRange(ctx context.Context, streams []string, since string, 
 	return result, nil
 }
 
-// Post posts to stream
-func (s *Service) Post(ctx context.Context, stream string, id string, typ string, author string, host string, owner string) error {
+// Post posts events to the stream.
+// If the stream is local, it will be posted to the local Redis.
+// If the stream is remote, it will be posted to the remote domain's Checkpoint.
+func (s *service) Post(ctx context.Context, stream string, id string, typ string, author string, host string, owner string) error {
 	ctx, span := tracer.Start(ctx, "ServicePost")
 	defer span.End()
 
@@ -265,7 +280,7 @@ func (s *Service) Post(ctx context.Context, stream string, id string, typ string
 }
 
 // Upsert updates stream information
-func (s *Service) Upsert(ctx context.Context, objectStr string, signature string, id string) (string, error) {
+func (s *service) Upsert(ctx context.Context, objectStr string, signature string, id string) (string, error) {
 	ctx, span := tracer.Start(ctx, "ServiceUpsert")
 	defer span.End()
 
@@ -311,7 +326,7 @@ func (s *Service) Upsert(ctx context.Context, objectStr string, signature string
 }
 
 // Get returns stream information by ID
-func (s *Service) Get(ctx context.Context, key string) (core.Stream, error) {
+func (s *service) Get(ctx context.Context, key string) (core.Stream, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGet")
 	defer span.End()
 
@@ -319,7 +334,7 @@ func (s *Service) Get(ctx context.Context, key string) (core.Stream, error) {
 }
 
 // StreamListBySchema returns streamList by schema
-func (s *Service) StreamListBySchema(ctx context.Context, schema string) ([]core.Stream, error) {
+func (s *service) StreamListBySchema(ctx context.Context, schema string) ([]core.Stream, error) {
 	ctx, span := tracer.Start(ctx, "ServiceStreamListBySchema")
 	defer span.End()
 
@@ -331,7 +346,7 @@ func (s *Service) StreamListBySchema(ctx context.Context, schema string) ([]core
 }
 
 // StreamListByAuthor returns streamList by author
-func (s *Service) StreamListByAuthor(ctx context.Context, author string) ([]core.Stream, error) {
+func (s *service) StreamListByAuthor(ctx context.Context, author string) ([]core.Stream, error) {
 	ctx, span := tracer.Start(ctx, "ServiceStreamListByAuthor")
 	defer span.End()
 
@@ -343,7 +358,7 @@ func (s *Service) StreamListByAuthor(ctx context.Context, author string) ([]core
 }
 
 // GetElement returns stream element by ID
-func (s *Service) GetElement(ctx context.Context, stream string, id string) (Element, error) {
+func (s *service) GetElement(ctx context.Context, stream string, id string) (Element, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGetElement")
 	defer span.End()
 
@@ -364,7 +379,7 @@ func (s *Service) GetElement(ctx context.Context, stream string, id string) (Ele
 }
 
 // Remove removes stream element by ID
-func (s *Service) Remove(ctx context.Context, stream string, id string) {
+func (s *service) Remove(ctx context.Context, stream string, id string) {
 	ctx, span := tracer.Start(ctx, "ServiceRemove")
 	defer span.End()
 
@@ -372,7 +387,7 @@ func (s *Service) Remove(ctx context.Context, stream string, id string) {
 }
 
 // Delete deletes
-func (s *Service) Delete(ctx context.Context, streamID string) error {
+func (s *service) Delete(ctx context.Context, streamID string) error {
 	ctx, span := tracer.Start(ctx, "ServiceDelete")
 	defer span.End()
 

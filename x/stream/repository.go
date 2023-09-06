@@ -7,18 +7,29 @@ import (
 	"gorm.io/gorm"
 )
 
-// Repository is stream repository
-type Repository struct {
+// Repository is stream repository interface
+type Repository interface {
+    Get(ctx context.Context, key string) (core.Stream, error)
+    Upsert(ctx context.Context, stream *core.Stream) error
+    GetListBySchema(ctx context.Context, schema string) ([]core.Stream, error)
+    GetListByAuthor(ctx context.Context, author string) ([]core.Stream, error)
+    Delete(ctx context.Context, key string) error
+    HasWriteAccess(ctx context.Context, key string, author string) bool
+    HasReadAccess(ctx context.Context, key string, author string) bool
+}
+
+
+type repository struct {
 	db *gorm.DB
 }
 
-// NewRepository is for wire.go
-func NewRepository(db *gorm.DB) *Repository {
-	return &Repository{db: db}
+// NewRepository creates a new stream repository
+func NewRepository(db *gorm.DB) Repository {
+	return &repository{db: db}
 }
 
 // Get returns a stream by ID
-func (r *Repository) Get(ctx context.Context, key string) (core.Stream, error) {
+func (r *repository) Get(ctx context.Context, key string) (core.Stream, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGet")
 	defer span.End()
 
@@ -28,7 +39,7 @@ func (r *Repository) Get(ctx context.Context, key string) (core.Stream, error) {
 }
 
 // Upsert updates a stream
-func (r *Repository) Upsert(ctx context.Context, stream *core.Stream) error {
+func (r *repository) Upsert(ctx context.Context, stream *core.Stream) error {
 	ctx, span := tracer.Start(ctx, "RepositoryUpsert")
 	defer span.End()
 
@@ -36,7 +47,7 @@ func (r *Repository) Upsert(ctx context.Context, stream *core.Stream) error {
 }
 
 // GetListBySchema returns list of schemas by schema
-func (r *Repository) GetListBySchema(ctx context.Context, schema string) ([]core.Stream, error) {
+func (r *repository) GetListBySchema(ctx context.Context, schema string) ([]core.Stream, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGetList")
 	defer span.End()
 
@@ -46,7 +57,7 @@ func (r *Repository) GetListBySchema(ctx context.Context, schema string) ([]core
 }
 
 // GetListByAuthor returns list of schemas by owner
-func (r *Repository) GetListByAuthor(ctx context.Context, author string) ([]core.Stream, error) {
+func (r *repository) GetListByAuthor(ctx context.Context, author string) ([]core.Stream, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGetList")
 	defer span.End()
 
@@ -56,7 +67,7 @@ func (r *Repository) GetListByAuthor(ctx context.Context, author string) ([]core
 }
 
 // Delete deletes a stream
-func (r *Repository) Delete(ctx context.Context, streamID string) error {
+func (r *repository) Delete(ctx context.Context, streamID string) error {
 	ctx, span := tracer.Start(ctx, "RepositoryDelete")
 	defer span.End()
 
@@ -64,7 +75,7 @@ func (r *Repository) Delete(ctx context.Context, streamID string) error {
 }
 
 // HasWriteAccess returns true if the user has write access
-func (r *Repository) HasWriteAccess(ctx context.Context, streamID string, userAddress string) bool {
+func (r *repository) HasWriteAccess(ctx context.Context, streamID string, userAddress string) bool {
 	ctx, span := tracer.Start(ctx, "RepositoryHasWriteAccess")
 	defer span.End()
 
@@ -77,7 +88,7 @@ func (r *Repository) HasWriteAccess(ctx context.Context, streamID string, userAd
 }
 
 // HasReadAccess returns true if the user has read access
-func (r *Repository) HasReadAccess(ctx context.Context, streamID string, userAddress string) bool {
+func (r *repository) HasReadAccess(ctx context.Context, streamID string, userAddress string) bool {
 	ctx, span := tracer.Start(ctx, "RepositoryHasReadAccess")
 	defer span.End()
 

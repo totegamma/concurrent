@@ -7,7 +7,8 @@ import (
 	"github.com/totegamma/concurrent/x/core"
 )
 
-type IService interface {
+// Repository is the interface for collection repository
+type Service interface {
 	CreateCollection(ctx context.Context, obj core.Collection) (core.Collection, error)
 	GetCollection(ctx context.Context, id string) (core.Collection, error)
 	UpdateCollection(ctx context.Context, obj core.Collection) (core.Collection, error)
@@ -19,15 +20,17 @@ type IService interface {
 	DeleteItem(ctx context.Context, id string, itemId string) (core.CollectionItem, error)
 }
 
-type Service struct {
-	repo IRepository
+type service struct {
+	repo Repository
 }
 
-func NewService(repo IRepository) IService {
-	return &Service{repo: repo}
+// NewRepository creates a new collection repository
+func NewService(repo Repository) Service {
+	return &service{repo: repo}
 }
 
-func (s *Service) CreateCollection(ctx context.Context, obj core.Collection) (core.Collection, error) {
+// CreateCollection creates new collection
+func (s *service) CreateCollection(ctx context.Context, obj core.Collection) (core.Collection, error) {
 	ctx, span := tracer.Start(ctx, "ServiceCreateCollection")
 	defer span.End()
 
@@ -40,28 +43,32 @@ func (s *Service) CreateCollection(ctx context.Context, obj core.Collection) (co
 	return s.repo.CreateCollection(ctx, obj)
 }
 
-func (s *Service) GetCollection(ctx context.Context, id string) (core.Collection, error) {
+// GetCollection returns a Collection by ID
+func (s *service) GetCollection(ctx context.Context, id string) (core.Collection, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGetCollection")
 	defer span.End()
 
 	return s.repo.GetCollection(ctx, id)
 }
 
-func (s *Service) UpdateCollection(ctx context.Context, obj core.Collection) (core.Collection, error) {
+// UpdateCollection updates a collection
+func (s *service) UpdateCollection(ctx context.Context, obj core.Collection) (core.Collection, error) {
 	ctx, span := tracer.Start(ctx, "ServiceUpdateCollection")
 	defer span.End()
 
 	return s.repo.UpdateCollection(ctx, obj)
 }
 
-func (s *Service) DeleteCollection(ctx context.Context, id string) error {
+// DeleteCollection deletes a collection by ID
+func (s *service) DeleteCollection(ctx context.Context, id string) error {
 	ctx, span := tracer.Start(ctx, "ServiceDeleteCollection")
 	defer span.End()
 
 	return s.repo.DeleteCollection(ctx, id)
 }
 
-func (s *Service) CreateItem(ctx context.Context, item core.CollectionItem) (core.CollectionItem, error) {
+// CreateItem creates new collection item
+func (s *service) CreateItem(ctx context.Context, item core.CollectionItem) (core.CollectionItem, error) {
 	ctx, span := tracer.Start(ctx, "ServiceCreateItem")
 	defer span.End()
 
@@ -74,21 +81,24 @@ func (s *Service) CreateItem(ctx context.Context, item core.CollectionItem) (cor
 	return s.repo.CreateItem(ctx, item)
 }
 
-func (s *Service) GetItem(ctx context.Context, id string, itemId string) (core.CollectionItem, error) {
+// GetItem returns a CollectionItem by ID
+func (s *service) GetItem(ctx context.Context, id string, itemId string) (core.CollectionItem, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGetItem")
 	defer span.End()
 
 	return s.repo.GetItem(ctx, id, itemId)
 }
 
-func (s *Service) UpdateItem(ctx context.Context, item core.CollectionItem) (core.CollectionItem, error) {
+// UpdateItem updates a collection item
+func (s *service) UpdateItem(ctx context.Context, item core.CollectionItem) (core.CollectionItem, error) {
 	ctx, span := tracer.Start(ctx, "ServiceUpdateItem")
 	defer span.End()
 
 	return s.repo.UpdateItem(ctx, item)
 }
 
-func (s *Service) DeleteItem(ctx context.Context, id string, itemId string) (core.CollectionItem, error) {
+// DeleteItem deletes a collection item by ID
+func (s *service) DeleteItem(ctx context.Context, id string, itemId string) (core.CollectionItem, error) {
 	ctx, span := tracer.Start(ctx, "ServiceDeleteItem")
 	defer span.End()
 

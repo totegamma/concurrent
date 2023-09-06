@@ -15,18 +15,30 @@ import (
 
 var tracer = otel.Tracer("stream")
 
-// Handler handles Stream objects
-type Handler struct {
-	service *Service
+// Handler is the interface for handling HTTP requests
+type Handler interface {
+    Get(c echo.Context) error
+    Put(c echo.Context) error
+    Recent(c echo.Context) error
+    Range(c echo.Context) error
+    List(c echo.Context) error
+    ListMine(c echo.Context) error
+    Delete(c echo.Context) error
+    Remove(c echo.Context) error
+    Checkpoint(c echo.Context) error
 }
 
-// NewHandler is for wire.go
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+type handler struct {
+	service Service
 }
 
-// Get is for handling HTTP Get Method
-func (h Handler) Get(c echo.Context) error {
+// NewHandler creates a new handler
+func NewHandler(service Service) Handler {
+	return &handler{service: service}
+}
+
+// Get returns a stream by ID
+func (h handler) Get(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
 	defer span.End()
 
@@ -41,8 +53,8 @@ func (h Handler) Get(c echo.Context) error {
 	return c.JSON(http.StatusOK, stream)
 }
 
-// Put is for handling HTTP Put Method
-func (h Handler) Put(c echo.Context) error {
+// Put creates a new stream
+func (h handler) Put(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerPut")
 	defer span.End()
 
@@ -60,7 +72,7 @@ func (h Handler) Put(c echo.Context) error {
 }
 
 // Recent returns recent messages in some streams
-func (h Handler) Recent(c echo.Context) error {
+func (h handler) Recent(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerRecent")
 	defer span.End()
 
@@ -72,7 +84,7 @@ func (h Handler) Recent(c echo.Context) error {
 }
 
 // Range returns messages since to until in specified streams
-func (h Handler) Range(c echo.Context) error {
+func (h handler) Range(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerRange")
 	defer span.End()
 
@@ -96,7 +108,7 @@ func (h Handler) Range(c echo.Context) error {
 }
 
 // List returns stream ids which filtered by specific schema
-func (h Handler) List(c echo.Context) error {
+func (h handler) List(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerList")
 	defer span.End()
 
@@ -110,7 +122,7 @@ func (h Handler) List(c echo.Context) error {
 }
 
 // ListMine returns stream ids which filtered by specific schema
-func (h Handler) ListMine(c echo.Context) error {
+func (h handler) ListMine(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerListMine")
 	defer span.End()
 
@@ -126,7 +138,7 @@ func (h Handler) ListMine(c echo.Context) error {
 }
 
 // Delete is for handling HTTP Delete Method
-func (h Handler) Delete(c echo.Context) error {
+func (h handler) Delete(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerDelete")
 	defer span.End()
 
@@ -158,7 +170,7 @@ func (h Handler) Delete(c echo.Context) error {
 }
 
 // Remove is remove stream element from stream
-func (h Handler) Remove(c echo.Context) error {
+func (h handler) Remove(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerRemove")
 	defer span.End()
 
@@ -188,8 +200,8 @@ func (h Handler) Remove(c echo.Context) error {
 	return c.String(http.StatusOK, fmt.Sprintf("{\"message\": \"accept\"}"))
 }
 
-// Checkpoint used by cross server communication
-func (h Handler) Checkpoint(c echo.Context) error {
+// Checkpoint receives events from remote domains
+func (h handler) Checkpoint(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerCheckpoint")
 	defer span.End()
 

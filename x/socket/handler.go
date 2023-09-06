@@ -11,16 +11,20 @@ import (
 	"sync"
 )
 
-// Handler is handles websocket
-type Handler struct {
-	service *Service
+// Handler is the interface for handling websocket
+type Handler interface {
+    Connect(c echo.Context) error
+}
+
+type handler struct {
+	service Service
 	rdb     *redis.Client
 	mutex   *sync.Mutex
 }
 
-// NewHandler is used for wire.go
-func NewHandler(service *Service, rdb *redis.Client) *Handler {
-	return &Handler{
+// NewHandler creates a new handler
+func NewHandler(service Service, rdb *redis.Client) Handler {
+	return &handler{
 		service,
 		rdb,
 		&sync.Mutex{},
@@ -35,14 +39,14 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-func (h Handler) send(ws *websocket.Conn, message string) error {
+func (h handler) send(ws *websocket.Conn, message string) error {
 	h.mutex.Lock()
 	defer h.mutex.Unlock()
 	return ws.WriteMessage(websocket.TextMessage, []byte(message))
 }
 
 // Connect is used for start websocket connection
-func (h Handler) Connect(c echo.Context) error {
+func (h handler) Connect(c echo.Context) error {
 	ws, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
 	if err != nil {
 		log.Println("Failed to upgrade WebSocket:", err)

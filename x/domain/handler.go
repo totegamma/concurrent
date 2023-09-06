@@ -23,19 +23,30 @@ import (
 
 var tracer = otel.Tracer("domain")
 
-// Handler is handles websocket
-type Handler struct {
-	service *Service
+// Service is the domain service interface
+type Handler interface {
+    Get(c echo.Context) error
+    Upsert(c echo.Context) error
+    List(c echo.Context) error
+    Profile(c echo.Context) error
+    Hello(c echo.Context) error
+    SayHello(c echo.Context) error
+    Delete(c echo.Context) error
+    Update(c echo.Context) error
+}
+
+type handler struct {
+	service Service
 	config  util.Config
 }
 
-// NewHandler is used for wire.go
-func NewHandler(service *Service, config util.Config) *Handler {
-	return &Handler{service, config}
+// NewHandler creates a new handler
+func NewHandler(service Service, config util.Config) Handler {
+	return &handler{service, config}
 }
 
 // Get returns a host by ID
-func (h Handler) Get(c echo.Context) error {
+func (h handler) Get(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
 	defer span.End()
 
@@ -51,8 +62,8 @@ func (h Handler) Get(c echo.Context) error {
 
 }
 
-// Upsert updates Domain registry
-func (h Handler) Upsert(c echo.Context) error {
+// Upsert creates or updates a host
+func (h handler) Upsert(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerUpsert")
 	defer span.End()
 
@@ -69,7 +80,7 @@ func (h Handler) Upsert(c echo.Context) error {
 }
 
 // List returns all hosts
-func (h Handler) List(c echo.Context) error {
+func (h handler) List(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerList")
 	defer span.End()
 
@@ -80,8 +91,8 @@ func (h Handler) List(c echo.Context) error {
 	return c.JSON(http.StatusOK, hosts)
 }
 
-// Profile returns server Profile
-func (h Handler) Profile(c echo.Context) error {
+// Profile returns the host profile
+func (h handler) Profile(c echo.Context) error {
 	_, span := tracer.Start(c.Request().Context(), "HandlerProfile")
 	defer span.End()
 
@@ -92,8 +103,9 @@ func (h Handler) Profile(c echo.Context) error {
 	})
 }
 
-// Hello iniciates a new host registration
-func (h Handler) Hello(c echo.Context) error {
+// Hello creates a challenge response for another host
+// If the challenge is accepted, the host will be added to the database
+func (h handler) Hello(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerHello")
 	defer span.End()
 
@@ -143,8 +155,10 @@ func (h Handler) Hello(c echo.Context) error {
 	})
 }
 
-// SayHello iniciates a new host registration
-func (h Handler) SayHello(c echo.Context) error {
+// SayHello initiates a challenge to a remote host
+// The remote host will respond with a signed JWT
+// If the JWT is valid, the remote host will be added to the database
+func (h handler) SayHello(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerSayHello")
 	defer span.End()
 
@@ -207,7 +221,7 @@ func (h Handler) SayHello(c echo.Context) error {
 }
 
 // Delete removes a host from the registry
-func (h Handler) Delete(c echo.Context) error {
+func (h handler) Delete(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerDelete")
 	defer span.End()
 
@@ -220,7 +234,7 @@ func (h Handler) Delete(c echo.Context) error {
 }
 
 // Update updates a host in the registry
-func (h Handler) Update(c echo.Context) error {
+func (h handler) Update(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerUpdate")
 	defer span.End()
 

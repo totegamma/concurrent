@@ -9,19 +9,23 @@ import (
 
 var tracer = otel.Tracer("auth")
 
-// Handler is handles websocket
-type Handler struct {
-	service *Service
+// Handler is the interface for handling HTTP requests
+type Handler interface {
+    Claim(c echo.Context) error
 }
 
-// NewHandler is used for wire.go
-func NewHandler(service *Service) *Handler {
-	return &Handler{service}
+type handler struct {
+	service Service
+}
+
+// NewHandler creates a new handler
+func NewHandler(service Service) Handler {
+	return &handler{service}
 }
 
 // Claim is used for get server signed jwt
 // input user signed jwt
-func (h *Handler) Claim(c echo.Context) error {
+func (h *handler) Claim(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerClaim")
 	defer span.End()
 

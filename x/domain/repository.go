@@ -7,19 +7,29 @@ import (
 	"time"
 )
 
-// Repository is host repository
-type Repository struct {
+// Repository is the interface for host repository
+type Repository interface {
+    GetByFQDN(ctx context.Context, key string) (core.Domain, error)
+    GetByCCID(ctx context.Context, ccid string) (core.Domain, error)
+    Upsert(ctx context.Context, host *core.Domain) error
+    GetList(ctx context.Context) ([]core.Domain, error)
+    Delete(ctx context.Context, id string) (error)
+    UpdateScrapeTime(ctx context.Context, id string, scrapeTime time.Time) error
+    Update(ctx context.Context, host *core.Domain) error
+}
+
+type repository struct {
 	db *gorm.DB
 }
 
-// NewRepository is for wire.go
-func NewRepository(db *gorm.DB) *Repository {
-	return &Repository{db: db}
+// NewRepository creates a new host repository
+func NewRepository(db *gorm.DB) Repository {
+	return &repository{db: db}
 }
 
-// Get returns a host by FQDN
-func (r *Repository) GetByFQDN(ctx context.Context, key string) (core.Domain, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGet")
+// GetByFQDN returns a host by FQDN
+func (r *repository) GetByFQDN(ctx context.Context, key string) (core.Domain, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryGetByFQDN")
 	defer span.End()
 
 	var host core.Domain
@@ -28,7 +38,7 @@ func (r *Repository) GetByFQDN(ctx context.Context, key string) (core.Domain, er
 }
 
 // GetByCCID returns a host by CCID
-func (r *Repository) GetByCCID(ctx context.Context, ccid string) (core.Domain, error) {
+func (r *repository) GetByCCID(ctx context.Context, ccid string) (core.Domain, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGetByCCID")
 	defer span.End()
 
@@ -37,8 +47,8 @@ func (r *Repository) GetByCCID(ctx context.Context, ccid string) (core.Domain, e
 	return host, err
 }
 
-// Upsert updates a stream
-func (r *Repository) Upsert(ctx context.Context, host *core.Domain) error {
+// Upsert creates new host
+func (r *repository) Upsert(ctx context.Context, host *core.Domain) error {
 	ctx, span := tracer.Start(ctx, "RepositoryUpsert")
 	defer span.End()
 
@@ -46,7 +56,7 @@ func (r *Repository) Upsert(ctx context.Context, host *core.Domain) error {
 }
 
 // GetList returns list of schemas by schema
-func (r *Repository) GetList(ctx context.Context) ([]core.Domain, error) {
+func (r *repository) GetList(ctx context.Context) ([]core.Domain, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGetList")
 	defer span.End()
 
@@ -56,7 +66,7 @@ func (r *Repository) GetList(ctx context.Context) ([]core.Domain, error) {
 }
 
 // Delete deletes a host
-func (r *Repository) Delete(ctx context.Context, id string) error {
+func (r *repository) Delete(ctx context.Context, id string) error {
 	ctx, span := tracer.Start(ctx, "RepositoryDelete")
 	defer span.End()
 
@@ -64,15 +74,15 @@ func (r *Repository) Delete(ctx context.Context, id string) error {
 }
 
 // UpdateScrapeTime updates scrape time
-func (r *Repository) UpdateScrapeTime(ctx context.Context, id string, scrapeTime time.Time) error {
+func (r *repository) UpdateScrapeTime(ctx context.Context, id string, scrapeTime time.Time) error {
 	ctx, span := tracer.Start(ctx, "RepositoryUpdateScrapeTime")
 	defer span.End()
 
 	return r.db.WithContext(ctx).Model(&core.Domain{}).Where("id = ?", id).Update("last_scraped", scrapeTime).Error
 }
 
-// Update is for updating host
-func (r *Repository) Update(ctx context.Context, host *core.Domain) error {
+// Update updates a host
+func (r *repository) Update(ctx context.Context, host *core.Domain) error {
 	ctx, span := tracer.Start(ctx, "RepositoryUpdate")
 	defer span.End()
 

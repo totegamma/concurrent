@@ -6,7 +6,8 @@ import (
 	"gorm.io/gorm"
 )
 
-type IRepository interface {
+// Repository is the interface for collection repository
+type Repository interface {
 	CreateCollection(ctx context.Context, obj core.Collection) (core.Collection, error)
 	GetCollection(ctx context.Context, id string) (core.Collection, error)
 	UpdateCollection(ctx context.Context, obj core.Collection) (core.Collection, error)
@@ -18,20 +19,22 @@ type IRepository interface {
 	DeleteItem(ctx context.Context, id string, itemId string) (core.CollectionItem, error)
 }
 
-type Repository struct {
+type repository struct {
 	db *gorm.DB
 }
 
-// NewRepository is used for wire.go
-func NewRepository(db *gorm.DB) IRepository {
-	return &Repository{db: db}
+// NewRepository creates a new collection repository
+func NewRepository(db *gorm.DB) Repository {
+	return &repository{db: db}
 }
 
-func (r *Repository) CreateCollection(ctx context.Context, obj core.Collection) (core.Collection, error) {
+// CreateCollection creates new collection
+func (r *repository) CreateCollection(ctx context.Context, obj core.Collection) (core.Collection, error) {
 	return obj, r.db.Create(&obj).Error
 }
 
-func (r *Repository) GetCollection(ctx context.Context, id string) (core.Collection, error) {
+// GetCollection returns a Collection by ID
+func (r *repository) GetCollection(ctx context.Context, id string) (core.Collection, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGetCollection")
 	defer span.End()
 
@@ -39,21 +42,24 @@ func (r *Repository) GetCollection(ctx context.Context, id string) (core.Collect
 	return obj, r.db.WithContext(ctx).Preload("Items").First(&obj, "id = ?", id).Error
 }
 
-func (r *Repository) UpdateCollection(ctx context.Context, obj core.Collection) (core.Collection, error) {
+// UpdateCollection updates a collection
+func (r *repository) UpdateCollection(ctx context.Context, obj core.Collection) (core.Collection, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryUpdateCollection")
 	defer span.End()
 
 	return obj, r.db.WithContext(ctx).Save(&obj).Error
 }
 
-func (r *Repository) DeleteCollection(ctx context.Context, id string) error {
+// DeleteCollection deletes a collection by ID
+func (r *repository) DeleteCollection(ctx context.Context, id string) error {
 	ctx, span := tracer.Start(ctx, "RepositoryDeleteCollection")
 	defer span.End()
 
 	return r.db.WithContext(ctx).Delete(&core.Collection{}, "id = ?", id).Error
 }
 
-func (r *Repository) CreateItem(ctx context.Context, item core.CollectionItem) (core.CollectionItem, error) {
+// CreateItem creates new collection item
+func (r *repository) CreateItem(ctx context.Context, item core.CollectionItem) (core.CollectionItem, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryCreateItem")
 	defer span.End()
 
@@ -61,7 +67,8 @@ func (r *Repository) CreateItem(ctx context.Context, item core.CollectionItem) (
 	return item, err.Error
 }
 
-func (r *Repository) GetItem(ctx context.Context, id string, itemId string) (core.CollectionItem, error) {
+// GetItem returns a collection item by ID
+func (r *repository) GetItem(ctx context.Context, id string, itemId string) (core.CollectionItem, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGetItem")
 	defer span.End()
 
@@ -69,7 +76,8 @@ func (r *Repository) GetItem(ctx context.Context, id string, itemId string) (cor
 	return obj, r.db.WithContext(ctx).First(&obj, "collection = ? and id = ?", id, itemId).Error
 }
 
-func (r *Repository) UpdateItem(ctx context.Context, item core.CollectionItem) (core.CollectionItem, error) {
+// UpdateItem updates a collection item
+func (r *repository) UpdateItem(ctx context.Context, item core.CollectionItem) (core.CollectionItem, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryUpdateItem")
 	defer span.End()
 
@@ -78,7 +86,8 @@ func (r *Repository) UpdateItem(ctx context.Context, item core.CollectionItem) (
 	return item, err
 }
 
-func (r *Repository) DeleteItem(ctx context.Context, id string, itemId string) (core.CollectionItem, error) {
+// DeleteItem deletes a collection item by ID
+func (r *repository) DeleteItem(ctx context.Context, id string, itemId string) (core.CollectionItem, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryDeleteItem")
 	defer span.End()
 

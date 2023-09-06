@@ -2,11 +2,14 @@ package socket
 
 import ()
 
+type Service interface {
+}
+
 // Service is socket service
-type Service struct {
+type service struct {
 }
 
 // NewService is for wire.go
-func NewService() *Service {
-	return &Service{}
+func NewService() Service {
+	return &service{}
 }

@@ -11,19 +11,32 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-// Service is entity service
-type Service struct {
-	repository *Repository
+// Service is the interface for entity service
+type Service interface {
+    Create(ctx context.Context, ccid string, meta string) error
+    Register(ctx context.Context, ccid string, meta string, inviterID string) error
+    Get(ctx context.Context, ccid string) (core.Entity, error)
+    List(ctx context.Context) ([]SafeEntity, error)
+    ListModified(ctx context.Context, modified time.Time) ([]SafeEntity, error)
+    ResolveHost(ctx context.Context, user string) (string, error)
+    Update(ctx context.Context, entity *core.Entity) error
+    Upsert(ctx context.Context, entity *core.Entity) error
+    IsUserExists(ctx context.Context, user string) bool
+    Delete(ctx context.Context, id string) error
+}
+
+type service struct {
+	repository Repository
 	config     util.Config
 }
 
-// NewService is for wire.go
-func NewService(repository *Repository, config util.Config) *Service {
-	return &Service{repository, config}
+// NewService creates a new entity service
+func NewService(repository Repository, config util.Config) Service {
+	return &service{repository, config}
 }
 
-// Create updates stream information
-func (s *Service) Create(ctx context.Context, ccid string, meta string) error {
+// Create creates new entity
+func (s *service) Create(ctx context.Context, ccid string, meta string) error {
 	ctx, span := tracer.Start(ctx, "ServiceCreate")
 	defer span.End()
 
@@ -34,8 +47,9 @@ func (s *Service) Create(ctx context.Context, ccid string, meta string) error {
 	})
 }
 
-// Create updates stream information
-func (s *Service) Register(ctx context.Context, ccid string, meta string, inviterID string) error {
+// Register creates new entity
+// check if registration is open
+func (s *service) Register(ctx context.Context, ccid string, meta string, inviterID string) error {
 	ctx, span := tracer.Start(ctx, "ServiceCreate")
 	defer span.End()
 
@@ -73,8 +87,8 @@ func (s *Service) Register(ctx context.Context, ccid string, meta string, invite
 	}
 }
 
-// Get returns stream information by ID
-func (s *Service) Get(ctx context.Context, key string) (core.Entity, error) {
+// Get returns entity by ccid
+func (s *service) Get(ctx context.Context, key string) (core.Entity, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGet")
 	defer span.End()
 
@@ -87,24 +101,24 @@ func (s *Service) Get(ctx context.Context, key string) (core.Entity, error) {
 	return entity, nil
 }
 
-// List returns streamList by schema
-func (s *Service) List(ctx context.Context) ([]SafeEntity, error) {
+// List returns all entities
+func (s *service) List(ctx context.Context) ([]SafeEntity, error) {
 	ctx, span := tracer.Start(ctx, "ServiceList")
 	defer span.End()
 
 	return s.repository.GetList(ctx)
 }
 
-// ListModified returns stream which modified after given time
-func (s *Service) ListModified(ctx context.Context, time time.Time) ([]SafeEntity, error) {
+// ListModified returns all entities modified after time
+func (s *service) ListModified(ctx context.Context, time time.Time) ([]SafeEntity, error) {
 	ctx, span := tracer.Start(ctx, "ServiceListModified")
 	defer span.End()
 
 	return s.repository.ListModified(ctx, time)
 }
 
-// ResolveHost resolves host from user address
-func (s *Service) ResolveHost(ctx context.Context, user string) (string, error) {
+// ResolveHost returns host for user
+func (s *service) ResolveHost(ctx context.Context, user string) (string, error) {
 	ctx, span := tracer.Start(ctx, "ServiceResolveHost")
 	defer span.End()
 
@@ -121,7 +135,7 @@ func (s *Service) ResolveHost(ctx context.Context, user string) (string, error) 
 }
 
 // Update updates entity
-func (s *Service) Update(ctx context.Context, entity *core.Entity) error {
+func (s *service) Update(ctx context.Context, entity *core.Entity) error {
 	ctx, span := tracer.Start(ctx, "ServiceUpdate")
 	defer span.End()
 
@@ -129,7 +143,7 @@ func (s *Service) Update(ctx context.Context, entity *core.Entity) error {
 }
 
 // Upsert upserts entity
-func (s *Service) Upsert(ctx context.Context, entity *core.Entity) error {
+func (s *service) Upsert(ctx context.Context, entity *core.Entity) error {
 	ctx, span := tracer.Start(ctx, "ServiceUpsert")
 	defer span.End()
 
@@ -137,7 +151,7 @@ func (s *Service) Upsert(ctx context.Context, entity *core.Entity) error {
 }
 
 // IsUserExists returns true if user exists
-func (s *Service) IsUserExists(ctx context.Context, user string) bool {
+func (s *service) IsUserExists(ctx context.Context, user string) bool {
 	ctx, span := tracer.Start(ctx, "ServiceIsUserExists")
 	defer span.End()
 
@@ -149,7 +163,7 @@ func (s *Service) IsUserExists(ctx context.Context, user string) bool {
 }
 
 // Delete deletes entity
-func (s *Service) Delete(ctx context.Context, id string) error {
+func (s *service) Delete(ctx context.Context, id string) error {
 	ctx, span := tracer.Start(ctx, "ServiceDelete")
 	defer span.End()
 

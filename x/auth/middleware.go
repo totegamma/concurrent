@@ -21,7 +21,8 @@ const (
 	ISUNUNITED
 )
 
-func (s *Service) Restrict(principal Principal) echo.MiddlewareFunc {
+// Restrict is a middleware that restricts access to certain routes
+func (s *service) Restrict(principal Principal) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			ctx, span := tracer.Start(c.Request().Context(), "auth.Restrict")

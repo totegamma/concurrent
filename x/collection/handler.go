@@ -11,7 +11,8 @@ import (
 
 var tracer = otel.Tracer("collection")
 
-type IHandler interface {
+// Handler is the interface for handling HTTP requests
+type Handler interface {
 	CreateCollection(c echo.Context) error
 	GetCollection(c echo.Context) error
 	UpdateCollection(c echo.Context) error
@@ -23,17 +24,19 @@ type IHandler interface {
 	DeleteItem(c echo.Context) error
 }
 
-type Handler struct {
-	service IService
+type handler struct {
+	service Service
 }
 
-func NewHandler(service IService) IHandler {
-	return &Handler{
+// NewHandler creates a new handler
+func NewHandler(service Service) Handler {
+	return &handler{
 		service: service,
 	}
 }
 
-func (h *Handler) CreateCollection(c echo.Context) error {
+// CreateCollection creates a new collection
+func (h *handler) CreateCollection(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerCreateCollection")
 	defer span.End()
 
@@ -51,7 +54,8 @@ func (h *Handler) CreateCollection(c echo.Context) error {
 	return c.JSON(http.StatusCreated, echo.Map{"status": "ok", "content": created})
 }
 
-func (h *Handler) GetCollection(c echo.Context) error {
+// GetCollection returns a collection by ID
+func (h *handler) GetCollection(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetCollection")
 	defer span.End()
 
@@ -65,7 +69,8 @@ func (h *Handler) GetCollection(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": data})
 }
 
-func (h *Handler) UpdateCollection(c echo.Context) error {
+// UpdateCollection updates a collection
+func (h *handler) UpdateCollection(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerUpdateCollection")
 	defer span.End()
 
@@ -87,7 +92,8 @@ func (h *Handler) UpdateCollection(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": updated})
 }
 
-func (h *Handler) DeleteCollection(c echo.Context) error {
+// DeleteCollection deletes a collection
+func (h *handler) DeleteCollection(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerDeleteCollection")
 	defer span.End()
 
@@ -101,7 +107,8 @@ func (h *Handler) DeleteCollection(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
 }
 
-func (h *Handler) CreateItem(c echo.Context) error {
+// CreateItem creates a new item
+func (h *handler) CreateItem(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerCreateItem")
 	defer span.End()
 
@@ -125,7 +132,8 @@ func (h *Handler) CreateItem(c echo.Context) error {
 	return c.JSON(http.StatusCreated, echo.Map{"status": "ok", "content": created})
 }
 
-func (h *Handler) GetItem(c echo.Context) error {
+// GetItem returns an item by ID
+func (h *handler) GetItem(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetItem")
 	defer span.End()
 
@@ -140,7 +148,8 @@ func (h *Handler) GetItem(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": data})
 }
 
-func (h *Handler) UpdateItem(c echo.Context) error {
+// UpdateItem updates an item
+func (h *handler) UpdateItem(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerUpdateItem")
 	defer span.End()
 
@@ -167,7 +176,8 @@ func (h *Handler) UpdateItem(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": updated})
 }
 
-func (h *Handler) DeleteItem(c echo.Context) error {
+// DeleteItem deletes an item
+func (h *handler) DeleteItem(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerDeleteItem")
 	defer span.End()
 

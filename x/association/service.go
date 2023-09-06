@@ -13,21 +13,30 @@ import (
 	"log"
 )
 
-// Service is association service
-type Service struct {
+// Service is the interface for association service
+type Service interface {
+    PostAssociation(ctx context.Context, objectStr string, signature string, streams []string, targetType string) (core.Association, error)
+    Get(ctx context.Context, id string) (core.Association, error)
+    GetOwn(ctx context.Context, author string) ([]core.Association, error)
+    Delete(ctx context.Context, id string) (core.Association, error)
+}
+
+type service struct {
 	rdb     *redis.Client
-	repo    *Repository
-	stream  *stream.Service
-	message *message.Service
+	repo    Repository
+	stream  stream.Service
+	message message.Service
 }
 
-// NewService is used for wire.go
-func NewService(rdb *redis.Client, repo *Repository, stream *stream.Service, message *message.Service) *Service {
-	return &Service{rdb, repo, stream, message}
+// NewService creates a new association service
+func NewService(rdb *redis.Client, repo Repository, stream stream.Service, message message.Service) Service {
+	return &service{rdb, repo, stream, message}
 }
 
-// PostAssociation creates new association
-func (s *Service) PostAssociation(ctx context.Context, objectStr string, signature string, streams []string, targetType string) (core.Association, error) {
+// PostAssociation creates a new association
+// If targetType is messages, it also posts the association to the target message's streams
+// returns the created association
+func (s *service) PostAssociation(ctx context.Context, objectStr string, signature string, streams []string, targetType string) (core.Association, error) {
 	ctx, span := tracer.Start(ctx, "ServicePostAssociation")
 	defer span.End()
 
@@ -114,7 +123,7 @@ func (s *Service) PostAssociation(ctx context.Context, objectStr string, signatu
 }
 
 // Get returns an association by ID
-func (s *Service) Get(ctx context.Context, id string) (core.Association, error) {
+func (s *service) Get(ctx context.Context, id string) (core.Association, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGet")
 	defer span.End()
 
@@ -122,7 +131,7 @@ func (s *Service) Get(ctx context.Context, id string) (core.Association, error) 
 }
 
 // GetOwn returns associations by author
-func (s *Service) GetOwn(ctx context.Context, author string) ([]core.Association, error) {
+func (s *service) GetOwn(ctx context.Context, author string) ([]core.Association, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGetOwn")
 	defer span.End()
 
@@ -130,7 +139,7 @@ func (s *Service) GetOwn(ctx context.Context, author string) ([]core.Association
 }
 
 // Delete deletes an association by ID
-func (s *Service) Delete(ctx context.Context, id string) (core.Association, error) {
+func (s *service) Delete(ctx context.Context, id string) (core.Association, error) {
 	ctx, span := tracer.Start(ctx, "ServiceDelete")
 	defer span.End()
 

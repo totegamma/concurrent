@@ -7,18 +7,28 @@ import (
 	"time"
 )
 
-// Repository is host repository
-type Repository struct {
+// Repository is the interface for host repository
+type Repository interface {
+    Get(ctx context.Context, key string) (core.Entity, error)
+    Create(ctx context.Context, entity *core.Entity) error
+    Upsert(ctx context.Context, entity *core.Entity) error
+    GetList(ctx context.Context) ([]SafeEntity, error)
+    ListModified(ctx context.Context, modified time.Time) ([]SafeEntity, error)
+    Delete(ctx context.Context, key string) error
+    Update(ctx context.Context, entity *core.Entity) error
+}
+
+type repository struct {
 	db *gorm.DB
 }
 
-// NewRepository is for wire.go
-func NewRepository(db *gorm.DB) *Repository {
-	return &Repository{db: db}
+// NewRepository creates a new host repository
+func NewRepository(db *gorm.DB) Repository {
+	return &repository{db: db}
 }
 
-// Get returns a host by ID
-func (r *Repository) Get(ctx context.Context, key string) (core.Entity, error) {
+// Get returns a entity by key
+func (r *repository) Get(ctx context.Context, key string) (core.Entity, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGet")
 	defer span.End()
 
@@ -27,8 +37,8 @@ func (r *Repository) Get(ctx context.Context, key string) (core.Entity, error) {
 	return entity, err
 }
 
-// Create creates a entity
-func (r *Repository) Create(ctx context.Context, entity *core.Entity) error {
+// Create creates new entity
+func (r *repository) Create(ctx context.Context, entity *core.Entity) error {
 	ctx, span := tracer.Start(ctx, "RepositoryCreate")
 	defer span.End()
 
@@ -36,7 +46,7 @@ func (r *Repository) Create(ctx context.Context, entity *core.Entity) error {
 }
 
 // Upsert updates a entity
-func (r *Repository) Upsert(ctx context.Context, entity *core.Entity) error {
+func (r *repository) Upsert(ctx context.Context, entity *core.Entity) error {
 	ctx, span := tracer.Start(ctx, "RepositoryUpsert")
 	defer span.End()
 
@@ -44,7 +54,7 @@ func (r *Repository) Upsert(ctx context.Context, entity *core.Entity) error {
 }
 
 // GetList returns all entities
-func (r *Repository) GetList(ctx context.Context) ([]SafeEntity, error) {
+func (r *repository) GetList(ctx context.Context) ([]SafeEntity, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGetList")
 	defer span.End()
 
@@ -54,7 +64,7 @@ func (r *Repository) GetList(ctx context.Context) ([]SafeEntity, error) {
 }
 
 // ListModified returns all entities which modified after given time
-func (r *Repository) ListModified(ctx context.Context, time time.Time) ([]SafeEntity, error) {
+func (r *repository) ListModified(ctx context.Context, time time.Time) ([]SafeEntity, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryListModified")
 	defer span.End()
 
@@ -64,7 +74,7 @@ func (r *Repository) ListModified(ctx context.Context, time time.Time) ([]SafeEn
 }
 
 // Delete deletes a entity
-func (r *Repository) Delete(ctx context.Context, id string) error {
+func (r *repository) Delete(ctx context.Context, id string) error {
 	ctx, span := tracer.Start(ctx, "RepositoryDelete")
 	defer span.End()
 
@@ -72,7 +82,7 @@ func (r *Repository) Delete(ctx context.Context, id string) error {
 }
 
 // Update updates a entity
-func (r *Repository) Update(ctx context.Context, entity *core.Entity) error {
+func (r *repository) Update(ctx context.Context, entity *core.Entity) error {
 	ctx, span := tracer.Start(ctx, "RepositoryUpdate")
 	defer span.End()
 

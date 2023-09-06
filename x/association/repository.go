@@ -7,18 +7,25 @@ import (
 	"gorm.io/gorm"
 )
 
-// Repository is association repository
-type Repository struct {
+// Repository is the interface for association repository
+type Repository interface {
+    Create(ctx context.Context, association *core.Association) error
+    Get(ctx context.Context, id string) (core.Association, error)
+    GetOwn(ctx context.Context, author string) ([]core.Association, error)
+    Delete(ctx context.Context, id string) (core.Association, error)
+}
+
+type repository struct {
 	db *gorm.DB
 }
 
-// NewRepository is for wire.go
-func NewRepository(db *gorm.DB) *Repository {
-	return &Repository{db: db}
+// NewRepository creates a new association repository
+func NewRepository(db *gorm.DB) Repository {
+	return &repository{db: db}
 }
 
 // Create creates new association
-func (r *Repository) Create(ctx context.Context, association *core.Association) error {
+func (r *repository) Create(ctx context.Context, association *core.Association) error {
 	ctx, span := tracer.Start(ctx, "RepositoryCreate")
 	defer span.End()
 
@@ -26,7 +33,7 @@ func (r *Repository) Create(ctx context.Context, association *core.Association) 
 }
 
 // Get returns a Association by ID
-func (r *Repository) Get(ctx context.Context, id string) (core.Association, error) {
+func (r *repository) Get(ctx context.Context, id string) (core.Association, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGet")
 	defer span.End()
 
@@ -36,7 +43,7 @@ func (r *Repository) Get(ctx context.Context, id string) (core.Association, erro
 }
 
 // GetOwn returns all associations which owned by specified owner
-func (r *Repository) GetOwn(ctx context.Context, author string) ([]core.Association, error) {
+func (r *repository) GetOwn(ctx context.Context, author string) ([]core.Association, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGetOwn")
 	defer span.End()
 
@@ -46,7 +53,7 @@ func (r *Repository) GetOwn(ctx context.Context, author string) ([]core.Associat
 }
 
 // Delete deletes a association by ID
-func (r *Repository) Delete(ctx context.Context, id string) (core.Association, error) {
+func (r *repository) Delete(ctx context.Context, id string) (core.Association, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryDelete")
 	defer span.End()
 

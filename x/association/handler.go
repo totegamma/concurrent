@@ -14,19 +14,25 @@ import (
 
 var tracer = otel.Tracer("association")
 
-// Handler handles Association objects
-type Handler struct {
-	service *Service
-	message *message.Service
+// Handler is the interface for handling HTTP requests
+type Handler interface {
+    Get(c echo.Context) error
+    Post(c echo.Context) error
+    Delete(c echo.Context) error
 }
 
-// NewHandler is for wire.go
-func NewHandler(service *Service, message *message.Service) *Handler {
-	return &Handler{service: service, message: message}
+type handler struct {
+	service Service
+	message message.Service
 }
 
-// Get is for Handling HTTP Get Method
-func (h Handler) Get(c echo.Context) error {
+// NewHandler creates a new handler
+func NewHandler(service Service, message message.Service) Handler {
+	return &handler{service: service, message: message}
+}
+
+// Get returns an association by ID
+func (h handler) Get(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
 	defer span.End()
 	id := c.Param("id")
@@ -44,8 +50,9 @@ func (h Handler) Get(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
-// Post is for Handling HTTP Post Method
-func (h Handler) Post(c echo.Context) error {
+// Post creates a new association
+// returns the created association
+func (h handler) Post(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerPost")
 	defer span.End()
 
@@ -61,8 +68,9 @@ func (h Handler) Post(c echo.Context) error {
 	return c.JSON(http.StatusCreated, echo.Map{"status": "ok", "content": created})
 }
 
-// Delete is for Handling HTTP Delete Method
-func (h Handler) Delete(c echo.Context) error {
+// Delete deletes an association by ID
+// returns the deleted association
+func (h handler) Delete(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerDelete")
 	defer span.End()
 

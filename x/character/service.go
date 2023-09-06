@@ -7,18 +7,23 @@ import (
 	"github.com/totegamma/concurrent/x/util"
 )
 
-// Service is service of characters
-type Service struct {
-	repo *Repository
+// Service is the interface for character service
+type Service interface {
+    GetCharacters(ctx context.Context, owner string, schema string) ([]core.Character, error)
+    PutCharacter(ctx context.Context, objectStr string, signature string, id string) (core.Character, error)
 }
 
-// NewService is for wire.go
-func NewService(repo *Repository) *Service {
-	return &Service{repo: repo}
+type service struct {
+	repo Repository
+}
+
+// NewService creates a new character service
+func NewService(repo Repository) Service {
+	return &service{repo: repo}
 }
 
 // GetCharacters returns characters by owner and schema
-func (s *Service) GetCharacters(ctx context.Context, owner string, schema string) ([]core.Character, error) {
+func (s *service) GetCharacters(ctx context.Context, owner string, schema string) ([]core.Character, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGetCharacters")
 	defer span.End()
 
@@ -31,7 +36,7 @@ func (s *Service) GetCharacters(ctx context.Context, owner string, schema string
 }
 
 // PutCharacter creates new character if the signature is valid
-func (s *Service) PutCharacter(ctx context.Context, objectStr string, signature string, id string) (core.Character, error) {
+func (s *service) PutCharacter(ctx context.Context, objectStr string, signature string, id string) (core.Character, error) {
 	ctx, span := tracer.Start(ctx, "ServicePutCharacter")
 	defer span.End()
 

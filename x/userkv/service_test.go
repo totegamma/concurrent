@@ -11,7 +11,7 @@ func TestServiceGet(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRepo := mock_userkv.NewMockIRepository(ctrl)
+	mockRepo := mock_userkv.NewMockRepository(ctrl)
 	mockRepo.EXPECT().Get(gomock.Any(), "myuser:mykey").Return("myvalue", nil)
 
 	s := NewService(mockRepo)
@@ -29,7 +29,7 @@ func TestServiceUpsert(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockRepo := mock_userkv.NewMockIRepository(ctrl)
+	mockRepo := mock_userkv.NewMockRepository(ctrl)
 	mockRepo.EXPECT().Upsert(gomock.Any(), "myuser:mykey", "myvalue").Return(nil)
 
 	s := NewService(mockRepo)

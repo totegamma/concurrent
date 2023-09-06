@@ -6,18 +6,24 @@ import (
 	"gorm.io/gorm"
 )
 
-// Repository is message repository
-type Repository struct {
+// Repository is the interface for message repository
+type Repository interface {
+    Create(ctx context.Context, message *core.Message) (string, error)
+    Get(ctx context.Context, key string) (core.Message, error)
+    Delete(ctx context.Context, key string) (core.Message, error)
+}
+
+type repository struct {
 	db *gorm.DB
 }
 
-// NewRepository is used for wire.go
-func NewRepository(db *gorm.DB) *Repository {
-	return &Repository{db: db}
+// NewRepository creates a new message repository
+func NewRepository(db *gorm.DB) Repository {
+	return &repository{db: db}
 }
 
 // Create creates new message
-func (r *Repository) Create(ctx context.Context, message *core.Message) (string, error) {
+func (r *repository) Create(ctx context.Context, message *core.Message) (string, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryCreate")
 	defer span.End()
 
@@ -25,8 +31,8 @@ func (r *Repository) Create(ctx context.Context, message *core.Message) (string,
 	return message.ID, err
 }
 
-// Get returns a message with associaiton data
-func (r *Repository) Get(ctx context.Context, key string) (core.Message, error) {
+// Get returns a message by ID
+func (r *repository) Get(ctx context.Context, key string) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGet")
 	defer span.End()
 
@@ -36,7 +42,7 @@ func (r *Repository) Get(ctx context.Context, key string) (core.Message, error) 
 }
 
 // Delete deletes an message
-func (r *Repository) Delete(ctx context.Context, id string) (core.Message, error) {
+func (r *repository) Delete(ctx context.Context, id string) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryDelete")
 	defer span.End()
 

@@ -13,20 +13,24 @@ import (
 
 var tracer = otel.Tracer("message")
 
-// Handler handles Message objects
-type Handler struct {
-	service *Service
+// Handler is the interface for handling HTTP requests
+type Handler interface {
+    Get(c echo.Context) error
+    Post(c echo.Context) error
+    Delete(c echo.Context) error
 }
 
-// NewHandler is for wire.go
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+type handler struct {
+	service Service
 }
 
-// Get is for Handling HTTP Get Method
-// Input: path parameter "id"
-// Output: Message Object
-func (h Handler) Get(c echo.Context) error {
+// NewHandler creates a new handler
+func NewHandler(service Service) Handler {
+	return &handler{service: service}
+}
+
+// Get returns an message by ID
+func (h handler) Get(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
 	defer span.End()
 
@@ -42,11 +46,9 @@ func (h Handler) Get(c echo.Context) error {
 	return c.JSON(http.StatusOK, message)
 }
 
-// Post is for Handling HTTP Post Method
-// Input: Message Object
-// Output: nothing
-// Effect: register message object to database
-func (h Handler) Post(c echo.Context) error {
+// Post creates a new message
+// returns the created message
+func (h handler) Post(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerPost")
 	defer span.End()
 
@@ -62,8 +64,9 @@ func (h Handler) Post(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": message})
 }
 
-// Delete deletes message. only auther can perform this.
-func (h Handler) Delete(c echo.Context) error {
+// Delete deletes a message
+// returns the deleted message
+func (h handler) Delete(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerDelete")
 	defer span.End()
 

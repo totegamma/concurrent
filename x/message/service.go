@@ -10,28 +10,36 @@ import (
 	"github.com/totegamma/concurrent/x/util"
 )
 
-// Service is a service of message
-type Service struct {
-	rdb    *redis.Client
-	repo   *Repository
-	stream *stream.Service
+// Service is the interface for message service
+// Provides methods for message CRUD
+type Service interface {
+    Get(ctx context.Context, id string) (core.Message, error)
+    PostMessage(ctx context.Context, objectStr string, signature string, streams []string) (core.Message, error)
+    Delete(ctx context.Context, id string) (core.Message, error)
 }
 
-// NewService is used for wire.go
-func NewService(rdb *redis.Client, repo *Repository, stream *stream.Service) *Service {
-	return &Service{rdb, repo, stream}
+type service struct {
+	rdb    *redis.Client
+	repo   Repository
+	stream stream.Service
+}
+
+// NewService creates a new message service
+func NewService(rdb *redis.Client, repo Repository, stream stream.Service) Service {
+	return &service{rdb, repo, stream}
 }
 
 // Get returns a message by ID
-func (s *Service) Get(ctx context.Context, id string) (core.Message, error) {
+func (s *service) Get(ctx context.Context, id string) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGet")
 	defer span.End()
 
 	return s.repo.Get(ctx, id)
 }
 
-// PostMessage creates new message
-func (s *Service) PostMessage(ctx context.Context, objectStr string, signature string, streams []string) (core.Message, error) {
+// PostMessage creates a new message
+// It also posts the message to the streams
+func (s *service) PostMessage(ctx context.Context, objectStr string, signature string, streams []string) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "ServicePostMessage")
 	defer span.End()
 
@@ -69,7 +77,8 @@ func (s *Service) PostMessage(ctx context.Context, objectStr string, signature s
 }
 
 // Delete deletes a message by ID
-func (s *Service) Delete(ctx context.Context, id string) (core.Message, error) {
+// It also emits a delete event to the sockets
+func (s *service) Delete(ctx context.Context, id string) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "ServiceDelete")
 	defer span.End()
 

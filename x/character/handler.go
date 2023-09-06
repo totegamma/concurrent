@@ -11,18 +11,23 @@ import (
 
 var tracer = otel.Tracer("character")
 
-// Handler is handles Character Object
-type Handler struct {
-	service *Service
+// Handler is the interface for handling HTTP requests
+type Handler interface {
+    Get(c echo.Context) error
+    Put(c echo.Context) error
 }
 
-// NewHandler is for wire
-func NewHandler(service *Service) *Handler {
-	return &Handler{service: service}
+type handler struct {
+	service Service
 }
 
-// Get is for Handling HTTP Get Method
-func (h Handler) Get(c echo.Context) error {
+// NewHandler creates a new handler
+func NewHandler(service Service) Handler {
+	return &handler{service: service}
+}
+
+// Get returns a character by ID
+func (h handler) Get(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
 	defer span.End()
 
@@ -41,8 +46,8 @@ func (h Handler) Get(c echo.Context) error {
 	return c.JSON(http.StatusOK, response)
 }
 
-// Put is for Handling HTTP Put Method
-func (h Handler) Put(c echo.Context) error {
+// Put updates a character
+func (h handler) Put(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerPut")
 	defer span.End()
 

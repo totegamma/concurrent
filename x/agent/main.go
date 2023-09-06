@@ -25,19 +25,25 @@ import (
 
 var tracer = otel.Tracer("agent")
 
-// Agent is...
-type Agent struct {
+// Agent is the worker that runs scheduled tasks
+// - collect users from other servers
+// - update socket connections
+type Agent interface {
+    Boot()
+}
+
+type agent struct {
 	rdb         *redis.Client
 	config      util.Config
-	domain      *domain.Service
-	entity      *entity.Service
+	domain      domain.Service
+	entity      entity.Service
 	mutex       *sync.Mutex
 	connections map[string]*websocket.Conn
 }
 
-// NewAgent is...
-func NewAgent(rdb *redis.Client, config util.Config, domain *domain.Service, entity *entity.Service) *Agent {
-	return &Agent{
+// NewAgent creates a new agent
+func NewAgent(rdb *redis.Client, config util.Config, domain domain.Service, entity entity.Service) Agent {
+	return &agent{
 		rdb,
 		config,
 		domain,
@@ -47,7 +53,7 @@ func NewAgent(rdb *redis.Client, config util.Config, domain *domain.Service, ent
 	}
 }
 
-func (a *Agent) collectUsers(ctx context.Context) {
+func (a *agent) collectUsers(ctx context.Context) {
 	hosts, _ := a.domain.List(ctx)
 	host := hosts[rand.Intn(len(hosts))]
 	log.Printf("collecting users of %v\n", host)
@@ -55,7 +61,7 @@ func (a *Agent) collectUsers(ctx context.Context) {
 }
 
 // Boot starts agent
-func (a *Agent) Boot() {
+func (a *agent) Boot() {
 	log.Printf("agent start!")
 	ticker10 := time.NewTicker(10 * time.Second)
 	ticker60 := time.NewTicker(60 * time.Second)
@@ -76,7 +82,7 @@ func (a *Agent) Boot() {
 
 }
 
-func (a *Agent) updateConnections(ctx context.Context) {
+func (a *agent) updateConnections(ctx context.Context) {
 	a.mutex.Lock()
 	defer a.mutex.Unlock()
 
@@ -152,7 +158,7 @@ func (a *Agent) updateConnections(ctx context.Context) {
 }
 
 // PullRemoteEntities copies remote entities
-func (a *Agent) pullRemoteEntities(ctx context.Context, remote core.Domain) error {
+func (a *agent) pullRemoteEntities(ctx context.Context, remote core.Domain) error {
 	ctx, span := tracer.Start(ctx, "ServicePullRemoteEntities")
 	defer span.End()
 

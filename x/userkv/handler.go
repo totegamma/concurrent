@@ -12,19 +12,24 @@ import (
 
 var tracer = otel.Tracer("userkv")
 
-// Handler is the userkv handler
-type Handler struct {
-	service       *Service
-	entityService *entity.Service
+// Handler is the interface for handling HTTP requests
+type Handler interface {
+    Get(c echo.Context) error
+    Upsert(c echo.Context) error
 }
 
-// NewHandler is for wire.go
-func NewHandler(service *Service, entityService *entity.Service) *Handler {
-	return &Handler{service, entityService}
+type handler struct {
+	service       Service
+	entityService entity.Service
+}
+
+// NewHandler creates a new handler
+func NewHandler(service Service, entityService entity.Service) Handler {
+	return &handler{service, entityService}
 }
 
 // Get returns a userkv by ID
-func (h Handler) Get(c echo.Context) error {
+func (h handler) Get(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
 	defer span.End()
 
@@ -42,7 +47,7 @@ func (h Handler) Get(c echo.Context) error {
 }
 
 // Upsert updates a userkv
-func (h Handler) Upsert(c echo.Context) error {
+func (h handler) Upsert(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerUpsert")
 	defer span.End()
 

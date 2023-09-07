@@ -22,6 +22,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 
 	"github.com/totegamma/concurrent/x/util"
+	"github.com/totegamma/concurrent/x/auth"
 
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
@@ -77,6 +78,8 @@ func main() {
 	e.HidePort = true
 	e.HideBanner = true
 
+	e.Use(middleware.Recover())
+
 	if config.Server.EnableTrace {
 		cleanup, err := setupTraceProvider(config.Server.TraceEndpoint, config.Concurrent.FQDN+"/ccgateway", util.GetFullVersion())
 		if err != nil {
@@ -117,7 +120,7 @@ func main() {
 	}))
 
 	e.Use(echoprometheus.NewMiddleware("ccgateway"))
-	e.Use(middleware.Recover())
+	e.Use(auth.ParseJWT)
 
 	// Postrgresqlとの接続
 	db, err := gorm.Open(postgres.Open(config.Server.Dsn), &gorm.Config{})
@@ -156,12 +159,6 @@ func main() {
 		panic("failed to setup tracing plugin")
 	}
 
-	cors := middleware.CORSWithConfig(middleware.CORSConfig{
-		AllowOrigins:  []string{"*"},
-		AllowHeaders:  []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
-		ExposeHeaders: []string{"trace-id"},
-	})
-
 	// プロキシ設定
 	for _, service := range gwConf.Services {
 		service := service
@@ -184,28 +181,30 @@ func main() {
 
 		proxy.Transport = otelhttp.NewTransport(http.DefaultTransport)
 
+		middlewares := []echo.MiddlewareFunc{}
 		injectCors := service.InjectCors
 		if injectCors {
-			e.Any(service.Path, func(c echo.Context) error {
-				proxy.ServeHTTP(c.Response(), c.Request())
-				return nil
-			}, cors)
-
-			e.Any(service.Path+"/*", func(c echo.Context) error {
-				proxy.ServeHTTP(c.Response(), c.Request())
-				return nil
-			}, cors)
-		} else {
-			e.Any(service.Path, func(c echo.Context) error {
-				proxy.ServeHTTP(c.Response(), c.Request())
-				return nil
+			cors := middleware.CORSWithConfig(middleware.CORSConfig{
+				AllowOrigins:  []string{"*"},
+				AllowHeaders:  []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
+				ExposeHeaders: []string{"trace-id"},
 			})
-
-			e.Any(service.Path+"/*", func(c echo.Context) error {
-				proxy.ServeHTTP(c.Response(), c.Request())
-				return nil
-			})
+			middlewares = append(middlewares, cors)
 		}
+
+		handler := func(c echo.Context) error {
+			claims, ok := c.Get("jwtclaims").(util.JwtClaims)
+			if ok {
+				c.Request().Header.Set("cc-issuer", claims.Issuer)
+				c.Request().Header.Set("cc-user-id", claims.Audience)
+				c.Request().Header.Set("cc-user-tag", claims.Subject)
+			}
+			proxy.ServeHTTP(c.Response(), c.Request())
+			return nil
+		}
+
+		e.Any(service.Path, handler, middlewares...)
+		e.Any(service.Path+"/*", handler, middlewares...)
 	}
 
 	e.GET("/", func(c echo.Context) (err error) {

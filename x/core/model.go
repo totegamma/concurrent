@@ -111,3 +111,11 @@ type CollectionItem struct {
 	Collection string `json:"collection" gorm:"type:char(20)"`
 	Payload    string `json:"payload" gorm:"type:json;default:'{}'"`
 }
+
+type Ack struct {
+    From string `json:"from"`
+    To string `json:"to"`
+	Payload    string `json:"payload" gorm:"type:json;default:'{}'"`
+    Signature string `json:"signature"`
+}
+

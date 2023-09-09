@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strings"
 	"time"
+    "encoding/json"
 
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
@@ -23,6 +24,8 @@ type Service interface {
     Upsert(ctx context.Context, entity *core.Entity) error
     IsUserExists(ctx context.Context, user string) bool
     Delete(ctx context.Context, id string) error
+    Ack(ctx context.Context, from, to string) error
+    Unack(ctx context.Context, from, to string) error
 }
 
 type service struct {
@@ -169,3 +172,66 @@ func (s *service) Delete(ctx context.Context, id string) error {
 
 	return s.repository.Delete(ctx, id)
 }
+
+// Ack creates new Ack
+func (s *service) Ack(ctx context.Context, objectStr string, signature string) error {
+    ctx, span := tracer.Start(ctx, "ServiceAck")
+    defer span.End()
+
+    var object AckSignedObject
+    err := json.Unmarshal([]byte(objectStr), &object)
+    if err != nil {
+        span.RecordError(err)
+        return err
+    }
+
+    if object.Type != "ack" {
+        return fmt.Errorf("object is not ack")
+    }
+
+    err = util.VerifySignature(objectStr, object.From, signature)
+    if err != nil {
+        span.RecordError(err)
+        return err
+    }
+
+    // TODO: if ack destination is remote, forward ack to remote
+
+    return s.repository.Ack(ctx, &core.Ack{
+        From: object.From,
+        To: object.To,
+        Signature: signature,
+        Payload: objectStr,
+    })
+}
+
+// Unack creates new Unack
+func (s *service) Unack(ctx context.Context, objectStr string, signature string) error {
+    ctx, span := tracer.Start(ctx, "ServiceUnack")
+    defer span.End()
+
+    var object AckSignedObject
+    err := json.Unmarshal([]byte(objectStr), &object)
+    if err != nil {
+        span.RecordError(err)
+        return err
+    }
+
+    // TODO: if ack destination is remote, forward ack to remote
+
+    if object.Type != "unack" {
+        return fmt.Errorf("object is not unack")
+    }
+
+    err = util.VerifySignature(objectStr, object.From, signature)
+    if err != nil {
+        span.RecordError(err)
+        return err
+    }
+
+    // TODO: if unack destination is remote, forward unack to remote
+
+    return s.repository.Unack(ctx, object.From, object.To)
+}
+
+

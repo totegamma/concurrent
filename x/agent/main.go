@@ -54,7 +54,10 @@ func NewAgent(rdb *redis.Client, config util.Config, domain domain.Service, enti
 }
 
 func (a *agent) collectUsers(ctx context.Context) {
-	hosts, _ := a.domain.List(ctx)
+	hosts, err := a.domain.List(ctx)
+	if err != nil || len(hosts) == 0 {
+		return
+	}
 	host := hosts[rand.Intn(len(hosts))]
 	log.Printf("collecting users of %v\n", host)
 	a.pullRemoteEntities(ctx, host)

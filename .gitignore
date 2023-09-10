@@ -1,5 +1,6 @@
 concurrent
 _composeData
+/config/
 
 *.exe
 *.log

@@ -85,8 +85,6 @@ type Stream struct {
 	Writer     pq.StringArray `json:"writer" gorm:"type:char(42)[];default:'{}'"`
 	Reader     pq.StringArray `json:"reader" gorm:"type:char(42)[];default:'{}'"`
 	Schema     string         `json:"schema" gorm:"type:text"`
-	Payload    string         `json:"payload" gorm:"type:json;default:'{}'"`
-	Signature  string         `json:"signature" gorm:"type:char(130)"`
 	CDate      time.Time      `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 	MDate      time.Time      `json:"mdate" gorm:"autoUpdateTime"`
 }

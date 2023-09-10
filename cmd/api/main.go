@@ -109,6 +109,7 @@ func main() {
 		&core.Entity{},
 		&core.Collection{},
 		&core.CollectionItem{},
+		&core.Ack{},
 	)
 
 	rdb := redis.NewClient(&redis.Options{

@@ -36,7 +36,7 @@ type AckSignedObject struct {
 }
 
 type ackRequest struct {
-    SignedObject AckSignedObject `json:"signedObject"`
+    SignedObject string `json:"signedObject"`
     Signature string `json:"signature"`
 }
 

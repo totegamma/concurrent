@@ -9,8 +9,8 @@ import (
 // immutable
 type Association struct {
 	ID          string         `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
-	Author      string         `json:"author" gorm:"type:varchar(42);uniqueIndex:uniq_association"`
-	Schema      string         `json:"schema"  gorm:"type:varchar(256);uniqueIndex:uniq_association"`
+	Author      string         `json:"author" gorm:"type:char(42);uniqueIndex:uniq_association"`
+	Schema      string         `json:"schema"  gorm:"type:text;uniqueIndex:uniq_association"`
 	TargetID    string         `json:"targetID" gorm:"type:uuid;uniqueIndex:uniq_association"`
 	TargetType  string         `json:"targetType" gorm:"type:string;uniqueIndex:uniq_association"`
 	ContentHash string         `json:"contentHash" gorm:"type:char(64);uniqueIndex:uniq_association"`
@@ -24,8 +24,8 @@ type Association struct {
 // mutable
 type Character struct {
 	ID           string        `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
-	Author       string        `json:"author" gorm:"type:varchar(42)"`
-	Schema       string        `json:"schema" gorm:"type:varchar(256)"`
+	Author       string        `json:"author" gorm:"type:char(42)"`
+	Schema       string        `json:"schema" gorm:"type:text"`
 	Payload      string        `json:"payload" gorm:"type:json"`
 	Signature    string        `json:"signature" gorm:"type:char(130)"`
 	Associations []Association `json:"associations" gorm:"polymorphic:Target"`
@@ -45,6 +45,8 @@ type Entity struct {
 	Inviter string    `json:"inviter" gorm:"type:char(42)"`
 	CDate   time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 	MDate   time.Time `json:"mdate" gorm:"autoUpdateTime"`
+	Acking  Ack       `json:"acking" gorm:"foreignKey:From"`
+	Acker   Ack       `json:"acker" gorm:"foreignKey:To"`
 }
 
 // Domain is one of a concurrent base object
@@ -64,8 +66,8 @@ type Domain struct {
 // immutable
 type Message struct {
 	ID           string         `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
-	Author       string         `json:"author" gorm:"type:varchar(42)"`
-	Schema       string         `json:"schema" gorm:"type:varchar(256)"`
+	Author       string         `json:"author" gorm:"type:char(42)"`
+	Schema       string         `json:"schema" gorm:"type:text"`
 	Payload      string         `json:"payload" gorm:"type:json"`
 	Signature    string         `json:"signature" gorm:"type:char(130)"`
 	CDate        time.Time      `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
@@ -82,7 +84,7 @@ type Stream struct {
 	Maintainer pq.StringArray `json:"maintainer" gorm:"type:char(42)[];default:'{}'"`
 	Writer     pq.StringArray `json:"writer" gorm:"type:char(42)[];default:'{}'"`
 	Reader     pq.StringArray `json:"reader" gorm:"type:char(42)[];default:'{}'"`
-	Schema     string         `json:"schema" gorm:"type:varchar(256)"`
+	Schema     string         `json:"schema" gorm:"type:text"`
 	Payload    string         `json:"payload" gorm:"type:json;default:'{}'"`
 	Signature  string         `json:"signature" gorm:"type:char(130)"`
 	CDate      time.Time      `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
@@ -98,7 +100,7 @@ type Collection struct {
 	Maintainer pq.StringArray   `json:"maintainer" gorm:"type:char(42)[];default:'{}'"`
 	Writer     pq.StringArray   `json:"writer" gorm:"type:char(42)[];default:'{}'"`
 	Reader     pq.StringArray   `json:"reader" gorm:"type:char(42)[];default:'{}'"`
-	Schema     string           `json:"schema" gorm:"type:varchar(256)"`
+	Schema     string           `json:"schema" gorm:"type:text"`
 	CDate      time.Time        `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 	MDate      time.Time        `json:"mdate" gorm:"autoUpdateTime"`
 	Items      []CollectionItem `json:"items" gorm:"foreignKey:Collection"`
@@ -113,9 +115,9 @@ type CollectionItem struct {
 }
 
 type Ack struct {
-    From string `json:"from"`
-    To string `json:"to"`
+	From string `json:"from" gorm:"primaryKey;type:char(42)"`
+    To string `json:"to" gorm:"primaryKey;type:char(42)"`
 	Payload    string `json:"payload" gorm:"type:json;default:'{}'"`
-    Signature string `json:"signature"`
+	Signature string `json:"signature" gorm:"type:char(130)"`
 }
 

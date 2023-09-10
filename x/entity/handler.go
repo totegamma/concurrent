@@ -206,13 +206,13 @@ func (h handler) Ack(c echo.Context) error {
     ctx, span := tracer.Start(c.Request().Context(), "HandlerAck")
     defer span.End()
 
-	claims := c.Get("jwtclaims").(util.JwtClaims)
+	var request ackRequest
+	err := c.Bind(&request)
+	if err != nil {
+		return err
+	}
 
-	id := c.Param("id")
-
-    // TODO: if id is out of this domain, send it to checkpoint
-
-    err := h.service.Ack(ctx, claims.Audience, id)
+    err = h.service.Ack(ctx, request.SignedObject, request.Signature)
     if err != nil {
         return err
     }
@@ -225,13 +225,13 @@ func (h handler) Unack(c echo.Context) error {
     ctx, span := tracer.Start(c.Request().Context(), "HandlerUnack")
     defer span.End()
 
-    claims := c.Get("jwtclaims").(util.JwtClaims)
+	var request ackRequest
+	err := c.Bind(&request)
+	if err != nil {
+		return err
+	}
 
-    id := c.Param("id")
-
-    // TODO: if id is out of this domain, send it to checkpoint
-
-    err := h.service.Unack(ctx, claims.Audience, id)
+    err = h.service.Unack(ctx, request.SignedObject, request.Signature)
     if err != nil {
         return err
     }

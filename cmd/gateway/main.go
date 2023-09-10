@@ -222,8 +222,8 @@ func main() {
 		This domain is currently registration: ` + config.Concurrent.Registration + `<br>
 		<h2>Information</h2>
 		CCID: <br>` + config.Concurrent.CCID + `<br>
-		PUBKEY: <br>` + config.Concurrent.Pubkey[:len(config.Concurrent.Pubkey)/2] + `<br>` +
-		                config.Concurrent.Pubkey[len(config.Concurrent.Pubkey)/2:] + `<br>
+		PUBKEY: <br>` + config.Concurrent.PublicKey[:len(config.Concurrent.PublicKey)/2] + `<br>` +
+		                config.Concurrent.PublicKey[len(config.Concurrent.PublicKey)/2:] + `<br>
 		<h2>Services</h2>
 		<ul>
 		` + func() string {

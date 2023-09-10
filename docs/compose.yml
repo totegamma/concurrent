@@ -1,0 +1,79 @@
+version: "3"
+
+services:
+  gateway:
+    image: ghcr.io/totegamma/ccgateway:latest
+    restart: always
+    links:
+      - db
+      - redis
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config:/etc/concurrent/:ro
+
+  api:
+    image: ghcr.io/totegamma/ccapi:latest
+    restart: always
+    links:
+      - db
+      - redis
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./config:/etc/concurrent/:ro
+
+  webui:
+    image: ghcr.io/totegamma/ccwebui:latest
+    restart: always
+
+  summary:
+    image: ghcr.io/rassi0429/url-summary:latest
+    restart: always
+
+  apbridge:
+    image: ghcr.io/totegamma/ccworld-ap-bridge:latest
+    restart: always
+    links:
+      - db
+      - redis
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./config:/etc/concurrent/:ro
+
+  db:
+    restart: always
+    image: postgres
+    healthcheck:
+      test: "pg_isready -U postgres"
+      interval: 5s
+      retries: 20
+    volumes:
+      - ./_composeData/db:/var/lib/postgresql/data
+    environment:
+      - "POSTGRES_PASSWORD=postgres"
+      - "POSTGRES_DB=concurrent"
+
+  redis:
+    restart: always
+    image: redis
+    volumes:
+      - ./_composeData/redis:/data
+    healthcheck:
+      test: "redis-cli ping"
+      interval: 5s
+      retries: 20
+
+  

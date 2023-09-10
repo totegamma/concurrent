@@ -263,7 +263,7 @@ func (s *service) Post(ctx context.Context, stream string, id string, typ string
 			ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
 			IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
 			JWTID:          xid.New().String(),
-		}, s.config.Concurrent.Prvkey)
+		}, s.config.Concurrent.PrivateKey)
 
 		req.Header.Add("content-type", "application/json")
 		req.Header.Add("authorization", "Bearer "+jwt)

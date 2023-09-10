@@ -74,7 +74,7 @@ func (s *service) IssueJWT(ctx context.Context, request string) (string, error) 
 		IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
 		JWTID:          xid.New().String(),
 		Tag:            ent.Tag,
-	}, s.config.Concurrent.Prvkey)
+	}, s.config.Concurrent.PrivateKey)
 
 	if err != nil {
 		span.RecordError(err)

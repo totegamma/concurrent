@@ -156,23 +156,27 @@ func ParseJWT(next echo.HandlerFunc) echo.HandlerFunc {
 			split := strings.Split(authHeader, " ")
 			if len(split) != 2 {
 				span.RecordError(fmt.Errorf("invalid authentication header"))
-				return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid authentication header"})
+				//return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid authentication header"})
+				goto skip
 			}
 			authType, jwt := split[0], split[1]
 			if authType != "Bearer" {
 				span.RecordError(fmt.Errorf("only Bearer is acceptable"))
-				return c.JSON(http.StatusUnauthorized, echo.Map{"error": "only Bearer is acceptable"})
+				//return c.JSON(http.StatusUnauthorized, echo.Map{"error": "only Bearer is acceptable"})
+				goto skip
 			}
 
 			claims, err := util.ValidateJWT(jwt)
 			if err != nil {
 				span.RecordError(err)
-				return c.JSON(http.StatusUnauthorized, echo.Map{"error": err.Error()})
+				//return c.JSON(http.StatusUnauthorized, echo.Map{"error": err.Error()})
+				goto skip
 			}
 
 			c.Set("jwtclaims", claims)
 			span.SetAttributes(attribute.String("Audience", claims.Audience))
 		}
+skip:
 
 		c.SetRequest(c.Request().WithContext(ctx))
 		return next(c)

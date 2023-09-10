@@ -159,6 +159,12 @@ func main() {
 		panic("failed to setup tracing plugin")
 	}
 
+	cors := middleware.CORSWithConfig(middleware.CORSConfig{
+		AllowOrigins:  []string{"*"},
+		AllowHeaders:  []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
+		ExposeHeaders: []string{"trace-id"},
+	})
+
 	// プロキシ設定
 	for _, service := range gwConf.Services {
 		service := service
@@ -182,13 +188,7 @@ func main() {
 		proxy.Transport = otelhttp.NewTransport(http.DefaultTransport)
 
 		middlewares := []echo.MiddlewareFunc{}
-		injectCors := service.InjectCors
-		if injectCors {
-			cors := middleware.CORSWithConfig(middleware.CORSConfig{
-				AllowOrigins:  []string{"*"},
-				AllowHeaders:  []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
-				ExposeHeaders: []string{"trace-id"},
-			})
+		if service.InjectCors {
 			middlewares = append(middlewares, cors)
 		}
 

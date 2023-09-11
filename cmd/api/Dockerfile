@@ -10,6 +10,7 @@ RUN wire ./cmd/api \
 
 FROM golang:latest
 
+# RUN go install github.com/totegamma/ccadmin
 COPY --from=coreBuilder /work/ccapi /usr/local/bin
 
 CMD ["ccapi"]

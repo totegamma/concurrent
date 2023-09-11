@@ -44,7 +44,7 @@ func (r *repository) Create(ctx context.Context, stream core.Stream) (core.Strea
 	ctx, span := tracer.Start(ctx, "RepositoryCreate")
 	defer span.End()
 
-	err := r.db.WithContext(ctx).Create(stream).Error
+	err := r.db.WithContext(ctx).Create(&stream).Error
 	return stream, err
 }
 

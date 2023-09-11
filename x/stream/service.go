@@ -287,8 +287,12 @@ func (s *service) Create(ctx context.Context, obj core.Stream) (core.Stream, err
 	ctx, span := tracer.Start(ctx, "ServiceCreate")
 	defer span.End()
 
-	created, err := s.repository.Create(ctx, obj)
+	if obj.ID != "" {
+		return core.Stream{}, fmt.Errorf("id must be empty")
+	}
+	obj.ID = xid.New().String()
 
+	created, err := s.repository.Create(ctx, obj)
 	created.ID = created.ID + "@" + s.config.Concurrent.FQDN
 
 	return created, err
@@ -298,6 +302,14 @@ func (s *service) Create(ctx context.Context, obj core.Stream) (core.Stream, err
 func (s *service) Update(ctx context.Context, obj core.Stream) (core.Stream, error) {
 	ctx, span := tracer.Start(ctx, "ServiceUpdate")
 	defer span.End()
+
+	split := strings.Split(obj.ID, "@")
+	if len(split) == 2 {
+		if split[1] != s.config.Concurrent.FQDN {
+			return core.Stream{}, fmt.Errorf("this stream is not managed by this domain")
+		}
+		obj.ID = split[0]
+	}
 
 	updated, err := s.repository.Update(ctx, obj)
 

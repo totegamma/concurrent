@@ -31,7 +31,7 @@ func (r *repository) Total(ctx context.Context) (int64, error) {
 	defer span.End()
 
 	var count int64
-	err := r.db.WithContext(ctx).Model(&core.Entity{}).Count(&count).Error
+	err := r.db.WithContext(ctx).Model(&core.Entity{}).Where("host IS NULL or host = ''").Count(&count).Error
 	return count, err
 }
 

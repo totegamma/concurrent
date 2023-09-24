@@ -4,9 +4,6 @@ services:
   gateway:
     image: ghcr.io/totegamma/ccgateway:latest
     restart: always
-    links:
-      - db
-      - redis
     depends_on:
       db:
         condition: service_healthy
@@ -16,13 +13,13 @@ services:
       - "8080:8080"
     volumes:
       - ./config:/etc/concurrent/:ro
+    networks:
+      - external
+      - internal
 
   api:
     image: ghcr.io/totegamma/ccapi:latest
     restart: always
-    links:
-      - db
-      - redis
     depends_on:
       db:
         condition: service_healthy
@@ -30,21 +27,34 @@ services:
         condition: service_healthy
     volumes:
       - ./config:/etc/concurrent/:ro
+    expose:
+      - 8000
+    networks:
+      - external
+      - internal
 
   webui:
     image: ghcr.io/totegamma/ccwebui:latest
     restart: always
+    expose:
+      - 80
+    networks:
+      - external
+      - internal
 
   summary:
     image: ghcr.io/rassi0429/url-summary:latest
     restart: always
+    environment:
+      - PORT=8080
+    expose:
+      - 8080
+    networks:
+      - external
 
   apbridge:
     image: ghcr.io/totegamma/ccworld-ap-bridge:latest
     restart: always
-    links:
-      - db
-      - redis
     depends_on:
       db:
         condition: service_healthy
@@ -52,6 +62,10 @@ services:
         condition: service_healthy
     volumes:
       - ./config:/etc/concurrent/:ro
+    expose:
+      - 8000
+    networks:
+      - internal
 
   db:
     restart: always
@@ -65,6 +79,10 @@ services:
     environment:
       - "POSTGRES_PASSWORD=postgres"
       - "POSTGRES_DB=concurrent"
+    expose:
+      - 5432
+    networks:
+      - internal
 
   redis:
     restart: always
@@ -75,5 +93,12 @@ services:
       test: "redis-cli ping"
       interval: 5s
       retries: 20
-
+    expose:
+      - 6379
+    networks:
+      - internal
   
+networks:
+  external:
+  internal:
+    internal: true

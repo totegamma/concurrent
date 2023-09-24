@@ -31,7 +31,7 @@ func (r *repository) Total(ctx context.Context) (int64, error) {
 	defer span.End()
 
 	var count int64
-	err := r.db.WithContext(ctx).Model(&core.Entity{}).Where("host IS NULL or host = ''").Count(&count).Error
+	err := r.db.WithContext(ctx).Model(&core.Entity{}).Where("domain IS NULL or domain = ''").Count(&count).Error
 	return count, err
 }
 
@@ -72,7 +72,7 @@ func (r *repository) GetList(ctx context.Context) ([]SafeEntity, error) {
 	defer span.End()
 
 	var entities []SafeEntity
-	err := r.db.WithContext(ctx).Model(&core.Entity{}).Where("host IS NULL or host = ''").Find(&entities).Error
+	err := r.db.WithContext(ctx).Model(&core.Entity{}).Where("domain IS NULL or domain = ''").Find(&entities).Error
 	return entities, err
 }
 

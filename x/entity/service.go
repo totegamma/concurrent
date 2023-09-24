@@ -26,6 +26,7 @@ type Service interface {
     Delete(ctx context.Context, id string) error
     Ack(ctx context.Context, from, to string) error
     Unack(ctx context.Context, from, to string) error
+	Total(ctx context.Context) (int64, error)
 }
 
 type service struct {
@@ -36,6 +37,14 @@ type service struct {
 // NewService creates a new entity service
 func NewService(repository Repository, config util.Config) Service {
 	return &service{repository, config}
+}
+
+// Total returns the total number of entities
+func (s *service) Total(ctx context.Context) (int64, error) {
+	ctx, span := tracer.Start(ctx, "ServiceTotal")
+	defer span.End()
+
+	return s.repository.Total(ctx)
 }
 
 // Create creates new entity

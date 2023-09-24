@@ -18,10 +18,21 @@ type Repository interface {
     Update(ctx context.Context, entity *core.Entity) error
     Ack(ctx context.Context, ack *core.Ack) error
     Unack(ctx context.Context, from, to string) error
+	Total(ctx context.Context) (int64, error)
 }
 
 type repository struct {
 	db *gorm.DB
+}
+
+// Total returns the total number of entities
+func (r *repository) Total(ctx context.Context) (int64, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryTotal")
+	defer span.End()
+
+	var count int64
+	err := r.db.WithContext(ctx).Model(&core.Entity{}).Count(&count).Error
+	return count, err
 }
 
 // NewRepository creates a new host repository

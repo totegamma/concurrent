@@ -11,10 +11,21 @@ type Repository interface {
     Create(ctx context.Context, message *core.Message) (string, error)
     Get(ctx context.Context, key string) (core.Message, error)
     Delete(ctx context.Context, key string) (core.Message, error)
+	Total(ctx context.Context) (int64, error)
 }
 
 type repository struct {
 	db *gorm.DB
+}
+
+// Total returns the total number of messages
+func (r *repository) Total(ctx context.Context) (int64, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryTotal")
+	defer span.End()
+
+	var count int64
+	err := r.db.WithContext(ctx).Model(&core.Message{}).Count(&count).Error
+	return count, err
 }
 
 // NewRepository creates a new message repository

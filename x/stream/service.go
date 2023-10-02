@@ -32,13 +32,13 @@ type Service interface {
     Post(ctx context.Context, stream string, id string, typ string, author string, host string, owner string) error
     Remove(ctx context.Context, stream string, id string)
 
-    Create(ctx context.Context, stream core.Stream) (core.Stream, error)
-    Update(ctx context.Context, stream core.Stream) (core.Stream, error)
-    Get(ctx context.Context, key string) (core.Stream, error)
-    Delete(ctx context.Context, streamID string) error
+    CreateStream(ctx context.Context, stream core.Stream) (core.Stream, error)
+    GetStream(ctx context.Context, key string) (core.Stream, error)
+    UpdateStream(ctx context.Context, stream core.Stream) (core.Stream, error)
+    DeleteStream(ctx context.Context, streamID string) error
 
-    StreamListBySchema(ctx context.Context, schema string) ([]core.Stream, error)
-    StreamListByAuthor(ctx context.Context, author string) ([]core.Stream, error)
+    ListStreamBySchema(ctx context.Context, schema string) ([]core.Stream, error)
+    ListStreamByAuthor(ctx context.Context, author string) ([]core.Stream, error)
 }
 
 type service struct {
@@ -61,23 +61,34 @@ func min(a, b int) int {
 }
 
 // GetRecent returns recent message from streams
-func (s *service) GetRecent(ctx context.Context, streams []string, limit int) ([]Element, error) {
+func (s *service) GetRecent(ctx context.Context, streams []string, limit int) ([]core.StreamItem, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGetRecent")
 	defer span.End()
 
-	var messages []redis.XMessage
-    for _, stream := range streams { // TODO: use pipeline
-		cmd := s.rdb.XRevRangeN(ctx, stream, "+", "-", int64(limit))
-		messages = append(messages, cmd.Val()...)
-	}
-	m := make(map[string]bool)
-	uniq := []redis.XMessage{}
-	for _, elem := range messages {
-		if !m[elem.Values["id"].(string)] {
-			m[elem.Values["id"].(string)] = true
-			uniq = append(uniq, elem)
-		}
-	}
+    var messages []core.StreamItem
+
+    for _, stream := range streams {
+        items, err := s.repository.RangeStream(ctx, stream, time.Time{}, time.Now(), limit)
+        if err != nil {
+            span.RecordError(err)
+            continue
+        }
+        messages = append(messages, items...)
+    }
+
+    var uniq []core.StreamItem
+    m := make(map[string]bool)
+    for _, elem := range messages {
+        if !m[elem.ObjectID] {
+            m[elem.ObjectID] = true
+            uniq = append(uniq, elem)
+        }
+    }
+
+
+
+
+    /*
 	sort.Slice(uniq, func(l, r int) bool {
 		lStr := strings.Replace(uniq[l].ID, "-", ".", 1)
 		rStr := strings.Replace(uniq[r].ID, "-", ".", 1)
@@ -110,6 +121,7 @@ func (s *service) GetRecent(ctx context.Context, streams []string, limit int) ([
 			Domain:    host,
 		})
 	}
+    */
 
 	return result, nil
 }
@@ -283,7 +295,7 @@ func (s *service) Post(ctx context.Context, stream string, id string, typ string
 }
 
 // Create updates stream information
-func (s *service) Create(ctx context.Context, obj core.Stream) (core.Stream, error) {
+func (s *service) CreateStream(ctx context.Context, obj core.Stream) (core.Stream, error) {
 	ctx, span := tracer.Start(ctx, "ServiceCreate")
 	defer span.End()
 
@@ -292,14 +304,14 @@ func (s *service) Create(ctx context.Context, obj core.Stream) (core.Stream, err
 	}
 	obj.ID = xid.New().String()
 
-	created, err := s.repository.Create(ctx, obj)
+	created, err := s.repository.CreateStream(ctx, obj)
 	created.ID = created.ID + "@" + s.config.Concurrent.FQDN
 
 	return created, err
 }
 
 // Update updates stream information
-func (s *service) Update(ctx context.Context, obj core.Stream) (core.Stream, error) {
+func (s *service) UpdateStream(ctx context.Context, obj core.Stream) (core.Stream, error) {
 	ctx, span := tracer.Start(ctx, "ServiceUpdate")
 	defer span.End()
 
@@ -311,7 +323,7 @@ func (s *service) Update(ctx context.Context, obj core.Stream) (core.Stream, err
 		obj.ID = split[0]
 	}
 
-	updated, err := s.repository.Update(ctx, obj)
+	updated, err := s.repository.UpdateStream(ctx, obj)
 
 	updated.ID = updated.ID + "@" + s.config.Concurrent.FQDN
 
@@ -319,19 +331,19 @@ func (s *service) Update(ctx context.Context, obj core.Stream) (core.Stream, err
 }
 
 // Get returns stream information by ID
-func (s *service) Get(ctx context.Context, key string) (core.Stream, error) {
+func (s *service) GetStream(ctx context.Context, key string) (core.Stream, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGet")
 	defer span.End()
 
-	return s.repository.Get(ctx, key)
+	return s.repository.GetStream(ctx, key)
 }
 
 // StreamListBySchema returns streamList by schema
-func (s *service) StreamListBySchema(ctx context.Context, schema string) ([]core.Stream, error) {
+func (s *service) ListStreamBySchema(ctx context.Context, schema string) ([]core.Stream, error) {
 	ctx, span := tracer.Start(ctx, "ServiceStreamListBySchema")
 	defer span.End()
 
-	streams, err := s.repository.GetListBySchema(ctx, schema)
+	streams, err := s.repository.ListStreamBySchema(ctx, schema)
 	for i := 0; i < len(streams); i++ {
 		streams[i].ID = streams[i].ID + "@" + s.config.Concurrent.FQDN
 	}
@@ -339,11 +351,11 @@ func (s *service) StreamListBySchema(ctx context.Context, schema string) ([]core
 }
 
 // StreamListByAuthor returns streamList by author
-func (s *service) StreamListByAuthor(ctx context.Context, author string) ([]core.Stream, error) {
+func (s *service) ListStreamByAuthor(ctx context.Context, author string) ([]core.Stream, error) {
 	ctx, span := tracer.Start(ctx, "ServiceStreamListByAuthor")
 	defer span.End()
 
-	streams, err := s.repository.GetListByAuthor(ctx, author)
+	streams, err := s.repository.ListStreamByAuthor(ctx, author)
 	for i := 0; i < len(streams); i++ {
 		streams[i].ID = streams[i].ID + "@" + s.config.Concurrent.FQDN
 	}
@@ -380,9 +392,9 @@ func (s *service) Remove(ctx context.Context, stream string, id string) {
 }
 
 // Delete deletes
-func (s *service) Delete(ctx context.Context, streamID string) error {
+func (s *service) DeleteStream(ctx context.Context, streamID string) error {
 	ctx, span := tracer.Start(ctx, "ServiceDelete")
 	defer span.End()
 
-	return s.repository.Delete(ctx, streamID)
+	return s.repository.DeleteStream(ctx, streamID)
 }

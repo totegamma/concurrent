@@ -1,6 +1,7 @@
 package stream
 
 import (
+    "time"
 	"context"
 	"github.com/totegamma/concurrent/x/core"
 	"golang.org/x/exp/slices"
@@ -9,14 +10,21 @@ import (
 
 // Repository is stream repository interface
 type Repository interface {
-    Get(ctx context.Context, key string) (core.Stream, error)
-    Create(ctx context.Context, stream core.Stream) (core.Stream, error)
-    Update(ctx context.Context, stream core.Stream) (core.Stream, error)
-    GetListBySchema(ctx context.Context, schema string) ([]core.Stream, error)
-    GetListByAuthor(ctx context.Context, author string) ([]core.Stream, error)
-    Delete(ctx context.Context, key string) error
+    GetStream(ctx context.Context, key string) (core.Stream, error)
+    CreateStream(ctx context.Context, stream core.Stream) (core.Stream, error)
+    UpdateStream(ctx context.Context, stream core.Stream) (core.Stream, error)
+    DeleteStream(ctx context.Context, key string) error
+
+    GetItem(ctx context.Context, streamID string, objectID string) (core.StreamItem, error)
+    CreateItem(ctx context.Context, item core.StreamItem) (core.StreamItem, error)
+    DeleteItem(ctx context.Context, streamID string, objectID string) error
+
+    ListStreamBySchema(ctx context.Context, schema string) ([]core.Stream, error)
+    ListStreamByAuthor(ctx context.Context, author string) ([]core.Stream, error)
     HasWriteAccess(ctx context.Context, key string, author string) bool
     HasReadAccess(ctx context.Context, key string, author string) bool
+
+    RangeStream(ctx context.Context, streamID string, start time.Time, end time.Time, limit int) ([]core.StreamItem, error)
 }
 
 
@@ -29,9 +37,46 @@ func NewRepository(db *gorm.DB) Repository {
 	return &repository{db: db}
 }
 
-// Get returns a stream by ID
-func (r *repository) Get(ctx context.Context, key string) (core.Stream, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGet")
+// GetItem returns a stream item by StreamID and ObjectID
+func (r *repository) GetItem(ctx context.Context, streamID string, objectID string) (core.StreamItem, error) {
+    ctx, span := tracer.Start(ctx, "RepositoryGetItem")
+    defer span.End()
+
+    var item core.StreamItem
+    err := r.db.WithContext(ctx).First(&item, "stream_id = ? and object_id = ?", streamID, objectID).Error
+    return item, err
+}
+
+// CreateItem creates a new stream item
+func (r *repository) CreateItem(ctx context.Context, item core.StreamItem) (core.StreamItem, error) {
+    ctx, span := tracer.Start(ctx, "RepositoryCreateItem")
+    defer span.End()
+
+    err := r.db.WithContext(ctx).Create(&item).Error
+    return item, err
+}
+
+// DeleteItem deletes a stream item
+func (r *repository) DeleteItem(ctx context.Context, streamID string, objectID string) error {
+    ctx, span := tracer.Start(ctx, "RepositoryDeleteItem")
+    defer span.End()
+
+    return r.db.WithContext(ctx).Delete(&core.StreamItem{}, "stream_id = ? and object_id = ?", streamID, objectID).Error
+}
+
+// RangeStream returns a list of stream items by StreamID and time range
+func (r *repository) RangeStream(ctx context.Context, streamID string, start time.Time, end time.Time, limit int) ([]core.StreamItem, error) {
+    ctx, span := tracer.Start(ctx, "RepositoryRangeStream")
+    defer span.End()
+
+    var items []core.StreamItem
+    err := r.db.WithContext(ctx).Where("stream_id = ? and created_at >= ? and created_at <= ?", streamID, start, end).Limit(limit).Find(&items).Error
+    return items, err
+}
+
+// GetStream returns a stream by ID
+func (r *repository) GetStream(ctx context.Context, key string) (core.Stream, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryGetStream")
 	defer span.End()
 
 	var stream core.Stream
@@ -40,8 +85,8 @@ func (r *repository) Get(ctx context.Context, key string) (core.Stream, error) {
 }
 
 // Create updates a stream
-func (r *repository) Create(ctx context.Context, stream core.Stream) (core.Stream, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryCreate")
+func (r *repository) CreateStream(ctx context.Context, stream core.Stream) (core.Stream, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryCreateStream")
 	defer span.End()
 
 	err := r.db.WithContext(ctx).Create(&stream).Error
@@ -49,8 +94,8 @@ func (r *repository) Create(ctx context.Context, stream core.Stream) (core.Strea
 }
 
 // Update updates a stream
-func (r *repository) Update(ctx context.Context, stream core.Stream) (core.Stream, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryUpdate")
+func (r *repository) UpdateStream(ctx context.Context, stream core.Stream) (core.Stream, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryUpdateStream")
 	defer span.End()
 
 	var obj core.Stream
@@ -63,8 +108,8 @@ func (r *repository) Update(ctx context.Context, stream core.Stream) (core.Strea
 }
 
 // GetListBySchema returns list of schemas by schema
-func (r *repository) GetListBySchema(ctx context.Context, schema string) ([]core.Stream, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetList")
+func (r *repository) ListStreamBySchema(ctx context.Context, schema string) ([]core.Stream, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryListStream")
 	defer span.End()
 
 	var streams []core.Stream
@@ -73,8 +118,8 @@ func (r *repository) GetListBySchema(ctx context.Context, schema string) ([]core
 }
 
 // GetListByAuthor returns list of schemas by owner
-func (r *repository) GetListByAuthor(ctx context.Context, author string) ([]core.Stream, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetList")
+func (r *repository) ListStreamByAuthor(ctx context.Context, author string) ([]core.Stream, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryListStream")
 	defer span.End()
 
 	var streams []core.Stream
@@ -83,8 +128,8 @@ func (r *repository) GetListByAuthor(ctx context.Context, author string) ([]core
 }
 
 // Delete deletes a stream
-func (r *repository) Delete(ctx context.Context, streamID string) error {
-	ctx, span := tracer.Start(ctx, "RepositoryDelete")
+func (r *repository) DeleteStream(ctx context.Context, streamID string) error {
+	ctx, span := tracer.Start(ctx, "RepositoryDeleteStream")
 	defer span.End()
 
 	return r.db.WithContext(ctx).Delete(&core.Stream{}, "id = ?", streamID).Error

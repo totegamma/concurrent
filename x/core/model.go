@@ -90,6 +90,16 @@ type Stream struct {
 	MDate      time.Time      `json:"mdate" gorm:"autoUpdateTime"`
 }
 
+// StreamItem is one of a base object of concurrent
+// immutable
+type StreamItem struct {
+    ObjectID string    `json:"objectID" gorm:"primaryKey;type:uuid;"`
+    StreamID string    `json:"streamID" gorm:"primaryKey;type:char(20);"`
+    Author   string    `json:"author" gorm:"type:char(42);"`
+    Type     string    `json:"type" gorm:"type:text;"`
+    CDate    time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
+}
+
 // Collection is one of a base object of concurrent
 // mutable
 type Collection struct {

@@ -26,11 +26,11 @@ import (
 
 // Service is the interface for stream service
 type Service interface {
-    GetRecent(ctx context.Context, streams []string, limit int) ([]Element, error)
-    GetRange(ctx context.Context, streams []string, since string, until string, limit int) ([]Element, error)
-    GetElement(ctx context.Context, stream string, id string) (Element, error)
-    Post(ctx context.Context, stream string, id string, typ string, author string, host string, owner string) error
-    Remove(ctx context.Context, stream string, id string)
+    GetRecentItems(ctx context.Context, streams []string, until time.Time, limit int) ([]core.StreamItem, error)
+    GetImmediateItems(ctx context.Context, streams []string, since time.Time, limit int) ([]core.StreamItem, error)
+	GetItem(ctx context.Context, stream string, id string) (core.StreamItem, error)
+    PostItem(ctx context.Context, stream string, id string, typ string, author string, host string, owner string) error
+    RemoveItem(ctx context.Context, stream string, id string)
 
     CreateStream(ctx context.Context, stream core.Stream) (core.Stream, error)
     GetStream(ctx context.Context, key string) (core.Stream, error)
@@ -60,15 +60,15 @@ func min(a, b int) int {
 	return b
 }
 
-// GetRecent returns recent message from streams
-func (s *service) GetRecent(ctx context.Context, streams []string, limit int) ([]core.StreamItem, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetRecent")
+// GetRecentItems returns recent message from streams
+func (s *service) GetRecentItems(ctx context.Context, streams []string, until time.Time, limit int) ([]core.StreamItem, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetRecentItems")
 	defer span.End()
 
     var messages []core.StreamItem
 
     for _, stream := range streams {
-        items, err := s.repository.RangeStream(ctx, stream, time.Time{}, time.Now(), limit)
+        items, err := s.repository.GetRecentItems(ctx, stream, until, limit)
         if err != nil {
             span.RecordError(err)
             continue
@@ -85,106 +85,54 @@ func (s *service) GetRecent(ctx context.Context, streams []string, limit int) ([
         }
     }
 
-
-
-
-    /*
 	sort.Slice(uniq, func(l, r int) bool {
-		lStr := strings.Replace(uniq[l].ID, "-", ".", 1)
-		rStr := strings.Replace(uniq[r].ID, "-", ".", 1)
-		lTime, _ := strconv.ParseFloat(lStr, 32)
-		rTime, _ := strconv.ParseFloat(rStr, 32)
-		return lTime > rTime
+		return uniq[l].CDate.After(uniq[r].CDate)
 	})
+
 	chopped := uniq[:min(len(uniq), limit)]
-	result := []Element{}
 
-	for _, elem := range chopped {
-		host, _ := s.entity.ResolveHost(ctx, elem.Values["author"].(string))
-		id, ok := elem.Values["id"].(string)
-		if !ok {
-			id = ""
-		}
-		typ, ok := elem.Values["type"].(string)
-		if !ok {
-			typ = "message"
-		}
-		author, ok := elem.Values["author"].(string)
-		if !ok {
-			author = ""
-		}
-		result = append(result, Element{
-			Timestamp: elem.ID,
-			ID:        id,
-			Type:      typ,
-			Author:    author,
-			Domain:    host,
-		})
-	}
-    */
-
-	return result, nil
+	return chopped, nil
 }
 
-// GetRange returns specified range messages from streams
-func (s *service) GetRange(ctx context.Context, streams []string, since string, until string, limit int) ([]Element, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetRange")
+// GetImmediateItems returns immediate message from streams
+func (s *service) GetImmediateItems(ctx context.Context, streams []string, since time.Time, limit int) ([]core.StreamItem, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetImmediateItems")
 	defer span.End()
 
-	var messages []redis.XMessage
-	for _, stream := range streams { // TODO: use pipeline
-		cmd := s.rdb.XRevRangeN(ctx, stream, until, since, int64(limit))
-		messages = append(messages, cmd.Val()...)
+	var messages []core.StreamItem
+
+	for _, stream := range streams {
+		items, err := s.repository.GetImmediateItems(ctx, stream, since, limit)
+		if err != nil {
+			span.RecordError(err)
+			continue
+		}
+		messages = append(messages, items...)
 	}
+
+	var uniq []core.StreamItem
 	m := make(map[string]bool)
-	uniq := []redis.XMessage{}
 	for _, elem := range messages {
-		if !m[elem.Values["id"].(string)] {
-			m[elem.Values["id"].(string)] = true
+		if !m[elem.ObjectID] {
+			m[elem.ObjectID] = true
 			uniq = append(uniq, elem)
 		}
 	}
+
 	sort.Slice(uniq, func(l, r int) bool {
-		lStr := strings.Replace(uniq[l].ID, "-", ".", 1)
-		rStr := strings.Replace(uniq[r].ID, "-", ".", 1)
-		lTime, _ := strconv.ParseFloat(lStr, 32)
-		rTime, _ := strconv.ParseFloat(rStr, 32)
-		return lTime > rTime
+		return uniq[l].CDate.After(uniq[r].CDate)
 	})
+
 	chopped := uniq[:min(len(uniq), limit)]
-	result := []Element{}
 
-	for _, elem := range chopped {
-		host, _ := s.entity.ResolveHost(ctx, elem.Values["author"].(string))
-		id, ok := elem.Values["id"].(string)
-		if !ok {
-			id = ""
-		}
-		typ, ok := elem.Values["type"].(string)
-		if !ok {
-			typ = "message"
-		}
-		author, ok := elem.Values["author"].(string)
-		if !ok {
-			author = ""
-		}
-		result = append(result, Element{
-			Timestamp: elem.ID,
-			ID:        id,
-			Type:      typ,
-			Author:    author,
-			Domain:    host,
-		})
-	}
-
-	return result, nil
+	return chopped, nil
 }
 
 // Post posts events to the stream.
 // If the stream is local, it will be posted to the local Redis.
 // If the stream is remote, it will be posted to the remote domain's Checkpoint.
-func (s *service) Post(ctx context.Context, stream string, id string, typ string, author string, host string, owner string) error {
-	ctx, span := tracer.Start(ctx, "ServicePost")
+func (s *service) PostItem(ctx context.Context, stream string, id string, typ string, author string, host string, owner string) error {
+	ctx, span := tracer.Start(ctx, "ServicePostItem")
 	defer span.End()
 
 	span.SetAttributes(attribute.String("stream", stream))
@@ -362,33 +310,20 @@ func (s *service) ListStreamByAuthor(ctx context.Context, author string) ([]core
 	return streams, err
 }
 
-// GetElement returns stream element by ID
-func (s *service) GetElement(ctx context.Context, stream string, id string) (Element, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetElement")
+// GetItem returns stream element by ID
+func (s *service) GetItem(ctx context.Context, stream string, id string) (core.StreamItem, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetItem")
 	defer span.End()
 
-	result, err := s.rdb.XRange(ctx, stream, id, id).Result()
-	if err != nil {
-		span.RecordError(err)
-		return Element{}, err
-	}
-	if len(result) == 0 {
-		return Element{}, fmt.Errorf("element not found")
-	}
-	return Element{
-		Timestamp: result[0].ID,
-		ID:        result[0].Values["id"].(string),
-		Type:      result[0].Values["type"].(string),
-		Author:    result[0].Values["author"].(string),
-	}, nil
+	return s.repository.GetItem(ctx, stream, id)
 }
 
 // Remove removes stream element by ID
-func (s *service) Remove(ctx context.Context, stream string, id string) {
-	ctx, span := tracer.Start(ctx, "ServiceRemove")
+func (s *service) RemoveItem(ctx context.Context, stream string, id string) {
+	ctx, span := tracer.Start(ctx, "ServiceRemoveItem")
 	defer span.End()
 
-	s.rdb.XDel(ctx, stream, id)
+	s.repository.DeleteItem(ctx, stream, id)
 }
 
 // Delete deletes

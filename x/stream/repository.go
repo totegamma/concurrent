@@ -24,7 +24,8 @@ type Repository interface {
     HasWriteAccess(ctx context.Context, key string, author string) bool
     HasReadAccess(ctx context.Context, key string, author string) bool
 
-    RangeStream(ctx context.Context, streamID string, start time.Time, end time.Time, limit int) ([]core.StreamItem, error)
+    GetRecentItems(ctx context.Context, streamID string, until time.Time, limit int) ([]core.StreamItem, error)
+	GetImmediateItems(ctx context.Context, streamID string, since time.Time, limit int) ([]core.StreamItem, error)
 }
 
 
@@ -64,14 +65,24 @@ func (r *repository) DeleteItem(ctx context.Context, streamID string, objectID s
     return r.db.WithContext(ctx).Delete(&core.StreamItem{}, "stream_id = ? and object_id = ?", streamID, objectID).Error
 }
 
-// RangeStream returns a list of stream items by StreamID and time range
-func (r *repository) RangeStream(ctx context.Context, streamID string, start time.Time, end time.Time, limit int) ([]core.StreamItem, error) {
-    ctx, span := tracer.Start(ctx, "RepositoryRangeStream")
-    defer span.End()
+// GetStreamRecent returns a list of stream items by StreamID and time range
+func (r *repository) GetRecentItems(ctx context.Context, streamID string, until time.Time, limit int) ([]core.StreamItem, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryGetStreamRecent")
+	defer span.End()
 
-    var items []core.StreamItem
-    err := r.db.WithContext(ctx).Where("stream_id = ? and created_at >= ? and created_at <= ?", streamID, start, end).Limit(limit).Find(&items).Error
-    return items, err
+	var items []core.StreamItem
+	err := r.db.WithContext(ctx).Where("stream_id = ? and created_at <= ?", streamID, until).Limit(limit).Find(&items).Error
+	return items, err
+}
+
+// GetStreamImmediate returns a list of stream items by StreamID and time range
+func (r *repository) GetImmediateItems(ctx context.Context, streamID string, since time.Time, limit int) ([]core.StreamItem, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryGetStreamImmediate")
+	defer span.End()
+
+	var items []core.StreamItem
+	err := r.db.WithContext(ctx).Where("stream_id = ? and created_at >= ?", streamID, since).Limit(limit).Find(&items).Error
+	return items, err
 }
 
 // GetStream returns a stream by ID

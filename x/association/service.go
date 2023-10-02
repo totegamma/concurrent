@@ -96,7 +96,7 @@ func (s *service) PostAssociation(ctx context.Context, objectStr string, signatu
 	}
 
 	for _, stream := range association.Streams {
-		err = s.stream.Post(ctx, stream, association.ID, "association", association.Author, "", targetMessage.Author)
+		err = s.stream.PostItem(ctx, stream, association.ID, "association", association.Author, "", targetMessage.Author)
 		if err != nil {
 			span.RecordError(err)
 			log.Printf("fail to post stream: %v", err)

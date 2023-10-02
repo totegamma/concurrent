@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/x/core"
@@ -45,7 +47,7 @@ func (h handler) Get(c echo.Context) error {
 	defer span.End()
 
 	streamID := c.Param("id")
-	stream, err := h.service.Get(ctx, streamID)
+	stream, err := h.service.GetStream(ctx, streamID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return c.JSON(http.StatusNotFound, echo.Map{"error": "User not found"})
@@ -66,7 +68,7 @@ func (h handler) Create(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
 	}
 
-	created, err := h.service.Create(ctx, data)
+	created, err := h.service.CreateStream(ctx, data)
 	if err != nil {
 		span.RecordError(err)
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
@@ -90,7 +92,7 @@ func (h handler) Update(c echo.Context) error {
 
 	data.ID = id
 
-	updated, err := h.service.Update(ctx, data)
+	updated, err := h.service.UpdateStream(ctx, data)
 	if err != nil {
 		span.RecordError(err)
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
@@ -107,7 +109,7 @@ func (h handler) Recent(c echo.Context) error {
 
 	streamsStr := c.QueryParam("streams")
 	streams := strings.Split(streamsStr, ",")
-	messages, _ := h.service.GetRecent(ctx, streams, 16)
+	messages, _ := h.service.GetRecentItems(ctx, streams, time.Now(), 16)
 
 	return c.JSON(http.StatusOK, messages)
 }
@@ -122,18 +124,25 @@ func (h handler) Range(c echo.Context) error {
 	querySince := c.QueryParam("since")
 	queryUntil := c.QueryParam("until")
 
-	since := "-"
 	if querySince != "" {
-		since = querySince
+		sinceEpoch, err := strconv.ParseInt(querySince, 10, 64)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
+		}
+		since := time.Unix(sinceEpoch, 0)
+		messages, _ := h.service.GetImmediateItems(ctx, streams, since, 16)
+		return c.JSON(http.StatusOK, messages)
+	} else if queryUntil != "" {
+		untilEpoch, err := strconv.ParseInt(queryUntil, 10, 64)
+		if err != nil {
+			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
+		}
+		until := time.Unix(untilEpoch, 0)
+		messages, _ := h.service.GetRecentItems(ctx, streams, until, 16)
+		return c.JSON(http.StatusOK, messages)
+	} else {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
 	}
-
-	until := "+"
-	if queryUntil != "" {
-		until = queryUntil
-	}
-
-	messages, _ := h.service.GetRange(ctx, streams, since, until, 16)
-	return c.JSON(http.StatusOK, messages)
 }
 
 // List returns stream ids which filtered by specific schema
@@ -142,7 +151,7 @@ func (h handler) List(c echo.Context) error {
 	defer span.End()
 
 	schema := c.QueryParam("schema")
-	list, err := h.service.StreamListBySchema(ctx, schema)
+	list, err := h.service.ListStreamBySchema(ctx, schema)
 	if err != nil {
 		span.RecordError(err)
 		return err
@@ -158,7 +167,7 @@ func (h handler) ListMine(c echo.Context) error {
 	claims := c.Get("jwtclaims").(util.JwtClaims)
 	requester := claims.Audience
 
-	list, err := h.service.StreamListByAuthor(ctx, requester)
+	list, err := h.service.ListStreamByAuthor(ctx, requester)
 	if err != nil {
 		span.RecordError(err)
 		return err
@@ -177,7 +186,7 @@ func (h handler) Delete(c echo.Context) error {
 		streamID = split[0]
 	}
 
-	target, err := h.service.Get(ctx, streamID)
+	target, err := h.service.GetStream(ctx, streamID)
 	if err != nil {
 		span.RecordError(err)
 		return err
@@ -190,7 +199,7 @@ func (h handler) Delete(c echo.Context) error {
 		return c.JSON(http.StatusForbidden, echo.Map{"error": "You are not owner of this stream"})
 	}
 
-	err = h.service.Delete(ctx, streamID)
+	err = h.service.DeleteStream(ctx, streamID)
 	if err != nil {
 		span.RecordError(err)
 		return err
@@ -209,9 +218,9 @@ func (h handler) Remove(c echo.Context) error {
 		streamID = split[0]
 	}
 
-	elementID := c.Param("element")
+	objectID := c.Param("object")
 
-	target, err := h.service.GetElement(ctx, streamID, elementID)
+	target, err := h.service.GetItem(ctx, streamID, objectID)
 	if err != nil {
 		span.RecordError(err)
 		return err
@@ -224,7 +233,7 @@ func (h handler) Remove(c echo.Context) error {
 		return c.JSON(http.StatusForbidden, echo.Map{"error": "You are not owner of this stream element"})
 	}
 
-	h.service.Remove(ctx, streamID, elementID)
+	h.service.RemoveItem(ctx, streamID, objectID)
 
 	return c.String(http.StatusOK, fmt.Sprintf("{\"message\": \"accept\"}"))
 }
@@ -241,7 +250,7 @@ func (h handler) Checkpoint(c echo.Context) error {
 		return err
 	}
 
-	err = h.service.Post(ctx, packet.Stream, packet.ID, packet.Type, packet.Author, packet.Host, packet.Owner)
+	err = h.service.PostItem(ctx, packet.Stream, packet.ID, packet.Type, packet.Author, packet.Host, packet.Owner)
 	if err != nil {
 		span.RecordError(err)
 		return nil

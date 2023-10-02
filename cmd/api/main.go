@@ -194,7 +194,7 @@ func main() {
 	apiV1R.PUT("/stream/:id", streamHandler.Update, authService.Restrict(auth.ISLOCAL))
 	apiV1R.POST("/streams/checkpoint", streamHandler.Checkpoint, authService.Restrict(auth.ISUNITED))
 	apiV1R.DELETE("/stream/:id", streamHandler.Delete, authService.Restrict(auth.ISLOCAL))
-	apiV1R.DELETE("/stream/:stream/:element", streamHandler.Remove, authService.Restrict(auth.ISLOCAL))
+	apiV1R.DELETE("/stream/:stream/:object", streamHandler.Remove, authService.Restrict(auth.ISLOCAL))
 	apiV1.GET("/streams/mine", streamHandler.ListMine)
 
 	apiV1R.GET("/kv/:key", userkvHandler.Get, authService.Restrict(auth.ISLOCAL))

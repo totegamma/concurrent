@@ -9,13 +9,13 @@ import (
 
 // Repository is the interface for host repository
 type Repository interface {
-    GetByFQDN(ctx context.Context, key string) (core.Domain, error)
-    GetByCCID(ctx context.Context, ccid string) (core.Domain, error)
-    Upsert(ctx context.Context, host *core.Domain) error
-    GetList(ctx context.Context) ([]core.Domain, error)
-    Delete(ctx context.Context, id string) (error)
-    UpdateScrapeTime(ctx context.Context, id string, scrapeTime time.Time) error
-    Update(ctx context.Context, host *core.Domain) error
+	GetByFQDN(ctx context.Context, key string) (core.Domain, error)
+	GetByCCID(ctx context.Context, ccid string) (core.Domain, error)
+	Upsert(ctx context.Context, host *core.Domain) error
+	GetList(ctx context.Context) ([]core.Domain, error)
+	Delete(ctx context.Context, id string) error
+	UpdateScrapeTime(ctx context.Context, id string, scrapeTime time.Time) error
+	Update(ctx context.Context, host *core.Domain) error
 }
 
 type repository struct {

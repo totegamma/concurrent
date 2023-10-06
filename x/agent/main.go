@@ -29,7 +29,7 @@ var tracer = otel.Tracer("agent")
 // - collect users from other servers
 // - update socket connections
 type Agent interface {
-    Boot()
+	Boot()
 }
 
 type agent struct {

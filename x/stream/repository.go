@@ -1,33 +1,32 @@
 package stream
 
 import (
-    "time"
 	"context"
 	"github.com/totegamma/concurrent/x/core"
 	"golang.org/x/exp/slices"
 	"gorm.io/gorm"
+	"time"
 )
 
 // Repository is stream repository interface
 type Repository interface {
-    GetStream(ctx context.Context, key string) (core.Stream, error)
-    CreateStream(ctx context.Context, stream core.Stream) (core.Stream, error)
-    UpdateStream(ctx context.Context, stream core.Stream) (core.Stream, error)
-    DeleteStream(ctx context.Context, key string) error
+	GetStream(ctx context.Context, key string) (core.Stream, error)
+	CreateStream(ctx context.Context, stream core.Stream) (core.Stream, error)
+	UpdateStream(ctx context.Context, stream core.Stream) (core.Stream, error)
+	DeleteStream(ctx context.Context, key string) error
 
-    GetItem(ctx context.Context, streamID string, objectID string) (core.StreamItem, error)
-    CreateItem(ctx context.Context, item core.StreamItem) (core.StreamItem, error)
-    DeleteItem(ctx context.Context, streamID string, objectID string) error
+	GetItem(ctx context.Context, streamID string, objectID string) (core.StreamItem, error)
+	CreateItem(ctx context.Context, item core.StreamItem) (core.StreamItem, error)
+	DeleteItem(ctx context.Context, streamID string, objectID string) error
 
-    ListStreamBySchema(ctx context.Context, schema string) ([]core.Stream, error)
-    ListStreamByAuthor(ctx context.Context, author string) ([]core.Stream, error)
-    HasWriteAccess(ctx context.Context, key string, author string) bool
-    HasReadAccess(ctx context.Context, key string, author string) bool
+	ListStreamBySchema(ctx context.Context, schema string) ([]core.Stream, error)
+	ListStreamByAuthor(ctx context.Context, author string) ([]core.Stream, error)
+	HasWriteAccess(ctx context.Context, key string, author string) bool
+	HasReadAccess(ctx context.Context, key string, author string) bool
 
-    GetRecentItems(ctx context.Context, streamID string, until time.Time, limit int) ([]core.StreamItem, error)
+	GetRecentItems(ctx context.Context, streamID string, until time.Time, limit int) ([]core.StreamItem, error)
 	GetImmediateItems(ctx context.Context, streamID string, since time.Time, limit int) ([]core.StreamItem, error)
 }
-
 
 type repository struct {
 	db *gorm.DB
@@ -40,29 +39,29 @@ func NewRepository(db *gorm.DB) Repository {
 
 // GetItem returns a stream item by StreamID and ObjectID
 func (r *repository) GetItem(ctx context.Context, streamID string, objectID string) (core.StreamItem, error) {
-    ctx, span := tracer.Start(ctx, "RepositoryGetItem")
-    defer span.End()
+	ctx, span := tracer.Start(ctx, "RepositoryGetItem")
+	defer span.End()
 
-    var item core.StreamItem
-    err := r.db.WithContext(ctx).First(&item, "stream_id = ? and object_id = ?", streamID, objectID).Error
-    return item, err
+	var item core.StreamItem
+	err := r.db.WithContext(ctx).First(&item, "stream_id = ? and object_id = ?", streamID, objectID).Error
+	return item, err
 }
 
 // CreateItem creates a new stream item
 func (r *repository) CreateItem(ctx context.Context, item core.StreamItem) (core.StreamItem, error) {
-    ctx, span := tracer.Start(ctx, "RepositoryCreateItem")
-    defer span.End()
+	ctx, span := tracer.Start(ctx, "RepositoryCreateItem")
+	defer span.End()
 
-    err := r.db.WithContext(ctx).Create(&item).Error
-    return item, err
+	err := r.db.WithContext(ctx).Create(&item).Error
+	return item, err
 }
 
 // DeleteItem deletes a stream item
 func (r *repository) DeleteItem(ctx context.Context, streamID string, objectID string) error {
-    ctx, span := tracer.Start(ctx, "RepositoryDeleteItem")
-    defer span.End()
+	ctx, span := tracer.Start(ctx, "RepositoryDeleteItem")
+	defer span.End()
 
-    return r.db.WithContext(ctx).Delete(&core.StreamItem{}, "stream_id = ? and object_id = ?", streamID, objectID).Error
+	return r.db.WithContext(ctx).Delete(&core.StreamItem{}, "stream_id = ? and object_id = ?", streamID, objectID).Error
 }
 
 // GetStreamRecent returns a list of stream items by StreamID and time range
@@ -71,7 +70,7 @@ func (r *repository) GetRecentItems(ctx context.Context, streamID string, until 
 	defer span.End()
 
 	var items []core.StreamItem
-	err := r.db.WithContext(ctx).Where("stream_id = ? and created_at <= ?", streamID, until).Limit(limit).Find(&items).Error
+	err := r.db.WithContext(ctx).Where("stream_id = ? and c_date < ?", streamID, until).Order("c_date desc").Limit(limit).Find(&items).Error
 	return items, err
 }
 
@@ -81,7 +80,7 @@ func (r *repository) GetImmediateItems(ctx context.Context, streamID string, sin
 	defer span.End()
 
 	var items []core.StreamItem
-	err := r.db.WithContext(ctx).Where("stream_id = ? and created_at >= ?", streamID, since).Limit(limit).Find(&items).Error
+	err := r.db.WithContext(ctx).Where("stream_id = ? and c_date > ?", streamID, since).Order("c_date asec").Limit(limit).Find(&items).Error
 	return items, err
 }
 

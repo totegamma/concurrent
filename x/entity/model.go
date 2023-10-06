@@ -29,14 +29,13 @@ type SafeEntity struct {
 }
 
 type AckSignedObject struct {
-    Type string `json:"type"`
-    From string `json:"from"`
-    To string `json:"to"`
-    SignedAt time.Time `json:"signedAt"`
+	Type     string    `json:"type"`
+	From     string    `json:"from"`
+	To       string    `json:"to"`
+	SignedAt time.Time `json:"signedAt"`
 }
 
 type ackRequest struct {
-    SignedObject string `json:"signedObject"`
-    Signature string `json:"signature"`
+	SignedObject string `json:"signedObject"`
+	Signature    string `json:"signature"`
 }
-

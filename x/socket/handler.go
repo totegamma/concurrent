@@ -13,7 +13,7 @@ import (
 
 // Handler is the interface for handling websocket
 type Handler interface {
-    Connect(c echo.Context) error
+	Connect(c echo.Context) error
 }
 
 type handler struct {

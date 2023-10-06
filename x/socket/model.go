@@ -1,7 +1,7 @@
 package socket
 
 type Request struct {
-	Type string `json:"type"`
+	Type     string   `json:"type"`
 	Channels []string `json:"channels"`
 }
 

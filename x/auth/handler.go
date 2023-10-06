@@ -11,7 +11,7 @@ var tracer = otel.Tracer("auth")
 
 // Handler is the interface for handling HTTP requests
 type Handler interface {
-    Claim(c echo.Context) error
+	Claim(c echo.Context) error
 }
 
 type handler struct {

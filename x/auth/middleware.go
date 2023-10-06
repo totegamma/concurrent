@@ -176,7 +176,7 @@ func ParseJWT(next echo.HandlerFunc) echo.HandlerFunc {
 			c.Set("jwtclaims", claims)
 			span.SetAttributes(attribute.String("Audience", claims.Audience))
 		}
-skip:
+	skip:
 
 		c.SetRequest(c.Request().WithContext(ctx))
 		return next(c)

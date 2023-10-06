@@ -9,10 +9,10 @@ import (
 
 // Repository is the interface for association repository
 type Repository interface {
-    Create(ctx context.Context, association *core.Association) error
-    Get(ctx context.Context, id string) (core.Association, error)
-    GetOwn(ctx context.Context, author string) ([]core.Association, error)
-    Delete(ctx context.Context, id string) (core.Association, error)
+	Create(ctx context.Context, association core.Association) (core.Association, error)
+	Get(ctx context.Context, id string) (core.Association, error)
+	GetOwn(ctx context.Context, author string) ([]core.Association, error)
+	Delete(ctx context.Context, id string) (core.Association, error)
 }
 
 type repository struct {
@@ -25,11 +25,13 @@ func NewRepository(db *gorm.DB) Repository {
 }
 
 // Create creates new association
-func (r *repository) Create(ctx context.Context, association *core.Association) error {
+func (r *repository) Create(ctx context.Context, association core.Association) (core.Association, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryCreate")
 	defer span.End()
 
-	return r.db.WithContext(ctx).Create(&association).Error
+	err := r.db.WithContext(ctx).Create(&association).Error
+
+	return association, err
 }
 
 // Get returns a Association by ID

@@ -15,9 +15,9 @@ var tracer = otel.Tracer("message")
 
 // Handler is the interface for handling HTTP requests
 type Handler interface {
-    Get(c echo.Context) error
-    Post(c echo.Context) error
-    Delete(c echo.Context) error
+	Get(c echo.Context) error
+	Post(c echo.Context) error
+	Delete(c echo.Context) error
 }
 
 type handler struct {

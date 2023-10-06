@@ -20,16 +20,16 @@ var tracer = otel.Tracer("stream")
 
 // Handler is the interface for handling HTTP requests
 type Handler interface {
-    Get(c echo.Context) error
+	Get(c echo.Context) error
 	Create(c echo.Context) error
 	Update(c echo.Context) error
-    Recent(c echo.Context) error
-    Range(c echo.Context) error
-    List(c echo.Context) error
-    ListMine(c echo.Context) error
-    Delete(c echo.Context) error
-    Remove(c echo.Context) error
-    Checkpoint(c echo.Context) error
+	Recent(c echo.Context) error
+	Range(c echo.Context) error
+	List(c echo.Context) error
+	ListMine(c echo.Context) error
+	Delete(c echo.Context) error
+	Remove(c echo.Context) error
+	Checkpoint(c echo.Context) error
 }
 
 type handler struct {
@@ -100,7 +100,6 @@ func (h handler) Update(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": updated})
 }
-
 
 // Recent returns recent messages in some streams
 func (h handler) Recent(c echo.Context) error {
@@ -250,7 +249,7 @@ func (h handler) Checkpoint(c echo.Context) error {
 		return err
 	}
 
-	err = h.service.PostItem(ctx, packet.Stream, packet.ID, packet.Type, packet.Author, packet.Host, packet.Owner)
+	err = h.service.PostItem(ctx, packet.Stream, packet.Item, packet.Body)
 	if err != nil {
 		span.RecordError(err)
 		return nil

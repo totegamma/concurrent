@@ -31,8 +31,8 @@ type Concurrent struct {
 	Registration string `yaml:"registration"` // open, invite, close
 
 	// internal generated
-	CCID         string `yaml:"ccid"`
-	PublicKey       string `yaml:"publickey"`
+	CCID      string `yaml:"ccid"`
+	PublicKey string `yaml:"publickey"`
 }
 
 type Profile struct {

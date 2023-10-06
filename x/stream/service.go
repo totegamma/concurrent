@@ -26,19 +26,19 @@ import (
 
 // Service is the interface for stream service
 type Service interface {
-    GetRecentItems(ctx context.Context, streams []string, until time.Time, limit int) ([]core.StreamItem, error)
-    GetImmediateItems(ctx context.Context, streams []string, since time.Time, limit int) ([]core.StreamItem, error)
+	GetRecentItems(ctx context.Context, streams []string, until time.Time, limit int) ([]core.StreamItem, error)
+	GetImmediateItems(ctx context.Context, streams []string, since time.Time, limit int) ([]core.StreamItem, error)
 	GetItem(ctx context.Context, stream string, id string) (core.StreamItem, error)
-    PostItem(ctx context.Context, stream string, id string, typ string, author string, host string, owner string) error
-    RemoveItem(ctx context.Context, stream string, id string)
+	PostItem(ctx context.Context, stream string, item core.StreamItem, body interface{}) error
+	RemoveItem(ctx context.Context, stream string, id string)
 
-    CreateStream(ctx context.Context, stream core.Stream) (core.Stream, error)
-    GetStream(ctx context.Context, key string) (core.Stream, error)
-    UpdateStream(ctx context.Context, stream core.Stream) (core.Stream, error)
-    DeleteStream(ctx context.Context, streamID string) error
+	CreateStream(ctx context.Context, stream core.Stream) (core.Stream, error)
+	GetStream(ctx context.Context, key string) (core.Stream, error)
+	UpdateStream(ctx context.Context, stream core.Stream) (core.Stream, error)
+	DeleteStream(ctx context.Context, streamID string) error
 
-    ListStreamBySchema(ctx context.Context, schema string) ([]core.Stream, error)
-    ListStreamByAuthor(ctx context.Context, author string) ([]core.Stream, error)
+	ListStreamBySchema(ctx context.Context, schema string) ([]core.Stream, error)
+	ListStreamByAuthor(ctx context.Context, author string) ([]core.Stream, error)
 }
 
 type service struct {
@@ -65,49 +65,32 @@ func (s *service) GetRecentItems(ctx context.Context, streams []string, until ti
 	ctx, span := tracer.Start(ctx, "ServiceGetRecentItems")
 	defer span.End()
 
-    var messages []core.StreamItem
-
-    for _, stream := range streams {
-        items, err := s.repository.GetRecentItems(ctx, stream, until, limit)
-        if err != nil {
-            span.RecordError(err)
-            continue
-        }
-        messages = append(messages, items...)
-    }
-
-    var uniq []core.StreamItem
-    m := make(map[string]bool)
-    for _, elem := range messages {
-        if !m[elem.ObjectID] {
-            m[elem.ObjectID] = true
-            uniq = append(uniq, elem)
-        }
-    }
-
-	sort.Slice(uniq, func(l, r int) bool {
-		return uniq[l].CDate.After(uniq[r].CDate)
-	})
-
-	chopped := uniq[:min(len(uniq), limit)]
-
-	return chopped, nil
-}
-
-// GetImmediateItems returns immediate message from streams
-func (s *service) GetImmediateItems(ctx context.Context, streams []string, since time.Time, limit int) ([]core.StreamItem, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetImmediateItems")
-	defer span.End()
-
 	var messages []core.StreamItem
+	var buckets map[string][]string = make(map[string][]string)
 
 	for _, stream := range streams {
-		items, err := s.repository.GetImmediateItems(ctx, stream, since, limit)
-		if err != nil {
-			span.RecordError(err)
-			continue
+		split := strings.Split(stream, "@")
+		host := s.config.Concurrent.FQDN
+		if len(split) != 2 {
+			host = split[1]
 		}
-		messages = append(messages, items...)
+
+		buckets[host] = append(buckets[host], split[0])
+	}
+
+	for host, localstreams := range buckets {
+		if host == s.config.Concurrent.FQDN {
+			for _, stream := range localstreams {
+				items, err := s.repository.GetRecentItems(ctx, stream, until, limit)
+				if err != nil {
+					span.RecordError(err)
+					continue
+				}
+				messages = append(messages, items...)
+			}
+		} else {
+			// TODO: Get from remote
+		}
 	}
 
 	var uniq []core.StreamItem
@@ -128,10 +111,61 @@ func (s *service) GetImmediateItems(ctx context.Context, streams []string, since
 	return chopped, nil
 }
 
+// GetImmediateItems returns immediate message from streams
+func (s *service) GetImmediateItems(ctx context.Context, streams []string, since time.Time, limit int) ([]core.StreamItem, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetImmediateItems")
+	defer span.End()
+
+	var messages []core.StreamItem
+	var buckets map[string][]string = make(map[string][]string)
+
+	for _, stream := range streams {
+		split := strings.Split(stream, "@")
+		host := s.config.Concurrent.FQDN
+		if len(split) != 2 {
+			host = split[1]
+		}
+
+		buckets[host] = append(buckets[host], split[0])
+	}
+
+	for host, localstreams := range buckets {
+		if host == s.config.Concurrent.FQDN {
+			for _, stream := range localstreams {
+				items, err := s.repository.GetImmediateItems(ctx, stream, since, limit)
+				if err != nil {
+					span.RecordError(err)
+					continue
+				}
+				messages = append(messages, items...)
+			}
+		} else {
+			// TODO: Get from remote
+		}
+	}
+
+	var uniq []core.StreamItem
+	m := make(map[string]bool)
+	for _, elem := range messages {
+		if !m[elem.ObjectID] {
+			m[elem.ObjectID] = true
+			uniq = append(uniq, elem)
+		}
+	}
+
+	sort.Slice(uniq, func(l, r int) bool {
+		return uniq[l].CDate.Before(uniq[r].CDate)
+	})
+
+	chopped := uniq[:min(len(uniq), limit)]
+
+	return chopped, nil
+}
+
 // Post posts events to the stream.
 // If the stream is local, it will be posted to the local Redis.
 // If the stream is remote, it will be posted to the remote domain's Checkpoint.
-func (s *service) PostItem(ctx context.Context, stream string, id string, typ string, author string, host string, owner string) error {
+func (s *service) PostItem(ctx context.Context, stream string, item core.StreamItem, body interface{}) error {
 	ctx, span := tracer.Start(ctx, "ServicePostItem")
 	defer span.End()
 
@@ -142,65 +176,43 @@ func (s *service) PostItem(ctx context.Context, stream string, id string, typ st
 		return fmt.Errorf("Invalid format: %v", stream)
 	}
 
-	if host == "" {
-		host = s.config.Concurrent.FQDN
-	}
-
 	streamID, streamHost := query[0], query[1]
 
-	if owner == "" {
-		owner = author
-	}
+	item.StreamID = streamID
 
 	if streamHost == s.config.Concurrent.FQDN {
 
 		// check if the user has write access to the stream
-		if !s.repository.HasWriteAccess(ctx, streamID, author) {
+		if !s.repository.HasWriteAccess(ctx, streamID, item.Author) {
 			return fmt.Errorf("You don't have write access to %v", streamID)
 		}
 
 		// add to stream
-		timestamp, err := s.rdb.XAdd(ctx, &redis.XAddArgs{
-			Stream: streamID,
-			ID:     "*",
-			Values: map[string]interface{}{
-				"id":     id,
-				"type":   typ,
-				"author": owner,
-			},
-		}).Result()
+		created, err := s.repository.CreateItem(ctx, item)
 		if err != nil {
 			span.RecordError(err)
-			log.Printf("fail to xadd: %v", err)
+			log.Printf("fail to create item: %v", err)
+			return err
 		}
 
 		// publish event to pubsub
 		jsonstr, _ := json.Marshal(Event{
 			Stream: stream,
-			Type:   typ,
 			Action: "create",
-			Body: Element{
-				Timestamp: timestamp,
-				ID:        id,
-				Type:      typ,
-				Author:    author,
-				Owner:     owner,
-				Domain:    host,
-			},
+			Type:   item.Type,
+			Item:   created,
+			Body:   body,
 		})
 		err = s.rdb.Publish(context.Background(), stream, jsonstr).Err()
 		if err != nil {
 			span.RecordError(err)
 			log.Printf("fail to publish message to Redis: %v", err)
+			return err
 		}
 	} else {
 		packet := checkpointPacket{
-			Stream: stream,
-			ID:     id,
-			Type:   typ,
-			Author: author,
-			Host:   s.config.Concurrent.FQDN,
-			Owner:  owner,
+			Item: item,
+			Body: body,
 		}
 		packetStr, err := json.Marshal(packet)
 		if err != nil {

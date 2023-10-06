@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"github.com/totegamma/concurrent/x/core"
 	"time"
 )
 
@@ -30,27 +31,15 @@ type signedObject struct {
 
 // Event is websocket root packet model
 type Event struct {
-	Stream string  `json:"stream"`
-	Type   string  `json:"type"`
-	Action string  `json:"action"`
-	Body   Element `json:"body"`
-}
-
-// Element is stream element
-type Element struct {
-	Timestamp string `json:"timestamp"`
-	ID        string `json:"id"`
-	Type      string `json:"type"`
-	Author    string `json:"author"`
-	Owner     string `json:"owner"`
-	Domain    string `json:"domain"`
+	Stream string          `json:"stream"` // stream full id (ex: <streamID>@<domain>)
+	Type   string          `json:"type"`
+	Action string          `json:"action"`
+	Item   core.StreamItem `json:"item"`
+	Body   interface{}     `json:"body"`
 }
 
 type checkpointPacket struct {
-	Stream string `json:"stream"`
-	ID     string `json:"id"`
-	Type   string `json:"type"`
-	Author string `json:"author"`
-	Host   string `json:"host"`
-	Owner  string `json:"owner"`
+	Stream string          `json:"stream"` // stream full id (ex: <streamID>@<domain>)
+	Item   core.StreamItem `json:"item"`
+	Body   interface{}     `json:"body"`
 }

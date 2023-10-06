@@ -3,6 +3,7 @@ package message
 import (
 	"context"
 	"encoding/json"
+	"log"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/x/core"
@@ -13,9 +14,9 @@ import (
 // Service is the interface for message service
 // Provides methods for message CRUD
 type Service interface {
-    Get(ctx context.Context, id string) (core.Message, error)
-    PostMessage(ctx context.Context, objectStr string, signature string, streams []string) (core.Message, error)
-    Delete(ctx context.Context, id string) (core.Message, error)
+	Get(ctx context.Context, id string) (core.Message, error)
+	PostMessage(ctx context.Context, objectStr string, signature string, streams []string) (core.Message, error)
+	Delete(ctx context.Context, id string) (core.Message, error)
 	Total(ctx context.Context) (int64, error)
 }
 
@@ -72,14 +73,18 @@ func (s *service) PostMessage(ctx context.Context, objectStr string, signature s
 		Streams:   streams,
 	}
 
-	id, err := s.repo.Create(ctx, &message)
+	created, err := s.repo.Create(ctx, message)
 	if err != nil {
 		span.RecordError(err)
 		return message, err
 	}
 
 	for _, stream := range message.Streams {
-		s.stream.PostItem(ctx, stream, id, "message", message.Author, "", "")
+		s.stream.PostItem(ctx, stream, core.StreamItem{
+			Type:     "message",
+			ObjectID: created.ID,
+			Owner:    object.Signer,
+		}, message)
 	}
 
 	return message, nil
@@ -92,6 +97,7 @@ func (s *service) Delete(ctx context.Context, id string) (core.Message, error) {
 	defer span.End()
 
 	deleted, err := s.repo.Delete(ctx, id)
+	log.Printf("deleted: %v", deleted)
 	if err != nil {
 		span.RecordError(err)
 		return core.Message{}, err
@@ -102,9 +108,7 @@ func (s *service) Delete(ctx context.Context, id string) (core.Message, error) {
 			Stream: deststream,
 			Type:   "message",
 			Action: "delete",
-			Body: stream.Element{
-				ID: deleted.ID,
-			},
+			Body:   deleted,
 		})
 		err := s.rdb.Publish(context.Background(), deststream, jsonstr).Err()
 		if err != nil {

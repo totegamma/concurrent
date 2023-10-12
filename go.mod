@@ -3,6 +3,7 @@ module github.com/totegamma/concurrent
 go 1.19
 
 require (
+	github.com/bradfitz/gomemcache v0.0.0-20230905024940-24af94b03874
 	github.com/ethereum/go-ethereum v1.11.6
 	github.com/go-yaml/yaml v2.1.0+incompatible
 	github.com/google/wire v0.5.0

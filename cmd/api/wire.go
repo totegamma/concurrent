@@ -5,6 +5,7 @@ package main
 import (
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
+	"github.com/bradfitz/gomemcache/memcache"
 	"gorm.io/gorm"
 
 	"github.com/totegamma/concurrent/x/agent"
@@ -30,7 +31,7 @@ var associationHandlerProvider = wire.NewSet(association.NewHandler, association
 var userkvHandlerProvider = wire.NewSet(userkv.NewHandler, userkv.NewService, userkv.NewRepository)
 var collectionHandlerProvider = wire.NewSet(collection.NewHandler, collection.NewService, collection.NewRepository)
 
-func SetupMessageHandler(db *gorm.DB, rdb *redis.Client, config util.Config) message.Handler {
+func SetupMessageHandler(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) message.Handler {
 	wire.Build(messageHandlerProvider, stream.NewService, stream.NewRepository, entity.NewService, entity.NewRepository)
 	return nil
 }
@@ -40,12 +41,12 @@ func SetupCharacterHandler(db *gorm.DB, config util.Config) character.Handler {
 	return nil
 }
 
-func SetupAssociationHandler(db *gorm.DB, rdb *redis.Client, config util.Config) association.Handler {
+func SetupAssociationHandler(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) association.Handler {
 	wire.Build(associationHandlerProvider, stream.NewService, stream.NewRepository, entity.NewService, entity.NewRepository)
 	return nil
 }
 
-func SetupStreamHandler(db *gorm.DB, rdb *redis.Client, config util.Config) stream.Handler {
+func SetupStreamHandler(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) stream.Handler {
 	wire.Build(streamHandlerProvider)
 	return nil
 }

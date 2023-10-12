@@ -20,6 +20,8 @@ import (
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
 
+	"github.com/bradfitz/gomemcache/memcache"
+
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	"go.opentelemetry.io/otel"
@@ -131,13 +133,20 @@ func main() {
 		panic("failed to setup tracing plugin")
 	}
 
+	mc := memcache.New(config.Server.MemcachedAddr)
+	log.Println("config.Server.MemcachedAddr", config.Server.MemcachedAddr)
+	if err != nil {
+		panic("failed to connect memcached")
+	}
+	defer mc.Close()
+
 	agent := SetupAgent(db, rdb, config)
 
 	socketHandler := SetupSocketHandler(rdb, config)
-	messageHandler := SetupMessageHandler(db, rdb, config)
+	messageHandler := SetupMessageHandler(db, rdb, mc, config)
 	characterHandler := SetupCharacterHandler(db, config)
-	associationHandler := SetupAssociationHandler(db, rdb, config)
-	streamHandler := SetupStreamHandler(db, rdb, config)
+	associationHandler := SetupAssociationHandler(db, rdb, mc, config)
+	streamHandler := SetupStreamHandler(db, rdb, mc, config)
 	domainHandler := SetupDomainHandler(db, config)
 	entityHandler := SetupEntityHandler(db, rdb, config)
 	authHandler := SetupAuthHandler(db, config)

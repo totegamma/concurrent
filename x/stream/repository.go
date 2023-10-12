@@ -153,6 +153,7 @@ func (r *repository) GetChunkIterators(ctx context.Context, streams []string, ch
 			if err != nil {
 				continue
 			}
+			log.Printf("GetChunkIterator-dbread: %v", item)
 			key := "stream:body:all:" + stream + ":" + ChunkDate(item.CDate)
 			r.mc.Set(&memcache.Item{Key: keys[i], Value: []byte(key)})
 			result[stream] = key

@@ -82,9 +82,14 @@ func (r *repository) GetMultiChunk(ctx context.Context, streams []string, chunk 
 		if caches[targetKey] != nil { // hit
 			log.Printf("GetMultiChunk: hit %v", targetKey)
 			var items []core.StreamItem
-			err = json.Unmarshal(caches[targetKey].Value, &items)
+			cache := string(caches[targetKey].Value)
+			cache = cache[:len(cache)-1]
+			cache = "[" + cache + "]"
+			err = json.Unmarshal([]byte(cache), &items)
 			if err != nil {
 				span.RecordError(err)
+				log.Printf("GetMultiChunk UnmarshalError: %v", cache)
+				log.Printf("Original: %v", string(caches[targetKey].Value))
 				return nil, err
 			}
 			result[stream] = items
@@ -102,12 +107,14 @@ func (r *repository) GetMultiChunk(ctx context.Context, streams []string, chunk 
 				span.RecordError(err)
 				items = make([]core.StreamItem, 0)
 			}
-			b, err := json.Marshal(items)
+			b, err := json.Marshal(items) // like "[{...},{...},{...}]"
 			if err != nil {
 				span.RecordError(err)
 				return nil, err
 			}
-			r.mc.Set(&memcache.Item{Key: targetKey, Value: b})
+			// strip the first and last characters
+			newcache := string(b[1 : len(b)-1]) + "," // like "{...},{...},{...},"
+			r.mc.Set(&memcache.Item{Key: targetKey, Value: []byte(newcache)})
 			result[stream] = items
 		}
 	}

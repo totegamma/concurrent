@@ -56,7 +56,7 @@ func NewService(rdb *redis.Client, repository Repository, entity entity.Service,
 func ChunkDate(t time.Time) string {
 	// chunk by 10 minutes
 	//return fmt.Sprintf("%d", t.Unix()/600)
-	return fmt.Sprintf("%d", (t.Unix()/600)*600)
+	return fmt.Sprintf("%d", (t.Unix()/600 + 1)*600)
 }
 
 func min(a, b int) int {
@@ -102,17 +102,6 @@ func (s *service) GetRecentItems(ctx context.Context, streams []string, until ti
 					messages = append(messages, item)
 				}
 			}
-
-			/*
-			for _, stream := range localstreams {
-				items, err := s.repository.GetRecentItems(ctx, stream, until, limit)
-				if err != nil {
-					span.RecordError(err)
-					continue
-				}
-				messages = append(messages, items...)
-			}
-			*/
 		} else {
 			// TODO: Get from remote
 		}

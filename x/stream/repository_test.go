@@ -102,7 +102,7 @@ func TestRepository(t *testing.T) {
 		ObjectID: "af7bcaa8-820a-4ce2-ab17-1b3f6bf14d9b",
 		StreamID: "00000000000000000000",
 		Owner: "CC62b953CCCE898b955f256976d61BdEE04353C042",
-		CDate: pivot.Add(-time.Minute * 10),
+		CDate: pivot.Add(-time.Minute * 0),
 	}
 
 	createdItem, err := repo.CreateItem(ctx, item)
@@ -138,7 +138,7 @@ func TestRepository(t *testing.T) {
 		ObjectID: "3c850e58-efca-4656-bbe4-2e5642dbbbe8",
 		StreamID: "00000000000000000000",
 		Owner: "CC62b953CCCE898b955f256976d61BdEE04353C042",
-		CDate: pivot.Add(-time.Minute * 20),
+		CDate: pivot.Add(-time.Minute * 10),
 	})
 	if err != nil {
 		t.Errorf("CreateItem1 failed: %s", err)
@@ -197,7 +197,7 @@ func TestRepository(t *testing.T) {
 		ObjectID: "50797d45-23d2-471e-9e48-b4b8a6cdc840",
 		StreamID: "11111111111111111111",
 		Owner: "CC62b953CCCE898b955f256976d61BdEE04353C042",
-		CDate: pivot.Add(-time.Minute * 10),
+		CDate: pivot.Add(-time.Minute * 0),
 	})
 	if err != nil {
 		t.Errorf("CreateItem1 failed: %s", err)
@@ -208,7 +208,7 @@ func TestRepository(t *testing.T) {
 		ObjectID: "9aad0952-7a50-419c-96c1-565a1da95c47",
 		StreamID: "11111111111111111111",
 		Owner: "CC62b953CCCE898b955f256976d61BdEE04353C042",
-		CDate: pivot.Add(-time.Minute * 20),
+		CDate: pivot.Add(-time.Minute * 10),
 	})
 	if err != nil {
 		t.Errorf("CreateItem1 failed: %s", err)
@@ -235,5 +235,25 @@ func TestRepository(t *testing.T) {
 		t.Error(chunks["11111111111111111111"])
 	}
 
+	// :: GetChunkのテスト with cache ::
+	chunks2, err := repo.GetMultiChunk(ctx, []string{"00000000000000000000", "11111111111111111111"}, pivotChunk)
+	if err != nil {
+		t.Errorf("GetMultiChunk failed: %s", err)
+	}
+
+	if (len(chunks2) != 2) {
+		t.Errorf("GetMultiChunk failed: length is not matched. expected: 2, actual: %d", len(chunks2))
+		t.Error(chunks)
+	}
+
+	if (len(chunks2["00000000000000000000"]) != 2) {
+		t.Errorf("GetMultiChunk failed: length is not matched. expected: 2, actual: %d", len(chunks2["00000000000000000000"]))
+		t.Error(chunks2["00000000000000000000"])
+	}
+
+	if (len(chunks2["11111111111111111111"]) != 2) {
+		t.Errorf("GetMultiChunk failed: length is not matched. expected: 2, actual: %d", len(chunks2["11111111111111111111"]))
+		t.Error(chunks2["11111111111111111111"])
+	}
 
 }

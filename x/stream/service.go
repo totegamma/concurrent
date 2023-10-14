@@ -53,10 +53,19 @@ func NewService(rdb *redis.Client, repository Repository, entity entity.Service,
 	return &service{rdb, repository, entity, config}
 }
 
-func ChunkDate(t time.Time) string {
+func Time2Chunk(t time.Time) string {
 	// chunk by 10 minutes
-	//return fmt.Sprintf("%d", t.Unix()/600)
-	return fmt.Sprintf("%d", (t.Unix()/600 + 1)*600)
+	return fmt.Sprintf("%d", (t.Unix()/600)*600)
+}
+
+func Chunk2RecentTime(chunk string) time.Time {
+	i, _ := strconv.ParseInt(chunk, 10, 64)
+	return time.Unix(i+600, 0)
+}
+
+func Chunk2ImmediateTime(chunk string) time.Time {
+	i, _ := strconv.ParseInt(chunk, 10, 64)
+	return time.Unix(i, 0)
 }
 
 func min(a, b int) int {
@@ -86,7 +95,7 @@ func (s *service) GetRecentItems(ctx context.Context, streams []string, until ti
 
 	for host, localstreams := range buckets {
 		if host == s.config.Concurrent.FQDN {
-			untilChunk := ChunkDate(until)
+			untilChunk := Time2Chunk(until)
 			items, err := s.repository.GetMultiChunk(ctx, localstreams, untilChunk)
 			if err != nil {
 				log.Printf("Error: %v", err)

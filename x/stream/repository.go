@@ -4,7 +4,6 @@ import (
 	"log"
 	"context"
 	"encoding/json"
-	"strconv"
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
@@ -96,12 +95,9 @@ func (r *repository) GetMultiChunk(ctx context.Context, streams []string, chunk 
 		} else { // miss
 			log.Printf("GetMultiChunk: miss %v", targetKey)
 			var items []core.StreamItem
-			chunkInt, err := strconv.Atoi(chunk)
-			chunkDate := time.Unix(int64(chunkInt), 0)
-			if err != nil {
-				span.RecordError(err)
-				return nil, err
-			}
+			chunkDate := Chunk2RecentTime(chunk)
+			log.Printf("CheckDate: %v", chunkDate)
+
 			err = r.db.WithContext(ctx).Where("stream_id = ? and c_date <= ?", stream, chunkDate).Order("c_date desc").Limit(100).Find(&items).Error
 			if err != nil {
 				span.RecordError(err)
@@ -128,13 +124,6 @@ func (r *repository) GetChunkIterators(ctx context.Context, streams []string, ch
 
 	log.Printf("GetChunkIterators0: %v, %v", streams, chunk)
 
-	chunkInt, err := strconv.Atoi(chunk)
-	if err != nil {
-		span.RecordError(err)
-		return nil, err
-	}
-	chunkDate := time.Unix(int64(chunkInt), 0)
-
 	keys := make([]string, len(streams))
 	for i, stream := range streams {
 		keys[i] = "stream:itr:all:" + stream + ":" + chunk
@@ -156,12 +145,13 @@ func (r *repository) GetChunkIterators(ctx context.Context, streams []string, ch
 			result[stream] = string(cache[keys[i]].Value)
 		} else { // miss
 			var item core.StreamItem
-			err := r.db.WithContext(ctx).Where("stream_id = ? and c_date <= ?", stream, chunkDate).Order("c_date desc").First(&item).Error
+			chunkTime := Chunk2RecentTime(chunk)
+			err := r.db.WithContext(ctx).Where("stream_id = ? and c_date <= ?", stream, chunkTime).Order("c_date desc").First(&item).Error
 			if err != nil {
 				continue
 			}
 			log.Printf("GetChunkIterator-dbread: %v", item)
-			key := "stream:body:all:" + stream + ":" + ChunkDate(item.CDate)
+			key := "stream:body:all:" + stream + ":" + Time2Chunk(item.CDate)
 			r.mc.Set(&memcache.Item{Key: keys[i], Value: []byte(key)})
 			result[stream] = key
 		}
@@ -187,6 +177,19 @@ func (r *repository) CreateItem(ctx context.Context, item core.StreamItem) (core
 	defer span.End()
 
 	err := r.db.WithContext(ctx).Create(&item).Error
+
+	json, err := json.Marshal(item)
+	if err != nil {
+		span.RecordError(err)
+		return item, err
+	}
+
+	json = append(json, ',')
+
+	cacheKey := "stream:body:all:" + item.StreamID + ":" + Time2Chunk(item.CDate)
+
+	r.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
+
 	return item, err
 }
 

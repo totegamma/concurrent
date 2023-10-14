@@ -131,7 +131,7 @@ func TestRepository(t *testing.T) {
 	}
 
 	// :: ChunkIteratorが取得できることを確認 ::
-	pivotChunk := ChunkDate(pivot)
+	pivotChunk := Time2Chunk(pivot)
 
 	_, err = repo.CreateItem(ctx, core.StreamItem {
 		Type: "message",
@@ -154,7 +154,7 @@ func TestRepository(t *testing.T) {
 		t.Errorf("GetChunkIterators failed: length is not matched. expected: 1, actual: %d", len(result))
 	}
 
-	itemKey := "stream:body:all:00000000000000000000:" + ChunkDate(createdItem.CDate)
+	itemKey := "stream:body:all:00000000000000000000:" + Time2Chunk(createdItem.CDate)
 
 	if (result["00000000000000000000"] != itemKey) {
 		t.Errorf("GetChunkIterators failed: chunk is not matched expected: %s, actual: %s", itemKey, result["00000000000000000000"])

@@ -1,16 +1,19 @@
 package stream
 
 import (
-	"log"
-	"time"
-	"testing"
 	"context"
+	"log"
+	"testing"
+	"time"
+
 	"github.com/totegamma/concurrent/internal/testutil"
 	"github.com/totegamma/concurrent/x/core"
+	"github.com/bradfitz/gomemcache/memcache"
 )
 
 
 var ctx = context.Background()
+var mc *memcache.Client
 var repo Repository
 var pivot time.Time
 
@@ -26,7 +29,7 @@ func TestMain(m *testing.M) {
 	mc_resource, mc_pool := testutil.CreateMemcachedContainer()
 	defer testutil.CloseContainer(mc_resource, mc_pool)
 
-	mc := testutil.ConnectMemcached(mc_resource, mc_pool)
+	mc = testutil.ConnectMemcached(mc_resource, mc_pool)
 
 	repo = NewRepository(db, mc)
 
@@ -254,6 +257,89 @@ func TestRepository(t *testing.T) {
 	if (len(chunks2["11111111111111111111"]) != 2) {
 		t.Errorf("GetMultiChunk failed: length is not matched. expected: 2, actual: %d", len(chunks2["11111111111111111111"]))
 		t.Error(chunks2["11111111111111111111"])
+	}
+
+	// キャッシュのリセット
+
+	// StreamItemの順番のテスト
+
+	_, err = repo.CreateStream(ctx, core.Stream {
+		ID: "22222222222222222222",
+		Visible: true,
+		Author: "CC62b953CCCE898b955f256976d61BdEE04353C042",
+		Maintainer: []string{"CC62b953CCCE898b955f256976d61BdEE04353C042"},
+		Writer: []string{"CC62b953CCCE898b955f256976d61BdEE04353C042"},
+		Reader: []string{"CC62b953CCCE898b955f256976d61BdEE04353C042"},
+		Schema: "https://example.com/testschema.json",
+		Payload: "{}",
+	})
+	if err != nil {
+		t.Errorf("CreateStream failed: %s", err)
+	}
+
+	_, err = repo.CreateItem(ctx, core.StreamItem {
+		Type: "message",
+		ObjectID: "d6087868-c30b-439d-9c2c-646fdd48ecc4",
+		StreamID: "22222222222222222222",
+		Owner: "CC62b953CCCE898b955f256976d61BdEE04353C042",
+		CDate: pivot.Add(-time.Minute * 10),
+	})
+	if err != nil {
+		t.Errorf("CreateItem1 failed: %s", err)
+	}
+
+	_, err = repo.CreateItem(ctx, core.StreamItem {
+		Type: "message",
+		ObjectID: "797e1f95-542e-485b-8051-a87c1ad1fe06",
+		StreamID: "22222222222222222222",
+		Owner: "CC62b953CCCE898b955f256976d61BdEE04353C042",
+		CDate: pivot.Add(-time.Minute * 5),
+	})
+	if err != nil {
+		t.Errorf("CreateItem1 failed: %s", err)
+	}
+
+	mc.DeleteAll()
+
+	chunks3, err := repo.GetMultiChunk(ctx, []string{"22222222222222222222"}, pivotChunk)
+	if err != nil {
+		t.Errorf("GetMultiChunk failed: %s", err)
+	}
+
+	if (len(chunks3["22222222222222222222"]) != 2) {
+		t.Errorf("GetMultiChunk failed: length is not matched. expected: 2, actual: %d", len(chunks3["22222222222222222222"]))
+		t.Error(chunks3["22222222222222222222"])
+	}
+
+	if (chunks3["22222222222222222222"][0].ObjectID != "797e1f95-542e-485b-8051-a87c1ad1fe06" && chunks3["22222222222222222222"][1].ObjectID != "d6087868-c30b-439d-9c2c-646fdd48ecc4") {
+		t.Errorf("GetMultiChunk failed: order is not matched. expected: 797e1f95-542e-485b-8051-a87c1ad1fe06 -> d6087868-c30b-439d-9c2c-646fdd48ecc4, actual: %s -> %s", chunks3["22222222222222222222"][0].ObjectID, chunks3["22222222222222222222"][1].ObjectID)
+		t.Error(chunks3["22222222222222222222"])
+	}
+
+	_, err = repo.CreateItem(ctx, core.StreamItem {
+		Type: "message",
+		ObjectID: "01eb39b4-0a5b-4461-a091-df9a97c7b2fd",
+		StreamID: "22222222222222222222",
+		Owner: "CC62b953CCCE898b955f256976d61BdEE04353C042",
+		CDate: pivot.Add(-time.Minute * 1),
+	})
+	if err != nil {
+		t.Errorf("CreateItem1 failed: %s", err)
+	}
+
+	chunks4, err := repo.GetMultiChunk(ctx, []string{"22222222222222222222"}, pivotChunk)
+	if err != nil {
+		t.Errorf("GetMultiChunk failed: %s", err)
+	}
+
+	if (len(chunks4["22222222222222222222"]) != 3) {
+		t.Errorf("GetMultiChunk failed: length is not matched. expected: 3, actual: %d", len(chunks4["22222222222222222222"]))
+		t.Error(chunks4["22222222222222222222"])
+	}
+
+	if (chunks4["22222222222222222222"][0].ObjectID != "01eb39b4-0a5b-4461-a091-df9a97c7b2fd" && chunks4["22222222222222222222"][1].ObjectID != "797e1f95-542e-485b-8051-a87c1ad1fe06" && chunks4["22222222222222222222"][2].ObjectID != "d6087868-c30b-439d-9c2c-646fdd48ecc4") {
+		t.Errorf("GetMultiChunk failed: order is not matched. expected: 01eb39b4-0a5b-4461-a091-df9a97c7b2fd -> 797e1f95-542e-485b-8051-a87c1ad1fe06 -> d6087868-c30b-439d-9c2c-646fdd48ecc4, actual: %s -> %s -> %s", chunks4["22222222222222222222"][0].ObjectID, chunks4["22222222222222222222"][1].ObjectID, chunks4["22222222222222222222"][2].ObjectID)
+		t.Error(chunks4["22222222222222222222"])
 	}
 
 }

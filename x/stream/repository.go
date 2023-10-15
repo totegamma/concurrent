@@ -187,8 +187,15 @@ func (r *repository) CreateItem(ctx context.Context, item core.StreamItem) (core
 	json = append(json, ',')
 
 	cacheKey := "stream:body:all:" + item.StreamID + ":" + Time2Chunk(item.CDate)
+	log.Printf("CreateItem append: %v", cacheKey)
 
 	r.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
+
+	// chunk Iteratorを更新
+	// TOOD: 本当は今からInsertするitemのchunkが本当に最新かどうかを確認する必要がある
+	key := "stream:itr:all:" + item.StreamID + ":" + Time2Chunk(item.CDate)
+	dest := "stream:body:all:" + item.StreamID + ":" + Time2Chunk(item.CDate)
+	r.mc.Set(&memcache.Item{Key: key, Value: []byte(dest)})
 
 	return item, err
 }

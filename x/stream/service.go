@@ -86,7 +86,7 @@ func (s *service) GetRecentItems(ctx context.Context, streams []string, until ti
 	for _, stream := range streams {
 		split := strings.Split(stream, "@")
 		host := s.config.Concurrent.FQDN
-		if len(split) != 2 {
+		if len(split) == 2 {
 			host = split[1]
 		}
 

@@ -27,3 +27,16 @@ type SafeEntity struct {
 	CDate  time.Time `json:"cdate"`
 	MDate  time.Time `json:"mdate"`
 }
+
+type AckSignedObject struct {
+    Type string `json:"type"`
+    From string `json:"from"`
+    To string `json:"to"`
+    SignedAt time.Time `json:"signedAt"`
+}
+
+type ackRequest struct {
+    SignedObject string `json:"signedObject"`
+    Signature string `json:"signature"`
+}
+

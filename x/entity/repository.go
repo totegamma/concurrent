@@ -16,10 +16,23 @@ type Repository interface {
     ListModified(ctx context.Context, modified time.Time) ([]SafeEntity, error)
     Delete(ctx context.Context, key string) error
     Update(ctx context.Context, entity *core.Entity) error
+    Ack(ctx context.Context, ack *core.Ack) error
+    Unack(ctx context.Context, from, to string) error
+	Total(ctx context.Context) (int64, error)
 }
 
 type repository struct {
 	db *gorm.DB
+}
+
+// Total returns the total number of entities
+func (r *repository) Total(ctx context.Context) (int64, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryTotal")
+	defer span.End()
+
+	var count int64
+	err := r.db.WithContext(ctx).Model(&core.Entity{}).Where("domain IS NULL or domain = ''").Count(&count).Error
+	return count, err
 }
 
 // NewRepository creates a new host repository
@@ -59,7 +72,7 @@ func (r *repository) GetList(ctx context.Context) ([]SafeEntity, error) {
 	defer span.End()
 
 	var entities []SafeEntity
-	err := r.db.WithContext(ctx).Model(&core.Entity{}).Where("host IS NULL or host = ''").Find(&entities).Error
+	err := r.db.WithContext(ctx).Model(&core.Entity{}).Where("domain IS NULL or domain = ''").Find(&entities).Error
 	return entities, err
 }
 
@@ -88,3 +101,20 @@ func (r *repository) Update(ctx context.Context, entity *core.Entity) error {
 
 	return r.db.WithContext(ctx).Where("id = ?", entity.ID).Updates(&entity).Error
 }
+
+// Ack creates a new ack
+func (r *repository) Ack(ctx context.Context, ack *core.Ack) error {
+    ctx, span := tracer.Start(ctx, "RepositoryAck")
+    defer span.End()
+
+    return r.db.WithContext(ctx).Create(&ack).Error
+}
+
+// Unack deletes a ack
+func (r *repository) Unack(ctx context.Context, from, to string) error {
+    ctx, span := tracer.Start(ctx, "RepositoryUnack")
+    defer span.End()
+
+    return r.db.WithContext(ctx).Delete(&core.Ack{}, "from = ? AND to = ?", from, to).Error
+}
+

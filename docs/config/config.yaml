@@ -6,25 +6,23 @@ server:
   traceEndpoint: "localhost:4318"
   enableTrace: false
   logpath: "" # empty for default(/var/log/concurrent)
-  captchaSitekey: "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI" # !! this is test sitekey !!
-  captchaSecret: "6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe"  # !! this is test secret !!
+  captchaSitekey: "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"
+  captchaSecret: "6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe"
 
 concurrent:
   # fqdn is instance ID
   # It is really hard and not recommended to change this value after node started
-  fqdn: changeme.example.tld
+  fqdn: example.tld
   # 'open' or 'invite' or 'close'
   registration: open
   # server agent account
   # it is handy to generate these info with concurrent.world devtool
-  ccid: CCxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
-  publickey: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
   privatekey: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 profile:
   nickname: concurrent-domain
   description: domain description
-  logo: ''
+  logo: 'https://concurrent.world/concurrent.png'
   wordmark: ''
   themeColor: '#20193b'
   rules: |

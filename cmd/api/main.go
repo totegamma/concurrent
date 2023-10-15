@@ -57,7 +57,7 @@ func main() {
 	}
 	defer logfile.Close()
 
-	e.Logger.SetOutput(logfile)
+	// e.Logger.SetOutput(logfile)
 
 	e.HidePort = true
 	e.HideBanner = true
@@ -109,6 +109,7 @@ func main() {
 		&core.Entity{},
 		&core.Collection{},
 		&core.CollectionItem{},
+		&core.Ack{},
 	)
 
 	rdb := redis.NewClient(&redis.Options{
@@ -177,6 +178,8 @@ func main() {
 	apiV1R.POST("/entity", entityHandler.Register, authService.Restrict(auth.ISUNKNOWN))
 	apiV1R.DELETE("/entity/:id", entityHandler.Delete, authService.Restrict(auth.ISADMIN))
 	apiV1R.PUT("/entity/:id", entityHandler.Update, authService.Restrict(auth.ISADMIN))
+    apiV1R.POST("/ack", entityHandler.Ack, authService.Restrict(auth.ISLOCAL))
+    apiV1R.DELETE("/ack", entityHandler.Unack, authService.Restrict(auth.ISLOCAL))
 	apiV1R.POST("/admin/entity", entityHandler.Create, authService.Restrict(auth.ISADMIN))
 
 	apiV1R.POST("/message", messageHandler.Post, authService.Restrict(auth.ISLOCAL))
@@ -187,7 +190,8 @@ func main() {
 	apiV1R.POST("/association", associationHandler.Post, authService.Restrict(auth.ISKNOWN))
 	apiV1R.DELETE("/association/:id", associationHandler.Delete, authService.Restrict(auth.ISKNOWN))
 
-	apiV1R.PUT("/stream", streamHandler.Put, authService.Restrict(auth.ISLOCAL))
+	apiV1R.POST("/stream", streamHandler.Create, authService.Restrict(auth.ISLOCAL))
+	apiV1R.PUT("/stream/:id", streamHandler.Update, authService.Restrict(auth.ISLOCAL))
 	apiV1R.POST("/streams/checkpoint", streamHandler.Checkpoint, authService.Restrict(auth.ISUNITED))
 	apiV1R.DELETE("/stream/:id", streamHandler.Delete, authService.Restrict(auth.ISLOCAL))
 	apiV1R.DELETE("/stream/:stream/:element", streamHandler.Remove, authService.Restrict(auth.ISLOCAL))

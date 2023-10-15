@@ -27,6 +27,8 @@ type Handler interface {
     List(c echo.Context) error
     Update(c echo.Context) error
     Delete(c echo.Context) error
+    Ack(c echo.Context) error
+    Unack(c echo.Context) error
 }
 
 type handler struct {
@@ -198,3 +200,42 @@ func (h handler) Delete(c echo.Context) error {
 	}
 	return c.String(http.StatusOK, "{\"message\": \"accept\"}")
 }
+
+// Ack creates a new ack
+func (h handler) Ack(c echo.Context) error {
+    ctx, span := tracer.Start(c.Request().Context(), "HandlerAck")
+    defer span.End()
+
+	var request ackRequest
+	err := c.Bind(&request)
+	if err != nil {
+		return err
+	}
+
+    err = h.service.Ack(ctx, request.SignedObject, request.Signature)
+    if err != nil {
+        return err
+    }
+
+    return c.String(http.StatusOK, "{\"message\": \"accept\"}")
+}
+
+// Unack deletes an ack
+func (h handler) Unack(c echo.Context) error {
+    ctx, span := tracer.Start(c.Request().Context(), "HandlerUnack")
+    defer span.End()
+
+	var request ackRequest
+	err := c.Bind(&request)
+	if err != nil {
+		return err
+	}
+
+    err = h.service.Unack(ctx, request.SignedObject, request.Signature)
+    if err != nil {
+        return err
+    }
+
+    return c.String(http.StatusOK, "{\"message\": \"accept\"}")
+}
+

@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
+	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
@@ -18,7 +19,8 @@ var tracer = otel.Tracer("stream")
 // Handler is the interface for handling HTTP requests
 type Handler interface {
     Get(c echo.Context) error
-    Put(c echo.Context) error
+	Create(c echo.Context) error
+	Update(c echo.Context) error
     Recent(c echo.Context) error
     Range(c echo.Context) error
     List(c echo.Context) error
@@ -53,23 +55,50 @@ func (h handler) Get(c echo.Context) error {
 	return c.JSON(http.StatusOK, stream)
 }
 
-// Put creates a new stream
-func (h handler) Put(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerPut")
+// Create creates a new stream
+func (h handler) Create(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerCreate")
 	defer span.End()
 
-	var request postRequest
-	err := c.Bind(&request)
+	var data core.Stream
+	err := c.Bind(&data)
 	if err != nil {
-		return err
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
 	}
 
-	id, err := h.service.Upsert(ctx, request.SignedObject, request.Signature, request.ID)
+	created, err := h.service.Create(ctx, data)
 	if err != nil {
-		return err
+		span.RecordError(err)
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
 	}
-	return c.String(http.StatusCreated, fmt.Sprintf("{\"message\": \"accept\", \"id\": \"%s\"}", id))
+
+	return c.JSON(http.StatusCreated, echo.Map{"status": "ok", "content": created})
 }
+
+// Update updates a stream
+func (h handler) Update(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerUpdate")
+	defer span.End()
+
+	id := c.Param("id")
+
+	var data core.Stream
+	err := c.Bind(&data)
+	if err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
+	}
+
+	data.ID = id
+
+	updated, err := h.service.Update(ctx, data)
+	if err != nil {
+		span.RecordError(err)
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": updated})
+}
+
 
 // Recent returns recent messages in some streams
 func (h handler) Recent(c echo.Context) error {

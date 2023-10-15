@@ -16,6 +16,7 @@ type Service interface {
     Get(ctx context.Context, id string) (core.Message, error)
     PostMessage(ctx context.Context, objectStr string, signature string, streams []string) (core.Message, error)
     Delete(ctx context.Context, id string) (core.Message, error)
+	Total(ctx context.Context) (int64, error)
 }
 
 type service struct {
@@ -27,6 +28,14 @@ type service struct {
 // NewService creates a new message service
 func NewService(rdb *redis.Client, repo Repository, stream stream.Service) Service {
 	return &service{rdb, repo, stream}
+}
+
+// Total returns the total number of messages
+func (s *service) Total(ctx context.Context) (int64, error) {
+	ctx, span := tracer.Start(ctx, "ServiceTotal")
+	defer span.End()
+
+	return s.repo.Total(ctx)
 }
 
 // Get returns a message by ID

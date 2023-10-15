@@ -1,6 +1,8 @@
 package util
 
 import (
+	"encoding/hex"
+	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/go-yaml/yaml"
 	"log"
 	"os"
@@ -25,10 +27,12 @@ type Server struct {
 
 type Concurrent struct {
 	FQDN         string `yaml:"fqdn"`
-	CCID         string `yaml:"ccid"`
-	Pubkey       string `yaml:"publickey"`
-	Prvkey       string `yaml:"privatekey"`
+	PrivateKey   string `yaml:"privatekey"`
 	Registration string `yaml:"registration"` // open, invite, close
+
+	// internal generated
+	CCID         string `yaml:"ccid"`
+	PublicKey       string `yaml:"publickey"`
 }
 
 type Profile struct {
@@ -63,6 +67,18 @@ func (c *Config) Load(path string) error {
 		log.Fatal("failed to load configuration file:", err)
 		return err
 	}
+
+	// generate worker public key
+	proxyPrivateKey, err := crypto.HexToECDSA(c.Concurrent.PrivateKey)
+	if err != nil {
+		log.Fatal("failed to parse worker private key:", err)
+		return err
+	}
+	c.Concurrent.PublicKey = hex.EncodeToString(crypto.FromECDSAPub(&proxyPrivateKey.PublicKey))
+
+	// generate worker WorkerCCID
+	addr := crypto.PubkeyToAddress(proxyPrivateKey.PublicKey)
+	c.Concurrent.CCID = "CC" + addr.Hex()[2:]
 
 	return nil
 }

@@ -59,11 +59,20 @@ func (h handler) Connect(c echo.Context) error {
 	var pubsub *redis.PubSub
 
 	for {
-		var req ChannelRequest
+		var req Request
 		err := ws.ReadJSON(&req)
 		if err != nil {
 			log.Println("Error reading JSON: ", err)
 			break
+		}
+
+		if req.Type == "ping" {
+			err = h.send(ws, "pong")
+			if err != nil {
+				log.Println("Error writing message: ", err)
+				break
+			}
+			continue
 		}
 
 		if cancel != nil {

@@ -28,14 +28,17 @@ import (
 type Service interface {
     GetRecent(ctx context.Context, streams []string, limit int) ([]Element, error)
     GetRange(ctx context.Context, streams []string, since string, until string, limit int) ([]Element, error)
+    GetElement(ctx context.Context, stream string, id string) (Element, error)
     Post(ctx context.Context, stream string, id string, typ string, author string, host string, owner string) error
-    Upsert(ctx context.Context, objectStr string, signature string, id string) (string, error)
+    Remove(ctx context.Context, stream string, id string)
+
+    Create(ctx context.Context, stream core.Stream) (core.Stream, error)
+    Update(ctx context.Context, stream core.Stream) (core.Stream, error)
     Get(ctx context.Context, key string) (core.Stream, error)
+    Delete(ctx context.Context, streamID string) error
+
     StreamListBySchema(ctx context.Context, schema string) ([]core.Stream, error)
     StreamListByAuthor(ctx context.Context, author string) ([]core.Stream, error)
-    GetElement(ctx context.Context, stream string, id string) (Element, error)
-    Remove(ctx context.Context, stream string, id string)
-    Delete(ctx context.Context, streamID string) error
 }
 
 type service struct {
@@ -260,7 +263,7 @@ func (s *service) Post(ctx context.Context, stream string, id string, typ string
 			ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
 			IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
 			JWTID:          xid.New().String(),
-		}, s.config.Concurrent.Prvkey)
+		}, s.config.Concurrent.PrivateKey)
 
 		req.Header.Add("content-type", "application/json")
 		req.Header.Add("authorization", "Bearer "+jwt)
@@ -279,50 +282,40 @@ func (s *service) Post(ctx context.Context, stream string, id string, typ string
 	return nil
 }
 
-// Upsert updates stream information
-func (s *service) Upsert(ctx context.Context, objectStr string, signature string, id string) (string, error) {
-	ctx, span := tracer.Start(ctx, "ServiceUpsert")
+// Create updates stream information
+func (s *service) Create(ctx context.Context, obj core.Stream) (core.Stream, error) {
+	ctx, span := tracer.Start(ctx, "ServiceCreate")
 	defer span.End()
 
-	var object signedObject
-	err := json.Unmarshal([]byte(objectStr), &object)
-	if err != nil {
-		span.RecordError(err)
-		return "", err
+	if obj.ID != "" {
+		return core.Stream{}, fmt.Errorf("id must be empty")
 	}
+	obj.ID = xid.New().String()
 
-	if err := util.VerifySignature(objectStr, object.Signer, signature); err != nil {
-		span.RecordError(err)
-		return "", err
-	}
+	created, err := s.repository.Create(ctx, obj)
+	created.ID = created.ID + "@" + s.config.Concurrent.FQDN
 
-	if id == "" {
-		id = xid.New().String()
-	} else {
-		split := strings.Split(id, "@")
-		if len(split) != 2 {
-			return "", fmt.Errorf("invalid id")
-		}
+	return created, err
+}
+
+// Update updates stream information
+func (s *service) Update(ctx context.Context, obj core.Stream) (core.Stream, error) {
+	ctx, span := tracer.Start(ctx, "ServiceUpdate")
+	defer span.End()
+
+	split := strings.Split(obj.ID, "@")
+	if len(split) == 2 {
 		if split[1] != s.config.Concurrent.FQDN {
-			return "", fmt.Errorf("invalid stream host")
+			return core.Stream{}, fmt.Errorf("this stream is not managed by this domain")
 		}
-		id = split[0]
+		obj.ID = split[0]
 	}
 
-	stream := core.Stream{
-		ID:         id,
-		Author:     object.Signer,
-		Visible:	object.Visible,
-		Maintainer: object.Maintainer,
-		Writer:     object.Writer,
-		Reader:     object.Reader,
-		Schema:     object.Schema,
-		Payload:    objectStr,
-		Signature:  signature,
-	}
+	updated, err := s.repository.Update(ctx, obj)
 
-	s.repository.Upsert(ctx, &stream)
-	return stream.ID + "@" + s.config.Concurrent.FQDN, nil
+	updated.ID = updated.ID + "@" + s.config.Concurrent.FQDN
+
+	return updated, err
 }
 
 // Get returns stream information by ID

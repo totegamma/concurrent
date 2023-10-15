@@ -99,7 +99,7 @@ func (h handler) Profile(c echo.Context) error {
 	return c.JSON(http.StatusOK, Profile{
 		ID:     h.config.Concurrent.FQDN,
 		CCID:   h.config.Concurrent.CCID,
-		Pubkey: h.config.Concurrent.Pubkey,
+		Pubkey: h.config.Concurrent.PublicKey,
 	})
 }
 
@@ -151,7 +151,7 @@ func (h handler) Hello(c echo.Context) error {
 	return c.JSON(http.StatusOK, Profile{
 		ID:     h.config.Concurrent.FQDN,
 		CCID:   h.config.Concurrent.CCID,
-		Pubkey: h.config.Concurrent.Pubkey,
+		Pubkey: h.config.Concurrent.PublicKey,
 	})
 }
 
@@ -167,7 +167,7 @@ func (h handler) SayHello(c echo.Context) error {
 	me := Profile{
 		ID:     h.config.Concurrent.FQDN,
 		CCID:   h.config.Concurrent.CCID,
-		Pubkey: h.config.Concurrent.Pubkey,
+		Pubkey: h.config.Concurrent.PublicKey,
 	}
 
 	meStr, err := json.Marshal(me)
@@ -180,7 +180,7 @@ func (h handler) SayHello(c echo.Context) error {
 		ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
 		IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
 		JWTID:          xid.New().String(),
-	}, h.config.Concurrent.Prvkey)
+	}, h.config.Concurrent.PrivateKey)
 
 	req, err := http.NewRequest("POST", "https://"+target+"/api/v1/domains/hello", bytes.NewBuffer(meStr))
 	if err != nil {

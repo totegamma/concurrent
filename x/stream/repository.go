@@ -10,7 +10,8 @@ import (
 // Repository is stream repository interface
 type Repository interface {
     Get(ctx context.Context, key string) (core.Stream, error)
-    Upsert(ctx context.Context, stream *core.Stream) error
+    Create(ctx context.Context, stream core.Stream) (core.Stream, error)
+    Update(ctx context.Context, stream core.Stream) (core.Stream, error)
     GetListBySchema(ctx context.Context, schema string) ([]core.Stream, error)
     GetListByAuthor(ctx context.Context, author string) ([]core.Stream, error)
     Delete(ctx context.Context, key string) error
@@ -38,12 +39,27 @@ func (r *repository) Get(ctx context.Context, key string) (core.Stream, error) {
 	return stream, err
 }
 
-// Upsert updates a stream
-func (r *repository) Upsert(ctx context.Context, stream *core.Stream) error {
-	ctx, span := tracer.Start(ctx, "RepositoryUpsert")
+// Create updates a stream
+func (r *repository) Create(ctx context.Context, stream core.Stream) (core.Stream, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryCreate")
 	defer span.End()
 
-	return r.db.WithContext(ctx).Save(&stream).Error
+	err := r.db.WithContext(ctx).Create(&stream).Error
+	return stream, err
+}
+
+// Update updates a stream
+func (r *repository) Update(ctx context.Context, stream core.Stream) (core.Stream, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryUpdate")
+	defer span.End()
+
+	var obj core.Stream
+	err := r.db.WithContext(ctx).First(&obj, "id = ?", stream.ID).Error
+	if err != nil {
+		return core.Stream{}, err
+	}
+	err = r.db.WithContext(ctx).Model(&obj).Updates(stream).Error
+	return stream, err
 }
 
 // GetListBySchema returns list of schemas by schema

@@ -8,7 +8,7 @@ import (
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/totegamma/concurrent/x/core"
-	"golang.org/x/exp/slices"
+	"slices"
 	"gorm.io/gorm"
 )
 
@@ -91,6 +91,7 @@ func (r *repository) GetMultiChunk(ctx context.Context, streams []string, chunk 
 				log.Printf("Original: %v", string(caches[targetKey].Value))
 				return nil, err
 			}
+			slices.Reverse(items)
 			result[stream] = items
 		} else { // miss
 			log.Printf("GetMultiChunk: miss %v", targetKey)
@@ -103,6 +104,7 @@ func (r *repository) GetMultiChunk(ctx context.Context, streams []string, chunk 
 				span.RecordError(err)
 				items = make([]core.StreamItem, 0)
 			}
+			slices.Reverse(items)
 			b, err := json.Marshal(items) // like "[{...},{...},{...}]"
 			if err != nil {
 				span.RecordError(err)
@@ -111,6 +113,7 @@ func (r *repository) GetMultiChunk(ctx context.Context, streams []string, chunk 
 			// strip the first and last characters
 			newcache := string(b[1 : len(b)-1]) + "," // like "{...},{...},{...},"
 			r.mc.Set(&memcache.Item{Key: targetKey, Value: []byte(newcache)})
+			slices.Reverse(items)
 			result[stream] = items
 		}
 	}

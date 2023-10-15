@@ -1,7 +1,6 @@
 package stream
 
 import (
-	"log"
 	"context"
 	"encoding/json"
 	"time"
@@ -31,7 +30,8 @@ type Repository interface {
 	GetRecentItems(ctx context.Context, streamID string, until time.Time, limit int) ([]core.StreamItem, error)
 	GetImmediateItems(ctx context.Context, streamID string, since time.Time, limit int) ([]core.StreamItem, error)
 
-	GetMultiChunk(ctx context.Context, streams []string, chunk string) (map[string][]core.StreamItem, error)
+	GetChunksFromCache(ctx context.Context, streams []string, chunk string) (map[string][]core.StreamItem, error)
+	GetChunksFromDB(ctx context.Context, streams []string, chunk string) (map[string][]core.StreamItem, error)
 	GetChunkIterators(ctx context.Context, streams []string, chunk string) (map[string]string, error)
 }
 
@@ -45,11 +45,10 @@ func NewRepository(db *gorm.DB, mc *memcache.Client) Repository {
 	return &repository{db, mc}
 }
 
-func (r *repository) GetMultiChunk(ctx context.Context, streams []string, chunk string) (map[string][]core.StreamItem, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetMultiChunk")
+// GetChunksFromCache gets chunks from cache
+func (r *repository) GetChunksFromCache(ctx context.Context, streams []string, chunk string) (map[string][]core.StreamItem, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryGetChunksFromCache")
 	defer span.End()
-
-	log.Printf("GetMultiChunk: %v, %v", streams, chunk)
 
 	targetKeyMap, err := r.GetChunkIterators(ctx, streams, chunk)
 	if err != nil {
@@ -57,14 +56,10 @@ func (r *repository) GetMultiChunk(ctx context.Context, streams []string, chunk 
 		return nil, err
 	}
 
-	log.Printf("GetMultiChunk: %v", targetKeyMap)
-
 	targetKeys := make([]string, 0)
 	for _, targetKey := range targetKeyMap {
 		targetKeys = append(targetKeys, targetKey)
 	}
-
-	log.Printf("GetMultiChunk: %v", targetKeys)
 
 	caches, err := r.mc.GetMulti(targetKeys)
 	if err != nil {
@@ -72,51 +67,76 @@ func (r *repository) GetMultiChunk(ctx context.Context, streams []string, chunk 
 		return nil, err
 	}
 
-	log.Printf("GetMultiChunk: %v", caches)
-
 	result := make(map[string][]core.StreamItem)
-
 	for _, stream := range streams {
 		targetKey := targetKeyMap[stream]
-		if caches[targetKey] != nil { // hit
-			log.Printf("GetMultiChunk: hit %v", targetKey)
-			var items []core.StreamItem
-			cache := string(caches[targetKey].Value)
-			cache = cache[:len(cache)-1]
-			cache = "[" + cache + "]"
-			err = json.Unmarshal([]byte(cache), &items)
-			if err != nil {
-				span.RecordError(err)
-				log.Printf("GetMultiChunk UnmarshalError: %v", cache)
-				log.Printf("Original: %v", string(caches[targetKey].Value))
-				return nil, err
-			}
-			slices.Reverse(items)
-			result[stream] = items
-		} else { // miss
-			log.Printf("GetMultiChunk: miss %v", targetKey)
-			var items []core.StreamItem
-			chunkDate := Chunk2RecentTime(chunk)
-			log.Printf("CheckDate: %v", chunkDate)
+		cache, ok := caches[targetKey]
+		if !ok {
+			continue
+		}
 
-			err = r.db.WithContext(ctx).Where("stream_id = ? and c_date <= ?", stream, chunkDate).Order("c_date desc").Limit(100).Find(&items).Error
-			if err != nil {
-				span.RecordError(err)
-				items = make([]core.StreamItem, 0)
-			}
-			slices.Reverse(items)
-			b, err := json.Marshal(items) // like "[{...},{...},{...}]"
-			if err != nil {
-				span.RecordError(err)
-				return nil, err
-			}
-			// strip the first and last characters
-			newcache := string(b[1 : len(b)-1]) + "," // like "{...},{...},{...},"
-			r.mc.Set(&memcache.Item{Key: targetKey, Value: []byte(newcache)})
-			slices.Reverse(items)
-			result[stream] = items
+		var items []core.StreamItem
+		cacheStr := string(cache.Value)
+		cacheStr = cacheStr[:len(cacheStr)-1]
+		cacheStr = "[" + cacheStr + "]"
+		err = json.Unmarshal([]byte(cacheStr), &items)
+		if err != nil {
+			span.RecordError(err)
+			continue
+		}
+		slices.Reverse(items)
+		result[stream] = items
+	}
+
+	return result, nil
+}
+
+// GetChunksFromDB gets chunks from db and cache them
+func (r *repository) GetChunksFromDB(ctx context.Context, streams []string, chunk string) (map[string][]core.StreamItem, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryGetChunksFromDB")
+	defer span.End()
+
+	targetKeyMap, err := r.GetChunkIterators(ctx, streams, chunk)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	targetKeys := make([]string, 0)
+	for _, targetKey := range targetKeyMap {
+		targetKeys = append(targetKeys, targetKey)
+	}
+
+	result := make(map[string][]core.StreamItem)
+	for _, stream := range streams {
+		targetKey := targetKeyMap[stream]
+		var items []core.StreamItem
+		chunkDate := Chunk2RecentTime(chunk)
+		err = r.db.WithContext(ctx).Where("stream_id = ? and c_date <= ?", stream, chunkDate).Order("c_date desc").Limit(100).Find(&items).Error
+		if err != nil {
+			span.RecordError(err)
+			continue
+		}
+		result[stream] = items
+
+		// キャッシュには逆順で保存する
+		reversedItems := make([]core.StreamItem, len(items))
+		for i, item := range items {
+			reversedItems[len(items)-i-1] = item
+		}
+		b, err := json.Marshal(reversedItems)
+		if err != nil {
+			span.RecordError(err)
+			continue
+		}
+		cacheStr := string(b[1 : len(b)-1]) + ","
+		err = r.mc.Set(&memcache.Item{Key: targetKey, Value: []byte(cacheStr)})
+		if err != nil {
+			span.RecordError(err)
+			continue
 		}
 	}
+
 	return result, nil
 }
 
@@ -125,22 +145,16 @@ func (r *repository) GetChunkIterators(ctx context.Context, streams []string, ch
 	ctx, span := tracer.Start(ctx, "RepositoryGetChunkIterators")
 	defer span.End()
 
-	log.Printf("GetChunkIterators0: %v, %v", streams, chunk)
-
 	keys := make([]string, len(streams))
 	for i, stream := range streams {
 		keys[i] = "stream:itr:all:" + stream + ":" + chunk
 	}
-
-	log.Printf("GetChunkIterators1: %v", keys)
 
 	cache, err := r.mc.GetMulti(keys)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
-
-	log.Printf("GetChunkIterators2: %v", cache)
 
 	result := make(map[string]string)
 	for i, stream := range streams {
@@ -153,14 +167,12 @@ func (r *repository) GetChunkIterators(ctx context.Context, streams []string, ch
 			if err != nil {
 				continue
 			}
-			log.Printf("GetChunkIterator-dbread: %v", item)
 			key := "stream:body:all:" + stream + ":" + Time2Chunk(item.CDate)
 			r.mc.Set(&memcache.Item{Key: keys[i], Value: []byte(key)})
 			result[stream] = key
 		}
 	}
 
-	log.Printf("GetChunkIterators3: %v", result)
 	return result, nil
 }
 
@@ -190,7 +202,6 @@ func (r *repository) CreateItem(ctx context.Context, item core.StreamItem) (core
 	json = append(json, ',')
 
 	cacheKey := "stream:body:all:" + item.StreamID + ":" + Time2Chunk(item.CDate)
-	log.Printf("CreateItem append: %v", cacheKey)
 
 	r.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
 

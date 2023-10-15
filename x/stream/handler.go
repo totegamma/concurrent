@@ -257,3 +257,28 @@ func (h handler) Checkpoint(c echo.Context) error {
 
 	return c.String(http.StatusCreated, fmt.Sprintf("{\"message\": \"accept\"}"))
 }
+
+// GetChunks
+/*
+func (h handler) GetChunks(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetChunks")
+	defer span.End()
+
+	streamsStr := c.QueryParam("streams")
+	streams := strings.Split(streamsStr, ",")
+
+	timeStr := c.QueryParam("time")
+	timeInt, err := strconv.ParseInt(timeStr, 10, 64)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+	time := time.Unix(timeInt, 0)
+
+	chunks, err := h.service.GetChunks(ctx, streams, time)
+
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": chunks})
+}
+*/
+
+

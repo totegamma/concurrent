@@ -39,6 +39,8 @@ type Service interface {
 
 	ListStreamBySchema(ctx context.Context, schema string) ([]core.Stream, error)
 	ListStreamByAuthor(ctx context.Context, author string) ([]core.Stream, error)
+
+	//GetChunks(ctx context.Context, streams []string, pivot time.Time) (map[string][]core.StreamItem, error)
 }
 
 type service struct {
@@ -75,44 +77,63 @@ func min(a, b int) int {
 	return b
 }
 
+// GetChunks returns chunks by streamID and time
+/*
+func (s *service) GetChunks(ctx context.Context, streams []string, pivot time.Time) (map[string][]core.StreamItem, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetChunks")
+	defer span.End()
+
+	return s.repository.GetMultiChunk(ctx, streams, Time2Chunk(pivot))
+}
+*/
+
 // GetRecentItems returns recent message from streams
 func (s *service) GetRecentItems(ctx context.Context, streams []string, until time.Time, limit int) ([]core.StreamItem, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGetRecentItems")
 	defer span.End()
 
-	var messages []core.StreamItem
-	var buckets map[string][]string = make(map[string][]string)
-
-	for _, stream := range streams {
-		split := strings.Split(stream, "@")
-		host := s.config.Concurrent.FQDN
-		if len(split) == 2 {
-			host = split[1]
+	// streamIDの正規化
+	for i, stream := range streams {
+		if !strings.Contains(stream, "@") {
+			streams[i] = fmt.Sprintf("%s@%s", stream, s.config.Concurrent.FQDN)
 		}
-
-		buckets[host] = append(buckets[host], split[0])
 	}
 
-	for host, localstreams := range buckets {
-		if host == s.config.Concurrent.FQDN {
-			untilChunk := Time2Chunk(until)
-			items, err := s.repository.GetMultiChunk(ctx, localstreams, untilChunk)
-			if err != nil {
-				log.Printf("Error: %v", err)
-				span.RecordError(err)
+	// まずはローカル・リモート関係なくキャッシュから取得を試みる
+	untilChunk := Time2Chunk(until)
+	items, err := s.repository.GetChunksFromCache(ctx, streams, untilChunk)
+	if err != nil {
+		log.Printf("Error: %v", err)
+		span.RecordError(err)
+		return nil, err
+	}
+
+	// キャッシュから見つからなかった場合は、ホストごとに分けてリモートから取得する
+	buckets := make(map[string][]string)
+	for _, stream := range streams {
+		if _, ok := items[stream]; !ok {
+			split := strings.Split(stream, "@")
+			if len(split) != 2 {
 				continue
 			}
+			buckets[split[1]] = append(buckets[split[1]], split[0])
+		}
+	}
 
-			for _, chunkItems := range items {
-				for _, item := range chunkItems {
-					if item.CDate.After(until) {
-						continue
-					}
-					messages = append(messages, item)
-				}
+	// for host, streams := range buckets {
+	// 	if host == s.config.Concurrent.FQDN {
+	// 	} else {
+	// 	}
+	// }
+
+	// 指定された時間よりも前のメッセージを除外しつつ1つにまとめる
+	var messages []core.StreamItem
+	for _, item := range items {
+		for _, streamItem := range item {
+			if streamItem.CDate.After(until) {
+				continue
 			}
-		} else {
-			// TODO: Get from remote
+			messages = append(messages, streamItem)
 		}
 	}
 

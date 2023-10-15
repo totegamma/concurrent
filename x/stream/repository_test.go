@@ -9,6 +9,7 @@ import (
 	"github.com/totegamma/concurrent/internal/testutil"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/stretchr/testify/assert"
 )
 
 
@@ -55,48 +56,17 @@ func TestRepository(t *testing.T) {
 	}
 
 	created, err := repo.CreateStream(ctx, stream)
-	if err != nil {
-		t.Errorf("CreateStream failed: %s", err)
-	}
-
-	if created.ID != stream.ID {
-		t.Errorf("CreateStream failed: ID is not matched")
-	}
-
-	if created.Visible != stream.Visible {
-		t.Errorf("CreateStream failed: Visible is not matched")
-	}
-
-	if created.Author != stream.Author {
-		t.Errorf("CreateStream failed: Author is not matched")
-	}
-
-	if created.Maintainer[0] != stream.Maintainer[0] {
-		t.Errorf("CreateStream failed: Maintainer is not matched")
-	}
-
-	if created.Writer[0] != stream.Writer[0] {
-		t.Errorf("CreateStream failed: Writer is not matched")
-	}
-
-	if created.Reader[0] != stream.Reader[0] {
-		t.Errorf("CreateStream failed: Reader is not matched")
-	}
-
-	if created.Schema != stream.Schema {
-		t.Errorf("CreateStream failed: Schema is not matched")
-	}
-
-	if created.Payload != stream.Payload {
-		t.Errorf("CreateStream failed: Payload is not matched")
-	}
-
-	if created.CDate.IsZero() {
-		t.Errorf("CreateStream failed: CreatedAt is not set")
-	}
-
-	if created.MDate.IsZero() {
-		t.Errorf("CreateStream failed: UpdatedAt is not set")
+	if assert.NoError(t, err) {
+		assert.Equal(t, created.ID, stream.ID)
+		assert.Equal(t, created.Visible, stream.Visible)
+		assert.Equal(t, created.Author, stream.Author)
+		assert.Contains(t, created.Maintainer, stream.Author)
+		assert.Contains(t, created.Writer, stream.Author)
+		assert.Contains(t, created.Reader, stream.Author)
+		assert.Equal(t, created.Schema, stream.Schema)
+		assert.Equal(t, created.Payload, stream.Payload)
+		assert.NotZero(t, created.CDate)
+		assert.NotZero(t, created.MDate)
 	}
 
 	// :: Itemを作成 ::
@@ -109,28 +79,12 @@ func TestRepository(t *testing.T) {
 	}
 
 	createdItem, err := repo.CreateItem(ctx, item)
-	if err != nil {
-		t.Errorf("CreateItem failed: %s", err)
-	}
-
-	if createdItem.Type != item.Type {
-		t.Errorf("CreateItem failed: Type is not matched")
-	}
-
-	if createdItem.ObjectID != item.ObjectID {
-		t.Errorf("CreateItem failed: ObjectID is not matched")
-	}
-
-	if createdItem.StreamID != item.StreamID {
-		t.Errorf("CreateItem failed: StreamID is not matched")
-	}
-
-	if createdItem.Owner != item.Owner {
-		t.Errorf("CreateItem failed: Owner is not matched")
-	}
-
-	if createdItem.CDate.IsZero() {
-		t.Errorf("CreateItem failed: CreatedAt is not set")
+	if assert.NoError(t, err) {
+		assert.Equal(t, createdItem.Type, item.Type)
+		assert.Equal(t, createdItem.ObjectID, item.ObjectID)
+		assert.Equal(t, createdItem.StreamID, item.StreamID)
+		assert.Equal(t, createdItem.Owner, item.Owner)
+		assert.NotZero(t, createdItem.CDate)
 	}
 
 	// :: ChunkIteratorが取得できることを確認 ::
@@ -143,44 +97,25 @@ func TestRepository(t *testing.T) {
 		Owner: "CC62b953CCCE898b955f256976d61BdEE04353C042",
 		CDate: pivot.Add(-time.Minute * 10),
 	})
-	if err != nil {
-		t.Errorf("CreateItem1 failed: %s", err)
-	}
+	assert.NoError(t, err)
 	
 	// trial1: cache miss test
 	result, err := repo.GetChunkIterators(ctx, []string{"00000000000000000000"}, pivotChunk)
-	if err != nil {
-		t.Errorf("GetChunkIterators failed: %s", err)
-	}
-
-	if (len(result) != 1) {
-		t.Errorf("GetChunkIterators failed: length is not matched. expected: 1, actual: %d", len(result))
+	if assert.NoError(t, err) {
+		assert.Len(t, result, 1)
 	}
 
 	itemKey := "stream:body:all:00000000000000000000:" + Time2Chunk(createdItem.CDate)
-
-	if (result["00000000000000000000"] != itemKey) {
-		t.Errorf("GetChunkIterators failed: chunk is not matched expected: %s, actual: %s", itemKey, result["00000000000000000000"])
-	}
+	assert.Equal(t, result["00000000000000000000"], itemKey)
 
 	// trial2: cache hit test
 	result2, err := repo.GetChunkIterators(ctx, []string{"00000000000000000000"}, pivotChunk)
-	if err != nil {
-		t.Errorf("GetChunkIterators failed: %s", err)
+	if assert.NoError(t, err) {
+		assert.Len(t, result2, 1)
+		assert.Equal(t, result2["00000000000000000000"], itemKey)
 	}
-
-	if (len(result2) != 1) {
-		t.Errorf("GetChunkIterators failed: length is not matched")
-	}
-
-	if (result2["00000000000000000000"] != itemKey) {
-		t.Errorf("GetChunkIterators failed: chunk is not matched expected: %s, actual: %s", itemKey, result2["00000000000000000000"])
-		t.Error(result["00000000000000000000"])
-	}
-
 
 	// :: Stream1を作成してItemを追加 ::
-
 	_, err = repo.CreateStream(ctx, core.Stream {
 		ID: "11111111111111111111",
 		Visible: true,
@@ -191,9 +126,7 @@ func TestRepository(t *testing.T) {
 		Schema: "https://example.com/testschema.json",
 		Payload: "{}",
 	})
-	if err != nil {
-		t.Errorf("CreateStream failed: %s", err)
-	}
+	assert.NoError(t, err)
 
 	_, err = repo.CreateItem(ctx, core.StreamItem {
 		Type: "message",
@@ -202,9 +135,7 @@ func TestRepository(t *testing.T) {
 		Owner: "CC62b953CCCE898b955f256976d61BdEE04353C042",
 		CDate: pivot.Add(-time.Minute * 0),
 	})
-	if err != nil {
-		t.Errorf("CreateItem1 failed: %s", err)
-	}
+	assert.NoError(t, err)
 
 	_, err = repo.CreateItem(ctx, core.StreamItem {
 		Type: "message",
@@ -213,53 +144,31 @@ func TestRepository(t *testing.T) {
 		Owner: "CC62b953CCCE898b955f256976d61BdEE04353C042",
 		CDate: pivot.Add(-time.Minute * 10),
 	})
-	if err != nil {
-		t.Errorf("CreateItem1 failed: %s", err)
+	assert.NoError(t, err)
+
+	// Insertによるキャッシュ更新を一旦クリア
+	mc.DeleteAll()
+
+	// GetChunksFromCacheでキャッシュがないはずなので何も帰ってこないことを確認
+	chunks, err := repo.GetChunksFromCache(ctx, []string{"00000000000000000000", "11111111111111111111"}, pivotChunk)
+	assert.NoError(t, err)
+	assert.Len(t, chunks, 0)
+
+	// GetChunksFromDBで要素を取得する
+	chunks, err = repo.GetChunksFromDB(ctx, []string{"00000000000000000000", "11111111111111111111"}, pivotChunk)
+	if assert.NoError(t, err) {
+		assert.Len(t, chunks, 2)
+		assert.Len(t, chunks["00000000000000000000"], 2)
+		assert.Len(t, chunks["11111111111111111111"], 2)
 	}
 
-	// :: GetMultiChunkのテスト ::
-	chunks, err := repo.GetMultiChunk(ctx, []string{"00000000000000000000", "11111111111111111111"}, pivotChunk)
-	if err != nil {
-		t.Errorf("GetMultiChunk failed: %s", err)
+	// GetChunksFromCacheでキャッシュがあるはずなのでキャッシュから取得する
+	chunks, err = repo.GetChunksFromCache(ctx, []string{"00000000000000000000", "11111111111111111111"}, pivotChunk)
+	if assert.NoError(t, err) {
+		assert.Len(t, chunks, 2)
+		assert.Len(t, chunks["00000000000000000000"], 2)
+		assert.Len(t, chunks["11111111111111111111"], 2)
 	}
-
-	if (len(chunks) != 2) {
-		t.Errorf("GetMultiChunk failed: length is not matched. expected: 2, actual: %d", len(chunks))
-		t.Error(chunks)
-	}
-
-	if (len(chunks["00000000000000000000"]) != 2) {
-		t.Errorf("GetMultiChunk failed: length is not matched. expected: 2, actual: %d", len(chunks["00000000000000000000"]))
-		t.Error(chunks["00000000000000000000"])
-	}
-
-	if (len(chunks["11111111111111111111"]) != 2) {
-		t.Errorf("GetMultiChunk failed: length is not matched. expected: 2, actual: %d", len(chunks["11111111111111111111"]))
-		t.Error(chunks["11111111111111111111"])
-	}
-
-	// :: GetChunkのテスト with cache ::
-	chunks2, err := repo.GetMultiChunk(ctx, []string{"00000000000000000000", "11111111111111111111"}, pivotChunk)
-	if err != nil {
-		t.Errorf("GetMultiChunk failed: %s", err)
-	}
-
-	if (len(chunks2) != 2) {
-		t.Errorf("GetMultiChunk failed: length is not matched. expected: 2, actual: %d", len(chunks2))
-		t.Error(chunks)
-	}
-
-	if (len(chunks2["00000000000000000000"]) != 2) {
-		t.Errorf("GetMultiChunk failed: length is not matched. expected: 2, actual: %d", len(chunks2["00000000000000000000"]))
-		t.Error(chunks2["00000000000000000000"])
-	}
-
-	if (len(chunks2["11111111111111111111"]) != 2) {
-		t.Errorf("GetMultiChunk failed: length is not matched. expected: 2, actual: %d", len(chunks2["11111111111111111111"]))
-		t.Error(chunks2["11111111111111111111"])
-	}
-
-	// キャッシュのリセット
 
 	// StreamItemの順番のテスト
 
@@ -273,9 +182,7 @@ func TestRepository(t *testing.T) {
 		Schema: "https://example.com/testschema.json",
 		Payload: "{}",
 	})
-	if err != nil {
-		t.Errorf("CreateStream failed: %s", err)
-	}
+	assert.NoError(t, err)
 
 	_, err = repo.CreateItem(ctx, core.StreamItem {
 		Type: "message",
@@ -284,9 +191,7 @@ func TestRepository(t *testing.T) {
 		Owner: "CC62b953CCCE898b955f256976d61BdEE04353C042",
 		CDate: pivot.Add(-time.Minute * 10),
 	})
-	if err != nil {
-		t.Errorf("CreateItem1 failed: %s", err)
-	}
+	assert.NoError(t, err)
 
 	_, err = repo.CreateItem(ctx, core.StreamItem {
 		Type: "message",
@@ -295,26 +200,18 @@ func TestRepository(t *testing.T) {
 		Owner: "CC62b953CCCE898b955f256976d61BdEE04353C042",
 		CDate: pivot.Add(-time.Minute * 5),
 	})
-	if err != nil {
-		t.Errorf("CreateItem1 failed: %s", err)
-	}
+	assert.NoError(t, err)
 
 	mc.DeleteAll()
 
-	chunks3, err := repo.GetMultiChunk(ctx, []string{"22222222222222222222"}, pivotChunk)
-	if err != nil {
-		t.Errorf("GetMultiChunk failed: %s", err)
+	chunks, err = repo.GetChunksFromDB(ctx, []string{"22222222222222222222"}, pivotChunk)
+	if assert.NoError(t, err) {
+		assert.Len(t, chunks, 1)
+		assert.Len(t, chunks["22222222222222222222"], 2)
+		assert.Equal(t, "797e1f95-542e-485b-8051-a87c1ad1fe06", chunks["22222222222222222222"][0].ObjectID)
+		assert.Equal(t, "d6087868-c30b-439d-9c2c-646fdd48ecc4", chunks["22222222222222222222"][1].ObjectID)
 	}
 
-	if (len(chunks3["22222222222222222222"]) != 2) {
-		t.Errorf("GetMultiChunk failed: length is not matched. expected: 2, actual: %d", len(chunks3["22222222222222222222"]))
-		t.Error(chunks3["22222222222222222222"])
-	}
-
-	if (chunks3["22222222222222222222"][0].ObjectID != "797e1f95-542e-485b-8051-a87c1ad1fe06" && chunks3["22222222222222222222"][1].ObjectID != "d6087868-c30b-439d-9c2c-646fdd48ecc4") {
-		t.Errorf("GetMultiChunk failed: order is not matched. expected: 797e1f95-542e-485b-8051-a87c1ad1fe06 -> d6087868-c30b-439d-9c2c-646fdd48ecc4, actual: %s -> %s", chunks3["22222222222222222222"][0].ObjectID, chunks3["22222222222222222222"][1].ObjectID)
-		t.Error(chunks3["22222222222222222222"])
-	}
 
 	_, err = repo.CreateItem(ctx, core.StreamItem {
 		Type: "message",
@@ -323,23 +220,14 @@ func TestRepository(t *testing.T) {
 		Owner: "CC62b953CCCE898b955f256976d61BdEE04353C042",
 		CDate: pivot.Add(-time.Minute * 1),
 	})
-	if err != nil {
-		t.Errorf("CreateItem1 failed: %s", err)
-	}
+	assert.NoError(t, err)
 
-	chunks4, err := repo.GetMultiChunk(ctx, []string{"22222222222222222222"}, pivotChunk)
-	if err != nil {
-		t.Errorf("GetMultiChunk failed: %s", err)
+	chunks, err = repo.GetChunksFromDB(ctx, []string{"22222222222222222222"}, pivotChunk)
+	if assert.NoError(t, err) {
+		assert.Len(t, chunks, 1)
+		assert.Len(t, chunks["22222222222222222222"], 3)
+		assert.Equal(t, "01eb39b4-0a5b-4461-a091-df9a97c7b2fd", chunks["22222222222222222222"][0].ObjectID)
+		assert.Equal(t, "797e1f95-542e-485b-8051-a87c1ad1fe06", chunks["22222222222222222222"][1].ObjectID)
+		assert.Equal(t, "d6087868-c30b-439d-9c2c-646fdd48ecc4", chunks["22222222222222222222"][2].ObjectID)
 	}
-
-	if (len(chunks4["22222222222222222222"]) != 3) {
-		t.Errorf("GetMultiChunk failed: length is not matched. expected: 3, actual: %d", len(chunks4["22222222222222222222"]))
-		t.Error(chunks4["22222222222222222222"])
-	}
-
-	if (chunks4["22222222222222222222"][0].ObjectID != "01eb39b4-0a5b-4461-a091-df9a97c7b2fd" && chunks4["22222222222222222222"][1].ObjectID != "797e1f95-542e-485b-8051-a87c1ad1fe06" && chunks4["22222222222222222222"][2].ObjectID != "d6087868-c30b-439d-9c2c-646fdd48ecc4") {
-		t.Errorf("GetMultiChunk failed: order is not matched. expected: 01eb39b4-0a5b-4461-a091-df9a97c7b2fd -> 797e1f95-542e-485b-8051-a87c1ad1fe06 -> d6087868-c30b-439d-9c2c-646fdd48ecc4, actual: %s -> %s -> %s", chunks4["22222222222222222222"][0].ObjectID, chunks4["22222222222222222222"][1].ObjectID, chunks4["22222222222222222222"][2].ObjectID)
-		t.Error(chunks4["22222222222222222222"])
-	}
-
 }

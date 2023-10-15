@@ -31,9 +31,11 @@ type Repository interface {
 	GetRecentItems(ctx context.Context, streamID string, until time.Time, limit int) ([]core.StreamItem, error)
 	GetImmediateItems(ctx context.Context, streamID string, since time.Time, limit int) ([]core.StreamItem, error)
 
-	GetChunksFromCache(ctx context.Context, streams []string, chunk string) (map[string][]core.StreamItem, error)
-	GetChunksFromDB(ctx context.Context, streams []string, chunk string) (map[string][]core.StreamItem, error)
+	GetChunksFromCache(ctx context.Context, streams []string, chunk string) (map[string]Chunk, error)
+	GetChunksFromDB(ctx context.Context, streams []string, chunk string) (map[string]Chunk, error)
 	GetChunkIterators(ctx context.Context, streams []string, chunk string) (map[string]string, error)
+
+	SaveToCache(ctx context.Context, chunk string, chunks map[string]Chunk) error
 }
 
 type repository struct {
@@ -46,8 +48,31 @@ func NewRepository(db *gorm.DB, mc *memcache.Client) Repository {
 	return &repository{db, mc}
 }
 
+// SaveToCache saves items to cache
+func (r *repository) SaveToCache(ctx context.Context, chunk string, items map[string]Chunk) error {
+	ctx, span := tracer.Start(ctx, "RepositorySaveToCache")
+	defer span.End()
+
+	for streamID, items := range items {
+		key := chunk + streamID
+		value, err := json.Marshal(items)
+		if err != nil {
+			span.RecordError(err)
+			return err
+		}
+
+		err = r.mc.Set(&memcache.Item{Key: key, Value: value})
+		if err != nil {
+			span.RecordError(err)
+			return err
+		}
+	}
+
+	return nil
+}
+
 // GetChunksFromCache gets chunks from cache
-func (r *repository) GetChunksFromCache(ctx context.Context, streams []string, chunk string) (map[string][]core.StreamItem, error) {
+func (r *repository) GetChunksFromCache(ctx context.Context, streams []string, chunk string) (map[string]Chunk, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGetChunksFromCache")
 	defer span.End()
 
@@ -68,7 +93,7 @@ func (r *repository) GetChunksFromCache(ctx context.Context, streams []string, c
 		return nil, err
 	}
 
-	result := make(map[string][]core.StreamItem)
+	result := make(map[string]Chunk)
 	for _, stream := range streams {
 		targetKey := targetKeyMap[stream]
 		cache, ok := caches[targetKey]
@@ -86,14 +111,17 @@ func (r *repository) GetChunksFromCache(ctx context.Context, streams []string, c
 			continue
 		}
 		slices.Reverse(items)
-		result[stream] = items
+		result[stream] = Chunk {
+			Key: targetKey,
+			Items: items,
+		}
 	}
 
 	return result, nil
 }
 
 // GetChunksFromDB gets chunks from db and cache them
-func (r *repository) GetChunksFromDB(ctx context.Context, streams []string, chunk string) (map[string][]core.StreamItem, error) {
+func (r *repository) GetChunksFromDB(ctx context.Context, streams []string, chunk string) (map[string]Chunk, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGetChunksFromDB")
 	defer span.End()
 
@@ -108,7 +136,7 @@ func (r *repository) GetChunksFromDB(ctx context.Context, streams []string, chun
 		targetKeys = append(targetKeys, targetKey)
 	}
 
-	result := make(map[string][]core.StreamItem)
+	result := make(map[string]Chunk)
 	for _, stream := range streams {
 		targetKey := targetKeyMap[stream]
 		var items []core.StreamItem
@@ -124,7 +152,10 @@ func (r *repository) GetChunksFromDB(ctx context.Context, streams []string, chun
 			span.RecordError(err)
 			continue
 		}
-		result[stream] = items
+		result[stream] = Chunk {
+			Key: targetKey,
+			Items: items,
+		}
 
 		// キャッシュには逆順で保存する
 		reversedItems := make([]core.StreamItem, len(items))

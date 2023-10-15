@@ -158,16 +158,16 @@ func TestRepository(t *testing.T) {
 	chunks, err = repo.GetChunksFromDB(ctx, []string{"00000000000000000000", "11111111111111111111"}, pivotChunk)
 	if assert.NoError(t, err) {
 		assert.Len(t, chunks, 2)
-		assert.Len(t, chunks["00000000000000000000"], 2)
-		assert.Len(t, chunks["11111111111111111111"], 2)
+		assert.Len(t, chunks["00000000000000000000"].Items, 2)
+		assert.Len(t, chunks["11111111111111111111"].Items, 2)
 	}
 
 	// GetChunksFromCacheでキャッシュがあるはずなのでキャッシュから取得する
 	chunks, err = repo.GetChunksFromCache(ctx, []string{"00000000000000000000", "11111111111111111111"}, pivotChunk)
 	if assert.NoError(t, err) {
 		assert.Len(t, chunks, 2)
-		assert.Len(t, chunks["00000000000000000000"], 2)
-		assert.Len(t, chunks["11111111111111111111"], 2)
+		assert.Len(t, chunks["00000000000000000000"].Items, 2)
+		assert.Len(t, chunks["11111111111111111111"].Items, 2)
 	}
 
 	// StreamItemの順番のテスト
@@ -207,9 +207,9 @@ func TestRepository(t *testing.T) {
 	chunks, err = repo.GetChunksFromDB(ctx, []string{"22222222222222222222"}, pivotChunk)
 	if assert.NoError(t, err) {
 		assert.Len(t, chunks, 1)
-		assert.Len(t, chunks["22222222222222222222"], 2)
-		assert.Equal(t, "797e1f95-542e-485b-8051-a87c1ad1fe06", chunks["22222222222222222222"][0].ObjectID)
-		assert.Equal(t, "d6087868-c30b-439d-9c2c-646fdd48ecc4", chunks["22222222222222222222"][1].ObjectID)
+		assert.Len(t, chunks["22222222222222222222"].Items, 2)
+		assert.Equal(t, "797e1f95-542e-485b-8051-a87c1ad1fe06", chunks["22222222222222222222"].Items[0].ObjectID)
+		assert.Equal(t, "d6087868-c30b-439d-9c2c-646fdd48ecc4", chunks["22222222222222222222"].Items[1].ObjectID)
 	}
 
 
@@ -225,9 +225,9 @@ func TestRepository(t *testing.T) {
 	chunks, err = repo.GetChunksFromDB(ctx, []string{"22222222222222222222"}, pivotChunk)
 	if assert.NoError(t, err) {
 		assert.Len(t, chunks, 1)
-		assert.Len(t, chunks["22222222222222222222"], 3)
-		assert.Equal(t, "01eb39b4-0a5b-4461-a091-df9a97c7b2fd", chunks["22222222222222222222"][0].ObjectID)
-		assert.Equal(t, "797e1f95-542e-485b-8051-a87c1ad1fe06", chunks["22222222222222222222"][1].ObjectID)
-		assert.Equal(t, "d6087868-c30b-439d-9c2c-646fdd48ecc4", chunks["22222222222222222222"][2].ObjectID)
+		assert.Len(t, chunks["22222222222222222222"].Items, 3)
+		assert.Equal(t, "01eb39b4-0a5b-4461-a091-df9a97c7b2fd", chunks["22222222222222222222"].Items[0].ObjectID)
+		assert.Equal(t, "797e1f95-542e-485b-8051-a87c1ad1fe06", chunks["22222222222222222222"].Items[1].ObjectID)
+		assert.Equal(t, "d6087868-c30b-439d-9c2c-646fdd48ecc4", chunks["22222222222222222222"].Items[2].ObjectID)
 	}
 }

@@ -282,10 +282,11 @@ func (h handler) GetChunks(c echo.Context) error {
 	}
 
 	responce := chunkResponse{
-		Chunks: chunks,
+		Status: "ok",
+		Content: chunks,
 	}
 
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": responce})
+	return c.JSON(http.StatusOK, responce)
 }
 
 

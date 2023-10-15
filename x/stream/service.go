@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"io/ioutil"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -40,7 +41,7 @@ type Service interface {
 	ListStreamBySchema(ctx context.Context, schema string) ([]core.Stream, error)
 	ListStreamByAuthor(ctx context.Context, author string) ([]core.Stream, error)
 
-	GetChunks(ctx context.Context, streams []string, pivot time.Time) (map[string][]core.StreamItem, error)
+	GetChunks(ctx context.Context, streams []string, pivot time.Time) (map[string]Chunk, error)
 }
 
 type service struct {
@@ -78,7 +79,7 @@ func min(a, b int) int {
 }
 
 // GetChunks returns chunks by streamID and time
-func (s *service) GetChunks(ctx context.Context, streams []string, until time.Time) (map[string][]core.StreamItem, error) {
+func (s *service) GetChunks(ctx context.Context, streams []string, until time.Time) (map[string]Chunk, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGetChunks")
 	defer span.End()
 
@@ -181,13 +182,47 @@ func (s *service) GetRecentItems(ctx context.Context, streams []string, until ti
 				items[stream] = chunk
 			}
 		} else {
+			streamsStr := strings.Join(streams, ",")
+			timeStr := fmt.Sprintf("%d", until.Unix())
+			req, err := http.NewRequest("GET", "https://"+host+"/api/v1/streams/chunks?streams="+streamsStr+"&time="+timeStr, nil)
+			if err != nil {
+				span.RecordError(err)
+				continue
+			}
+			otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+			client := new(http.Client)
+			resp, err := client.Do(req)
+			if err != nil {
+				span.RecordError(err)
+				continue
+			}
+			defer resp.Body.Close()
+
+			body, err := ioutil.ReadAll(resp.Body)
+			if err != nil {
+				span.RecordError(err)
+				continue
+			}
+
+			var chunkResp chunkResponse
+			err = json.Unmarshal(body, &chunkResp)
+			if err != nil {
+				span.RecordError(err)
+				continue
+			}
+
+			for stream, chunk := range chunkResp.Content {
+				items[stream] = chunk
+			}
+
+			//TODO: add to cache
 		}
 	}
 
 	// summary messages and remove earlier than until
 	var messages []core.StreamItem
 	for _, item := range items {
-		for _, streamItem := range item {
+		for _, streamItem := range item.Items {
 			if streamItem.CDate.After(until) {
 				continue
 			}

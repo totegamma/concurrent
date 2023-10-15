@@ -45,6 +45,12 @@ type checkpointPacket struct {
 }
 
 type chunkResponse struct {
-	Chunks map[string][]core.StreamItem `json:"chunks"`
+	Status string `json:"status"`
+	Content map[string]Chunk `json:"content"`
+}
+
+type Chunk struct {
+	Key	 string `json:"key"`
+	Items []core.StreamItem `json:"items"`
 }
 

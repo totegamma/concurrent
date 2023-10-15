@@ -35,7 +35,7 @@ type Repository interface {
 	GetChunksFromDB(ctx context.Context, streams []string, chunk string) (map[string]Chunk, error)
 	GetChunkIterators(ctx context.Context, streams []string, chunk string) (map[string]string, error)
 
-	SaveToCache(ctx context.Context, chunk string, chunks map[string]Chunk) error
+	SaveToCache(ctx context.Context, chunks map[string]Chunk, queryTime time.Time) error
 }
 
 type repository struct {
@@ -49,25 +49,29 @@ func NewRepository(db *gorm.DB, mc *memcache.Client) Repository {
 }
 
 // SaveToCache saves items to cache
-func (r *repository) SaveToCache(ctx context.Context, chunk string, items map[string]Chunk) error {
+func (r *repository) SaveToCache(ctx context.Context, chunks map[string]Chunk, queryTime time.Time) error {
 	ctx, span := tracer.Start(ctx, "RepositorySaveToCache")
 	defer span.End()
 
-	for streamID, items := range items {
-		key := chunk + streamID
-		value, err := json.Marshal(items)
+	for streamID, chunk := range chunks {
+		//save iterator
+		itrKey := "stream:itr:all:" + streamID + ":" + Time2Chunk(queryTime)
+		r.mc.Set(&memcache.Item{Key: itrKey, Value: []byte(chunk.Key)})
+
+		// save body
+		slices.Reverse(chunk.Items)
+		b, err := json.Marshal(chunk.Items)
 		if err != nil {
 			span.RecordError(err)
 			return err
 		}
-
-		err = r.mc.Set(&memcache.Item{Key: key, Value: value})
+		value := string(b[1 : len(b)-1]) + ","
+		err = r.mc.Set(&memcache.Item{Key: chunk.Key, Value: []byte(value)})
 		if err != nil {
 			span.RecordError(err)
-			return err
+			continue
 		}
 	}
-
 	return nil
 }
 

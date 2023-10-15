@@ -215,7 +215,12 @@ func (s *service) GetRecentItems(ctx context.Context, streams []string, until ti
 				items[stream] = chunk
 			}
 
-			//TODO: add to cache
+			err = s.repository.SaveToCache(ctx, chunkResp.Content, until)
+			if err != nil {
+				log.Printf("Error: %v", err)
+				span.RecordError(err)
+				continue
+			}
 		}
 	}
 

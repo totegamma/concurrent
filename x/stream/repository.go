@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"time"
+	"strings"
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/totegamma/concurrent/x/core"
@@ -112,7 +113,13 @@ func (r *repository) GetChunksFromDB(ctx context.Context, streams []string, chun
 		targetKey := targetKeyMap[stream]
 		var items []core.StreamItem
 		chunkDate := Chunk2RecentTime(chunk)
-		err = r.db.WithContext(ctx).Where("stream_id = ? and c_date <= ?", stream, chunkDate).Order("c_date desc").Limit(100).Find(&items).Error
+
+		streamID := stream
+		if strings.Contains(streamID, "@") {
+			streamID = strings.Split(streamID, "@")[0]
+		}
+
+		err = r.db.WithContext(ctx).Where("stream_id = ? and c_date <= ?", streamID, chunkDate).Order("c_date desc").Limit(100).Find(&items).Error
 		if err != nil {
 			span.RecordError(err)
 			continue

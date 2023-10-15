@@ -40,7 +40,7 @@ type Service interface {
 	ListStreamBySchema(ctx context.Context, schema string) ([]core.Stream, error)
 	ListStreamByAuthor(ctx context.Context, author string) ([]core.Stream, error)
 
-	//GetChunks(ctx context.Context, streams []string, pivot time.Time) (map[string][]core.StreamItem, error)
+	GetChunks(ctx context.Context, streams []string, pivot time.Time) (map[string][]core.StreamItem, error)
 }
 
 type service struct {
@@ -78,28 +78,26 @@ func min(a, b int) int {
 }
 
 // GetChunks returns chunks by streamID and time
-/*
-func (s *service) GetChunks(ctx context.Context, streams []string, pivot time.Time) (map[string][]core.StreamItem, error) {
+func (s *service) GetChunks(ctx context.Context, streams []string, until time.Time) (map[string][]core.StreamItem, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGetChunks")
 	defer span.End()
 
-	return s.repository.GetMultiChunk(ctx, streams, Time2Chunk(pivot))
-}
-*/
-
-// GetRecentItems returns recent message from streams
-func (s *service) GetRecentItems(ctx context.Context, streams []string, until time.Time, limit int) ([]core.StreamItem, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetRecentItems")
-	defer span.End()
-
-	// streamIDの正規化
+	// normalize streamID and validate
 	for i, stream := range streams {
 		if !strings.Contains(stream, "@") {
 			streams[i] = fmt.Sprintf("%s@%s", stream, s.config.Concurrent.FQDN)
+		} else {
+			split := strings.Split(stream, "@")
+			if len(split) != 2 {
+				return nil, fmt.Errorf("invalid streamID: %s", stream)
+			}
+			if split[1] != s.config.Concurrent.FQDN {
+				return nil, fmt.Errorf("invalid streamID: %s", stream)
+			}
 		}
 	}
 
-	// まずはローカル・リモート関係なくキャッシュから取得を試みる
+	// first, try to get from cache
 	untilChunk := Time2Chunk(until)
 	items, err := s.repository.GetChunksFromCache(ctx, streams, untilChunk)
 	if err != nil {
@@ -108,7 +106,58 @@ func (s *service) GetRecentItems(ctx context.Context, streams []string, until ti
 		return nil, err
 	}
 
-	// キャッシュから見つからなかった場合は、ホストごとに分けてリモートから取得する
+	// if not found in cache, get from db
+	missingStreams := make([]string, 0)
+	for _, stream := range streams {
+		if _, ok := items[stream]; !ok {
+			missingStreams = append(missingStreams, stream)
+		}
+	}
+
+	if len(missingStreams) > 0 {
+		// get from db
+		dbItems, err := s.repository.GetChunksFromDB(ctx, missingStreams, untilChunk)
+		if err != nil {
+			log.Printf("Error: %v", err)
+			span.RecordError(err)
+			return nil, err
+		}
+		// merge
+		for k, v := range dbItems {
+			items[k] = v
+		}
+	}
+
+	return items, nil
+}
+
+// GetRecentItems returns recent message from streams
+func (s *service) GetRecentItems(ctx context.Context, streams []string, until time.Time, limit int) ([]core.StreamItem, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetRecentItems")
+	defer span.End()
+
+	// normalize streamID and validate
+	for i, stream := range streams {
+		if !strings.Contains(stream, "@") {
+			streams[i] = fmt.Sprintf("%s@%s", stream, s.config.Concurrent.FQDN)
+		} else {
+			split := strings.Split(stream, "@")
+			if len(split) != 2 {
+				return nil, fmt.Errorf("invalid streamID: %s", stream)
+			}
+		}
+	}
+
+	// first, try to get from cache regardless of local or remote
+	untilChunk := Time2Chunk(until)
+	items, err := s.repository.GetChunksFromCache(ctx, streams, untilChunk)
+	if err != nil {
+		log.Printf("Error: %v", err)
+		span.RecordError(err)
+		return nil, err
+	}
+
+	// if not found in cache, get from remote by host
 	buckets := make(map[string][]string)
 	for _, stream := range streams {
 		if _, ok := items[stream]; !ok {
@@ -120,13 +169,22 @@ func (s *service) GetRecentItems(ctx context.Context, streams []string, until ti
 		}
 	}
 
-	// for host, streams := range buckets {
-	// 	if host == s.config.Concurrent.FQDN {
-	// 	} else {
-	// 	}
-	// }
+	for host, streams := range buckets {
+		if host == s.config.Concurrent.FQDN {
+			chunks, err := s.repository.GetChunksFromDB(ctx, streams, untilChunk)
+			if err != nil {
+				log.Printf("Error: %v", err)
+				span.RecordError(err)
+				return nil, err
+			}
+			for stream, chunk := range chunks {
+				items[stream] = chunk
+			}
+		} else {
+		}
+	}
 
-	// 指定された時間よりも前のメッセージを除外しつつ1つにまとめる
+	// summary messages and remove earlier than until
 	var messages []core.StreamItem
 	for _, item := range items {
 		for _, streamItem := range item {

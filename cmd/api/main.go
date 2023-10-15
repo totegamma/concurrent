@@ -206,6 +206,7 @@ func main() {
 	apiV1R.DELETE("/stream/:id", streamHandler.Delete, authService.Restrict(auth.ISLOCAL))
 	apiV1R.DELETE("/stream/:stream/:object", streamHandler.Remove, authService.Restrict(auth.ISLOCAL))
 	apiV1.GET("/streams/mine", streamHandler.ListMine)
+	apiV1.GET("/streams/chunks", streamHandler.GetChunks)
 
 	apiV1R.GET("/kv/:key", userkvHandler.Get, authService.Restrict(auth.ISLOCAL))
 	apiV1R.PUT("/kv/:key", userkvHandler.Upsert, authService.Restrict(auth.ISLOCAL))

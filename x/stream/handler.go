@@ -30,6 +30,7 @@ type Handler interface {
 	Delete(c echo.Context) error
 	Remove(c echo.Context) error
 	Checkpoint(c echo.Context) error
+	GetChunks(c echo.Context) error
 }
 
 type handler struct {
@@ -259,7 +260,6 @@ func (h handler) Checkpoint(c echo.Context) error {
 }
 
 // GetChunks
-/*
 func (h handler) GetChunks(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetChunks")
 	defer span.End()
@@ -276,9 +276,16 @@ func (h handler) GetChunks(c echo.Context) error {
 	time := time.Unix(timeInt, 0)
 
 	chunks, err := h.service.GetChunks(ctx, streams, time)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
 
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": chunks})
+	responce := chunkResponse{
+		Chunks: chunks,
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": responce})
 }
-*/
 
 

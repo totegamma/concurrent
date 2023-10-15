@@ -45,7 +45,6 @@ type checkpointPacket struct {
 }
 
 type chunkResponse struct {
-	Iterators map[string]string `json:"iterators"`
 	Chunks map[string][]core.StreamItem `json:"chunks"`
 }
 

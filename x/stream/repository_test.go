@@ -20,17 +20,14 @@ var pivot time.Time
 
 func TestMain(m *testing.M) {
 	log.Println("Test Start")
-	db_resource, db_pool := testutil.CreateDBContainer()
-	defer testutil.CloseContainer(db_resource, db_pool)
 
-	db := testutil.ConnectDB(db_resource, db_pool)
+	var cleanup_rdb func()
+	db, cleanup_rdb := testutil.CreateDB()
+	defer cleanup_rdb()
 
-	testutil.SetupDB(db)
-
-	mc_resource, mc_pool := testutil.CreateMemcachedContainer()
-	defer testutil.CloseContainer(mc_resource, mc_pool)
-
-	mc = testutil.ConnectMemcached(mc_resource, mc_pool)
+	var cleanup_mc func()
+	mc, cleanup_mc = testutil.CreateMC()
+	defer cleanup_mc()
 
 	repo = NewRepository(db, mc)
 

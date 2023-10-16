@@ -2,17 +2,18 @@ package socket
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"log"
-	"time"
 	"net/url"
 	"slices"
 	"strings"
+	"time"
 
-	"github.com/totegamma/concurrent/x/stream"
+	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
-	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/totegamma/concurrent/x/stream"
 )
 
 // ソケット管理のルール
@@ -38,6 +39,7 @@ func NewSubscriptionManager(mc *memcache.Client, rdb *redis.Client) *subscriptio
 		rdb: rdb,
 		clientSubs: make(map[*websocket.Conn][]string),
 		remoteSubs: make(map[string][]string),
+		remoteConns: make(map[string]*websocket.Conn),
 	}
 	go manager.cacheKeeperRoutine()
 	go manager.chunkUpdaterRoutine()
@@ -122,7 +124,13 @@ func (m *subscriptionManager) RemoteSubRoutine(domain string, streams []string) 
 	if _, ok := m.remoteConns[domain]; !ok {
 		// new server, create new connection
 		u := url.URL{Scheme: "wss", Host: domain, Path: "/api/v1/socket"}
-		c, _, err := websocket.DefaultDialer.Dial(u.String(), nil)
+		dialer := websocket.DefaultDialer
+		dialer.HandshakeTimeout = 10 * time.Second
+
+		// TODO: add config for TLS
+		dialer.TLSClientConfig = &tls.Config{InsecureSkipVerify: true}
+
+		c, _, err := dialer.Dial(u.String(), nil)
 		if err != nil {
 			log.Printf("fail to dial: %v", err)
 		}

@@ -79,6 +79,10 @@ func (h *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *wsHandler) EmitMessage(msg []byte) {
+	if h.conn == nil {
+		log.Fatal("conn is nil")
+		return
+	}
 	if err := h.conn.WriteMessage(websocket.TextMessage, msg); err != nil {
 		log.Println("write error:", err)
 	}
@@ -109,6 +113,7 @@ func TestManager(t *testing.T) {
 	remotestream0 := "remote0@" + domain
 	conn1 := websocket.Conn{}
 	m.Subscribe(&conn1, []string{remotestream0})
+	time.Sleep(1 * time.Second)
 	assert.Len(t, m.clientSubs, 2) // 2つ目のサブスクリプション
 	assert.Len(t, m.clientSubs[&conn1], 1)
 	assert.Len(t, m.remoteSubs, 1)
@@ -117,6 +122,7 @@ func TestManager(t *testing.T) {
 	// リモートサブスクリプションを更新するが、減らないことを確認
 	remotestream1 := "remote1@" + domain
 	m.Subscribe(&conn1, []string{remotestream1})
+	time.Sleep(1 * time.Second)
 	assert.Len(t, m.clientSubs, 2)
 	assert.Len(t, m.clientSubs[&conn1], 1)
 	assert.Len(t, m.remoteSubs, 1)
@@ -183,7 +189,6 @@ func TestManager(t *testing.T) {
 
 	// remotestream1だけ残しておく
 	m.Subscribe(&conn1, []string{remotestream1})
-
 
 	// 新しいpivotで更新
 	newPivot := pivot.Add(10 * time.Minute)

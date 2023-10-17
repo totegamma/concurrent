@@ -47,20 +47,33 @@ jobs:
           echo "BRANCH_NAME=pr-${{ github.event.number }}" >> $GITHUB_ENV
         fi
 
-    - name: Download Previous artifact
-      uses: actions/download-artifact@v3
+    - name: Download current site
       continue-on-error: true
-      with:
-        name: 'github-pages'
-        path: './dist'
+      run: |
+        wget "https://totegamma.github.io/concurrent/archive.zip" -O temp.zip
+        unzip temp.zip
 
-    - name: create dist directory
-      run: mkdir -p "dist/$BRANCH_NAME"
+    - name: Generate coverage report
+      run : |
+        mkdir -p "dist/$BRANCH_NAME"
+        go tool cover -html=coverage.out -o "./dist/$BRANCH_NAME/index.html"
 
-    - name: Generate html report
-      run : go tool cover -html=coverage.out -o "./dist/$BRANCH_NAME/index.html"
+    - name: Create archive
+      run : |
+        zip -r archive.zip ./dist
+        mv archive.zip ./dist
 
-    - name: Setup Pages
+    - name: Create index.html
+      run: |
+        cd dist
+        dirs=`find dist/* -maxdepth 0 -type d`
+        echo "<html><head></head><body><ul>" > index.html
+        for dir in $dirs; do
+            echo "<li><a href=\"/$dir\">$dir</a></li>" >> index.html
+        done
+        echo "</ul></body></html>" >> index.html
+
+    - name: Setup pages
       uses: actions/configure-pages@v3
 
     - name: Upload artifact
@@ -71,4 +84,3 @@ jobs:
     - name: Deploy to GitHub Pages
       id: deployment
       uses: actions/deploy-pages@v2
-

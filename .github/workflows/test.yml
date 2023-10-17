@@ -69,7 +69,7 @@ jobs:
         dirs=`find * -maxdepth 0 -type d`
         echo "<html><head></head><body><ul>" > index.html
         for dir in $dirs; do
-            echo "<li><a href=\"/$dir\">$dir</a></li>" >> index.html
+            echo "<li><a href=\"/concurrent/$dir\">$dir</a></li>" >> index.html
         done
         echo "</ul></body></html>" >> index.html
 

@@ -21,14 +21,14 @@ var tracer = otel.Tracer("handler")
 
 // Handler is the interface for handling HTTP requests
 type Handler interface {
-    Get(c echo.Context) error
-    Register(c echo.Context) error
-    Create(c echo.Context) error
-    List(c echo.Context) error
-    Update(c echo.Context) error
-    Delete(c echo.Context) error
-    Ack(c echo.Context) error
-    Unack(c echo.Context) error
+	Get(c echo.Context) error
+	Register(c echo.Context) error
+	Create(c echo.Context) error
+	List(c echo.Context) error
+	Update(c echo.Context) error
+	Delete(c echo.Context) error
+	Ack(c echo.Context) error
+	Unack(c echo.Context) error
 }
 
 type handler struct {
@@ -203,8 +203,8 @@ func (h handler) Delete(c echo.Context) error {
 
 // Ack creates a new ack
 func (h handler) Ack(c echo.Context) error {
-    ctx, span := tracer.Start(c.Request().Context(), "HandlerAck")
-    defer span.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerAck")
+	defer span.End()
 
 	var request ackRequest
 	err := c.Bind(&request)
@@ -212,18 +212,18 @@ func (h handler) Ack(c echo.Context) error {
 		return err
 	}
 
-    err = h.service.Ack(ctx, request.SignedObject, request.Signature)
-    if err != nil {
-        return err
-    }
+	err = h.service.Ack(ctx, request.SignedObject, request.Signature)
+	if err != nil {
+		return err
+	}
 
-    return c.String(http.StatusOK, "{\"message\": \"accept\"}")
+	return c.String(http.StatusOK, "{\"message\": \"accept\"}")
 }
 
 // Unack deletes an ack
 func (h handler) Unack(c echo.Context) error {
-    ctx, span := tracer.Start(c.Request().Context(), "HandlerUnack")
-    defer span.End()
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerUnack")
+	defer span.End()
 
 	var request ackRequest
 	err := c.Bind(&request)
@@ -231,11 +231,10 @@ func (h handler) Unack(c echo.Context) error {
 		return err
 	}
 
-    err = h.service.Unack(ctx, request.SignedObject, request.Signature)
-    if err != nil {
-        return err
-    }
+	err = h.service.Unack(ctx, request.SignedObject, request.Signature)
+	if err != nil {
+		return err
+	}
 
-    return c.String(http.StatusOK, "{\"message\": \"accept\"}")
+	return c.String(http.StatusOK, "{\"message\": \"accept\"}")
 }
-

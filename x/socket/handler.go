@@ -13,19 +13,21 @@ import (
 
 // Handler is the interface for handling websocket
 type Handler interface {
-    Connect(c echo.Context) error
+	Connect(c echo.Context) error
 }
 
 type handler struct {
 	service Service
+	manager Manager
 	rdb     *redis.Client
 	mutex   *sync.Mutex
 }
 
 // NewHandler creates a new handler
-func NewHandler(service Service, rdb *redis.Client) Handler {
+func NewHandler(service Service, rdb *redis.Client, manager Manager) Handler {
 	return &handler{
 		service,
+		manager,
 		rdb,
 		&sync.Mutex{},
 	}
@@ -92,6 +94,7 @@ func (h handler) Connect(c echo.Context) error {
 			pubsub.Subscribe(ctx, ch)
 			log.Printf("Subscribed to channel: %s\n", ch)
 		}
+		h.manager.Subscribe(ws, req.Channels)
 
 		// Read from channels
 		go func(ctx context.Context, pubsub *redis.PubSub) {

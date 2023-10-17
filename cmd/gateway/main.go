@@ -21,8 +21,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
-	"github.com/totegamma/concurrent/x/util"
 	"github.com/totegamma/concurrent/x/auth"
+	"github.com/totegamma/concurrent/x/util"
 
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
@@ -216,23 +216,23 @@ func main() {
 		<link rel="icon" href="`+config.Profile.Logo+`">
 	</head>
 	<body>
-		<h1>Concurrent Domain - ` + config.Concurrent.FQDN + `</h1>
+		<h1>Concurrent Domain - `+config.Concurrent.FQDN+`</h1>
 		Yay! You're on ccgateway!<br>
 		You might looking for <a href="https://concurrent.world">concurrent.world</a>.<br>
-		This domain is currently registration: ` + config.Concurrent.Registration + `<br>
+		This domain is currently registration: `+config.Concurrent.Registration+`<br>
 		<h2>Information</h2>
-		CCID: <br>` + config.Concurrent.CCID + `<br>
-		PUBKEY: <br>` + config.Concurrent.PublicKey[:len(config.Concurrent.PublicKey)/2] + `<br>` +
-		                config.Concurrent.PublicKey[len(config.Concurrent.PublicKey)/2:] + `<br>
+		CCID: <br>`+config.Concurrent.CCID+`<br>
+		PUBKEY: <br>`+config.Concurrent.PublicKey[:len(config.Concurrent.PublicKey)/2]+`<br>`+
+			config.Concurrent.PublicKey[len(config.Concurrent.PublicKey)/2:]+`<br>
 		<h2>Services</h2>
 		<ul>
-		` + func() string {
+		`+func() string {
 			var services string
 			for _, service := range gwConf.Services {
 				services += `<li><a href="` + service.Path + `">` + service.Name + `</a></li>`
 			}
 			return services
-		}() + `
+		}()+`
 		</ul>
 	</body>
 </html>

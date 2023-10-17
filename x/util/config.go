@@ -18,6 +18,7 @@ type Config struct {
 type Server struct {
 	Dsn            string `yaml:"dsn"`
 	RedisAddr      string `yaml:"redisAddr"`
+	MemcachedAddr  string `yaml:"memcachedAddr"`
 	EnableTrace    bool   `yaml:"enableTrace"`
 	TraceEndpoint  string `yaml:"traceEndpoint"`
 	LogPath        string `yaml:"logPath"`
@@ -31,8 +32,8 @@ type Concurrent struct {
 	Registration string `yaml:"registration"` // open, invite, close
 
 	// internal generated
-	CCID         string `yaml:"ccid"`
-	PublicKey       string `yaml:"publickey"`
+	CCID      string `yaml:"ccid"`
+	PublicKey string `yaml:"publickey"`
 }
 
 type Profile struct {

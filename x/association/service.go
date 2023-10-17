@@ -5,20 +5,21 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"log"
+
 	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/stream"
 	"github.com/totegamma/concurrent/x/util"
-	"log"
 )
 
 // Service is the interface for association service
 type Service interface {
-    PostAssociation(ctx context.Context, objectStr string, signature string, streams []string, targetType string) (core.Association, error)
-    Get(ctx context.Context, id string) (core.Association, error)
-    GetOwn(ctx context.Context, author string) ([]core.Association, error)
-    Delete(ctx context.Context, id string) (core.Association, error)
+	PostAssociation(ctx context.Context, objectStr string, signature string, streams []string, targetType string) (core.Association, error)
+	Get(ctx context.Context, id string) (core.Association, error)
+	GetOwn(ctx context.Context, author string) ([]core.Association, error)
+	Delete(ctx context.Context, id string) (core.Association, error)
 }
 
 type service struct {
@@ -79,7 +80,7 @@ func (s *service) PostAssociation(ctx context.Context, objectStr string, signatu
 		ContentHash: contentHash,
 	}
 
-	err = s.repo.Create(ctx, &association)
+	created, err := s.repo.Create(ctx, association)
 	if err != nil {
 		span.RecordError(err)
 		return association, err // TODO: if err is duplicate key error, server should return 409
@@ -96,23 +97,26 @@ func (s *service) PostAssociation(ctx context.Context, objectStr string, signatu
 	}
 
 	for _, stream := range association.Streams {
-		err = s.stream.Post(ctx, stream, association.ID, "association", association.Author, "", targetMessage.Author)
+		err = s.stream.PostItem(ctx, stream, core.StreamItem{
+			Type:     "association",
+			ObjectID: created.ID,
+			Owner:    targetMessage.Author,
+			Author:   association.Author,
+		}, association)
 		if err != nil {
 			span.RecordError(err)
 			log.Printf("fail to post stream: %v", err)
 		}
 	}
 
-	for _, stream := range targetMessage.Streams {
-		jsonstr, _ := json.Marshal(Event{
-			Stream: stream,
+	for _, postto := range targetMessage.Streams {
+		jsonstr, _ := json.Marshal(stream.Event{
+			Stream: postto,
 			Type:   "association",
 			Action: "create",
-			Body: Element{
-				ID: association.TargetID,
-			},
+			Body:   association,
 		})
-		err := s.rdb.Publish(context.Background(), stream, jsonstr).Err()
+		err := s.rdb.Publish(context.Background(), postto, jsonstr).Err()
 		if err != nil {
 			span.RecordError(err)
 			log.Printf("fail to publish message to Redis: %v", err)
@@ -158,16 +162,14 @@ func (s *service) Delete(ctx context.Context, id string) (core.Association, erro
 		span.RecordError(err)
 		return deleted, err
 	}
-	for _, stream := range targetMessage.Streams {
-		jsonstr, _ := json.Marshal(Event{
-			Stream: stream,
+	for _, posted := range targetMessage.Streams {
+		jsonstr, _ := json.Marshal(stream.Event{
+			Stream: posted,
 			Type:   "association",
 			Action: "delete",
-			Body: Element{
-				ID: deleted.TargetID,
-			},
+			Body:   deleted,
 		})
-		err := s.rdb.Publish(context.Background(), stream, jsonstr).Err()
+		err := s.rdb.Publish(context.Background(), posted, jsonstr).Err()
 		if err != nil {
 			log.Printf("fail to publish message to Redis: %v", err)
 			span.RecordError(err)

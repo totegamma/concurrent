@@ -9,8 +9,8 @@ import (
 
 // Service is the interface for character service
 type Service interface {
-    GetCharacters(ctx context.Context, owner string, schema string) ([]core.Character, error)
-    PutCharacter(ctx context.Context, objectStr string, signature string, id string) (core.Character, error)
+	GetCharacters(ctx context.Context, owner string, schema string) ([]core.Character, error)
+	PutCharacter(ctx context.Context, objectStr string, signature string, id string) (core.Character, error)
 }
 
 type service struct {

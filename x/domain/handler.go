@@ -25,14 +25,14 @@ var tracer = otel.Tracer("domain")
 
 // Service is the domain service interface
 type Handler interface {
-    Get(c echo.Context) error
-    Upsert(c echo.Context) error
-    List(c echo.Context) error
-    Profile(c echo.Context) error
-    Hello(c echo.Context) error
-    SayHello(c echo.Context) error
-    Delete(c echo.Context) error
-    Update(c echo.Context) error
+	Get(c echo.Context) error
+	Upsert(c echo.Context) error
+	List(c echo.Context) error
+	Profile(c echo.Context) error
+	Hello(c echo.Context) error
+	SayHello(c echo.Context) error
+	Delete(c echo.Context) error
+	Update(c echo.Context) error
 }
 
 type handler struct {

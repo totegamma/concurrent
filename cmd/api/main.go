@@ -4,13 +4,14 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/redis/go-redis/v9"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+
+	"github.com/redis/go-redis/v9"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 
 	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
@@ -18,7 +19,10 @@ import (
 
 	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/socket"
 	"github.com/totegamma/concurrent/x/util"
+
+	"github.com/bradfitz/gomemcache/memcache"
 
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
@@ -105,6 +109,7 @@ func main() {
 		&core.Character{},
 		&core.Association{},
 		&core.Stream{},
+		&core.StreamItem{},
 		&core.Domain{},
 		&core.Entity{},
 		&core.Collection{},
@@ -130,13 +135,21 @@ func main() {
 		panic("failed to setup tracing plugin")
 	}
 
+	mc := memcache.New(config.Server.MemcachedAddr)
+	log.Println("config.Server.MemcachedAddr", config.Server.MemcachedAddr)
+	if err != nil {
+		panic("failed to connect memcached")
+	}
+	defer mc.Close()
+
 	agent := SetupAgent(db, rdb, config)
 
-	socketHandler := SetupSocketHandler(rdb, config)
-	messageHandler := SetupMessageHandler(db, rdb, config)
+	socketManager := socket.NewManager(mc, rdb)
+	socketHandler := SetupSocketHandler(rdb, config, socketManager)
+	messageHandler := SetupMessageHandler(db, rdb, mc, config)
 	characterHandler := SetupCharacterHandler(db, config)
-	associationHandler := SetupAssociationHandler(db, rdb, config)
-	streamHandler := SetupStreamHandler(db, rdb, config)
+	associationHandler := SetupAssociationHandler(db, rdb, mc, config)
+	streamHandler := SetupStreamHandler(db, rdb, mc, config)
 	domainHandler := SetupDomainHandler(db, config)
 	entityHandler := SetupEntityHandler(db, rdb, config)
 	authHandler := SetupAuthHandler(db, config)
@@ -178,8 +191,8 @@ func main() {
 	apiV1R.POST("/entity", entityHandler.Register, authService.Restrict(auth.ISUNKNOWN))
 	apiV1R.DELETE("/entity/:id", entityHandler.Delete, authService.Restrict(auth.ISADMIN))
 	apiV1R.PUT("/entity/:id", entityHandler.Update, authService.Restrict(auth.ISADMIN))
-    apiV1R.POST("/ack", entityHandler.Ack, authService.Restrict(auth.ISLOCAL))
-    apiV1R.DELETE("/ack", entityHandler.Unack, authService.Restrict(auth.ISLOCAL))
+	apiV1R.POST("/ack", entityHandler.Ack, authService.Restrict(auth.ISLOCAL))
+	apiV1R.DELETE("/ack", entityHandler.Unack, authService.Restrict(auth.ISLOCAL))
 	apiV1R.POST("/admin/entity", entityHandler.Create, authService.Restrict(auth.ISADMIN))
 
 	apiV1R.POST("/message", messageHandler.Post, authService.Restrict(auth.ISLOCAL))
@@ -194,8 +207,9 @@ func main() {
 	apiV1R.PUT("/stream/:id", streamHandler.Update, authService.Restrict(auth.ISLOCAL))
 	apiV1R.POST("/streams/checkpoint", streamHandler.Checkpoint, authService.Restrict(auth.ISUNITED))
 	apiV1R.DELETE("/stream/:id", streamHandler.Delete, authService.Restrict(auth.ISLOCAL))
-	apiV1R.DELETE("/stream/:stream/:element", streamHandler.Remove, authService.Restrict(auth.ISLOCAL))
+	apiV1R.DELETE("/stream/:stream/:object", streamHandler.Remove, authService.Restrict(auth.ISLOCAL))
 	apiV1.GET("/streams/mine", streamHandler.ListMine)
+	apiV1.GET("/streams/chunks", streamHandler.GetChunks)
 
 	apiV1R.GET("/kv/:key", userkvHandler.Get, authService.Restrict(auth.ISLOCAL))
 	apiV1R.PUT("/kv/:key", userkvHandler.Upsert, authService.Restrict(auth.ISLOCAL))

@@ -5,13 +5,6 @@ import (
 	"time"
 )
 
-type streamEvent struct {
-	Stream string       `json:"stream"`
-	Type   string       `json:"type"`
-	Action string       `json:"action"`
-	Body   core.Message `json:"body"`
-}
-
 type messagesResponse struct {
 	Messages []core.Message `json:"messages"`
 }

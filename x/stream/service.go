@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"io/ioutil"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -26,19 +27,21 @@ import (
 
 // Service is the interface for stream service
 type Service interface {
-    GetRecent(ctx context.Context, streams []string, limit int) ([]Element, error)
-    GetRange(ctx context.Context, streams []string, since string, until string, limit int) ([]Element, error)
-    GetElement(ctx context.Context, stream string, id string) (Element, error)
-    Post(ctx context.Context, stream string, id string, typ string, author string, host string, owner string) error
-    Remove(ctx context.Context, stream string, id string)
+	GetRecentItems(ctx context.Context, streams []string, until time.Time, limit int) ([]core.StreamItem, error)
+	GetImmediateItems(ctx context.Context, streams []string, since time.Time, limit int) ([]core.StreamItem, error)
+	GetItem(ctx context.Context, stream string, id string) (core.StreamItem, error)
+	PostItem(ctx context.Context, stream string, item core.StreamItem, body interface{}) error
+	RemoveItem(ctx context.Context, stream string, id string)
 
-    Create(ctx context.Context, stream core.Stream) (core.Stream, error)
-    Update(ctx context.Context, stream core.Stream) (core.Stream, error)
-    Get(ctx context.Context, key string) (core.Stream, error)
-    Delete(ctx context.Context, streamID string) error
+	CreateStream(ctx context.Context, stream core.Stream) (core.Stream, error)
+	GetStream(ctx context.Context, key string) (core.Stream, error)
+	UpdateStream(ctx context.Context, stream core.Stream) (core.Stream, error)
+	DeleteStream(ctx context.Context, streamID string) error
 
-    StreamListBySchema(ctx context.Context, schema string) ([]core.Stream, error)
-    StreamListByAuthor(ctx context.Context, author string) ([]core.Stream, error)
+	ListStreamBySchema(ctx context.Context, schema string) ([]core.Stream, error)
+	ListStreamByAuthor(ctx context.Context, author string) ([]core.Stream, error)
+
+	GetChunks(ctx context.Context, streams []string, pivot time.Time) (map[string]Chunk, error)
 }
 
 type service struct {
@@ -53,6 +56,21 @@ func NewService(rdb *redis.Client, repository Repository, entity entity.Service,
 	return &service{rdb, repository, entity, config}
 }
 
+func Time2Chunk(t time.Time) string {
+	// chunk by 10 minutes
+	return fmt.Sprintf("%d", (t.Unix()/600)*600)
+}
+
+func Chunk2RecentTime(chunk string) time.Time {
+	i, _ := strconv.ParseInt(chunk, 10, 64)
+	return time.Unix(i+600, 0)
+}
+
+func Chunk2ImmediateTime(chunk string) time.Time {
+	i, _ := strconv.ParseInt(chunk, 10, 64)
+	return time.Unix(i, 0)
+}
+
 func min(a, b int) int {
 	if a < b {
 		return a
@@ -60,119 +78,237 @@ func min(a, b int) int {
 	return b
 }
 
-// GetRecent returns recent message from streams
-func (s *service) GetRecent(ctx context.Context, streams []string, limit int) ([]Element, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetRecent")
+// GetChunks returns chunks by streamID and time
+func (s *service) GetChunks(ctx context.Context, streams []string, until time.Time) (map[string]Chunk, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetChunks")
 	defer span.End()
 
-	var messages []redis.XMessage
-    for _, stream := range streams { // TODO: use pipeline
-		cmd := s.rdb.XRevRangeN(ctx, stream, "+", "-", int64(limit))
-		messages = append(messages, cmd.Val()...)
-	}
-	m := make(map[string]bool)
-	uniq := []redis.XMessage{}
-	for _, elem := range messages {
-		if !m[elem.Values["id"].(string)] {
-			m[elem.Values["id"].(string)] = true
-			uniq = append(uniq, elem)
+	// normalize streamID and validate
+	for i, stream := range streams {
+		if !strings.Contains(stream, "@") {
+			streams[i] = fmt.Sprintf("%s@%s", stream, s.config.Concurrent.FQDN)
+		} else {
+			split := strings.Split(stream, "@")
+			if len(split) != 2 {
+				return nil, fmt.Errorf("invalid streamID: %s", stream)
+			}
+			if split[1] != s.config.Concurrent.FQDN {
+				return nil, fmt.Errorf("invalid streamID: %s", stream)
+			}
 		}
-	}
-	sort.Slice(uniq, func(l, r int) bool {
-		lStr := strings.Replace(uniq[l].ID, "-", ".", 1)
-		rStr := strings.Replace(uniq[r].ID, "-", ".", 1)
-		lTime, _ := strconv.ParseFloat(lStr, 32)
-		rTime, _ := strconv.ParseFloat(rStr, 32)
-		return lTime > rTime
-	})
-	chopped := uniq[:min(len(uniq), limit)]
-	result := []Element{}
-
-	for _, elem := range chopped {
-		host, _ := s.entity.ResolveHost(ctx, elem.Values["author"].(string))
-		id, ok := elem.Values["id"].(string)
-		if !ok {
-			id = ""
-		}
-		typ, ok := elem.Values["type"].(string)
-		if !ok {
-			typ = "message"
-		}
-		author, ok := elem.Values["author"].(string)
-		if !ok {
-			author = ""
-		}
-		result = append(result, Element{
-			Timestamp: elem.ID,
-			ID:        id,
-			Type:      typ,
-			Author:    author,
-			Domain:    host,
-		})
 	}
 
-	return result, nil
+	// first, try to get from cache
+	untilChunk := Time2Chunk(until)
+	items, err := s.repository.GetChunksFromCache(ctx, streams, untilChunk)
+	if err != nil {
+		log.Printf("Error: %v", err)
+		span.RecordError(err)
+		return nil, err
+	}
+
+	// if not found in cache, get from db
+	missingStreams := make([]string, 0)
+	for _, stream := range streams {
+		if _, ok := items[stream]; !ok {
+			missingStreams = append(missingStreams, stream)
+		}
+	}
+
+	if len(missingStreams) > 0 {
+		// get from db
+		dbItems, err := s.repository.GetChunksFromDB(ctx, missingStreams, untilChunk)
+		if err != nil {
+			log.Printf("Error: %v", err)
+			span.RecordError(err)
+			return nil, err
+		}
+		// merge
+		for k, v := range dbItems {
+			items[k] = v
+		}
+	}
+
+	return items, nil
 }
 
-// GetRange returns specified range messages from streams
-func (s *service) GetRange(ctx context.Context, streams []string, since string, until string, limit int) ([]Element, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetRange")
+// GetRecentItems returns recent message from streams
+func (s *service) GetRecentItems(ctx context.Context, streams []string, until time.Time, limit int) ([]core.StreamItem, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetRecentItems")
 	defer span.End()
 
-	var messages []redis.XMessage
-	for _, stream := range streams { // TODO: use pipeline
-		cmd := s.rdb.XRevRangeN(ctx, stream, until, since, int64(limit))
-		messages = append(messages, cmd.Val()...)
+	// normalize streamID and validate
+	for i, stream := range streams {
+		if !strings.Contains(stream, "@") {
+			streams[i] = fmt.Sprintf("%s@%s", stream, s.config.Concurrent.FQDN)
+		} else {
+			split := strings.Split(stream, "@")
+			if len(split) != 2 {
+				return nil, fmt.Errorf("invalid streamID: %s", stream)
+			}
+		}
 	}
+
+	// first, try to get from cache regardless of local or remote
+	untilChunk := Time2Chunk(until)
+	items, err := s.repository.GetChunksFromCache(ctx, streams, untilChunk)
+	if err != nil {
+		log.Printf("Error: %v", err)
+		span.RecordError(err)
+		return nil, err
+	}
+
+	// if not found in cache, get from remote by host
+	buckets := make(map[string][]string)
+	for _, stream := range streams {
+		if _, ok := items[stream]; !ok {
+			split := strings.Split(stream, "@")
+			if len(split) != 2 {
+				continue
+			}
+			buckets[split[1]] = append(buckets[split[1]], split[0])
+		}
+	}
+
+	for host, streams := range buckets {
+		if host == s.config.Concurrent.FQDN {
+			chunks, err := s.repository.GetChunksFromDB(ctx, streams, untilChunk)
+			if err != nil {
+				log.Printf("Error: %v", err)
+				span.RecordError(err)
+				return nil, err
+			}
+			for stream, chunk := range chunks {
+				items[stream] = chunk
+			}
+		} else {
+			streamsStr := strings.Join(streams, ",")
+			timeStr := fmt.Sprintf("%d", until.Unix())
+			req, err := http.NewRequest("GET", "https://"+host+"/api/v1/streams/chunks?streams="+streamsStr+"&time="+timeStr, nil)
+			if err != nil {
+				span.RecordError(err)
+				continue
+			}
+			otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+			client := new(http.Client)
+			resp, err := client.Do(req)
+			if err != nil {
+				span.RecordError(err)
+				continue
+			}
+			defer resp.Body.Close()
+
+			body, err := ioutil.ReadAll(resp.Body)
+			if err != nil {
+				span.RecordError(err)
+				continue
+			}
+
+			var chunkResp chunkResponse
+			err = json.Unmarshal(body, &chunkResp)
+			if err != nil {
+				span.RecordError(err)
+				continue
+			}
+
+			for stream, chunk := range chunkResp.Content {
+				items[stream] = chunk
+			}
+
+			err = s.repository.SaveToCache(ctx, chunkResp.Content, until)
+			if err != nil {
+				log.Printf("Error: %v", err)
+				span.RecordError(err)
+				continue
+			}
+		}
+	}
+
+	// summary messages and remove earlier than until
+	var messages []core.StreamItem
+	for _, item := range items {
+		for _, streamItem := range item.Items {
+			if streamItem.CDate.After(until) {
+				continue
+			}
+			messages = append(messages, streamItem)
+		}
+	}
+
+	var uniq []core.StreamItem
 	m := make(map[string]bool)
-	uniq := []redis.XMessage{}
 	for _, elem := range messages {
-		if !m[elem.Values["id"].(string)] {
-			m[elem.Values["id"].(string)] = true
+		if !m[elem.ObjectID] {
+			m[elem.ObjectID] = true
 			uniq = append(uniq, elem)
 		}
 	}
-	sort.Slice(uniq, func(l, r int) bool {
-		lStr := strings.Replace(uniq[l].ID, "-", ".", 1)
-		rStr := strings.Replace(uniq[r].ID, "-", ".", 1)
-		lTime, _ := strconv.ParseFloat(lStr, 32)
-		rTime, _ := strconv.ParseFloat(rStr, 32)
-		return lTime > rTime
-	})
-	chopped := uniq[:min(len(uniq), limit)]
-	result := []Element{}
 
-	for _, elem := range chopped {
-		host, _ := s.entity.ResolveHost(ctx, elem.Values["author"].(string))
-		id, ok := elem.Values["id"].(string)
-		if !ok {
-			id = ""
+	sort.Slice(uniq, func(l, r int) bool {
+		return uniq[l].CDate.After(uniq[r].CDate)
+	})
+
+	chopped := uniq[:min(len(uniq), limit)]
+
+	return chopped, nil
+}
+
+// GetImmediateItems returns immediate message from streams
+func (s *service) GetImmediateItems(ctx context.Context, streams []string, since time.Time, limit int) ([]core.StreamItem, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetImmediateItems")
+	defer span.End()
+
+	var messages []core.StreamItem
+	var buckets map[string][]string = make(map[string][]string)
+
+	for _, stream := range streams {
+		split := strings.Split(stream, "@")
+		host := s.config.Concurrent.FQDN
+		if len(split) != 2 {
+			host = split[1]
 		}
-		typ, ok := elem.Values["type"].(string)
-		if !ok {
-			typ = "message"
-		}
-		author, ok := elem.Values["author"].(string)
-		if !ok {
-			author = ""
-		}
-		result = append(result, Element{
-			Timestamp: elem.ID,
-			ID:        id,
-			Type:      typ,
-			Author:    author,
-			Domain:    host,
-		})
+
+		buckets[host] = append(buckets[host], split[0])
 	}
 
-	return result, nil
+	for host, localstreams := range buckets {
+		if host == s.config.Concurrent.FQDN {
+			for _, stream := range localstreams {
+				items, err := s.repository.GetImmediateItems(ctx, stream, since, limit)
+				if err != nil {
+					span.RecordError(err)
+					continue
+				}
+				messages = append(messages, items...)
+			}
+		} else {
+			// TODO: Get from remote
+		}
+	}
+
+	var uniq []core.StreamItem
+	m := make(map[string]bool)
+	for _, elem := range messages {
+		if !m[elem.ObjectID] {
+			m[elem.ObjectID] = true
+			uniq = append(uniq, elem)
+		}
+	}
+
+	sort.Slice(uniq, func(l, r int) bool {
+		return uniq[l].CDate.Before(uniq[r].CDate)
+	})
+
+	chopped := uniq[:min(len(uniq), limit)]
+
+	return chopped, nil
 }
 
 // Post posts events to the stream.
 // If the stream is local, it will be posted to the local Redis.
 // If the stream is remote, it will be posted to the remote domain's Checkpoint.
-func (s *service) Post(ctx context.Context, stream string, id string, typ string, author string, host string, owner string) error {
-	ctx, span := tracer.Start(ctx, "ServicePost")
+func (s *service) PostItem(ctx context.Context, stream string, item core.StreamItem, body interface{}) error {
+	ctx, span := tracer.Start(ctx, "ServicePostItem")
 	defer span.End()
 
 	span.SetAttributes(attribute.String("stream", stream))
@@ -182,65 +318,43 @@ func (s *service) Post(ctx context.Context, stream string, id string, typ string
 		return fmt.Errorf("Invalid format: %v", stream)
 	}
 
-	if host == "" {
-		host = s.config.Concurrent.FQDN
-	}
-
 	streamID, streamHost := query[0], query[1]
 
-	if owner == "" {
-		owner = author
-	}
+	item.StreamID = streamID
 
 	if streamHost == s.config.Concurrent.FQDN {
 
 		// check if the user has write access to the stream
-		if !s.repository.HasWriteAccess(ctx, streamID, author) {
+		if !s.repository.HasWriteAccess(ctx, streamID, item.Author) {
 			return fmt.Errorf("You don't have write access to %v", streamID)
 		}
 
 		// add to stream
-		timestamp, err := s.rdb.XAdd(ctx, &redis.XAddArgs{
-			Stream: streamID,
-			ID:     "*",
-			Values: map[string]interface{}{
-				"id":     id,
-				"type":   typ,
-				"author": owner,
-			},
-		}).Result()
+		created, err := s.repository.CreateItem(ctx, item)
 		if err != nil {
 			span.RecordError(err)
-			log.Printf("fail to xadd: %v", err)
+			log.Printf("fail to create item: %v", err)
+			return err
 		}
 
 		// publish event to pubsub
 		jsonstr, _ := json.Marshal(Event{
 			Stream: stream,
-			Type:   typ,
 			Action: "create",
-			Body: Element{
-				Timestamp: timestamp,
-				ID:        id,
-				Type:      typ,
-				Author:    author,
-				Owner:     owner,
-				Domain:    host,
-			},
+			Type:   item.Type,
+			Item:   created,
+			Body:   body,
 		})
 		err = s.rdb.Publish(context.Background(), stream, jsonstr).Err()
 		if err != nil {
 			span.RecordError(err)
 			log.Printf("fail to publish message to Redis: %v", err)
+			return err
 		}
 	} else {
 		packet := checkpointPacket{
-			Stream: stream,
-			ID:     id,
-			Type:   typ,
-			Author: author,
-			Host:   s.config.Concurrent.FQDN,
-			Owner:  owner,
+			Item: item,
+			Body: body,
 		}
 		packetStr, err := json.Marshal(packet)
 		if err != nil {
@@ -283,7 +397,7 @@ func (s *service) Post(ctx context.Context, stream string, id string, typ string
 }
 
 // Create updates stream information
-func (s *service) Create(ctx context.Context, obj core.Stream) (core.Stream, error) {
+func (s *service) CreateStream(ctx context.Context, obj core.Stream) (core.Stream, error) {
 	ctx, span := tracer.Start(ctx, "ServiceCreate")
 	defer span.End()
 
@@ -292,14 +406,14 @@ func (s *service) Create(ctx context.Context, obj core.Stream) (core.Stream, err
 	}
 	obj.ID = xid.New().String()
 
-	created, err := s.repository.Create(ctx, obj)
+	created, err := s.repository.CreateStream(ctx, obj)
 	created.ID = created.ID + "@" + s.config.Concurrent.FQDN
 
 	return created, err
 }
 
 // Update updates stream information
-func (s *service) Update(ctx context.Context, obj core.Stream) (core.Stream, error) {
+func (s *service) UpdateStream(ctx context.Context, obj core.Stream) (core.Stream, error) {
 	ctx, span := tracer.Start(ctx, "ServiceUpdate")
 	defer span.End()
 
@@ -311,7 +425,7 @@ func (s *service) Update(ctx context.Context, obj core.Stream) (core.Stream, err
 		obj.ID = split[0]
 	}
 
-	updated, err := s.repository.Update(ctx, obj)
+	updated, err := s.repository.UpdateStream(ctx, obj)
 
 	updated.ID = updated.ID + "@" + s.config.Concurrent.FQDN
 
@@ -319,19 +433,19 @@ func (s *service) Update(ctx context.Context, obj core.Stream) (core.Stream, err
 }
 
 // Get returns stream information by ID
-func (s *service) Get(ctx context.Context, key string) (core.Stream, error) {
+func (s *service) GetStream(ctx context.Context, key string) (core.Stream, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGet")
 	defer span.End()
 
-	return s.repository.Get(ctx, key)
+	return s.repository.GetStream(ctx, key)
 }
 
 // StreamListBySchema returns streamList by schema
-func (s *service) StreamListBySchema(ctx context.Context, schema string) ([]core.Stream, error) {
+func (s *service) ListStreamBySchema(ctx context.Context, schema string) ([]core.Stream, error) {
 	ctx, span := tracer.Start(ctx, "ServiceStreamListBySchema")
 	defer span.End()
 
-	streams, err := s.repository.GetListBySchema(ctx, schema)
+	streams, err := s.repository.ListStreamBySchema(ctx, schema)
 	for i := 0; i < len(streams); i++ {
 		streams[i].ID = streams[i].ID + "@" + s.config.Concurrent.FQDN
 	}
@@ -339,50 +453,37 @@ func (s *service) StreamListBySchema(ctx context.Context, schema string) ([]core
 }
 
 // StreamListByAuthor returns streamList by author
-func (s *service) StreamListByAuthor(ctx context.Context, author string) ([]core.Stream, error) {
+func (s *service) ListStreamByAuthor(ctx context.Context, author string) ([]core.Stream, error) {
 	ctx, span := tracer.Start(ctx, "ServiceStreamListByAuthor")
 	defer span.End()
 
-	streams, err := s.repository.GetListByAuthor(ctx, author)
+	streams, err := s.repository.ListStreamByAuthor(ctx, author)
 	for i := 0; i < len(streams); i++ {
 		streams[i].ID = streams[i].ID + "@" + s.config.Concurrent.FQDN
 	}
 	return streams, err
 }
 
-// GetElement returns stream element by ID
-func (s *service) GetElement(ctx context.Context, stream string, id string) (Element, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetElement")
+// GetItem returns stream element by ID
+func (s *service) GetItem(ctx context.Context, stream string, id string) (core.StreamItem, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetItem")
 	defer span.End()
 
-	result, err := s.rdb.XRange(ctx, stream, id, id).Result()
-	if err != nil {
-		span.RecordError(err)
-		return Element{}, err
-	}
-	if len(result) == 0 {
-		return Element{}, fmt.Errorf("element not found")
-	}
-	return Element{
-		Timestamp: result[0].ID,
-		ID:        result[0].Values["id"].(string),
-		Type:      result[0].Values["type"].(string),
-		Author:    result[0].Values["author"].(string),
-	}, nil
+	return s.repository.GetItem(ctx, stream, id)
 }
 
 // Remove removes stream element by ID
-func (s *service) Remove(ctx context.Context, stream string, id string) {
-	ctx, span := tracer.Start(ctx, "ServiceRemove")
+func (s *service) RemoveItem(ctx context.Context, stream string, id string) {
+	ctx, span := tracer.Start(ctx, "ServiceRemoveItem")
 	defer span.End()
 
-	s.rdb.XDel(ctx, stream, id)
+	s.repository.DeleteItem(ctx, stream, id)
 }
 
 // Delete deletes
-func (s *service) Delete(ctx context.Context, streamID string) error {
+func (s *service) DeleteStream(ctx context.Context, streamID string) error {
 	ctx, span := tracer.Start(ctx, "ServiceDelete")
 	defer span.End()
 
-	return s.repository.Delete(ctx, streamID)
+	return s.repository.DeleteStream(ctx, streamID)
 }

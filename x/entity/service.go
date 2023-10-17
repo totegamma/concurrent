@@ -2,10 +2,10 @@ package entity
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strings"
 	"time"
-    "encoding/json"
 
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
@@ -14,18 +14,18 @@ import (
 
 // Service is the interface for entity service
 type Service interface {
-    Create(ctx context.Context, ccid string, meta string) error
-    Register(ctx context.Context, ccid string, meta string, inviterID string) error
-    Get(ctx context.Context, ccid string) (core.Entity, error)
-    List(ctx context.Context) ([]SafeEntity, error)
-    ListModified(ctx context.Context, modified time.Time) ([]SafeEntity, error)
-    ResolveHost(ctx context.Context, user string) (string, error)
-    Update(ctx context.Context, entity *core.Entity) error
-    Upsert(ctx context.Context, entity *core.Entity) error
-    IsUserExists(ctx context.Context, user string) bool
-    Delete(ctx context.Context, id string) error
-    Ack(ctx context.Context, from, to string) error
-    Unack(ctx context.Context, from, to string) error
+	Create(ctx context.Context, ccid string, meta string) error
+	Register(ctx context.Context, ccid string, meta string, inviterID string) error
+	Get(ctx context.Context, ccid string) (core.Entity, error)
+	List(ctx context.Context) ([]SafeEntity, error)
+	ListModified(ctx context.Context, modified time.Time) ([]SafeEntity, error)
+	ResolveHost(ctx context.Context, user string) (string, error)
+	Update(ctx context.Context, entity *core.Entity) error
+	Upsert(ctx context.Context, entity *core.Entity) error
+	IsUserExists(ctx context.Context, user string) bool
+	Delete(ctx context.Context, id string) error
+	Ack(ctx context.Context, from, to string) error
+	Unack(ctx context.Context, from, to string) error
 	Total(ctx context.Context) (int64, error)
 }
 
@@ -184,63 +184,61 @@ func (s *service) Delete(ctx context.Context, id string) error {
 
 // Ack creates new Ack
 func (s *service) Ack(ctx context.Context, objectStr string, signature string) error {
-    ctx, span := tracer.Start(ctx, "ServiceAck")
-    defer span.End()
+	ctx, span := tracer.Start(ctx, "ServiceAck")
+	defer span.End()
 
-    var object AckSignedObject
-    err := json.Unmarshal([]byte(objectStr), &object)
-    if err != nil {
-        span.RecordError(err)
-        return err
-    }
+	var object AckSignedObject
+	err := json.Unmarshal([]byte(objectStr), &object)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
 
-    if object.Type != "ack" {
-        return fmt.Errorf("object is not ack")
-    }
+	if object.Type != "ack" {
+		return fmt.Errorf("object is not ack")
+	}
 
-    err = util.VerifySignature(objectStr, object.From, signature)
-    if err != nil {
-        span.RecordError(err)
-        return err
-    }
+	err = util.VerifySignature(objectStr, object.From, signature)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
 
-    // TODO: if ack destination is remote, forward ack to remote
+	// TODO: if ack destination is remote, forward ack to remote
 
-    return s.repository.Ack(ctx, &core.Ack{
-        From: object.From,
-        To: object.To,
-        Signature: signature,
-        Payload: objectStr,
-    })
+	return s.repository.Ack(ctx, &core.Ack{
+		From:      object.From,
+		To:        object.To,
+		Signature: signature,
+		Payload:   objectStr,
+	})
 }
 
 // Unack creates new Unack
 func (s *service) Unack(ctx context.Context, objectStr string, signature string) error {
-    ctx, span := tracer.Start(ctx, "ServiceUnack")
-    defer span.End()
+	ctx, span := tracer.Start(ctx, "ServiceUnack")
+	defer span.End()
 
-    var object AckSignedObject
-    err := json.Unmarshal([]byte(objectStr), &object)
-    if err != nil {
-        span.RecordError(err)
-        return err
-    }
+	var object AckSignedObject
+	err := json.Unmarshal([]byte(objectStr), &object)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
 
-    // TODO: if ack destination is remote, forward ack to remote
+	// TODO: if ack destination is remote, forward ack to remote
 
-    if object.Type != "unack" {
-        return fmt.Errorf("object is not unack")
-    }
+	if object.Type != "unack" {
+		return fmt.Errorf("object is not unack")
+	}
 
-    err = util.VerifySignature(objectStr, object.From, signature)
-    if err != nil {
-        span.RecordError(err)
-        return err
-    }
+	err = util.VerifySignature(objectStr, object.From, signature)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
 
-    // TODO: if unack destination is remote, forward unack to remote
+	// TODO: if unack destination is remote, forward unack to remote
 
-    return s.repository.Unack(ctx, object.From, object.To)
+	return s.repository.Unack(ctx, object.From, object.To)
 }
-
-

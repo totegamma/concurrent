@@ -71,4 +71,9 @@ services:
       retries: 20
     ports:
       - "6379:6379"
+
+  memcached:
+    image: memcached
+    ports:
+      - "11211:11211"
   

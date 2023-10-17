@@ -8,8 +8,8 @@ import (
 
 // Repository is the interface for character repository
 type Repository interface {
-    Upsert(ctx context.Context, character core.Character) error
-    Get(ctx context.Context, owner string, schema string) ([]core.Character, error)
+	Upsert(ctx context.Context, character core.Character) error
+	Get(ctx context.Context, owner string, schema string) ([]core.Character, error)
 }
 
 type repository struct {

@@ -3,19 +3,19 @@ package auth
 import (
 	"context"
 	"fmt"
+	"github.com/labstack/echo/v4"
 	"github.com/rs/xid"
 	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/util"
 	"strconv"
 	"time"
-	"github.com/labstack/echo/v4"
 )
 
 // Service is the interface for auth service
 type Service interface {
-    IssueJWT(ctx context.Context, request string) (string, error)
-    Restrict(principal Principal) echo.MiddlewareFunc
+	IssueJWT(ctx context.Context, request string) (string, error)
+	Restrict(principal Principal) echo.MiddlewareFunc
 }
 
 type service struct {

@@ -9,15 +9,15 @@ import (
 
 // Repository is the interface for host repository
 type Repository interface {
-    Get(ctx context.Context, key string) (core.Entity, error)
-    Create(ctx context.Context, entity *core.Entity) error
-    Upsert(ctx context.Context, entity *core.Entity) error
-    GetList(ctx context.Context) ([]SafeEntity, error)
-    ListModified(ctx context.Context, modified time.Time) ([]SafeEntity, error)
-    Delete(ctx context.Context, key string) error
-    Update(ctx context.Context, entity *core.Entity) error
-    Ack(ctx context.Context, ack *core.Ack) error
-    Unack(ctx context.Context, from, to string) error
+	Get(ctx context.Context, key string) (core.Entity, error)
+	Create(ctx context.Context, entity *core.Entity) error
+	Upsert(ctx context.Context, entity *core.Entity) error
+	GetList(ctx context.Context) ([]SafeEntity, error)
+	ListModified(ctx context.Context, modified time.Time) ([]SafeEntity, error)
+	Delete(ctx context.Context, key string) error
+	Update(ctx context.Context, entity *core.Entity) error
+	Ack(ctx context.Context, ack *core.Ack) error
+	Unack(ctx context.Context, from, to string) error
 	Total(ctx context.Context) (int64, error)
 }
 
@@ -104,17 +104,16 @@ func (r *repository) Update(ctx context.Context, entity *core.Entity) error {
 
 // Ack creates a new ack
 func (r *repository) Ack(ctx context.Context, ack *core.Ack) error {
-    ctx, span := tracer.Start(ctx, "RepositoryAck")
-    defer span.End()
+	ctx, span := tracer.Start(ctx, "RepositoryAck")
+	defer span.End()
 
-    return r.db.WithContext(ctx).Create(&ack).Error
+	return r.db.WithContext(ctx).Create(&ack).Error
 }
 
 // Unack deletes a ack
 func (r *repository) Unack(ctx context.Context, from, to string) error {
-    ctx, span := tracer.Start(ctx, "RepositoryUnack")
-    defer span.End()
+	ctx, span := tracer.Start(ctx, "RepositoryUnack")
+	defer span.End()
 
-    return r.db.WithContext(ctx).Delete(&core.Ack{}, "from = ? AND to = ?", from, to).Error
+	return r.db.WithContext(ctx).Delete(&core.Ack{}, "from = ? AND to = ?", from, to).Error
 }
-

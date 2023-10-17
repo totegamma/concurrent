@@ -8,13 +8,13 @@ import (
 
 // Service is the interface for host service
 type Service interface {
-    Upsert(ctx context.Context, host *core.Domain) error
-    GetByFQDN(ctx context.Context, key string) (core.Domain, error)
-    GetByCCID(ctx context.Context, key string) (core.Domain, error)
-    List(ctx context.Context) ([]core.Domain, error)
-    Delete(ctx context.Context, id string) (error)
-    Update(ctx context.Context, host *core.Domain) error
-    UpdateScrapeTime(ctx context.Context, id string, scrapeTime time.Time) error
+	Upsert(ctx context.Context, host *core.Domain) error
+	GetByFQDN(ctx context.Context, key string) (core.Domain, error)
+	GetByCCID(ctx context.Context, key string) (core.Domain, error)
+	List(ctx context.Context) ([]core.Domain, error)
+	Delete(ctx context.Context, id string) error
+	Update(ctx context.Context, host *core.Domain) error
+	UpdateScrapeTime(ctx context.Context, id string, scrapeTime time.Time) error
 }
 
 type service struct {

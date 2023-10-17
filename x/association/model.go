@@ -5,14 +5,6 @@ import (
 	"time"
 )
 
-// Event is a message type which send to socket service
-type Event struct {
-	Stream string  `json:"stream"`
-	Type   string  `json:"type"`
-	Action string  `json:"action"`
-	Body   Element `json:"body"`
-}
-
 type Element struct {
 	ID string `json:"id"`
 }

@@ -8,9 +8,9 @@ import (
 
 // Repository is the interface for message repository
 type Repository interface {
-    Create(ctx context.Context, message *core.Message) (string, error)
-    Get(ctx context.Context, key string) (core.Message, error)
-    Delete(ctx context.Context, key string) (core.Message, error)
+	Create(ctx context.Context, message core.Message) (core.Message, error)
+	Get(ctx context.Context, key string) (core.Message, error)
+	Delete(ctx context.Context, key string) (core.Message, error)
 	Total(ctx context.Context) (int64, error)
 }
 
@@ -34,12 +34,12 @@ func NewRepository(db *gorm.DB) Repository {
 }
 
 // Create creates new message
-func (r *repository) Create(ctx context.Context, message *core.Message) (string, error) {
+func (r *repository) Create(ctx context.Context, message core.Message) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryCreate")
 	defer span.End()
 
 	err := r.db.WithContext(ctx).Create(&message).Error
-	return message.ID, err
+	return message, err
 }
 
 // Get returns a message by ID
@@ -58,6 +58,13 @@ func (r *repository) Delete(ctx context.Context, id string) (core.Message, error
 	defer span.End()
 
 	var deleted core.Message
+	if err := r.db.WithContext(ctx).First(&deleted, "id = ?", id).Error; err != nil {
+		return deleted, err
+	}
 	err := r.db.WithContext(ctx).Where("id = $1", id).Delete(&deleted).Error
-	return deleted, err
+	if err != nil {
+		return deleted, err
+	}
+
+	return deleted, nil
 }

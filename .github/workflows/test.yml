@@ -47,6 +47,11 @@ jobs:
           echo "BRANCH_NAME=pr-${{ github.event.number }}" >> $GITHUB_ENV
         fi
 
+    - uses: actions/download-artifact@v3
+      continue-on-error: true
+      with:
+        path: './dist'
+
     - name: create dist directory
       run: mkdir -p "dist/$BRANCH_NAME"
 

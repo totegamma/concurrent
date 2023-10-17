@@ -47,9 +47,11 @@ jobs:
           echo "BRANCH_NAME=pr-${{ github.event.number }}" >> $GITHUB_ENV
         fi
 
-    - uses: actions/download-artifact@v3
+    - name: Download Previous artifact
+      uses: actions/download-artifact@v3
       continue-on-error: true
       with:
+        name: 'github-pages'
         path: './dist'
 
     - name: create dist directory

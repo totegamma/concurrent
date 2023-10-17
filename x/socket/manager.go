@@ -41,8 +41,19 @@ func NewSubscriptionManager(mc *memcache.Client, rdb *redis.Client) *subscriptio
 		remoteSubs: make(map[string][]string),
 		remoteConns: make(map[string]*websocket.Conn),
 	}
-	go manager.cacheKeeperRoutine()
 	go manager.chunkUpdaterRoutine()
+	return manager
+}
+
+
+func NewSubscriptionManagerForTest(mc *memcache.Client, rdb *redis.Client) *subscriptionManager {
+	manager := &subscriptionManager{
+		mc: mc,
+		rdb: rdb,
+		clientSubs: make(map[*websocket.Conn][]string),
+		remoteSubs: make(map[string][]string),
+		remoteConns: make(map[string]*websocket.Conn),
+	}
 	return manager
 }
 
@@ -87,35 +98,50 @@ func (m *subscriptionManager) createInsufficientSubs() {
 
 	// FIXME: should be call if the subsucription is updated
 	for domain, streams := range m.remoteSubs {
-		m.RemoteSubRoutine(domain, streams)
+		if _, ok := m.remoteConns[domain]; !ok {
+			m.RemoteSubRoutine(domain, streams)
+		}
 	}
 }
 
 // DeleteExcessiveSubs deletes subscriptions that are not needed anymore
 func (m *subscriptionManager) deleteExcessiveSubs() {
-	currentSubs := make(map[string][]string)
+	var currentSubs []string
 	for _, streams := range m.clientSubs {
 		for _, stream := range streams {
-			split := strings.Split(stream, "@")
-			if len(split) != 2 {
-				continue
-			}
-			domain := split[1]
-			if _, ok := currentSubs[domain]; !ok {
-				currentSubs[domain] = append(currentSubs[domain], stream)
+			if !slices.Contains(currentSubs, stream) {
+				currentSubs = append(currentSubs, stream)
 			}
 		}
 	}
 
+	var closeList []string
+
 	for domain, streams := range m.remoteSubs {
 		for _, stream := range streams {
-			if !slices.Contains(currentSubs[domain], stream) {
-				// delete subscription
-				m.remoteConns[domain].WriteJSON(channelRequest{
-					Channels: []string{stream},
-				})
+			var newSubs []string
+			for _, currentSub := range currentSubs {
+				if currentSub == stream {
+					newSubs = append(newSubs, currentSub)
+				}
+			}
+			m.remoteSubs[domain] = newSubs
+
+			if len(m.remoteSubs[domain]) == 0 {
+				closeList = append(closeList, domain)
 			}
 		}
+	}
+
+	for _, domain := range closeList {
+
+		// close connection
+		if conn, ok := m.remoteConns[domain]; ok {
+			conn.Close()
+		}
+
+		delete(m.remoteSubs, domain)
+		delete(m.remoteConns, domain)
 	}
 }
 
@@ -141,6 +167,11 @@ func (m *subscriptionManager) RemoteSubRoutine(domain string, streams []string) 
 		go func(c *websocket.Conn) {
 			defer c.Close()
 			for {
+				// check if the connection is still alive
+				if c == nil {
+					log.Printf("connection is nil (domain: %s)", domain)
+					return
+				}
 				_, message, err := c.ReadMessage()
 				if err != nil {
 					log.Printf("fail to read message: %v", err)
@@ -158,6 +189,17 @@ func (m *subscriptionManager) RemoteSubRoutine(domain string, streams []string) 
 				if err != nil {
 					log.Printf("fail to publish message to Redis: %v", err)
 				}
+
+				// update cache
+				json, err := json.Marshal(event.Item)
+				if err != nil {
+					log.Printf("fail to Marshall item: %v", err)
+				}
+				json = append(json, ',')
+
+				// update cache
+				cacheKey := "stream:body:all:" + event.Item.StreamID + ":" + stream.Time2Chunk(event.Item.CDate)
+				m.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
 			}
 		}(c)
 	}
@@ -171,40 +213,18 @@ func (m *subscriptionManager) RemoteSubRoutine(domain string, streams []string) 
 	}
 }
 
-// CacheKeeperRoutine
-func (m *subscriptionManager) cacheKeeperRoutine() {
-	pubsub := m.rdb.Subscribe(ctx, "*")
-	defer pubsub.Close()
-
-	for {
-		msg, err := pubsub.ReceiveMessage(ctx)
-		if err != nil {
-			log.Printf("fail to receive message from Redis: %v", err)
-			return
+func (m *subscriptionManager) updateChunks(newchunk string) {
+	// update cache
+	for _, streams := range m.remoteSubs {
+		for _, stream := range streams {
+			m.mc.Add(&memcache.Item{Key: "stream:body:all:" + stream + ":" + newchunk, Value: []byte("")})
 		}
-
-		var event stream.Event
-		err = json.Unmarshal([]byte(msg.Payload), &event)
-		if err != nil {
-			log.Printf("fail to Unmarshall redis message: %v", err)
-		}
-
-		json, err := json.Marshal(event.Item)
-		if err != nil {
-			log.Printf("fail to Marshall item: %v", err)
-		}
-
-		json = append(json, ',')
-
-		// update cache
-		cacheKey := "stream:body:all:" + event.Item.StreamID + ":" + stream.Time2Chunk(event.Item.CDate)
-
-		m.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
 	}
 }
 
 // ChunkUpdaterRoutine
 func (m *subscriptionManager) chunkUpdaterRoutine() {
+	currentChunk := stream.Time2Chunk(time.Now())
 	for {
 		// 次の実行時刻を計算
 		nextRun := time.Now().Truncate(time.Hour).Add(time.Minute * 10)
@@ -217,21 +237,16 @@ func (m *subscriptionManager) chunkUpdaterRoutine() {
 		// 次の実行時刻まで待機
 		time.Sleep(time.Until(nextRun))
 
-		m.deleteExcessiveSubs()
-
-		// update cache
-		for _, streams := range m.clientSubs {
-			for _, stream := range streams {
-				split := strings.Split(stream, "@")
-				if len(split) != 2 {
-					continue
-				}
-				domain := split[1]
-				if _, ok := m.remoteSubs[domain]; !ok {
-					m.mc.Add(&memcache.Item{Key: "stream:body:all:" + stream, Value: []byte("")})
-				}
-			}
+		// まだだったら待ちなおす
+		newChunk := stream.Time2Chunk(time.Now())
+		if newChunk == currentChunk {
+			continue
 		}
+
+		m.deleteExcessiveSubs()
+		m.updateChunks(newChunk)
+
+		currentChunk = newChunk
 	}
 }
 

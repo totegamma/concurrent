@@ -4,13 +4,14 @@ package main
 import (
 	"context"
 	"fmt"
-	"github.com/redis/go-redis/v9"
-	"gorm.io/driver/postgres"
-	"gorm.io/gorm"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+
+	"github.com/redis/go-redis/v9"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
 
 	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
@@ -18,6 +19,7 @@ import (
 
 	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/socket"
 	"github.com/totegamma/concurrent/x/util"
 
 	"github.com/bradfitz/gomemcache/memcache"
@@ -142,7 +144,8 @@ func main() {
 
 	agent := SetupAgent(db, rdb, config)
 
-	socketHandler := SetupSocketHandler(rdb, config)
+	socketManager := socket.NewManager(mc, rdb)
+	socketHandler := SetupSocketHandler(rdb, config, socketManager)
 	messageHandler := SetupMessageHandler(db, rdb, mc, config)
 	characterHandler := SetupCharacterHandler(db, config)
 	associationHandler := SetupAssociationHandler(db, rdb, mc, config)

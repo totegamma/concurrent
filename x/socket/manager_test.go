@@ -27,7 +27,7 @@ import (
 var mc *memcache.Client
 var rdb *redis.Client
 var pivot time.Time
-var m *subscriptionManager
+var m *manager
 
 func TestMain(tm *testing.M) {
 	log.Println("Test Start")

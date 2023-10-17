@@ -24,7 +24,11 @@ import (
 
 var ctx = context.Background()
 
-type subscriptionManager struct {
+type Manager interface {
+	Subscribe(conn *websocket.Conn, streams []string)
+}
+
+type manager struct {
 	mc *memcache.Client
 	rdb         *redis.Client
 	clientSubs map[*websocket.Conn][]string
@@ -33,21 +37,21 @@ type subscriptionManager struct {
 	remoteConns map[string]*websocket.Conn
 }
 
-func NewSubscriptionManager(mc *memcache.Client, rdb *redis.Client) *subscriptionManager {
-	manager := &subscriptionManager{
+func NewManager(mc *memcache.Client, rdb *redis.Client) Manager {
+	newmanager := &manager{
 		mc: mc,
 		rdb: rdb,
 		clientSubs: make(map[*websocket.Conn][]string),
 		remoteSubs: make(map[string][]string),
 		remoteConns: make(map[string]*websocket.Conn),
 	}
-	go manager.chunkUpdaterRoutine()
-	return manager
+	go newmanager.chunkUpdaterRoutine()
+	return newmanager
 }
 
 
-func NewSubscriptionManagerForTest(mc *memcache.Client, rdb *redis.Client) *subscriptionManager {
-	manager := &subscriptionManager{
+func NewSubscriptionManagerForTest(mc *memcache.Client, rdb *redis.Client) *manager {
+	manager := &manager{
 		mc: mc,
 		rdb: rdb,
 		clientSubs: make(map[*websocket.Conn][]string),
@@ -58,17 +62,17 @@ func NewSubscriptionManagerForTest(mc *memcache.Client, rdb *redis.Client) *subs
 }
 
 // Subscribe subscribes a client to a stream
-func (m *subscriptionManager) Subscribe(conn *websocket.Conn, streams []string) {
+func (m *manager) Subscribe(conn *websocket.Conn, streams []string) {
 	m.clientSubs[conn] = streams
 	m.createInsufficientSubs() // TODO: this should be done in a goroutine
 }
 
 // Unsubscribe unsubscribes a client from a stream
-func (m *subscriptionManager) Unsubscribe(conn *websocket.Conn) {
+func (m *manager) Unsubscribe(conn *websocket.Conn) {
 	delete(m.clientSubs, conn)
 }
 
-func (m *subscriptionManager) createInsufficientSubs() {
+func (m *manager) createInsufficientSubs() {
 	currentSubs := make(map[string][]string)
 	for _, streams := range m.clientSubs {
 		for _, stream := range streams {
@@ -105,7 +109,7 @@ func (m *subscriptionManager) createInsufficientSubs() {
 }
 
 // DeleteExcessiveSubs deletes subscriptions that are not needed anymore
-func (m *subscriptionManager) deleteExcessiveSubs() {
+func (m *manager) deleteExcessiveSubs() {
 	var currentSubs []string
 	for _, streams := range m.clientSubs {
 		for _, stream := range streams {
@@ -146,7 +150,7 @@ func (m *subscriptionManager) deleteExcessiveSubs() {
 }
 
 // RemoteSubRoutine subscribes to a remote server
-func (m *subscriptionManager) RemoteSubRoutine(domain string, streams []string) {
+func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 	if _, ok := m.remoteConns[domain]; !ok {
 		// new server, create new connection
 		u := url.URL{Scheme: "wss", Host: domain, Path: "/api/v1/socket"}
@@ -213,7 +217,7 @@ func (m *subscriptionManager) RemoteSubRoutine(domain string, streams []string) 
 	}
 }
 
-func (m *subscriptionManager) updateChunks(newchunk string) {
+func (m *manager) updateChunks(newchunk string) {
 	// update cache
 	for _, streams := range m.remoteSubs {
 		for _, stream := range streams {
@@ -223,7 +227,7 @@ func (m *subscriptionManager) updateChunks(newchunk string) {
 }
 
 // ChunkUpdaterRoutine
-func (m *subscriptionManager) chunkUpdaterRoutine() {
+func (m *manager) chunkUpdaterRoutine() {
 	currentChunk := stream.Time2Chunk(time.Now())
 	for {
 		// 次の実行時刻を計算

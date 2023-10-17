@@ -61,7 +61,7 @@ func SetupEntityHandler(db *gorm.DB, rdb *redis.Client, config util.Config) enti
 	return nil
 }
 
-func SetupSocketHandler(rdb *redis.Client, config util.Config) socket.Handler {
+func SetupSocketHandler(rdb *redis.Client, config util.Config, manager socket.Manager) socket.Handler {
 	wire.Build(socket.NewHandler, socket.NewService)
 	return nil
 }

@@ -40,7 +40,7 @@ jobs:
     - name: Set custom env var
       run: |
         if [[ "${{ github.event_name }}" == "push" ]]; then
-          echo "BRANCH_NAME=${{ github.ref#refs/heads/ }}" >> $GITHUB_ENV
+          echo "BRANCH_NAME=${{ github.ref_name }}" >> $GITHUB_ENV
         elif [[ "${{ github.event_name }}" == "pull_request" ]]; then
           echo "BRANCH_NAME=pr-${{ github.event.number }}" >> $GITHUB_ENV
         fi

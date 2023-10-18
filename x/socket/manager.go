@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/totegamma/concurrent/x/util"
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
@@ -31,16 +32,18 @@ type Manager interface {
 type manager struct {
 	mc *memcache.Client
 	rdb         *redis.Client
+	config  util.Config
+
 	clientSubs map[*websocket.Conn][]string
 	remoteSubs map[string][]string
-
 	remoteConns map[string]*websocket.Conn
 }
 
-func NewManager(mc *memcache.Client, rdb *redis.Client) Manager {
+func NewManager(mc *memcache.Client, rdb *redis.Client, util util.Config) Manager {
 	newmanager := &manager{
 		mc: mc,
 		rdb: rdb,
+		config: util,
 		clientSubs: make(map[*websocket.Conn][]string),
 		remoteSubs: make(map[string][]string),
 		remoteConns: make(map[string]*websocket.Conn),
@@ -89,6 +92,9 @@ func (m *manager) createInsufficientSubs() {
 
 	// on this func, update only if there is a new subscription
 	for domain, streams := range currentSubs {
+		if domain == m.config.Concurrent.FQDN {
+			continue
+		}
 		if _, ok := m.remoteSubs[domain]; !ok {
 			m.remoteSubs[domain] = streams
 		} else {
@@ -102,6 +108,7 @@ func (m *manager) createInsufficientSubs() {
 
 	// FIXME: should be call if the subsucription is updated
 	for domain, streams := range m.remoteSubs {
+		log.Printf("remote subscription updated: %v, %v", domain, streams)
 		if _, ok := m.remoteConns[domain]; !ok {
 			m.RemoteSubRoutine(domain, streams)
 		}

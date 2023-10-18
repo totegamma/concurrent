@@ -329,6 +329,8 @@ func (s *service) PostItem(ctx context.Context, stream string, item core.StreamI
 			return fmt.Errorf("You don't have write access to %v", streamID)
 		}
 
+		log.Printf("Post to local stream: %v, %v", streamID, item)
+
 		// add to stream
 		created, err := s.repository.CreateItem(ctx, item)
 		if err != nil {

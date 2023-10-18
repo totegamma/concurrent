@@ -253,7 +253,14 @@ func (r *repository) CreateItem(ctx context.Context, item core.StreamItem) (core
 
 	cacheKey := "stream:body:all:" + item.StreamID + ":" + Time2Chunk(item.CDate)
 
-	r.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
+	err = r.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
+	if err != nil {
+		err = r.mc.Set(&memcache.Item{Key: cacheKey, Value: json})
+		if err != nil {
+			span.RecordError(err)
+			return item, err
+		}
+	}
 
 	// chunk Iteratorを更新
 	// TOOD: 本当は今からInsertするitemのchunkが本当に最新かどうかを確認する必要がある

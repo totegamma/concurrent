@@ -144,7 +144,7 @@ func main() {
 
 	agent := SetupAgent(db, rdb, config)
 
-	socketManager := socket.NewManager(mc, rdb)
+	socketManager := socket.NewManager(mc, rdb, config)
 	socketHandler := SetupSocketHandler(rdb, config, socketManager)
 	messageHandler := SetupMessageHandler(db, rdb, mc, config)
 	characterHandler := SetupCharacterHandler(db, config)

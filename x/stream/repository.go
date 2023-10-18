@@ -1,6 +1,7 @@
 package stream
 
 import (
+	"log"
 	"context"
 	"encoding/json"
 	"time"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/util"
 	"slices"
 	"gorm.io/gorm"
 )
@@ -41,11 +43,12 @@ type Repository interface {
 type repository struct {
 	db *gorm.DB
 	mc *memcache.Client
+	config util.Config
 }
 
 // NewRepository creates a new stream repository
-func NewRepository(db *gorm.DB, mc *memcache.Client) Repository {
-	return &repository{db, mc}
+func NewRepository(db *gorm.DB, mc *memcache.Client, config util.Config) Repository {
+	return &repository{db, mc, config}
 }
 
 // SaveToCache saves items to cache
@@ -85,6 +88,8 @@ func (r *repository) GetChunksFromCache(ctx context.Context, streams []string, c
 		span.RecordError(err)
 		return nil, err
 	}
+
+	log.Println("targetKeyMap", targetKeyMap)
 
 	targetKeys := make([]string, 0)
 	for _, targetKey := range targetKeyMap {
@@ -243,6 +248,8 @@ func (r *repository) CreateItem(ctx context.Context, item core.StreamItem) (core
 
 	err := r.db.WithContext(ctx).Create(&item).Error
 
+	streamID := item.StreamID + "@" + r.config.Concurrent.FQDN
+
 	json, err := json.Marshal(item)
 	if err != nil {
 		span.RecordError(err)
@@ -251,21 +258,17 @@ func (r *repository) CreateItem(ctx context.Context, item core.StreamItem) (core
 
 	json = append(json, ',')
 
-	cacheKey := "stream:body:all:" + item.StreamID + ":" + Time2Chunk(item.CDate)
+	cacheKey := "stream:body:all:" + streamID + ":" + Time2Chunk(item.CDate)
 
 	err = r.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
 	if err != nil {
-		err = r.mc.Set(&memcache.Item{Key: cacheKey, Value: json})
-		if err != nil {
-			span.RecordError(err)
-			return item, err
-		}
+		return item, nil // XXX: キャッシュに保存できなくてもエラーにしない(本当に?)
 	}
 
 	// chunk Iteratorを更新
 	// TOOD: 本当は今からInsertするitemのchunkが本当に最新かどうかを確認する必要がある
-	key := "stream:itr:all:" + item.StreamID + ":" + Time2Chunk(item.CDate)
-	dest := "stream:body:all:" + item.StreamID + ":" + Time2Chunk(item.CDate)
+	key := "stream:itr:all:" + streamID + ":" + Time2Chunk(item.CDate)
+	dest := "stream:body:all:" + streamID + ":" + Time2Chunk(item.CDate)
 	r.mc.Set(&memcache.Item{Key: key, Value: []byte(dest)})
 
 	return item, err

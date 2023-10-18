@@ -113,7 +113,6 @@ func (h handler) Connect(c echo.Context) error {
 						log.Println("Error receiving message: ", err)
 						break
 					}
-					log.Printf("Received message from channel %s: %s\n", msg.Channel, msg.Payload)
 
 					err = h.send(ws, msg.Payload)
 					if err != nil {

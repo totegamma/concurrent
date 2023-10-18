@@ -226,6 +226,7 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 	}
 }
 
+/*
 func (m *manager) updateChunks(newchunk string) {
 	// update cache
 	for _, streams := range m.remoteSubs {
@@ -234,6 +235,7 @@ func (m *manager) updateChunks(newchunk string) {
 		}
 	}
 }
+*/
 
 // ChunkUpdaterRoutine
 func (m *manager) chunkUpdaterRoutine() {
@@ -259,7 +261,7 @@ func (m *manager) chunkUpdaterRoutine() {
 		log.Printf("update chunks: %s -> %s", currentChunk, newChunk)
 
 		m.deleteExcessiveSubs()
-		m.updateChunks(newChunk)
+		//m.updateChunks(newChunk)
 
 		currentChunk = newChunk
 	}

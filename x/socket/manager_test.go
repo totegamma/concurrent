@@ -175,7 +175,7 @@ func TestManager(t *testing.T) {
 	assert.Len(t, m.remoteSubs[domain], 0) // リセットされる
 
 	// test updateChunks()
-
+	/*
 	key0 := "stream:body:all:" + remotestream0 + ":" + stream.Time2Chunk(pivot)
 	mc.Set(&memcache.Item{
 		Key: key0,
@@ -205,5 +205,6 @@ func TestManager(t *testing.T) {
 	if assert.NoError(t, err) {
 		assert.Equal(t, newdat1.Value, []byte(""))
 	}
+	*/
 }
 

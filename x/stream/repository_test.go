@@ -9,6 +9,7 @@ import (
 
 	"github.com/totegamma/concurrent/internal/testutil"
 	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/util"
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/stretchr/testify/assert"
 )
@@ -30,7 +31,7 @@ func TestMain(m *testing.M) {
 	mc, cleanup_mc = testutil.CreateMC()
 	defer cleanup_mc()
 
-	repo = NewRepository(db, mc)
+	repo = NewRepository(db, mc, util.Config{})
 
 	pivot = time.Now()
 

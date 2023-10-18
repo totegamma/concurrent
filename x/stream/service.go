@@ -347,6 +347,7 @@ func (s *service) PostItem(ctx context.Context, stream string, item core.StreamI
 			Item:   created,
 			Body:   body,
 		})
+
 		err = s.rdb.Publish(context.Background(), stream, jsonstr).Err()
 		if err != nil {
 			span.RecordError(err)

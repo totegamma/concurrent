@@ -105,7 +105,7 @@ func (r *repository) GetChunksFromCache(ctx context.Context, streams []string, c
 	for _, stream := range streams {
 		targetKey := targetKeyMap[stream]
 		cache, ok := caches[targetKey]
-		if !ok {
+		if !ok || len(cache.Value) == 0 {
 			continue
 		}
 

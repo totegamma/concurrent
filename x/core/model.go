@@ -97,8 +97,8 @@ type StreamItem struct {
 	ObjectID string    `json:"objectID" gorm:"primaryKey;type:uuid;"`
 	StreamID string    `json:"streamID" gorm:"primaryKey;type:char(20);"`
 	Owner    string    `json:"owner" gorm:"type:char(42);"`
-	Author   string    `json:"author" gorm:"type:char(42);"`
-	CDate    time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
+	Author   string    `json:"author,omitempty" gorm:"type:char(42);"`
+	CDate    time.Time `json:"cdate,omitempty" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 }
 
 // Collection is one of a base object of concurrent

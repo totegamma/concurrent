@@ -84,7 +84,8 @@ func (s *service) PostMessage(ctx context.Context, objectStr string, signature s
 			Type:     "message",
 			ObjectID: created.ID,
 			Owner:    object.Signer,
-		}, message)
+			StreamID: stream,
+		}, created)
 	}
 
 	return message, nil

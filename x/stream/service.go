@@ -353,6 +353,7 @@ func (s *service) PostItem(ctx context.Context, stream string, item core.StreamI
 		}
 	} else {
 		packet := checkpointPacket{
+			Stream: stream,
 			Item: item,
 			Body: body,
 		}

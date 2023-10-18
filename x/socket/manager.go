@@ -147,6 +147,8 @@ func (m *manager) deleteExcessiveSubs() {
 		delete(m.remoteSubs, domain)
 		delete(m.remoteConns, domain)
 	}
+
+	log.Printf("remote subscription cleaned up: %v", closeList)
 }
 
 // RemoteSubRoutine subscribes to a remote server
@@ -246,6 +248,8 @@ func (m *manager) chunkUpdaterRoutine() {
 		if newChunk == currentChunk {
 			continue
 		}
+
+		log.Printf("update chunks: %s -> %s", currentChunk, newChunk)
 
 		m.deleteExcessiveSubs()
 		m.updateChunks(newChunk)

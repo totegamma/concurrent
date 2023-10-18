@@ -5,6 +5,7 @@ import (
 	"log"
 	"testing"
 	"time"
+	"encoding/json"
 
 	"github.com/totegamma/concurrent/internal/testutil"
 	"github.com/totegamma/concurrent/x/core"
@@ -226,5 +227,64 @@ func TestRepository(t *testing.T) {
 		assert.Equal(t, "01eb39b4-0a5b-4461-a091-df9a97c7b2fd", chunks["22222222222222222222"].Items[0].ObjectID)
 		assert.Equal(t, "797e1f95-542e-485b-8051-a87c1ad1fe06", chunks["22222222222222222222"].Items[1].ObjectID)
 		assert.Equal(t, "d6087868-c30b-439d-9c2c-646fdd48ecc4", chunks["22222222222222222222"].Items[2].ObjectID)
+	}
+
+	remoteKey0 := "stream:body:all:00000000000000000000@remote.com:" + Time2Chunk(pivot.Add(-time.Minute * 10))
+	remoteKey1 := "stream:body:all:11111111111111111111@remote.com:" + Time2Chunk(pivot.Add(-time.Minute * 30))
+
+	// test SaveToCache
+	testchunks := make(map[string]Chunk)
+	testchunks["00000000000000000000@remote.com"] = Chunk {
+		Key: remoteKey0,
+		Items: []core.StreamItem {
+			core.StreamItem {
+				Type: "message",
+				ObjectID: "00000000000000000000",
+				StreamID: "00000000000000000000@remote.com",
+				Owner: "CC62b953CCCE898b955f256976d61BdEE04353C042",
+				CDate: pivot.Add(-time.Minute * 10),
+			},
+		},
+	}
+	testJson0, err := json.Marshal(testchunks["00000000000000000000@remote.com"].Items[0])
+	testJson0 = append(testJson0, ',')
+	testchunks["11111111111111111111@remote.com"] = Chunk {
+		Key: remoteKey1,
+		Items: []core.StreamItem {
+			core.StreamItem {
+				Type: "message",
+				ObjectID: "22222222222222222222",
+				StreamID: "11111111111111111111@remote.com",
+				Owner: "CC62b953CCCE898b955f256976d61BdEE04353C042",
+				CDate: pivot.Add(-time.Minute * 30),
+			},
+		},
+	}
+	testJson1, err := json.Marshal(testchunks["11111111111111111111@remote.com"].Items[0])
+	testJson1 = append(testJson1, ',')
+
+	err = repo.SaveToCache(ctx, testchunks, pivot)
+	if assert.NoError(t, err) {
+		itrkey0 := "stream:itr:all:00000000000000000000@remote.com:" + pivotChunk
+		remoteCache0, err := mc.Get(itrkey0)
+		if assert.NoError(t, err) {
+			assert.Equal(t, remoteKey0, string(remoteCache0.Value))
+		}
+
+		itrKey1 := "stream:itr:all:11111111111111111111@remote.com:" + pivotChunk
+		remoteCache1, err := mc.Get(itrKey1)
+		if assert.NoError(t, err) {
+			assert.Equal(t, remoteKey1, string(remoteCache1.Value))
+		}
+
+		remoteCache0, err = mc.Get(remoteKey0)
+		if assert.NoError(t, err) {
+			assert.Equal(t, string(testJson0), string(remoteCache0.Value))
+		}
+
+		remoteCache1, err = mc.Get(remoteKey1)
+		if assert.NoError(t, err) {
+			assert.Equal(t, string(testJson1), string(remoteCache1.Value))
+		}
 	}
 }

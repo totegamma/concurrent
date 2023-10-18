@@ -91,6 +91,10 @@ func (r *repository) GetChunksFromCache(ctx context.Context, streams []string, c
 		targetKeys = append(targetKeys, targetKey)
 	}
 
+	if len(targetKeys) == 0 {
+		return map[string]Chunk{}, nil
+	}
+
 	caches, err := r.mc.GetMulti(targetKeys)
 	if err != nil {
 		span.RecordError(err)
@@ -205,7 +209,11 @@ func (r *repository) GetChunkIterators(ctx context.Context, streams []string, ch
 		} else { // miss
 			var item core.StreamItem
 			chunkTime := Chunk2RecentTime(chunk)
-			err := r.db.WithContext(ctx).Where("stream_id = ? and c_date <= ?", stream, chunkTime).Order("c_date desc").First(&item).Error
+			dbid := stream
+			if strings.Contains(dbid, "@") {
+				dbid = strings.Split(stream, "@")[0]
+			}
+			err := r.db.WithContext(ctx).Where("stream_id = ? and c_date <= ?", dbid, chunkTime).Order("c_date desc").First(&item).Error
 			if err != nil {
 				continue
 			}

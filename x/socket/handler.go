@@ -69,7 +69,7 @@ func (h handler) Connect(c echo.Context) error {
 		}
 
 		if req.Type == "ping" {
-			err = h.send(ws, "pong")
+			err = h.send(ws, "{\"type\":\"pong\"}")
 			if err != nil {
 				log.Println("Error writing message: ", err)
 				break

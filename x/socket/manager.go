@@ -21,7 +21,7 @@ import (
 // 1. Subscribeのリクエストのうち外部のリクエストは増える方向にしか更新をかけない
 // 2. 外から受信したイベントのうち、すでにキャッシュのキーがあるものに対してappendをかける
 // 3. chunk更新タイミングで、外部リクエストの棚卸しを行う
-// 4. その際、継続している外部リクエストのキャッシュを新しく空で作っておく(なければ)
+// [誤り] 4. その際、継続している外部リクエストのキャッシュを新しく空で作っておく(なければ)
 
 var ctx = context.Background()
 
@@ -31,7 +31,8 @@ type Manager interface {
 
 type manager struct {
 	mc *memcache.Client
-	rdb         *redis.Client
+	rdb  *redis.Client
+	stream stream.Service
 	config  util.Config
 
 	clientSubs map[*websocket.Conn][]string
@@ -39,10 +40,11 @@ type manager struct {
 	remoteConns map[string]*websocket.Conn
 }
 
-func NewManager(mc *memcache.Client, rdb *redis.Client, util util.Config) Manager {
+func NewManager(mc *memcache.Client, rdb *redis.Client, stream stream.Service, util util.Config) Manager {
 	newmanager := &manager{
 		mc: mc,
 		rdb: rdb,
+		stream: stream,
 		config: util,
 		clientSubs: make(map[*websocket.Conn][]string),
 		remoteSubs: make(map[string][]string),
@@ -212,7 +214,14 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 
 				// update cache
 				cacheKey := "stream:body:all:" + event.Item.StreamID + ":" + stream.Time2Chunk(event.Item.CDate)
-				m.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
+				err = m.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
+				if err != nil {
+					// キャッシュがなかった場合、リモートからチャンクを取得し直す
+					_, err := m.stream.GetChunksFromRemote(ctx, domain, []string{event.Item.StreamID}, event.Item.CDate)
+					if err != nil {
+						log.Printf("fail to get chunks from remote: %v", err)
+					}
+				}
 			}
 		}(c)
 	}

@@ -90,3 +90,8 @@ func SetupCollectionHandler(db *gorm.DB, rdb *redis.Client, config util.Config) 
 	wire.Build(collectionHandlerProvider)
 	return nil
 }
+
+func SetupSocketManager(mc *memcache.Client, db *gorm.DB, rdb *redis.Client, config util.Config) socket.Manager {
+	wire.Build(socket.NewManager, stream.NewService, stream.NewRepository, entity.NewService, entity.NewRepository)
+	return nil
+}

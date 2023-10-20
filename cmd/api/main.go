@@ -19,7 +19,6 @@ import (
 
 	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/socket"
 	"github.com/totegamma/concurrent/x/util"
 
 	"github.com/bradfitz/gomemcache/memcache"
@@ -144,7 +143,7 @@ func main() {
 
 	agent := SetupAgent(db, rdb, config)
 
-	socketManager := socket.NewManager(mc, rdb, config)
+	socketManager := SetupSocketManager(mc, db, rdb, config)
 	socketHandler := SetupSocketHandler(rdb, config, socketManager)
 	messageHandler := SetupMessageHandler(db, rdb, mc, config)
 	characterHandler := SetupCharacterHandler(db, config)

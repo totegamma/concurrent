@@ -1,7 +1,10 @@
 package stream
 
 import (
+	"io/ioutil"
+	"fmt"
 	"log"
+	"net/http"
 	"context"
 	"encoding/json"
 	"time"
@@ -12,6 +15,10 @@ import (
 	"github.com/totegamma/concurrent/x/util"
 	"slices"
 	"gorm.io/gorm"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+
 )
 
 // Repository is stream repository interface
@@ -36,7 +43,7 @@ type Repository interface {
 	GetChunksFromCache(ctx context.Context, streams []string, chunk string) (map[string]Chunk, error)
 	GetChunksFromDB(ctx context.Context, streams []string, chunk string) (map[string]Chunk, error)
 	GetChunkIterators(ctx context.Context, streams []string, chunk string) (map[string]string, error)
-
+	GetChunksFromRemote(ctx context.Context, host string, streams []string, queryTime time.Time) (map[string]Chunk, error)
 	SaveToCache(ctx context.Context, chunks map[string]Chunk, queryTime time.Time) error
 }
 
@@ -49,6 +56,49 @@ type repository struct {
 // NewRepository creates a new stream repository
 func NewRepository(db *gorm.DB, mc *memcache.Client, config util.Config) Repository {
 	return &repository{db, mc, config}
+}
+
+func (r *repository) GetChunksFromRemote(ctx context.Context, host string, streams []string, queryTime time.Time) (map[string]Chunk, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryGetRemoteChunks")
+	defer span.End()
+
+	streamsStr := strings.Join(streams, ",")
+	timeStr := fmt.Sprintf("%d", queryTime.Unix())
+	req, err := http.NewRequest("GET", "https://"+host+"/api/v1/streams/chunks?streams="+streamsStr+"&time="+timeStr, nil)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+	client := new(http.Client)
+	resp, err := client.Do(req)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+	defer resp.Body.Close()
+
+	body, err := ioutil.ReadAll(resp.Body)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	var chunkResp chunkResponse
+	err = json.Unmarshal(body, &chunkResp)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	err = r.SaveToCache(ctx, chunkResp.Content, queryTime)
+	if err != nil {
+		log.Printf("Error: %v", err)
+		span.RecordError(err)
+		return nil, err
+	}
+
+	return chunkResp.Content, nil
 }
 
 // SaveToCache saves items to cache
@@ -258,18 +308,30 @@ func (r *repository) CreateItem(ctx context.Context, item core.StreamItem) (core
 
 	json = append(json, ',')
 
-	cacheKey := "stream:body:all:" + streamID + ":" + Time2Chunk(item.CDate)
+	itemChunk := Time2Chunk(item.CDate)
+	cacheKey := "stream:body:all:" + streamID + ":" + itemChunk
 
 	err = r.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
 	if err != nil {
-		return item, nil // XXX: キャッシュに保存できなくてもエラーにしない(本当に?)
-	}
+		// キャッシュに保存できなかった場合、新しいチャンクをDBから作成する必要がある
+		_, err = r.GetChunksFromDB(ctx, []string{streamID}, itemChunk)
+		
+		// 再実行 (誤り: これをするとデータが重複するでしょ)
+		/*
+		err = r.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
+		if err != nil {
+			// これは致命的にプログラムがおかしい
+			log.Printf("failed to append cache: %v", err)
+			span.RecordError(err)
+			return item, err
+		}
+		*/
 
-	// chunk Iteratorを更新
-	// TOOD: 本当は今からInsertするitemのchunkが本当に最新かどうかを確認する必要がある
-	key := "stream:itr:all:" + streamID + ":" + Time2Chunk(item.CDate)
-	dest := "stream:body:all:" + streamID + ":" + Time2Chunk(item.CDate)
-	r.mc.Set(&memcache.Item{Key: key, Value: []byte(dest)})
+		// イテレータを更新する TODO: 本当はitem.Cdateが最新のときだけしか更新しちゃいけない
+		key := "stream:itr:all:" + streamID + ":" + itemChunk
+		dest := "stream:body:all:" + streamID + ":" + itemChunk
+		r.mc.Set(&memcache.Item{Key: key, Value: []byte(dest)})
+	}
 
 	return item, err
 }

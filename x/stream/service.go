@@ -1,7 +1,6 @@
 package stream
 
 import (
-	"io/ioutil"
 	"bytes"
 	"context"
 	"encoding/json"
@@ -42,6 +41,7 @@ type Service interface {
 	ListStreamByAuthor(ctx context.Context, author string) ([]core.Stream, error)
 
 	GetChunks(ctx context.Context, streams []string, pivot time.Time) (map[string]Chunk, error)
+	GetChunksFromRemote(ctx context.Context, host string, streams []string, pivot time.Time) (map[string]Chunk, error)
 }
 
 type service struct {
@@ -55,6 +55,8 @@ type service struct {
 func NewService(rdb *redis.Client, repository Repository, entity entity.Service, config util.Config) Service {
 	return &service{rdb, repository, entity, config}
 }
+
+
 
 func Time2Chunk(t time.Time) string {
 	// chunk by 10 minutes
@@ -76,6 +78,10 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func (s *service) GetChunksFromRemote(ctx context.Context, host string, streams []string, pivot time.Time) (map[string]Chunk, error) {
+	return s.repository.GetChunksFromRemote(ctx, host, streams, pivot)
 }
 
 // GetChunks returns chunks by streamID and time
@@ -182,44 +188,14 @@ func (s *service) GetRecentItems(ctx context.Context, streams []string, until ti
 				items[stream] = chunk
 			}
 		} else {
-			streamsStr := strings.Join(streams, ",")
-			timeStr := fmt.Sprintf("%d", until.Unix())
-			req, err := http.NewRequest("GET", "https://"+host+"/api/v1/streams/chunks?streams="+streamsStr+"&time="+timeStr, nil)
-			if err != nil {
-				span.RecordError(err)
-				continue
-			}
-			otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
-			client := new(http.Client)
-			resp, err := client.Do(req)
-			if err != nil {
-				span.RecordError(err)
-				continue
-			}
-			defer resp.Body.Close()
-
-			body, err := ioutil.ReadAll(resp.Body)
-			if err != nil {
-				span.RecordError(err)
-				continue
-			}
-
-			var chunkResp chunkResponse
-			err = json.Unmarshal(body, &chunkResp)
-			if err != nil {
-				span.RecordError(err)
-				continue
-			}
-
-			for stream, chunk := range chunkResp.Content {
-				items[stream] = chunk
-			}
-
-			err = s.repository.SaveToCache(ctx, chunkResp.Content, until)
+			chunks, err := s.repository.GetChunksFromRemote(ctx, host, streams, until)
 			if err != nil {
 				log.Printf("Error: %v", err)
 				span.RecordError(err)
-				continue
+				return nil, err
+			}
+			for stream, chunk := range chunks {
+				items[stream] = chunk
 			}
 		}
 	}

@@ -55,10 +55,11 @@ func NewManager(mc *memcache.Client, rdb *redis.Client, stream stream.Service, u
 }
 
 
-func NewSubscriptionManagerForTest(mc *memcache.Client, rdb *redis.Client) *manager {
+func NewSubscriptionManagerForTest(mc *memcache.Client, rdb *redis.Client, stream stream.Service) *manager {
 	manager := &manager{
 		mc: mc,
 		rdb: rdb,
+		stream: stream,
 		clientSubs: make(map[*websocket.Conn][]string),
 		remoteSubs: make(map[string][]string),
 		remoteConns: make(map[string]*websocket.Conn),
@@ -180,17 +181,21 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 
 		// launch a new goroutine for handling incoming messages
 		go func(c *websocket.Conn) {
-			defer c.Close()
+			defer func() {
+				c.Close()
+				delete(m.remoteConns, domain)
+				log.Printf("##### remote connection closed: %s", domain)
+			}()
 			for {
 				// check if the connection is still alive
 				if c == nil {
 					log.Printf("connection is nil (domain: %s)", domain)
-					return
+					break
 				}
 				_, message, err := c.ReadMessage()
 				if err != nil {
 					log.Printf("fail to read message: %v", err)
-					continue
+					break
 				}
 
 				var event stream.Event
@@ -237,6 +242,7 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 					}
 				}
 			}
+			log.Printf("###### remote connection handling stopped (domain: %s)", domain)
 		}(c)
 	}
 	request := channelRequest{

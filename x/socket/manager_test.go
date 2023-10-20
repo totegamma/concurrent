@@ -15,6 +15,9 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 
+	"github.com/totegamma/concurrent/x/stream/mock"
+	"go.uber.org/mock/gomock"
+
 	"fmt"
 	"strings"
 	"sync/atomic"
@@ -27,7 +30,6 @@ import (
 var mc *memcache.Client
 var rdb *redis.Client
 var pivot time.Time
-var m *manager
 
 func TestMain(tm *testing.M) {
 	log.Println("Test Start")
@@ -40,7 +42,6 @@ func TestMain(tm *testing.M) {
 	mc, cleanup_mc = testutil.CreateMC()
 	defer cleanup_mc()
 
-	m = NewSubscriptionManagerForTest(mc, rdb)
 	pivot = time.Now()
 	tm.Run()
 
@@ -89,6 +90,22 @@ func (h *wsHandler) EmitMessage(msg []byte) {
 }
 
 func TestManager(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockStreamService := mock_stream.NewMockService(ctrl)
+	mockStreamService.
+		EXPECT().
+		GetChunksFromRemote(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
+		Return(
+			map[string]stream.Chunk{
+				"remote0": stream.Chunk{},
+			},
+			nil,
+		)
+
+	m := NewSubscriptionManagerForTest(mc, rdb, mockStreamService)
 
 	// ローカルのサブスクリプションではリモートsubが作成されないことを確認
 	conn0 := websocket.Conn{}

@@ -190,25 +190,28 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 				_, message, err := c.ReadMessage()
 				if err != nil {
 					log.Printf("fail to read message: %v", err)
-					return
+					continue
 				}
 
 				var event stream.Event
 				err = json.Unmarshal(message, &event)
 				if err != nil {
 					log.Printf("fail to Unmarshall redis message: %v", err)
+					continue
 				}
 
 				// publish message to Redis
 				err = m.rdb.Publish(ctx, event.Stream, string(message)).Err()
 				if err != nil {
 					log.Printf("fail to publish message to Redis: %v", err)
+					continue
 				}
 
 				// update cache
 				json, err := json.Marshal(event.Item)
 				if err != nil {
 					log.Printf("fail to Marshall item: %v", err)
+					continue
 				}
 				json = append(json, ',')
 
@@ -217,9 +220,20 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 				err = m.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
 				if err != nil {
 					// キャッシュがなかった場合、リモートからチャンクを取得し直す
-					_, err := m.stream.GetChunksFromRemote(ctx, domain, []string{event.Item.StreamID}, event.Item.CDate)
+					chunks, err := m.stream.GetChunksFromRemote(ctx, domain, []string{event.Item.StreamID}, event.Item.CDate)
 					if err != nil {
 						log.Printf("fail to get chunks from remote: %v", err)
+						continue
+					}
+
+					if stream.Time2Chunk(event.Item.CDate) != stream.Time2Chunk(time.Now()) {
+						log.Println("remote-sent chunk is not the latest")
+						continue
+					}
+
+					if chunk, ok := chunks[event.Item.StreamID]; ok {
+						key := "stream:itr:all:" + event.Item.StreamID + ":" + stream.Time2Chunk(time.Now())
+						m.mc.Set(&memcache.Item{Key: key, Value: []byte(chunk.Key)})
 					}
 				}
 			}

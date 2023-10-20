@@ -327,10 +327,12 @@ func (r *repository) CreateItem(ctx context.Context, item core.StreamItem) (core
 		}
 		*/
 
-		// イテレータを更新する TODO: 本当はitem.Cdateが最新のときだけしか更新しちゃいけない
-		key := "stream:itr:all:" + streamID + ":" + itemChunk
-		dest := "stream:body:all:" + streamID + ":" + itemChunk
-		r.mc.Set(&memcache.Item{Key: key, Value: []byte(dest)})
+		if itemChunk != Time2Chunk(time.Now()) {
+			// イテレータを更新する
+			key := "stream:itr:all:" + streamID + ":" + itemChunk
+			dest := "stream:body:all:" + streamID + ":" + itemChunk
+			r.mc.Set(&memcache.Item{Key: key, Value: []byte(dest)})
+		}
 	}
 
 	return item, err

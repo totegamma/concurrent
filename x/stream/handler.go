@@ -229,7 +229,7 @@ func (h handler) Remove(c echo.Context) error {
 	claims := c.Get("jwtclaims").(util.JwtClaims)
 	requester := claims.Audience
 
-	if target.Author != requester {
+	if target.Author != requester && target.Owner != requester {
 		return c.JSON(http.StatusForbidden, echo.Map{"error": "You are not owner of this stream element"})
 	}
 

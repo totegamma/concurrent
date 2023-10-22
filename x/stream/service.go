@@ -303,7 +303,13 @@ func (s *service) PostItem(ctx context.Context, stream string, item core.StreamI
 	if streamHost == s.config.Concurrent.FQDN {
 
 		// check if the user has write access to the stream
-		if !s.repository.HasWriteAccess(ctx, streamID, item.Author) {
+		author := item.Author
+		if author == "" {
+			author = item.Owner
+		}
+		if !s.repository.HasWriteAccess(ctx, streamID, author) {
+			span.RecordError(fmt.Errorf("You don't have write access to %v", streamID))
+			log.Printf("You don't have write access to %v", streamID)
 			return fmt.Errorf("You don't have write access to %v", streamID)
 		}
 

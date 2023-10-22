@@ -83,17 +83,17 @@ func (s *service) PostAssociation(ctx context.Context, objectStr string, signatu
 	created, err := s.repo.Create(ctx, association)
 	if err != nil {
 		span.RecordError(err)
-		return association, err // TODO: if err is duplicate key error, server should return 409
+		return created, err // TODO: if err is duplicate key error, server should return 409
 	}
 
 	if targetType != "messages" { // distribute is needed only when targetType is messages
-		return association, nil
+		return created, nil
 	}
 
-	targetMessage, err := s.message.Get(ctx, association.TargetID)
+	targetMessage, err := s.message.Get(ctx, created.TargetID)
 	if err != nil {
 		span.RecordError(err)
-		return association, err
+		return created, err
 	}
 
 	for _, stream := range association.Streams {
@@ -101,8 +101,8 @@ func (s *service) PostAssociation(ctx context.Context, objectStr string, signatu
 			Type:     "association",
 			ObjectID: created.ID,
 			Owner:    targetMessage.Author,
-			Author:   association.Author,
-		}, association)
+			Author:   created.Author,
+		}, created)
 		if err != nil {
 			span.RecordError(err)
 			log.Printf("fail to post stream: %v", err)
@@ -114,7 +114,7 @@ func (s *service) PostAssociation(ctx context.Context, objectStr string, signatu
 			Stream: postto,
 			Type:   "association",
 			Action: "create",
-			Body:   association,
+			Body:   created,
 		})
 		err := s.rdb.Publish(context.Background(), postto, jsonstr).Err()
 		if err != nil {
@@ -123,7 +123,7 @@ func (s *service) PostAssociation(ctx context.Context, objectStr string, signatu
 		}
 	}
 
-	return association, nil
+	return created, nil
 }
 
 // Get returns an association by ID

@@ -182,7 +182,9 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 		// launch a new goroutine for handling incoming messages
 		go func(c *websocket.Conn) {
 			defer func() {
-				c.Close()
+				if c != nil {
+					c.Close()
+				}
 				delete(m.remoteConns, domain)
 				log.Printf("##### remote connection closed: %s", domain)
 			}()

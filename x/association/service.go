@@ -96,13 +96,15 @@ func (s *service) PostAssociation(ctx context.Context, objectStr string, signatu
 		return created, err
 	}
 
+	item := core.StreamItem{
+		Type:     "association",
+		ObjectID: created.ID,
+		Owner:    targetMessage.Author,
+		Author:   created.Author,
+	}
+
 	for _, stream := range association.Streams {
-		err = s.stream.PostItem(ctx, stream, core.StreamItem{
-			Type:     "association",
-			ObjectID: created.ID,
-			Owner:    targetMessage.Author,
-			Author:   created.Author,
-		}, created)
+		err = s.stream.PostItem(ctx, stream, item, created)
 		if err != nil {
 			span.RecordError(err)
 			log.Printf("fail to post stream: %v", err)
@@ -112,8 +114,9 @@ func (s *service) PostAssociation(ctx context.Context, objectStr string, signatu
 	for _, postto := range targetMessage.Streams {
 		jsonstr, _ := json.Marshal(stream.Event{
 			Stream: postto,
-			Type:   "association",
 			Action: "create",
+			Type:   "association",
+			Item:   item,
 			Body:   created,
 		})
 		err := s.rdb.Publish(context.Background(), postto, jsonstr).Err()

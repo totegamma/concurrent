@@ -169,6 +169,7 @@ func main() {
 	apiV1.GET("/domain", domainHandler.Profile)
 	apiV1.GET("/domain/:id", domainHandler.Get)
 	apiV1.GET("/domains", domainHandler.List)
+	apiV1.POST("/domains/hello", domainHandler.Hello)
 	apiV1.GET("/entity/:id", entityHandler.Get)
 	apiV1.GET("/entities", entityHandler.List)
 	apiV1.GET("/auth/claim", authHandler.Claim)
@@ -184,7 +185,6 @@ func main() {
 	apiV1R := apiV1.Group("", auth.JWT)
 	apiV1R.PUT("/domain", domainHandler.Upsert, authService.Restrict(auth.ISADMIN))
 	apiV1R.DELETE("/domain/:id", domainHandler.Delete, authService.Restrict(auth.ISADMIN))
-	apiV1R.POST("/domains/hello", domainHandler.Hello, authService.Restrict(auth.ISUNUNITED))
 	apiV1R.GET("/admin/sayhello/:fqdn", domainHandler.SayHello, authService.Restrict(auth.ISADMIN))
 
 	apiV1R.POST("/entity", entityHandler.Register, authService.Restrict(auth.ISUNKNOWN))

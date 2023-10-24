@@ -174,7 +174,9 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 
 		c, _, err := dialer.Dial(u.String(), nil)
 		if err != nil {
-			log.Printf("fail to dial: %v", err)
+			log.Printf("[remote websocket] fail to dial: %v", err)
+			delete(m.remoteConns, domain)
+			return
 		}
 
 		m.remoteConns[domain] = c
@@ -254,6 +256,7 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 	if err != nil {
 		log.Printf("fail to send subscribe request to remote server %v: %v", domain, err)
 		delete(m.remoteConns, domain)
+		return
 	}
 }
 

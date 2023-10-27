@@ -88,7 +88,7 @@ func (s *service) PostMessage(ctx context.Context, objectStr string, signature s
 		}, created)
 	}
 
-	return message, nil
+	return created, nil
 }
 
 // Delete deletes a message by ID

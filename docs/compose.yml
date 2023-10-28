@@ -97,6 +97,14 @@ services:
       - 6379
     networks:
       - internal
+
+  memcached:
+    restart: always
+    image: memcached
+    expose:
+      - 11211
+    networks:
+      - internal
   
 networks:
   external:

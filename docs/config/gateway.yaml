@@ -20,7 +20,7 @@ services:
     preservePath: true
     injectCors: true
   - name: webfinger
-    host: host.docker.internal
+    host: apbridge
     port: 8000
     path: /.well-known
     preservePath: true

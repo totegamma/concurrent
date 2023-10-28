@@ -73,6 +73,10 @@ func (s *service) PostMessage(ctx context.Context, objectStr string, signature s
 		Streams:   streams,
 	}
 
+	if !object.SignedAt.IsZero() {
+		message.CDate = object.SignedAt
+	}
+
 	created, err := s.repo.Create(ctx, message)
 	if err != nil {
 		span.RecordError(err)

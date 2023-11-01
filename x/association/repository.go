@@ -13,6 +13,7 @@ type Repository interface {
 	Get(ctx context.Context, id string) (core.Association, error)
 	GetOwn(ctx context.Context, author string) ([]core.Association, error)
 	Delete(ctx context.Context, id string) (core.Association, error)
+	GetByTarget(ctx context.Context, targetID string) ([]core.Association, error)
 	GetCountsBySchema(ctx context.Context, messageID string) (map[string]int64, error)
 	GetBySchema(ctx context.Context, messageID string, schema string) ([]core.Association, error)
 	GetCountsBySchemaAndVariant(ctx context.Context, messageID string, schema string) (map[string]int64, error)
@@ -74,6 +75,16 @@ func (r *repository) Delete(ctx context.Context, id string) (core.Association, e
 		return core.Association{}, err
 	}
 	return deleted, nil
+}
+
+// GetByTarget returns all associations which target is specified message
+func (r *repository) GetByTarget(ctx context.Context, targetID string) ([]core.Association, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryGetByTarget")
+	defer span.End()
+
+	var associations []core.Association
+	err := r.db.WithContext(ctx).Where("target_id = ?", targetID).Find(&associations).Error
+	return associations, err
 }
 
 // GetCountsBySchema returns the number of associations for a given schema

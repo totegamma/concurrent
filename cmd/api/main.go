@@ -159,6 +159,8 @@ func main() {
 
 	apiV1 := e.Group("")
 	apiV1.GET("/message/:id", messageHandler.Get)
+	apiV1.GET("/message/:id/associations", associationHandler.GetFiltered)
+	apiV1.GET("/message/:id/associationcounts", associationHandler.GetCounts)
 	apiV1.GET("/characters", characterHandler.Get)
 	apiV1.GET("/association/:id", associationHandler.Get)
 	apiV1.GET("/stream/:id", streamHandler.Get)

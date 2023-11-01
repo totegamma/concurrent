@@ -20,6 +20,12 @@ type Service interface {
 	Get(ctx context.Context, id string) (core.Association, error)
 	GetOwn(ctx context.Context, author string) ([]core.Association, error)
 	Delete(ctx context.Context, id string) (core.Association, error)
+
+	GetByTarget(ctx context.Context, targetID string) ([]core.Association, error)
+	GetCountsBySchema(ctx context.Context, messageID string) (map[string]int64, error)
+	GetBySchema(ctx context.Context, messageID string, schema string) ([]core.Association, error)
+	GetCountsBySchemaAndVariant(ctx context.Context, messageID string, schema string) (map[string]int64, error)
+	GetBySchemaAndVariant(ctx context.Context, messageID string, schema string, variant string) ([]core.Association, error)
 }
 
 type service struct {
@@ -181,3 +187,44 @@ func (s *service) Delete(ctx context.Context, id string) (core.Association, erro
 	}
 	return deleted, nil
 }
+
+// GetByTarget returns associations by target
+func (s *service) GetByTarget(ctx context.Context, targetID string) ([]core.Association, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetByTarget")
+	defer span.End()
+
+	return s.repo.GetByTarget(ctx, targetID)
+}
+
+// GetCountsBySchema returns the number of associations by schema
+func (s *service) GetCountsBySchema(ctx context.Context, messageID string) (map[string]int64, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetCountsBySchema")
+	defer span.End()
+
+	return s.repo.GetCountsBySchema(ctx, messageID)
+}
+
+// GetBySchema returns associations by schema and variant
+func (s *service) GetBySchema(ctx context.Context, messageID string, schema string) ([]core.Association, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetBySchema")
+	defer span.End()
+
+	return s.repo.GetBySchema(ctx, messageID, schema)
+}
+
+// GetCountsBySchemaAndVariant returns the number of associations by schema and variant
+func (s *service) GetCountsBySchemaAndVariant(ctx context.Context, messageID string, schema string) (map[string]int64, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetCountsBySchemaAndVariant")
+	defer span.End()
+
+	return s.repo.GetCountsBySchemaAndVariant(ctx, messageID, schema)
+}
+
+// GetBySchemaAndVariant returns associations by schema and variant
+func (s *service) GetBySchemaAndVariant(ctx context.Context, messageID string, schema string, variant string) ([]core.Association, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetBySchemaAndVariant")
+	defer span.End()
+
+	return s.repo.GetBySchemaAndVariant(ctx, messageID, schema, variant)
+}
+

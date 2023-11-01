@@ -19,6 +19,8 @@ type Handler interface {
 	Get(c echo.Context) error
 	Post(c echo.Context) error
 	Delete(c echo.Context) error
+	GetFiltered(c echo.Context) error
+	GetCounts(c echo.Context) error
 }
 
 type handler struct {
@@ -48,6 +50,56 @@ func (h handler) Get(c echo.Context) error {
 		Association: association,
 	}
 	return c.JSON(http.StatusOK, response)
+}
+
+func (h handler) GetCounts(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetCounts")
+	defer span.End()
+
+	messageID := c.Param("id")
+	schema := c.QueryParam("schema")
+	if schema == "" {
+		counts, err := h.service.GetCountsBySchema(ctx, messageID)
+		if err != nil {
+			return err
+		}
+		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": counts})
+	} else {
+		counts, err := h.service.GetCountsBySchemaAndVariant(ctx, messageID, schema)
+		if err != nil {
+			return err
+		}
+		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": counts})
+	}
+}
+
+func (h handler) GetFiltered(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetFiltered")
+	defer span.End()
+
+	messageID := c.Param("id")
+	schema := c.QueryParam("schema")
+	variant := c.QueryParam("variant")
+
+	if schema == "" {
+		associations, err := h.service.GetByTarget(ctx, messageID)
+		if err != nil {
+			return err
+		}
+		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": associations})
+	} else if variant == "" {
+		associations, err := h.service.GetBySchema(ctx, messageID, schema)
+		if err != nil {
+			return err
+		}
+		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": associations})
+	} else {
+		associations, err := h.service.GetBySchemaAndVariant(ctx, messageID, schema, variant)
+		if err != nil {
+			return err
+		}
+		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": associations})
+	}
 }
 
 // Post creates a new association

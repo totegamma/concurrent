@@ -44,7 +44,7 @@ func (s *service) Get(ctx context.Context, id string) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGet")
 	defer span.End()
 
-	return s.repo.GetWithAssociations(ctx, id)
+	return s.repo.Get(ctx, id)
 }
 
 // PostMessage creates a new message

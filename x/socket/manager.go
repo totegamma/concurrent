@@ -181,8 +181,9 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 
 		m.remoteConns[domain] = c
 
-		// launch a new goroutine for handling incoming messages
-		go func(c *websocket.Conn) {
+		messageChan := make(chan []byte)
+		// goroutine for reading messages from remote server
+		go func(c *websocket.Conn, messageChan chan<- []byte) {
 			defer func() {
 				if c != nil {
 					c.Close()
@@ -201,58 +202,80 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 					log.Printf("fail to read message: %v", err)
 					break
 				}
+				messageChan <- message
+			}
+		}(c, messageChan)
 
-				var event stream.Event
-				err = json.Unmarshal(message, &event)
-				if err != nil {
-					log.Printf("fail to Unmarshall redis message: %v", err)
-					continue
+		// goroutine for relay messages to clients
+		go func(c *websocket.Conn, messageChan <-chan []byte) {
+			pingTicker := time.NewTicker(10 * time.Second)
+			defer func() {
+				if c != nil {
+					c.Close()
 				}
+				pingTicker.Stop()
+				delete(m.remoteConns, domain)
+				log.Printf("##### remote connection closed: %s", domain)
+			}()
+			for {
+				select {
+					case message := <-messageChan:
+						var event stream.Event
+						err = json.Unmarshal(message, &event)
+						if err != nil {
+							log.Printf("fail to Unmarshall redis message: %v", err)
+							continue
+						}
 
-				// publish message to Redis
-				err = m.rdb.Publish(ctx, event.Stream, string(message)).Err()
-				if err != nil {
-					log.Printf("fail to publish message to Redis: %v", err)
-					continue
-				}
+						// publish message to Redis
+						err = m.rdb.Publish(ctx, event.Stream, string(message)).Err()
+						if err != nil {
+							log.Printf("fail to publish message to Redis: %v", err)
+							continue
+						}
 
-				// update cache
-				json, err := json.Marshal(event.Item)
-				if err != nil {
-					log.Printf("fail to Marshall item: %v", err)
-					continue
-				}
-				json = append(json, ',')
+						// update cache
+						json, err := json.Marshal(event.Item)
+						if err != nil {
+							log.Printf("fail to Marshall item: %v", err)
+							continue
+						}
+						json = append(json, ',')
 
-				// update cache
-				cacheKey := "stream:body:all:" + event.Item.StreamID + ":" + stream.Time2Chunk(event.Item.CDate)
-				err = m.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
-				if err != nil {
-					// キャッシュがなかった場合、リモートからチャンクを取得し直す
-					chunks, err := m.stream.GetChunksFromRemote(ctx, domain, []string{event.Item.StreamID}, event.Item.CDate)
-					if err != nil {
-						log.Printf("fail to get chunks from remote: %v", err)
-						continue
-					}
+						// update cache
+						cacheKey := "stream:body:all:" + event.Item.StreamID + ":" + stream.Time2Chunk(event.Item.CDate)
+						err = m.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
+						if err != nil {
+							// キャッシュがなかった場合、リモートからチャンクを取得し直す
+							chunks, err := m.stream.GetChunksFromRemote(ctx, domain, []string{event.Item.StreamID}, event.Item.CDate)
+							if err != nil {
+								log.Printf("fail to get chunks from remote: %v", err)
+								continue
+							}
 
-					if stream.Time2Chunk(event.Item.CDate) != stream.Time2Chunk(time.Now()) {
-						log.Println("remote-sent chunk is not the latest")
-						continue
-					}
+							if stream.Time2Chunk(event.Item.CDate) != stream.Time2Chunk(time.Now()) {
+								log.Println("remote-sent chunk is not the latest")
+								continue
+							}
 
-					if chunk, ok := chunks[event.Item.StreamID]; ok {
-						key := "stream:itr:all:" + event.Item.StreamID + ":" + stream.Time2Chunk(time.Now())
-						m.mc.Set(&memcache.Item{Key: key, Value: []byte(chunk.Key)})
-					}
+							if chunk, ok := chunks[event.Item.StreamID]; ok {
+								key := "stream:itr:all:" + event.Item.StreamID + ":" + stream.Time2Chunk(time.Now())
+								m.mc.Set(&memcache.Item{Key: key, Value: []byte(chunk.Key)})
+							}
+						}
+					case <-pingTicker.C:
+						if err := c.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
+							log.Printf("fail to send ping message: %v", err)
+							return
+						}
 				}
 			}
-			log.Printf("###### remote connection handling stopped (domain: %s)", domain)
-		}(c)
+		}(c, messageChan)
 	}
 	request := channelRequest{
 		Channels: streams,
 	}
-	err := websocket.WriteJSON(m.remoteConns[domain], request)
+	err := m.remoteConns[domain].WriteJSON(request)
 	if err != nil {
 		log.Printf("fail to send subscribe request to remote server %v: %v", domain, err)
 		delete(m.remoteConns, domain)

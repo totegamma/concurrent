@@ -14,6 +14,7 @@ type Association struct {
 	TargetID    string         `json:"targetID" gorm:"type:uuid;uniqueIndex:uniq_association"`
 	TargetType  string         `json:"targetType" gorm:"type:string;uniqueIndex:uniq_association"`
 	ContentHash string         `json:"contentHash" gorm:"type:char(64);uniqueIndex:uniq_association"`
+	Variant	    string         `json:"variant" gorm:"type:text"`
 	Payload     string         `json:"payload" gorm:"type:json"`
 	Signature   string         `json:"signature" gorm:"type:char(130)"`
 	CDate       time.Time      `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
@@ -28,7 +29,7 @@ type Character struct {
 	Schema       string        `json:"schema" gorm:"type:text"`
 	Payload      string        `json:"payload" gorm:"type:json"`
 	Signature    string        `json:"signature" gorm:"type:char(130)"`
-	Associations []Association `json:"associations" gorm:"polymorphic:Target"`
+	Associations []Association `json:"associations,omitempty" gorm:"polymorphic:Target"`
 	CDate        time.Time     `json:"cdate" gorm:"->;<-:create;autoCreateTime"`
 	MDate        time.Time     `json:"mdate" gorm:"autoUpdateTime"`
 }
@@ -71,7 +72,7 @@ type Message struct {
 	Payload      string         `json:"payload" gorm:"type:json"`
 	Signature    string         `json:"signature" gorm:"type:char(130)"`
 	CDate        time.Time      `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
-	Associations []Association  `json:"associations" gorm:"polymorphic:Target"`
+	Associations []Association  `json:"associations,omitempty" gorm:"polymorphic:Target"`
 	Streams      pq.StringArray `json:"streams" gorm:"type:text[]"`
 }
 

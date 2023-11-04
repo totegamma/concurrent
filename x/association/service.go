@@ -26,6 +26,7 @@ type Service interface {
 	GetBySchema(ctx context.Context, messageID string, schema string) ([]core.Association, error)
 	GetCountsBySchemaAndVariant(ctx context.Context, messageID string, schema string) (map[string]int64, error)
 	GetBySchemaAndVariant(ctx context.Context, messageID string, schema string, variant string) ([]core.Association, error)
+	GetOwnByTarget(ctx context.Context, targetID, author string) ([]core.Association, error)
 }
 
 type service struct {
@@ -226,5 +227,13 @@ func (s *service) GetBySchemaAndVariant(ctx context.Context, messageID string, s
 	defer span.End()
 
 	return s.repo.GetBySchemaAndVariant(ctx, messageID, schema, variant)
+}
+
+// GetOwnByTarget returns associations by target and author
+func (s *service) GetOwnByTarget(ctx context.Context, targetID, author string) ([]core.Association, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetOwnByTarget")
+	defer span.End()
+
+	return s.repo.GetOwnByTarget(ctx, targetID, author)
 }
 

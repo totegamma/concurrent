@@ -18,6 +18,7 @@ type Repository interface {
 	GetBySchema(ctx context.Context, messageID string, schema string) ([]core.Association, error)
 	GetCountsBySchemaAndVariant(ctx context.Context, messageID string, schema string) (map[string]int64, error)
 	GetBySchemaAndVariant(ctx context.Context, messageID string, schema string, variant string) ([]core.Association, error)
+	GetOwnByTarget(ctx context.Context, targetID, author string) ([]core.Association, error)
 }
 
 type repository struct {
@@ -110,6 +111,16 @@ func (r *repository) GetCountsBySchema(ctx context.Context, messageID string) (m
 	return result, nil
 }
 
+// GetOwnByTarget returns all associations which target is specified message and owned by specified owner
+func (r *repository) GetOwnByTarget(ctx context.Context, targetID, author string) ([]core.Association, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryGetOwnByTarget")
+	defer span.End()
+
+	var associations []core.Association
+	err := r.db.WithContext(ctx).Where("target_id = ? AND author = ?", targetID, author).Find(&associations).Error
+	return associations, err
+}
+
 // GetBySchema returns the associations for a given schema
 func (r *repository) GetBySchema(ctx context.Context, messageID, schema string) ([]core.Association, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGetBySchema")
@@ -157,5 +168,4 @@ func (r *repository) GetBySchemaAndVariant(ctx context.Context, messageID, schem
 
 	return associations, nil
 }
-
 

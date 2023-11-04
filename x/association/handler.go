@@ -21,6 +21,7 @@ type Handler interface {
 	Delete(c echo.Context) error
 	GetFiltered(c echo.Context) error
 	GetCounts(c echo.Context) error
+	GetOwnByTarget(c echo.Context) error
 }
 
 type handler struct {
@@ -50,6 +51,22 @@ func (h handler) Get(c echo.Context) error {
 		Association: association,
 	}
 	return c.JSON(http.StatusOK, response)
+}
+
+func (h handler) GetOwnByTarget(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetOwnByTarget")
+	defer span.End()
+
+	targetID := c.Param("id")
+
+	claims := c.Get("jwtclaims").(util.JwtClaims)
+	requester := claims.Audience
+
+	associations, err := h.service.GetOwnByTarget(ctx, targetID, requester)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": associations})
 }
 
 func (h handler) GetCounts(c echo.Context) error {

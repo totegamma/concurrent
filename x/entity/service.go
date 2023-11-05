@@ -232,7 +232,7 @@ func (s *service) Ack(ctx context.Context, objectStr string, signature string) e
 			return err
 		}
 
-		req, err := http.NewRequest("POST", "https://"+targetEntity.Domain+"/api/v1/entities/ack", bytes.NewBuffer([]byte(packetStr)))
+		req, err := http.NewRequest("POST", "https://"+targetEntity.Domain+"/api/v1/entities/checkpoint/ack", bytes.NewBuffer([]byte(packetStr)))
 
 		if err != nil {
 			span.RecordError(err)
@@ -308,7 +308,7 @@ func (s *service) Unack(ctx context.Context, objectStr string, signature string)
 			return err
 		}
 
-		req, err := http.NewRequest("DELETE", "https://"+targetEntity.Domain+"/api/v1/entities/ack", bytes.NewBuffer([]byte(packetStr)))
+		req, err := http.NewRequest("DELETE", "https://"+targetEntity.Domain+"/api/v1/entities/checkpoint/ack", bytes.NewBuffer([]byte(packetStr)))
 
 		if err != nil {
 			span.RecordError(err)

@@ -6,10 +6,19 @@ import (
 	"fmt"
 	"strings"
 	"time"
+	"strconv"
+	"bytes"
+
+	"github.com/rs/xid"
+	"net/http"
 
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
 	"golang.org/x/exp/slices"
+
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
+
 )
 
 // Service is the interface for entity service
@@ -27,6 +36,8 @@ type Service interface {
 	Ack(ctx context.Context, from, to string) error
 	Unack(ctx context.Context, from, to string) error
 	Total(ctx context.Context) (int64, error)
+	GetAcker(ctx context.Context, key string) ([]core.Ack, error)
+	GetAcking(ctx context.Context, key string) ([]core.Ack, error)
 }
 
 type service struct {
@@ -204,7 +215,51 @@ func (s *service) Ack(ctx context.Context, objectStr string, signature string) e
 		return err
 	}
 
-	// TODO: if ack destination is remote, forward ack to remote
+	targetEntity, err := s.repository.Get(ctx, object.To)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	if targetEntity.Domain != "" {
+		packet := ackRequest{
+			SignedObject: objectStr,
+			Signature:    signature,
+		}
+		packetStr, err := json.Marshal(packet)
+		if err != nil {
+			span.RecordError(err)
+			return err
+		}
+
+		req, err := http.NewRequest("POST", "https://"+targetEntity.Domain+"/api/v1/entity/ack", bytes.NewBuffer([]byte(packetStr)))
+
+		if err != nil {
+			span.RecordError(err)
+			return err
+		}
+
+		otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+
+		jwt, err := util.CreateJWT(util.JwtClaims{
+			Issuer:         s.config.Concurrent.CCID,
+			Subject:        "CONCURRENT_API",
+			Audience:       targetEntity.Domain,
+			ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
+			IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
+			JWTID:          xid.New().String(),
+		}, s.config.Concurrent.PrivateKey)
+
+		req.Header.Add("content-type", "application/json")
+		req.Header.Add("authorization", "Bearer "+jwt)
+		client := new(http.Client)
+		resp, err := client.Do(req)
+		if err != nil {
+			span.RecordError(err)
+			return err
+		}
+		defer resp.Body.Close()
+	}
 
 	return s.repository.Ack(ctx, &core.Ack{
 		From:      object.From,
@@ -226,8 +281,6 @@ func (s *service) Unack(ctx context.Context, objectStr string, signature string)
 		return err
 	}
 
-	// TODO: if ack destination is remote, forward ack to remote
-
 	if object.Type != "unack" {
 		return fmt.Errorf("object is not unack")
 	}
@@ -238,7 +291,69 @@ func (s *service) Unack(ctx context.Context, objectStr string, signature string)
 		return err
 	}
 
-	// TODO: if unack destination is remote, forward unack to remote
+	targetEntity, err := s.repository.Get(ctx, object.To)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	if targetEntity.Domain != "" {
+		packet := ackRequest{
+			SignedObject: objectStr,
+			Signature:    signature,
+		}
+		packetStr, err := json.Marshal(packet)
+		if err != nil {
+			span.RecordError(err)
+			return err
+		}
+
+		req, err := http.NewRequest("DELETE", "https://"+targetEntity.Domain+"/api/v1/entity/ack", bytes.NewBuffer([]byte(packetStr)))
+
+		if err != nil {
+			span.RecordError(err)
+			return err
+		}
+
+		otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+
+		jwt, err := util.CreateJWT(util.JwtClaims{
+			Issuer:         s.config.Concurrent.CCID,
+			Subject:        "CONCURRENT_API",
+			Audience:       targetEntity.Domain,
+			ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
+			IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
+			JWTID:          xid.New().String(),
+		}, s.config.Concurrent.PrivateKey)
+
+		req.Header.Add("content-type", "application/json")
+		req.Header.Add("authorization", "Bearer "+jwt)
+		client := new(http.Client)
+		resp, err := client.Do(req)
+		if err != nil {
+			span.RecordError(err)
+			return err
+		}
+		defer resp.Body.Close()
+	}
 
 	return s.repository.Unack(ctx, object.From, object.To)
 }
+
+// GetAcker returns acker
+func (s *service) GetAcker(ctx context.Context, user string) ([]core.Ack, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetAcker")
+	defer span.End()
+
+	return s.repository.GetAcker(ctx, user)
+}
+
+// GetAcking returns acking
+func (s *service) GetAcking(ctx context.Context, user string) ([]core.Ack, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetAcking")
+	defer span.End()
+
+	return s.repository.GetAcking(ctx, user)
+}
+
+

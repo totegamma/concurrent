@@ -15,6 +15,7 @@ import (
 // Provides methods for message CRUD
 type Service interface {
 	Get(ctx context.Context, id string) (core.Message, error)
+	GetWithOwnAssociations(ctx context.Context, id string, requester string) (core.Message, error)
 	PostMessage(ctx context.Context, objectStr string, signature string, streams []string) (core.Message, error)
 	Delete(ctx context.Context, id string) (core.Message, error)
 	Total(ctx context.Context) (int64, error)
@@ -45,6 +46,14 @@ func (s *service) Get(ctx context.Context, id string) (core.Message, error) {
 	defer span.End()
 
 	return s.repo.Get(ctx, id)
+}
+
+// GetWithOwnAssociations returns a message by ID with associations
+func (s *service) GetWithOwnAssociations(ctx context.Context, id string, requester string) (core.Message, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetWithOwnAssociations")
+	defer span.End()
+
+	return s.repo.GetWithOwnAssociations(ctx, id, requester)
 }
 
 // PostMessage creates a new message

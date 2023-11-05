@@ -19,6 +19,8 @@ type Repository interface {
 	Ack(ctx context.Context, ack *core.Ack) error
 	Unack(ctx context.Context, from, to string) error
 	Total(ctx context.Context) (int64, error)
+	GetAcker(ctx context.Context, key string) ([]core.Ack, error)
+	GetAcking(ctx context.Context, key string) ([]core.Ack, error)
 }
 
 type repository struct {
@@ -115,5 +117,26 @@ func (r *repository) Unack(ctx context.Context, from, to string) error {
 	ctx, span := tracer.Start(ctx, "RepositoryUnack")
 	defer span.End()
 
-	return r.db.WithContext(ctx).Delete(&core.Ack{}, "from = ? AND to = ?", from, to).Error
+	return r.db.WithContext(ctx).Delete(&core.Ack{}, "\"from\" = ? AND \"to\" = ?", from, to).Error
 }
+
+// GetAcker returns all acks for a entity
+func (r *repository) GetAcker(ctx context.Context, key string) ([]core.Ack, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryGetAcker")
+	defer span.End()
+
+	var acks []core.Ack
+	err := r.db.WithContext(ctx).Where("\"to\" = ?", key).Find(&acks).Error
+	return acks, err
+}
+
+// GetAcking returns all acks for a entity
+func (r *repository) GetAcking(ctx context.Context, key string) ([]core.Ack, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryGetAcking")
+	defer span.End()
+
+	var acks []core.Ack
+	err := r.db.WithContext(ctx).Where("\"from\" = ?", key).Find(&acks).Error
+	return acks, err
+}
+

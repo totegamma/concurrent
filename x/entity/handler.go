@@ -29,6 +29,8 @@ type Handler interface {
 	Delete(c echo.Context) error
 	Ack(c echo.Context) error
 	Unack(c echo.Context) error
+	GetAcker(c echo.Context) error
+	GetAcking(c echo.Context) error
 }
 
 type handler struct {
@@ -198,7 +200,7 @@ func (h handler) Delete(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return c.String(http.StatusOK, "{\"message\": \"accept\"}")
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
 }
 
 // Ack creates a new ack
@@ -217,7 +219,7 @@ func (h handler) Ack(c echo.Context) error {
 		return err
 	}
 
-	return c.String(http.StatusOK, "{\"message\": \"accept\"}")
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
 }
 
 // Unack deletes an ack
@@ -238,3 +240,31 @@ func (h handler) Unack(c echo.Context) error {
 
 	return c.String(http.StatusOK, "{\"message\": \"accept\"}")
 }
+
+// GetAcking returns acking entities
+func (h handler) GetAcking(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetAcking")
+	defer span.End()
+
+	id := c.Param("id")
+	acks, err := h.service.GetAcking(ctx, id)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": acks})
+}
+
+// GetAcker returns an acker
+func (h handler) GetAcker(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetAcker")
+	defer span.End()
+
+	id := c.Param("id")
+	acks, err := h.service.GetAcker(ctx, id)
+	if err != nil {
+		return err
+	}
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": acks})
+}
+
+

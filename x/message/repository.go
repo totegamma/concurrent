@@ -11,6 +11,7 @@ type Repository interface {
 	Create(ctx context.Context, message core.Message) (core.Message, error)
 	Get(ctx context.Context, key string) (core.Message, error)
 	GetWithAssociations(ctx context.Context, key string) (core.Message, error)
+	GetWithOwnAssociations(ctx context.Context, key string, ccid string) (core.Message, error)
 	Delete(ctx context.Context, key string) (core.Message, error)
 	Total(ctx context.Context) (int64, error)
 }
@@ -50,6 +51,22 @@ func (r *repository) Get(ctx context.Context, key string) (core.Message, error) 
 
 	var message core.Message
 	err := r.db.WithContext(ctx).First(&message, "id = ?", key).Error
+	return message, err
+}
+
+// GetWithOwnAssociations returns a message by ID with associations
+func (r *repository) GetWithOwnAssociations(ctx context.Context, key string, ccid string) (core.Message, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryGet")
+	defer span.End()
+
+	var message core.Message
+	err := r.db.WithContext(ctx).First(&message, "id = ?", key).Error
+	if err != nil {
+		return message, err
+	}
+
+	r.db.WithContext(ctx).Where("target_id = ? AND author = ?", key, ccid).Find(&message.OwnAssociations)
+
 	return message, err
 }
 

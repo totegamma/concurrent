@@ -73,6 +73,7 @@ type Message struct {
 	Signature    string         `json:"signature" gorm:"type:char(130)"`
 	CDate        time.Time      `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 	Associations []Association  `json:"associations,omitempty" gorm:"polymorphic:Target"`
+	OwnAssociations []Association `json:"ownAssociations,omitempty" gorm:"-"`
 	Streams      pq.StringArray `json:"streams" gorm:"type:text[]"`
 }
 

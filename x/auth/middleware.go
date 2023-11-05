@@ -106,42 +106,6 @@ func (s *service) Restrict(principal Principal) echo.MiddlewareFunc {
 	}
 }
 
-// JWT is middleware which validate jwt
-// error if jwt is missing or invalid
-func JWT(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		ctx, span := tracer.Start(c.Request().Context(), "auth.JWT")
-		defer span.End()
-		authInfo := c.Request().Header.Get("authorization")
-		if authInfo == "" { // XXX for backward compatibility
-			authInfo = c.Request().Header.Get("Authentication")
-		}
-
-		split := strings.Split(authInfo, " ")
-		if len(split) != 2 {
-			span.RecordError(fmt.Errorf("invalid authentication header"))
-			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid authentication header"})
-		}
-		authType, jwt := split[0], split[1]
-		if authType != "Bearer" {
-			span.RecordError(fmt.Errorf("only Bearer is acceptable"))
-			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "only Bearer is acceptable"})
-		}
-
-		claims, err := util.ValidateJWT(jwt)
-		if err != nil {
-			span.RecordError(err)
-			return c.JSON(http.StatusUnauthorized, echo.Map{"error": err.Error()})
-		}
-
-		c.Set("jwtclaims", claims)
-		span.SetAttributes(attribute.String("Audience", claims.Audience))
-
-		c.SetRequest(c.Request().WithContext(ctx))
-		return next(c)
-	}
-}
-
 // ParseJWT is middleware which validate jwt
 // ignore if jwt is missing
 // error only if jwt is invalid
@@ -156,20 +120,17 @@ func ParseJWT(next echo.HandlerFunc) echo.HandlerFunc {
 			split := strings.Split(authHeader, " ")
 			if len(split) != 2 {
 				span.RecordError(fmt.Errorf("invalid authentication header"))
-				//return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid authentication header"})
 				goto skip
 			}
 			authType, jwt := split[0], split[1]
 			if authType != "Bearer" {
 				span.RecordError(fmt.Errorf("only Bearer is acceptable"))
-				//return c.JSON(http.StatusUnauthorized, echo.Map{"error": "only Bearer is acceptable"})
 				goto skip
 			}
 
 			claims, err := util.ValidateJWT(jwt)
 			if err != nil {
 				span.RecordError(err)
-				//return c.JSON(http.StatusUnauthorized, echo.Map{"error": err.Error()})
 				goto skip
 			}
 

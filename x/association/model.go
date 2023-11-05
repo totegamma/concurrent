@@ -26,6 +26,7 @@ type SignedObject struct {
 	Type     string      `json:"type"`
 	Schema   string      `json:"schema"`
 	Body     interface{} `json:"body"`
+	Variant  string      `json:"variant"`
 	Meta     interface{} `json:"meta"`
 	SignedAt time.Time   `json:"signedAt"`
 	Target   string      `json:"target"`

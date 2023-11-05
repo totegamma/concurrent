@@ -36,14 +36,28 @@ func (h handler) Get(c echo.Context) error {
 
 	id := c.Param("id")
 
-	message, err := h.service.Get(ctx, id)
-	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return c.JSON(http.StatusNotFound, echo.Map{"error": "Message not found"})
+	requester := ""
+	claims, ok := c.Get("jwtclaims").(util.JwtClaims)
+	if ok {
+		requester = claims.Audience
+		message, err := h.service.GetWithOwnAssociations(ctx, id, requester)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return c.JSON(http.StatusNotFound, echo.Map{"error": "Message not found"})
+			}
+			return err
 		}
-		return err
+		return c.JSON(http.StatusOK, message)
+	} else {
+		message, err := h.service.Get(ctx, id)
+		if err != nil {
+			if errors.Is(err, gorm.ErrRecordNotFound) {
+				return c.JSON(http.StatusNotFound, echo.Map{"error": "Message not found"})
+			}
+			return err
+		}
+		return c.JSON(http.StatusOK, message)
 	}
-	return c.JSON(http.StatusOK, message)
 }
 
 // Post creates a new message

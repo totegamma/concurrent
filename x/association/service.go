@@ -85,6 +85,7 @@ func (s *service) PostAssociation(ctx context.Context, objectStr string, signatu
 		Signature:   signature,
 		Streams:     streams,
 		ContentHash: contentHash,
+		Variant:     object.Variant,
 	}
 
 	created, err := s.repo.Create(ctx, association)

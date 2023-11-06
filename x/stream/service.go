@@ -194,7 +194,7 @@ func (s *service) GetRecentItems(ctx context.Context, streams []string, until ti
 			if err != nil {
 				log.Printf("Error: %v", err)
 				span.RecordError(err)
-				return nil, err
+				continue
 			}
 			for stream, chunk := range chunks {
 				items[stream] = chunk

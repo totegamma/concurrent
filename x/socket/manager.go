@@ -299,6 +299,7 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 		delete(m.remoteConns, domain)
 		return
 	}
+	log.Printf("[manager] remote connection updated: %s > %s", domain, streams)
 }
 
 /*

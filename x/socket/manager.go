@@ -117,9 +117,7 @@ func (m *manager) createInsufficientSubs() {
 	// FIXME: should be call if the subsucription is updated
 	for domain, streams := range m.remoteSubs {
 		log.Printf("remote subscription updated: %v, %v", domain, streams)
-		if _, ok := m.remoteConns[domain]; !ok {
-			m.RemoteSubRoutine(domain, streams)
-		}
+		m.RemoteSubRoutine(domain, streams)
 	}
 }
 

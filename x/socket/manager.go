@@ -99,23 +99,28 @@ func (m *manager) createInsufficientSubs() {
 	}
 
 	// on this func, update only if there is a new subscription
+	changedRemotes := make([]string, 0)
 	for domain, streams := range currentSubs {
 		if domain == m.config.Concurrent.FQDN {
 			continue
 		}
 		if _, ok := m.remoteSubs[domain]; !ok {
 			m.remoteSubs[domain] = streams
+			changedRemotes = append(changedRemotes, domain)
 		} else {
 			for _, stream := range streams {
 				if !slices.Contains(m.remoteSubs[domain], stream) {
 					m.remoteSubs[domain] = append(m.remoteSubs[domain], stream)
+					changedRemotes = append(changedRemotes, domain)
 				}
 			}
 		}
 	}
 
-	for domain, streams := range m.remoteSubs {
-		m.RemoteSubRoutine(domain, streams)
+	log.Printf("remote subscription created: %v", m.remoteSubs)
+
+	for _, domain := range changedRemotes {
+		m.RemoteSubRoutine(domain, m.remoteSubs[domain])
 	}
 }
 

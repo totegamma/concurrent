@@ -25,6 +25,11 @@ import (
 
 var ctx = context.Background()
 
+var (
+	pingInterval    = 10 * time.Second
+	disconnectTimeout = 30 * time.Second
+)
+
 type Manager interface {
 	Subscribe(conn *websocket.Conn, streams []string)
 }
@@ -208,7 +213,7 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 
 		// goroutine for relay messages to clients
 		go func(c *websocket.Conn, messageChan <-chan []byte) {
-			pingTicker := time.NewTicker(10 * time.Second)
+			pingTicker := time.NewTicker(pingInterval)
 			defer func() {
 				if c != nil {
 					c.Close()
@@ -217,6 +222,14 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 				delete(m.remoteConns, domain)
 				log.Printf("##### remote connection closed: %s", domain)
 			}()
+
+			var lastPong time.Time = time.Now()
+			c.SetPongHandler(func(string) error {
+				log.Printf("pong received: %s", domain)
+				lastPong = time.Now()
+				return nil
+			})
+
 			for {
 				select {
 					case message := <-messageChan:
@@ -264,8 +277,13 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 							}
 						}
 					case <-pingTicker.C:
+						log.Printf("ping sent: %s", domain)
 						if err := c.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
 							log.Printf("fail to send ping message: %v", err)
+							return
+						}
+						if lastPong.Before(time.Now().Add(-disconnectTimeout)) {
+							log.Printf("pong timeout: %s", domain)
 							return
 						}
 				}

@@ -81,7 +81,7 @@ func main() {
 	}
 
 	e.Use(echoprometheus.NewMiddleware("ccapi"))
-	e.Use(middleware.Logger())
+	//e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
 	db, err := gorm.Open(postgres.Open(config.Server.Dsn), &gorm.Config{})

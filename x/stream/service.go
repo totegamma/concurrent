@@ -313,7 +313,7 @@ func (s *service) PostItem(ctx context.Context, stream string, item core.StreamI
 			return fmt.Errorf("You don't have write access to %v", streamID)
 		}
 
-		log.Printf("Post to local stream: %v, %v", streamID, item)
+		log.Printf("[socket] post to local stream: %v to %v", item.ObjectID, streamID)
 
 		// add to stream
 		created, err := s.repository.CreateItem(ctx, item)
@@ -339,6 +339,9 @@ func (s *service) PostItem(ctx context.Context, stream string, item core.StreamI
 			return err
 		}
 	} else {
+
+		log.Printf("[socket] post to remote stream: %v to %v@%v", item.ObjectID, streamID, streamHost)
+
 		packet := checkpointPacket{
 			Stream: stream,
 			Item: item,

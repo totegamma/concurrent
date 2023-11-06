@@ -2,7 +2,6 @@
 package socket
 
 import (
-	"context"
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
@@ -56,9 +55,30 @@ func (h handler) Connect(c echo.Context) error {
 	}
 	defer ws.Close()
 
-	var ctx context.Context
-	var cancel context.CancelFunc
-	var pubsub *redis.PubSub
+	ctx := c.Request().Context()
+
+	pubsub := h.rdb.Subscribe(ctx)
+	defer pubsub.Close()
+
+	psch := pubsub.Channel()
+	quit := make(chan struct{})
+
+	go func() {
+		for {
+			select {
+			case <-quit:
+				log.Println("[socket] closed")
+				return
+			case msg := <-psch:
+				log.Printf("[socket] -> %s\n", msg.Payload[:64])
+				err = h.send(ws, msg.Payload)
+				if err != nil {
+					log.Println("Error writing message: ", err)
+					return
+				}
+			}
+		}
+	}()
 
 	for {
 		var req Request
@@ -77,62 +97,13 @@ func (h handler) Connect(c echo.Context) error {
 			continue
 		}
 
-		if cancel != nil {
-			cancel()
-		}
-		if pubsub != nil {
-			pubsub.Close()
-		}
-
-		ctx, cancel = context.WithCancel(context.Background())
-
-		// Unsubscribe from all channels before subscribing to new ones
-		pubsub = h.rdb.Subscribe(ctx)
-
-		// Subscribe to new channels
-		for _, ch := range req.Channels {
-			pubsub.Subscribe(ctx, ch)
-			log.Printf("Subscribed to channel: %s\n", ch)
-		}
+		log.Printf("[socket] subscribe: %s\n", req.Channels)
+		pubsub.Unsubscribe(ctx)
+		pubsub.Subscribe(ctx, req.Channels...)
 		h.manager.Subscribe(ws, req.Channels)
-
-		// Read from channels
-		go func(ctx context.Context, pubsub *redis.PubSub) {
-			for {
-				select {
-				case <-ctx.Done():
-					log.Println("finish goroutine")
-					return
-				default:
-					msg, err := pubsub.ReceiveMessage(ctx)
-					if ctx.Err() != nil {
-						log.Println("context seems to be canceled")
-						continue
-					}
-					if err != nil {
-						log.Println("Error receiving message: ", err)
-						break
-					}
-
-					err = h.send(ws, msg.Payload)
-					if err != nil {
-						log.Println("Error writing message: ", err)
-						break
-					}
-				}
-			}
-		}(ctx, pubsub)
-
 	}
 
-	defer func() {
-		if cancel != nil {
-			cancel()
-		}
-		if pubsub != nil {
-			pubsub.Close()
-		}
-	}()
+	close(quit)
 
 	return nil
 }

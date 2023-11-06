@@ -114,9 +114,7 @@ func (m *manager) createInsufficientSubs() {
 		}
 	}
 
-	// FIXME: should be call if the subsucription is updated
 	for domain, streams := range m.remoteSubs {
-		log.Printf("remote subscription updated: %v, %v", domain, streams)
 		m.RemoteSubRoutine(domain, streams)
 	}
 }
@@ -223,7 +221,6 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 
 			var lastPong time.Time = time.Now()
 			c.SetPongHandler(func(string) error {
-				log.Printf("pong received: %s", domain)
 				lastPong = time.Now()
 				return nil
 			})
@@ -231,6 +228,9 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 			for {
 				select {
 					case message := <-messageChan:
+
+						log.Printf("[remote] <- %s\n", message[:64])
+
 						var event stream.Event
 						err = json.Unmarshal(message, &event)
 						if err != nil {
@@ -275,7 +275,6 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 							}
 						}
 					case <-pingTicker.C:
-						log.Printf("ping sent: %s", domain)
 						if err := c.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
 							log.Printf("fail to send ping message: %v", err)
 							return
@@ -297,7 +296,7 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 		delete(m.remoteConns, domain)
 		return
 	}
-	log.Printf("[manager] remote connection updated: %s > %s", domain, streams)
+	log.Printf("[remote] connection updated: %s > %s", domain, streams)
 }
 
 /*

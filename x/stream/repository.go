@@ -139,8 +139,6 @@ func (r *repository) GetChunksFromCache(ctx context.Context, streams []string, c
 		return nil, err
 	}
 
-	log.Println("targetKeyMap", targetKeyMap)
-
 	targetKeys := make([]string, 0)
 	for _, targetKey := range targetKeyMap {
 		targetKeys = append(targetKeys, targetKey)

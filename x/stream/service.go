@@ -14,7 +14,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/rs/xid"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/entity"
@@ -34,6 +33,8 @@ type Service interface {
 	PostItem(ctx context.Context, stream string, item core.StreamItem, body interface{}) error
 	RemoveItem(ctx context.Context, stream string, id string)
 
+	PublishEventToLocal(ctx context.Context, event Event) error
+
 	CreateStream(ctx context.Context, stream core.Stream) (core.Stream, error)
 	GetStream(ctx context.Context, key string) (core.Stream, error)
 	UpdateStream(ctx context.Context, stream core.Stream) (core.Stream, error)
@@ -47,18 +48,15 @@ type Service interface {
 }
 
 type service struct {
-	rdb        *redis.Client
 	repository Repository
 	entity     entity.Service
 	config     util.Config
 }
 
 // NewService creates a new service
-func NewService(rdb *redis.Client, repository Repository, entity entity.Service, config util.Config) Service {
-	return &service{rdb, repository, entity, config}
+func NewService(repository Repository, entity entity.Service, config util.Config) Service {
+	return &service{repository, entity, config}
 }
-
-
 
 func Time2Chunk(t time.Time) string {
 	// chunk by 10 minutes
@@ -324,15 +322,15 @@ func (s *service) PostItem(ctx context.Context, stream string, item core.StreamI
 		}
 
 		// publish event to pubsub
-		jsonstr, _ := json.Marshal(Event{
+		event := Event{
 			Stream: stream,
 			Action: "create",
 			Type:   item.Type,
 			Item:   created,
 			Body:   body,
-		})
+		}
 
-		err = s.rdb.Publish(context.Background(), stream, jsonstr).Err()
+		err = s.repository.PublishEvent(ctx, event)
 		if err != nil {
 			span.RecordError(err)
 			log.Printf("fail to publish message to Redis: %v", err)
@@ -386,6 +384,84 @@ func (s *service) PostItem(ctx context.Context, stream string, item core.StreamI
 	}
 	return nil
 }
+
+func (s *service) PublishEventToLocal(ctx context.Context, event Event) error {
+	ctx, span := tracer.Start(ctx, "ServiceDistributeEvents")
+	defer span.End()
+
+	return s.repository.PublishEvent(ctx, event)
+}
+
+// DistributeEvents distributes events to the stream.
+func (s *service) DistributeEvents(ctx context.Context, streams []string, item core.StreamItem, body interface{}) error {
+	ctx, span := tracer.Start(ctx, "ServiceDistributeEvents")
+	defer span.End()
+
+	for _, stream := range streams {
+
+		query := strings.Split(stream, "@")
+		if len(query) != 2 {
+			return fmt.Errorf("Invalid format: %v", stream)
+		}
+
+		_, streamHost := query[0], query[1]
+
+		event := Event{
+			Stream: stream,
+			Action: "create",
+			Type:   "association",
+			Item:   item,
+			Body:   body,
+		}
+
+		if streamHost == s.config.Concurrent.FQDN {
+
+			s.repository.PublishEvent(ctx, event)
+
+		} else {
+
+			jsonstr, _ := json.Marshal(event)
+
+			req, err := http.NewRequest(
+				"POST",
+				"https://"+streamHost+"/api/v1/streams/checkpoint/event",
+				bytes.NewBuffer(jsonstr),
+			)
+
+			if err != nil {
+				span.RecordError(err)
+				return err
+			}
+
+			otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+
+			jwt, err := util.CreateJWT(util.JwtClaims{
+				Issuer:         s.config.Concurrent.CCID,
+				Subject:        "CONCURRENT_API",
+				Audience:       streamHost,
+				ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
+				IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
+				JWTID:          xid.New().String(),
+			}, s.config.Concurrent.PrivateKey)
+
+			req.Header.Add("content-type", "application/json")
+			req.Header.Add("authorization", "Bearer "+jwt)
+			client := new(http.Client)
+			resp, err := client.Do(req)
+			if err != nil {
+				span.RecordError(err)
+				return err
+			}
+			defer resp.Body.Close()
+
+			// TODO: response check
+			span.AddEvent("checkpoint response", trace.WithAttributes(attribute.String("response", resp.Status)))
+		}
+	}
+
+	return nil
+}
+
 
 // Create updates stream information
 func (s *service) CreateStream(ctx context.Context, obj core.Stream) (core.Stream, error) {

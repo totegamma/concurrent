@@ -30,6 +30,7 @@ type Handler interface {
 	Delete(c echo.Context) error
 	Remove(c echo.Context) error
 	Checkpoint(c echo.Context) error
+	EventCheckpoint(c echo.Context) error
 	GetChunks(c echo.Context) error
 }
 
@@ -235,7 +236,7 @@ func (h handler) Remove(c echo.Context) error {
 
 	h.service.RemoveItem(ctx, streamID, objectID)
 
-	return c.String(http.StatusOK, fmt.Sprintf("{\"message\": \"accept\"}"))
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
 }
 
 // Checkpoint receives events from remote domains
@@ -256,7 +257,27 @@ func (h handler) Checkpoint(c echo.Context) error {
 		return nil
 	}
 
-	return c.String(http.StatusCreated, fmt.Sprintf("{\"message\": \"accept\"}"))
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
+}
+
+func (h handler) EventCheckpoint(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerEventCheckpoint")
+	defer span.End()
+
+	var event Event
+	err := c.Bind(&event)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	err = h.service.PublishEventToLocal(ctx, event)
+	if err != nil {
+		span.RecordError(err)
+		return nil
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
 }
 
 // GetChunks

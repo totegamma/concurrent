@@ -23,15 +23,20 @@ var pivot time.Time
 func TestMain(m *testing.M) {
 	log.Println("Test Start")
 
+	var cleanup_db func()
+	db, cleanup_db := testutil.CreateDB()
+	defer cleanup_db()
+
 	var cleanup_rdb func()
-	db, cleanup_rdb := testutil.CreateDB()
+	rdb, cleanup_rdb := testutil.CreateRDB()
 	defer cleanup_rdb()
+
 
 	var cleanup_mc func()
 	mc, cleanup_mc = testutil.CreateMC()
 	defer cleanup_mc()
 
-	repo = NewRepository(db, mc, util.Config{})
+	repo = NewRepository(db, rdb, mc, util.Config{})
 
 	pivot = time.Now()
 
@@ -238,7 +243,7 @@ func TestRepository(t *testing.T) {
 	testchunks["00000000000000000000@remote.com"] = Chunk {
 		Key: remoteKey0,
 		Items: []core.StreamItem {
-			core.StreamItem {
+			 {
 				Type: "message",
 				ObjectID: "00000000000000000000",
 				StreamID: "00000000000000000000@remote.com",
@@ -252,7 +257,7 @@ func TestRepository(t *testing.T) {
 	testchunks["11111111111111111111@remote.com"] = Chunk {
 		Key: remoteKey1,
 		Items: []core.StreamItem {
-			core.StreamItem {
+			{
 				Type: "message",
 				ObjectID: "22222222222222222222",
 				StreamID: "11111111111111111111@remote.com",

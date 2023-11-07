@@ -212,6 +212,7 @@ func main() {
 	apiV1.POST("/stream", streamHandler.Create, authService.Restrict(auth.ISLOCAL))
 	apiV1.PUT("/stream/:id", streamHandler.Update, authService.Restrict(auth.ISLOCAL))
 	apiV1.POST("/streams/checkpoint", streamHandler.Checkpoint, authService.Restrict(auth.ISUNITED))
+	apiV1.POST("/streams/checkpoint/event", streamHandler.EventCheckpoint, authService.Restrict(auth.ISUNITED))
 	apiV1.DELETE("/stream/:id", streamHandler.Delete, authService.Restrict(auth.ISLOCAL))
 	apiV1.DELETE("/stream/:stream/:object", streamHandler.Remove, authService.Restrict(auth.ISLOCAL))
 	apiV1.GET("/streams/mine", streamHandler.ListMine)

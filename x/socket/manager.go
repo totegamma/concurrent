@@ -117,8 +117,6 @@ func (m *manager) createInsufficientSubs() {
 		}
 	}
 
-	log.Printf("remote subscription created: %v", m.remoteSubs)
-
 	for _, domain := range changedRemotes {
 		m.RemoteSubRoutine(domain, m.remoteSubs[domain])
 	}

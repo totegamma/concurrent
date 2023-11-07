@@ -1,7 +1,7 @@
 package stream
 
 import (
-	"io/ioutil"
+	"io"
 	"fmt"
 	"log"
 	"net/http"
@@ -10,6 +10,7 @@ import (
 	"time"
 	"strings"
 
+	"github.com/redis/go-redis/v9"
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
@@ -45,17 +46,34 @@ type Repository interface {
 	GetChunkIterators(ctx context.Context, streams []string, chunk string) (map[string]string, error)
 	GetChunksFromRemote(ctx context.Context, host string, streams []string, queryTime time.Time) (map[string]Chunk, error)
 	SaveToCache(ctx context.Context, chunks map[string]Chunk, queryTime time.Time) error
+	PublishEvent(ctx context.Context, event Event) error
 }
 
 type repository struct {
 	db *gorm.DB
+	rdb *redis.Client
 	mc *memcache.Client
 	config util.Config
 }
 
 // NewRepository creates a new stream repository
-func NewRepository(db *gorm.DB, mc *memcache.Client, config util.Config) Repository {
-	return &repository{db, mc, config}
+func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) Repository {
+	return &repository{db, rdb, mc, config}
+}
+
+func (r *repository) PublishEvent(ctx context.Context, event Event) error {
+	ctx, span := tracer.Start(ctx, "ServiceDistributeEvents")
+	defer span.End()
+
+	jsonstr, _ := json.Marshal(event)
+
+	err := r.rdb.Publish(context.Background(), event.Stream, jsonstr).Err()
+	if err != nil {
+		span.RecordError(err)
+		log.Printf("fail to publish message to Redis: %v", err)
+	}
+
+	return nil
 }
 
 func (r *repository) GetChunksFromRemote(ctx context.Context, host string, streams []string, queryTime time.Time) (map[string]Chunk, error) {
@@ -78,7 +96,7 @@ func (r *repository) GetChunksFromRemote(ctx context.Context, host string, strea
 	}
 	defer resp.Body.Close()
 
-	body, err := ioutil.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err

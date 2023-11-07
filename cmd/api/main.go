@@ -2,6 +2,7 @@
 package main
 
 import (
+	"time"
 	"context"
 	"fmt"
 	"log"
@@ -12,6 +13,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 
 	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
@@ -60,7 +62,7 @@ func main() {
 	}
 	defer logfile.Close()
 
-	// e.Logger.SetOutput(logfile)
+	e.Logger.SetOutput(logfile)
 
 	e.HidePort = true
 	e.HideBanner = true
@@ -81,10 +83,22 @@ func main() {
 	}
 
 	e.Use(echoprometheus.NewMiddleware("ccapi"))
-	//e.Use(middleware.Logger())
+	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
-	db, err := gorm.Open(postgres.Open(config.Server.Dsn), &gorm.Config{})
+	gormLogger := logger.New(
+		log.New(logfile, "\r\n", log.LstdFlags), // io writer
+		logger.Config{
+			SlowThreshold:             300 * time.Millisecond, // Slow SQL threshold
+			LogLevel:                  logger.Warn,            // Log level
+			IgnoreRecordNotFoundError: true,                   // Ignore ErrRecordNotFound error for logger
+			Colorful:                  true,                   // Enable color
+		},
+	)
+
+	db, err := gorm.Open(postgres.Open(config.Server.Dsn), &gorm.Config{
+		Logger: gormLogger,
+	})
 	if err != nil {
 		panic("failed to connect database")
 	}

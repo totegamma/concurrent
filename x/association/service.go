@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"log"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/stream"
@@ -30,15 +29,14 @@ type Service interface {
 }
 
 type service struct {
-	rdb     *redis.Client
 	repo    Repository
 	stream  stream.Service
 	message message.Service
 }
 
 // NewService creates a new association service
-func NewService(rdb *redis.Client, repo Repository, stream stream.Service, message message.Service) Service {
-	return &service{rdb, repo, stream, message}
+func NewService(repo Repository, stream stream.Service, message message.Service) Service {
+	return &service{repo, stream, message}
 }
 
 // PostAssociation creates a new association
@@ -119,15 +117,17 @@ func (s *service) PostAssociation(ctx context.Context, objectStr string, signatu
 		}
 	}
 
+
 	for _, postto := range targetMessage.Streams {
-		jsonstr, _ := json.Marshal(stream.Event{
+		event := stream.Event{
 			Stream: postto,
 			Action: "create",
 			Type:   "association",
 			Item:   item,
 			Body:   created,
-		})
-		err := s.rdb.Publish(context.Background(), postto, jsonstr).Err()
+		}
+		err = s.stream.DistributeEvent(ctx, postto, event)
+
 		if err != nil {
 			span.RecordError(err)
 			log.Printf("fail to publish message to Redis: %v", err)
@@ -174,13 +174,13 @@ func (s *service) Delete(ctx context.Context, id string) (core.Association, erro
 		return deleted, err
 	}
 	for _, posted := range targetMessage.Streams {
-		jsonstr, _ := json.Marshal(stream.Event{
+		event := stream.Event{
 			Stream: posted,
 			Type:   "association",
 			Action: "delete",
 			Body:   deleted,
-		})
-		err := s.rdb.Publish(context.Background(), posted, jsonstr).Err()
+		}
+		err := s.stream.DistributeEvent(ctx, posted, event)
 		if err != nil {
 			log.Printf("fail to publish message to Redis: %v", err)
 			span.RecordError(err)

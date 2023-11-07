@@ -34,6 +34,7 @@ type Service interface {
 	RemoveItem(ctx context.Context, stream string, id string)
 
 	PublishEventToLocal(ctx context.Context, event Event) error
+	DistributeEvent(ctx context.Context, stream string, event Event) error
 
 	CreateStream(ctx context.Context, stream core.Stream) (core.Stream, error)
 	GetStream(ctx context.Context, key string) (core.Stream, error)
@@ -392,71 +393,60 @@ func (s *service) PublishEventToLocal(ctx context.Context, event Event) error {
 	return s.repository.PublishEvent(ctx, event)
 }
 
-// DistributeEvents distributes events to the stream.
-func (s *service) DistributeEvents(ctx context.Context, streams []string, item core.StreamItem, body interface{}) error {
+// DistributeEvent distributes events to the stream.
+func (s *service) DistributeEvent(ctx context.Context, stream string, event Event) error {
 	ctx, span := tracer.Start(ctx, "ServiceDistributeEvents")
 	defer span.End()
 
-	for _, stream := range streams {
+	query := strings.Split(stream, "@")
+	if len(query) != 2 {
+		return fmt.Errorf("Invalid format: %v", stream)
+	}
 
-		query := strings.Split(stream, "@")
-		if len(query) != 2 {
-			return fmt.Errorf("Invalid format: %v", stream)
+	_, streamHost := query[0], query[1]
+
+	if streamHost == s.config.Concurrent.FQDN {
+
+		s.repository.PublishEvent(ctx, event)
+
+	} else {
+
+		jsonstr, _ := json.Marshal(event)
+
+		req, err := http.NewRequest(
+			"POST",
+			"https://"+streamHost+"/api/v1/streams/checkpoint/event",
+			bytes.NewBuffer(jsonstr),
+		)
+
+		if err != nil {
+			span.RecordError(err)
+			return err
 		}
 
-		_, streamHost := query[0], query[1]
+		otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
 
-		event := Event{
-			Stream: stream,
-			Action: "create",
-			Type:   "association",
-			Item:   item,
-			Body:   body,
+		jwt, err := util.CreateJWT(util.JwtClaims{
+			Issuer:         s.config.Concurrent.CCID,
+			Subject:        "CONCURRENT_API",
+			Audience:       streamHost,
+			ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
+			IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
+			JWTID:          xid.New().String(),
+		}, s.config.Concurrent.PrivateKey)
+
+		req.Header.Add("content-type", "application/json")
+		req.Header.Add("authorization", "Bearer "+jwt)
+		client := new(http.Client)
+		resp, err := client.Do(req)
+		if err != nil {
+			span.RecordError(err)
+			return err
 		}
+		defer resp.Body.Close()
 
-		if streamHost == s.config.Concurrent.FQDN {
-
-			s.repository.PublishEvent(ctx, event)
-
-		} else {
-
-			jsonstr, _ := json.Marshal(event)
-
-			req, err := http.NewRequest(
-				"POST",
-				"https://"+streamHost+"/api/v1/streams/checkpoint/event",
-				bytes.NewBuffer(jsonstr),
-			)
-
-			if err != nil {
-				span.RecordError(err)
-				return err
-			}
-
-			otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
-
-			jwt, err := util.CreateJWT(util.JwtClaims{
-				Issuer:         s.config.Concurrent.CCID,
-				Subject:        "CONCURRENT_API",
-				Audience:       streamHost,
-				ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
-				IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
-				JWTID:          xid.New().String(),
-			}, s.config.Concurrent.PrivateKey)
-
-			req.Header.Add("content-type", "application/json")
-			req.Header.Add("authorization", "Bearer "+jwt)
-			client := new(http.Client)
-			resp, err := client.Do(req)
-			if err != nil {
-				span.RecordError(err)
-				return err
-			}
-			defer resp.Body.Close()
-
-			// TODO: response check
-			span.AddEvent("checkpoint response", trace.WithAttributes(attribute.String("response", resp.Status)))
-		}
+		// TODO: response check
+		span.AddEvent("checkpoint response", trace.WithAttributes(attribute.String("response", resp.Status)))
 	}
 
 	return nil

@@ -12,7 +12,7 @@ import (
 	"github.com/totegamma/concurrent/x/util"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
-	"io/ioutil"
+	"io"
 	"log"
 	"math/rand"
 	"net/http"
@@ -57,7 +57,6 @@ func (a *agent) collectUsers(ctx context.Context) {
 		return
 	}
 	host := hosts[rand.Intn(len(hosts))]
-	log.Printf("collecting users of %v\n", host)
 	a.pullRemoteEntities(ctx, host)
 }
 
@@ -100,7 +99,7 @@ func (a *agent) pullRemoteEntities(ctx context.Context, remote core.Domain) erro
 	}
 	defer resp.Body.Close()
 
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 
 	var remoteEntities []entity.SafeEntity
 	json.Unmarshal(body, &remoteEntities)
@@ -136,8 +135,12 @@ func (a *agent) pullRemoteEntities(ctx context.Context, remote core.Domain) erro
 		}
 	}
 
+
 	if !errored {
+		log.Printf("[agent] pulled %d entities from %s", len(remoteEntities), remote.ID)
 		a.domain.UpdateScrapeTime(ctx, remote.ID, requestTime)
+	} else {
+		log.Printf("[agent] failed to pull entities from %s", remote.ID)
 	}
 
 	return nil

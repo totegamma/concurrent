@@ -56,6 +56,7 @@ func NewManager(mc *memcache.Client, rdb *redis.Client, stream stream.Service, u
 		remoteConns: make(map[string]*websocket.Conn),
 	}
 	go newmanager.chunkUpdaterRoutine()
+	go newmanager.connectionKeeperRoutine()
 	return newmanager
 }
 
@@ -162,7 +163,7 @@ func (m *manager) deleteExcessiveSubs() {
 		delete(m.remoteConns, domain)
 	}
 
-	log.Printf("remote subscription cleaned up: %v", closeList)
+	log.Printf("[remote] subscription cleaned up: %v", closeList)
 }
 
 // RemoteSubRoutine subscribes to a remote server
@@ -313,6 +314,27 @@ func (m *manager) updateChunks(newchunk string) {
 }
 */
 
+// ConnectionKeeperRoutine
+// 接続が失われている場合、再接続を試みる
+func (m *manager) connectionKeeperRoutine() {
+
+	ticker := time.NewTicker(time.Second * 10)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			log.Printf("[remote] connection keeper: %d/%d\n", len(m.remoteSubs), len(m.remoteConns))
+			for domain := range m.remoteSubs {
+				if _, ok := m.remoteConns[domain]; !ok {
+					log.Printf("[remote] broken connection found: %s\n", domain)
+					m.RemoteSubRoutine(domain, m.remoteSubs[domain])
+				}
+			}
+		}
+	}
+}
+
 // ChunkUpdaterRoutine
 func (m *manager) chunkUpdaterRoutine() {
 	currentChunk := stream.Time2Chunk(time.Now())
@@ -334,7 +356,7 @@ func (m *manager) chunkUpdaterRoutine() {
 			continue
 		}
 
-		log.Printf("update chunks: %s -> %s", currentChunk, newChunk)
+		log.Printf("[manager] update chunks: %s -> %s", currentChunk, newChunk)
 
 		m.deleteExcessiveSubs()
 		//m.updateChunks(newChunk)

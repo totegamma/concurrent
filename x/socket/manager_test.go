@@ -10,12 +10,10 @@ import (
 	"github.com/totegamma/concurrent/internal/testutil"
 
 	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/stream"
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
 
-	"github.com/totegamma/concurrent/x/stream/mock"
 	"go.uber.org/mock/gomock"
 
 	"fmt"
@@ -93,17 +91,6 @@ func TestManager(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
-
-	mockStreamService := mock_stream.NewMockService(ctrl)
-	mockStreamService.
-		EXPECT().
-		GetChunksFromRemote(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
-		Return(
-			map[string]stream.Chunk{
-				"remote0": {},
-			},
-			nil,
-		)
 
 	m := NewSubscriptionManagerForTest(mc, rdb)
 

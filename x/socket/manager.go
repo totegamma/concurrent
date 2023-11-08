@@ -1,3 +1,5 @@
+//go:generate go run go.uber.org/mock/mockgen -source=manager.go -destination=mock/manager.go
+
 package socket
 
 import (
@@ -33,6 +35,7 @@ var (
 type Manager interface {
 	Subscribe(conn *websocket.Conn, streams []string)
 	Unsubscribe(conn *websocket.Conn)
+	GetAllRemoteSubs() []string
 }
 
 type manager struct {
@@ -84,6 +87,24 @@ func (m *manager) Unsubscribe(conn *websocket.Conn) {
 		log.Printf("[remote] unsubscribe: %v", conn.RemoteAddr())
 		delete(m.clientSubs, conn)
 	}
+}
+
+// GetAllRemoteSubs returns all remote subscriptions
+func (m *manager) GetAllRemoteSubs() []string {
+
+	allSubsMap := make(map[string]bool)
+	for _, subs := range m.remoteSubs {
+		for _, sub := range subs {
+			allSubsMap[sub] = true
+		}
+	}
+
+	allSubs := make([]string, 0)
+	for sub := range allSubsMap {
+		allSubs = append(allSubs, sub)
+	}
+
+	return allSubs
 }
 
 func (m *manager) createInsufficientSubs() {

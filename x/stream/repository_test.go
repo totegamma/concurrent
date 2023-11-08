@@ -2,16 +2,18 @@ package stream
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"testing"
 	"time"
-	"encoding/json"
 
-	"github.com/totegamma/concurrent/internal/testutil"
-	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/util"
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/stretchr/testify/assert"
+	"github.com/totegamma/concurrent/internal/testutil"
+	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/socket/mock"
+	"github.com/totegamma/concurrent/x/util"
+	"go.uber.org/mock/gomock"
 )
 
 
@@ -20,7 +22,9 @@ var mc *memcache.Client
 var repo Repository
 var pivot time.Time
 
-func TestMain(m *testing.M) {
+
+func TestRepository(t *testing.T) {
+
 	log.Println("Test Start")
 
 	var cleanup_db func()
@@ -31,21 +35,20 @@ func TestMain(m *testing.M) {
 	rdb, cleanup_rdb := testutil.CreateRDB()
 	defer cleanup_rdb()
 
-
 	var cleanup_mc func()
 	mc, cleanup_mc = testutil.CreateMC()
 	defer cleanup_mc()
 
-	repo = NewRepository(db, rdb, mc, util.Config{})
 
 	pivot = time.Now()
 
-	m.Run()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
 
-	log.Println("Test End")
-}
+	mockManager := mock_socket.NewMockManager(ctrl)
+	mockManager.EXPECT().GetAllRemoteSubs().Return([]string{})
 
-func TestRepository(t *testing.T) {
+	repo = NewRepository(db, rdb, mc, mockManager, util.Config{})
 
 	// :: Streamを作成 ::
 	stream := core.Stream{

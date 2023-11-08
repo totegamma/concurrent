@@ -14,6 +14,7 @@ import (
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
+	"github.com/totegamma/concurrent/x/socket"
 	"slices"
 	"gorm.io/gorm"
 
@@ -53,12 +54,13 @@ type repository struct {
 	db *gorm.DB
 	rdb *redis.Client
 	mc *memcache.Client
+	manager socket.Manager
 	config util.Config
 }
 
 // NewRepository creates a new stream repository
-func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) Repository {
-	return &repository{db, rdb, mc, config}
+func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) Repository {
+	return &repository{db, rdb, mc, manager, config}
 }
 
 func (r *repository) PublishEvent(ctx context.Context, event core.Event) error {
@@ -109,7 +111,19 @@ func (r *repository) GetChunksFromRemote(ctx context.Context, host string, strea
 		return nil, err
 	}
 
-	err = r.SaveToCache(ctx, chunkResp.Content, queryTime)
+	currentSubsciptions := r.manager.GetAllRemoteSubs()
+
+	cacheChunks := make(map[string]Chunk)
+	for streamID, chunk := range chunkResp.Content {
+		if slices.Contains(currentSubsciptions, streamID) {
+			cacheChunks[streamID] = chunk
+			log.Printf("stream %s is subscribed", streamID)
+		} else {
+			log.Printf("stream %s is not subscribed", streamID)
+		}
+	}
+
+	err = r.SaveToCache(ctx, cacheChunks, queryTime)
 	if err != nil {
 		log.Printf("Error: %v", err)
 		span.RecordError(err)

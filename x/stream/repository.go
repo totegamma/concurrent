@@ -117,9 +117,6 @@ func (r *repository) GetChunksFromRemote(ctx context.Context, host string, strea
 	for streamID, chunk := range chunkResp.Content {
 		if slices.Contains(currentSubsciptions, streamID) {
 			cacheChunks[streamID] = chunk
-			log.Printf("stream %s is subscribed", streamID)
-		} else {
-			log.Printf("stream %s is not subscribed", streamID)
 		}
 	}
 

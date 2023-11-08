@@ -81,7 +81,6 @@ func (m *manager) Subscribe(conn *websocket.Conn, streams []string) {
 // Unsubscribe unsubscribes a client from a stream
 func (m *manager) Unsubscribe(conn *websocket.Conn) {
 	if _, ok := m.clientSubs[conn]; ok {
-		log.Printf("[remote] unsubscribe: %v", conn.RemoteAddr())
 		delete(m.clientSubs, conn)
 	}
 }
@@ -104,34 +103,40 @@ func (m *manager) GetAllRemoteSubs() []string {
 	return allSubs
 }
 
+// update m.remoteSubs
+// also update remoteConns if needed
 func (m *manager) createInsufficientSubs() {
-	currentSubs := make(map[string][]string)
+	currentSubs := make(map[string]bool)
 	for _, streams := range m.clientSubs {
 		for _, stream := range streams {
-			split := strings.Split(stream, "@")
-			if len(split) != 2 {
-				continue
-			}
-			domain := split[1]
-			if _, ok := currentSubs[domain]; !ok {
-				currentSubs[domain] = append(currentSubs[domain], stream)
-			}
+			currentSubs[stream] = true
 		}
 	}
 
-	// on this func, update only if there is a new subscription
+	// update remoteSubs
+	// only add new subscriptions
+	// also detect remote subscription changes
 	changedRemotes := make([]string, 0)
-	for domain, streams := range currentSubs {
+	for stream := range currentSubs {
+		split := strings.Split(stream, "@")
+		if len(split) != 2 {
+			continue
+		}
+		domain := split[1]
+
 		if domain == m.config.Concurrent.FQDN {
 			continue
 		}
+
 		if _, ok := m.remoteSubs[domain]; !ok {
-			m.remoteSubs[domain] = streams
-			changedRemotes = append(changedRemotes, domain)
+			m.remoteSubs[domain] = []string{stream}
+			if !slices.Contains(changedRemotes, domain) {
+				changedRemotes = append(changedRemotes, domain)
+			}
 		} else {
-			for _, stream := range streams {
-				if !slices.Contains(m.remoteSubs[domain], stream) {
-					m.remoteSubs[domain] = append(m.remoteSubs[domain], stream)
+			if !slices.Contains(m.remoteSubs[domain], stream) {
+				m.remoteSubs[domain] = append(m.remoteSubs[domain], stream)
+				if !slices.Contains(changedRemotes, domain) {
 					changedRemotes = append(changedRemotes, domain)
 				}
 			}
@@ -214,7 +219,7 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 					c.Close()
 				}
 				delete(m.remoteConns, domain)
-				log.Printf("##### remote connection closed: %s", domain)
+				log.Printf("[remote ws.reader] remote connection closed: %s", domain)
 			}()
 			for {
 				// check if the connection is still alive
@@ -240,7 +245,7 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 				}
 				pingTicker.Stop()
 				delete(m.remoteConns, domain)
-				log.Printf("##### remote connection closed: %s", domain)
+				log.Printf("[remote ws.publisher] remote connection closed: %s", domain)
 			}()
 
 			var lastPong time.Time = time.Now()
@@ -301,7 +306,7 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 	}
 	err := m.remoteConns[domain].WriteJSON(request)
 	if err != nil {
-		log.Printf("fail to send subscribe request to remote server %v: %v", domain, err)
+		log.Printf("[remote] fail to send subscribe request to remote server %v: %v", domain, err)
 		delete(m.remoteConns, domain)
 		return
 	}

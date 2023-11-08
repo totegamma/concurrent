@@ -282,12 +282,33 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 						}
 						json = append(json, ',')
 
+						streamID := event.Item.StreamID
+						if !strings.Contains(streamID, "@") {
+							streamID = streamID + "@" + domain
+						}
+
 						// update cache
-						cacheKey := "stream:body:all:" + event.Item.StreamID + ":" + core.Time2Chunk(event.Item.CDate)
+						// first, try to get itr
+						itr := "stream:itr:all:" + streamID + ":" + core.Time2Chunk(event.Item.CDate)
+						itrVal, err := m.mc.Get(itr)
+						var cacheKey string
+						if err == nil {
+							cacheKey = string(itrVal.Value)
+						} else {
+							// 最新時刻のイテレーターがないということは、キャッシュがないということ
+							// とはいえ今後はいい感じにキャッシュを作れるようにしたい
+							// 例えば、今までのキャッシュを(現時点では取得不能)最新のitrが指すようにして
+							// 今までのキャッシュを更新し続けるとか... (TODO)
+							// cacheKey := "stream:body:all:" + event.Item.StreamID + ":" + core.Time2Chunk(event.Item.CDate)
+							log.Printf("[remote] no need to update cache: %s", itr)
+							continue
+						}
+
 						err = m.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
 						if err != nil {
 							log.Printf("fail to update cache: %v", err)
 						}
+
 					case <-pingTicker.C:
 						if err := c.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
 							log.Printf("fail to send ping message: %v", err)

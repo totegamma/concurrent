@@ -118,7 +118,7 @@ func (s *service) Delete(ctx context.Context, id string) (core.Message, error) {
 	}
 
 	for _, deststream := range deleted.Streams {
-		jsonstr, _ := json.Marshal(stream.Event{
+		jsonstr, _ := json.Marshal(core.Event{
 			Stream: deststream,
 			Type:   "message",
 			Action: "delete",

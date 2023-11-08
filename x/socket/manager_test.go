@@ -100,12 +100,12 @@ func TestManager(t *testing.T) {
 		GetChunksFromRemote(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).
 		Return(
 			map[string]stream.Chunk{
-				"remote0": stream.Chunk{},
+				"remote0": {},
 			},
 			nil,
 		)
 
-	m := NewSubscriptionManagerForTest(mc, rdb, mockStreamService)
+	m := NewSubscriptionManagerForTest(mc, rdb)
 
 	// ローカルのサブスクリプションではリモートsubが作成されないことを確認
 	conn0 := websocket.Conn{}
@@ -147,10 +147,10 @@ func TestManager(t *testing.T) {
 
 	// 外からメッセージを流して、キャッシュが更新されることを確認
 
-	key := "stream:body:all:" + remotestream1 + ":" + stream.Time2Chunk(pivot)
+	key := "stream:body:all:" + remotestream1 + ":" + core.Time2Chunk(pivot)
 
 	// - キャッシュが存在しないとき
-	testEvent := stream.Event{
+	testEvent := core.Event{
 		Stream: remotestream1,
 		Action: "create",
 		Type:   "message",

@@ -46,7 +46,7 @@ type Repository interface {
 	GetChunkIterators(ctx context.Context, streams []string, chunk string) (map[string]string, error)
 	GetChunksFromRemote(ctx context.Context, host string, streams []string, queryTime time.Time) (map[string]Chunk, error)
 	SaveToCache(ctx context.Context, chunks map[string]Chunk, queryTime time.Time) error
-	PublishEvent(ctx context.Context, event Event) error
+	PublishEvent(ctx context.Context, event core.Event) error
 }
 
 type repository struct {
@@ -61,7 +61,7 @@ func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config u
 	return &repository{db, rdb, mc, config}
 }
 
-func (r *repository) PublishEvent(ctx context.Context, event Event) error {
+func (r *repository) PublishEvent(ctx context.Context, event core.Event) error {
 	ctx, span := tracer.Start(ctx, "ServiceDistributeEvents")
 	defer span.End()
 
@@ -126,7 +126,7 @@ func (r *repository) SaveToCache(ctx context.Context, chunks map[string]Chunk, q
 
 	for streamID, chunk := range chunks {
 		//save iterator
-		itrKey := "stream:itr:all:" + streamID + ":" + Time2Chunk(queryTime)
+		itrKey := "stream:itr:all:" + streamID + ":" + core.Time2Chunk(queryTime)
 		r.mc.Set(&memcache.Item{Key: itrKey, Value: []byte(chunk.Key)})
 
 		// save body
@@ -219,7 +219,7 @@ func (r *repository) GetChunksFromDB(ctx context.Context, streams []string, chun
 	for _, stream := range streams {
 		targetKey := targetKeyMap[stream]
 		var items []core.StreamItem
-		chunkDate := Chunk2RecentTime(chunk)
+		chunkDate := core.Chunk2RecentTime(chunk)
 
 		streamID := stream
 		if strings.Contains(streamID, "@") {
@@ -279,7 +279,7 @@ func (r *repository) GetChunkIterators(ctx context.Context, streams []string, ch
 			result[stream] = string(cache[keys[i]].Value)
 		} else { // miss
 			var item core.StreamItem
-			chunkTime := Chunk2RecentTime(chunk)
+			chunkTime := core.Chunk2RecentTime(chunk)
 			dbid := stream
 			if strings.Contains(dbid, "@") {
 				dbid = strings.Split(stream, "@")[0]
@@ -288,7 +288,7 @@ func (r *repository) GetChunkIterators(ctx context.Context, streams []string, ch
 			if err != nil {
 				continue
 			}
-			key := "stream:body:all:" + stream + ":" + Time2Chunk(item.CDate)
+			key := "stream:body:all:" + stream + ":" + core.Time2Chunk(item.CDate)
 			r.mc.Set(&memcache.Item{Key: keys[i], Value: []byte(key)})
 			result[stream] = key
 		}
@@ -324,7 +324,7 @@ func (r *repository) CreateItem(ctx context.Context, item core.StreamItem) (core
 
 	json = append(json, ',')
 
-	itemChunk := Time2Chunk(item.CDate)
+	itemChunk := core.Time2Chunk(item.CDate)
 	cacheKey := "stream:body:all:" + streamID + ":" + itemChunk
 
 	err = r.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
@@ -343,7 +343,7 @@ func (r *repository) CreateItem(ctx context.Context, item core.StreamItem) (core
 		}
 		*/
 
-		if itemChunk != Time2Chunk(time.Now()) {
+		if itemChunk != core.Time2Chunk(time.Now()) {
 			// イテレータを更新する
 			key := "stream:itr:all:" + streamID + ":" + itemChunk
 			dest := "stream:body:all:" + streamID + ":" + itemChunk

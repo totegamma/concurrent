@@ -264,7 +264,7 @@ func (h handler) EventCheckpoint(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerEventCheckpoint")
 	defer span.End()
 
-	var event Event
+	var event core.Event
 	err := c.Bind(&event)
 	if err != nil {
 		span.RecordError(err)

@@ -3,6 +3,8 @@ package core
 import (
 	"github.com/lib/pq"
 	"time"
+	"fmt"
+	"strconv"
 )
 
 // Association is one of a concurrent base object
@@ -131,4 +133,29 @@ type Ack struct {
 	To        string `json:"to" gorm:"primaryKey;type:char(42)"`
 	Payload   string `json:"payload" gorm:"type:json;default:'{}'"`
 	Signature string `json:"signature" gorm:"type:char(130)"`
+}
+
+// Event is websocket root packet model
+type Event struct {
+	Stream string          `json:"stream"` // stream full id (ex: <streamID>@<domain>)
+	Type   string          `json:"type"`
+	Action string          `json:"action"`
+	Item   StreamItem `json:"item"`
+	Body   interface{}     `json:"body"`
+}
+
+
+func Time2Chunk(t time.Time) string {
+	// chunk by 10 minutes
+	return fmt.Sprintf("%d", (t.Unix()/600)*600)
+}
+
+func Chunk2RecentTime(chunk string) time.Time {
+	i, _ := strconv.ParseInt(chunk, 10, 64)
+	return time.Unix(i+600, 0)
+}
+
+func Chunk2ImmediateTime(chunk string) time.Time {
+	i, _ := strconv.ParseInt(chunk, 10, 64)
+	return time.Unix(i, 0)
 }

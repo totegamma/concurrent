@@ -33,8 +33,8 @@ type Service interface {
 	PostItem(ctx context.Context, stream string, item core.StreamItem, body interface{}) error
 	RemoveItem(ctx context.Context, stream string, id string)
 
-	PublishEventToLocal(ctx context.Context, event Event) error
-	DistributeEvent(ctx context.Context, stream string, event Event) error
+	PublishEventToLocal(ctx context.Context, event core.Event) error
+	DistributeEvent(ctx context.Context, stream string, event core.Event) error
 
 	CreateStream(ctx context.Context, stream core.Stream) (core.Stream, error)
 	GetStream(ctx context.Context, key string) (core.Stream, error)
@@ -57,21 +57,6 @@ type service struct {
 // NewService creates a new service
 func NewService(repository Repository, entity entity.Service, config util.Config) Service {
 	return &service{repository, entity, config}
-}
-
-func Time2Chunk(t time.Time) string {
-	// chunk by 10 minutes
-	return fmt.Sprintf("%d", (t.Unix()/600)*600)
-}
-
-func Chunk2RecentTime(chunk string) time.Time {
-	i, _ := strconv.ParseInt(chunk, 10, 64)
-	return time.Unix(i+600, 0)
-}
-
-func Chunk2ImmediateTime(chunk string) time.Time {
-	i, _ := strconv.ParseInt(chunk, 10, 64)
-	return time.Unix(i, 0)
 }
 
 func min(a, b int) int {
@@ -106,7 +91,7 @@ func (s *service) GetChunks(ctx context.Context, streams []string, until time.Ti
 	}
 
 	// first, try to get from cache
-	untilChunk := Time2Chunk(until)
+	untilChunk := core.Time2Chunk(until)
 	items, err := s.repository.GetChunksFromCache(ctx, streams, untilChunk)
 	if err != nil {
 		log.Printf("Error: %v", err)
@@ -157,7 +142,7 @@ func (s *service) GetRecentItems(ctx context.Context, streams []string, until ti
 	}
 
 	// first, try to get from cache regardless of local or remote
-	untilChunk := Time2Chunk(until)
+	untilChunk := core.Time2Chunk(until)
 	items, err := s.repository.GetChunksFromCache(ctx, streams, untilChunk)
 	if err != nil {
 		log.Printf("Error: %v", err)
@@ -323,7 +308,7 @@ func (s *service) PostItem(ctx context.Context, stream string, item core.StreamI
 		}
 
 		// publish event to pubsub
-		event := Event{
+		event := core.Event{
 			Stream: stream,
 			Action: "create",
 			Type:   item.Type,
@@ -386,7 +371,7 @@ func (s *service) PostItem(ctx context.Context, stream string, item core.StreamI
 	return nil
 }
 
-func (s *service) PublishEventToLocal(ctx context.Context, event Event) error {
+func (s *service) PublishEventToLocal(ctx context.Context, event core.Event) error {
 	ctx, span := tracer.Start(ctx, "ServiceDistributeEvents")
 	defer span.End()
 
@@ -394,7 +379,7 @@ func (s *service) PublishEventToLocal(ctx context.Context, event Event) error {
 }
 
 // DistributeEvent distributes events to the stream.
-func (s *service) DistributeEvent(ctx context.Context, stream string, event Event) error {
+func (s *service) DistributeEvent(ctx context.Context, stream string, event core.Event) error {
 	ctx, span := tracer.Start(ctx, "ServiceDistributeEvents")
 	defer span.End()
 

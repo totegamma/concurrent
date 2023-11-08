@@ -29,15 +29,6 @@ type signedObject struct {
 	Visible    bool        `json:"visible"`
 }
 
-// Event is websocket root packet model
-type Event struct {
-	Stream string          `json:"stream"` // stream full id (ex: <streamID>@<domain>)
-	Type   string          `json:"type"`
-	Action string          `json:"action"`
-	Item   core.StreamItem `json:"item"`
-	Body   interface{}     `json:"body"`
-}
-
 type checkpointPacket struct {
 	Stream string          `json:"stream"` // stream full id (ex: <streamID>@<domain>)
 	Item   core.StreamItem `json:"item"`

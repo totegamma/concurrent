@@ -92,7 +92,7 @@ func TestRepository(t *testing.T) {
 	}
 
 	// :: ChunkIteratorが取得できることを確認 ::
-	pivotChunk := Time2Chunk(pivot)
+	pivotChunk := core.Time2Chunk(pivot)
 
 	_, err = repo.CreateItem(ctx, core.StreamItem {
 		Type: "message",
@@ -109,7 +109,7 @@ func TestRepository(t *testing.T) {
 		assert.Len(t, result, 1)
 	}
 
-	itemKey := "stream:body:all:00000000000000000000:" + Time2Chunk(createdItem.CDate)
+	itemKey := "stream:body:all:00000000000000000000:" + core.Time2Chunk(createdItem.CDate)
 	assert.Equal(t, result["00000000000000000000"], itemKey)
 
 	// trial2: cache hit test
@@ -235,8 +235,8 @@ func TestRepository(t *testing.T) {
 		assert.Equal(t, "d6087868-c30b-439d-9c2c-646fdd48ecc4", chunks["22222222222222222222"].Items[2].ObjectID)
 	}
 
-	remoteKey0 := "stream:body:all:00000000000000000000@remote.com:" + Time2Chunk(pivot.Add(-time.Minute * 10))
-	remoteKey1 := "stream:body:all:11111111111111111111@remote.com:" + Time2Chunk(pivot.Add(-time.Minute * 30))
+	remoteKey0 := "stream:body:all:00000000000000000000@remote.com:" + core.Time2Chunk(pivot.Add(-time.Minute * 10))
+	remoteKey1 := "stream:body:all:11111111111111111111@remote.com:" + core.Time2Chunk(pivot.Add(-time.Minute * 30))
 
 	// test SaveToCache
 	testchunks := make(map[string]Chunk)

@@ -10,11 +10,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
-	"github.com/totegamma/concurrent/x/stream"
 )
 
 // ソケット管理のルール
@@ -37,7 +37,6 @@ type Manager interface {
 type manager struct {
 	mc *memcache.Client
 	rdb  *redis.Client
-	stream stream.Service
 	config  util.Config
 
 	clientSubs map[*websocket.Conn][]string
@@ -45,11 +44,10 @@ type manager struct {
 	remoteConns map[string]*websocket.Conn
 }
 
-func NewManager(mc *memcache.Client, rdb *redis.Client, stream stream.Service, util util.Config) Manager {
+func NewManager(mc *memcache.Client, rdb *redis.Client, util util.Config) Manager {
 	newmanager := &manager{
 		mc: mc,
 		rdb: rdb,
-		stream: stream,
 		config: util,
 		clientSubs: make(map[*websocket.Conn][]string),
 		remoteSubs: make(map[string][]string),
@@ -61,11 +59,10 @@ func NewManager(mc *memcache.Client, rdb *redis.Client, stream stream.Service, u
 }
 
 
-func NewSubscriptionManagerForTest(mc *memcache.Client, rdb *redis.Client, stream stream.Service) *manager {
+func NewSubscriptionManagerForTest(mc *memcache.Client, rdb *redis.Client) *manager {
 	manager := &manager{
 		mc: mc,
 		rdb: rdb,
-		stream: stream,
 		clientSubs: make(map[*websocket.Conn][]string),
 		remoteSubs: make(map[string][]string),
 		remoteConns: make(map[string]*websocket.Conn),
@@ -235,7 +232,7 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 
 						log.Printf("[remote] <- %s\n", message[:64])
 
-						var event stream.Event
+						var event core.Event
 						err = json.Unmarshal(message, &event)
 						if err != nil {
 							log.Printf("fail to Unmarshall redis message: %v", err)
@@ -258,25 +255,10 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 						json = append(json, ',')
 
 						// update cache
-						cacheKey := "stream:body:all:" + event.Item.StreamID + ":" + stream.Time2Chunk(event.Item.CDate)
+						cacheKey := "stream:body:all:" + event.Item.StreamID + ":" + core.Time2Chunk(event.Item.CDate)
 						err = m.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
 						if err != nil {
-							// キャッシュがなかった場合、リモートからチャンクを取得し直す
-							chunks, err := m.stream.GetChunksFromRemote(ctx, domain, []string{event.Item.StreamID}, event.Item.CDate)
-							if err != nil {
-								log.Printf("fail to get chunks from remote: %v", err)
-								continue
-							}
-
-							if stream.Time2Chunk(event.Item.CDate) != stream.Time2Chunk(time.Now()) {
-								log.Println("remote-sent chunk is not the latest")
-								continue
-							}
-
-							if chunk, ok := chunks[event.Item.StreamID]; ok {
-								key := "stream:itr:all:" + event.Item.StreamID + ":" + stream.Time2Chunk(time.Now())
-								m.mc.Set(&memcache.Item{Key: key, Value: []byte(chunk.Key)})
-							}
+							log.Printf("fail to update cache: %v", err)
 						}
 					case <-pingTicker.C:
 						if err := c.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
@@ -337,7 +319,7 @@ func (m *manager) connectionKeeperRoutine() {
 
 // ChunkUpdaterRoutine
 func (m *manager) chunkUpdaterRoutine() {
-	currentChunk := stream.Time2Chunk(time.Now())
+	currentChunk := core.Time2Chunk(time.Now())
 	for {
 		// 次の実行時刻を計算
 		nextRun := time.Now().Truncate(time.Hour).Add(time.Minute * 10)
@@ -351,7 +333,7 @@ func (m *manager) chunkUpdaterRoutine() {
 		time.Sleep(time.Until(nextRun))
 
 		// まだだったら待ちなおす
-		newChunk := stream.Time2Chunk(time.Now())
+		newChunk := core.Time2Chunk(time.Now())
 		if newChunk == currentChunk {
 			continue
 		}

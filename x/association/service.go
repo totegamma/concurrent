@@ -119,7 +119,7 @@ func (s *service) PostAssociation(ctx context.Context, objectStr string, signatu
 
 
 	for _, postto := range targetMessage.Streams {
-		event := stream.Event{
+		event := core.Event{
 			Stream: postto,
 			Action: "create",
 			Type:   "association",
@@ -174,7 +174,7 @@ func (s *service) Delete(ctx context.Context, id string) (core.Association, erro
 		return deleted, err
 	}
 	for _, posted := range targetMessage.Streams {
-		event := stream.Event{
+		event := core.Event{
 			Stream: posted,
 			Type:   "association",
 			Action: "delete",

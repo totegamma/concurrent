@@ -23,7 +23,6 @@ import (
 // 1. Subscribeのリクエストのうち外部のリクエストは増える方向にしか更新をかけない
 // 2. 外から受信したイベントのうち、すでにキャッシュのキーがあるものに対してappendをかける
 // 3. chunk更新タイミングで、外部リクエストの棚卸しを行う
-// [誤り] 4. その際、継続している外部リクエストのキャッシュを新しく空で作っておく(なければ)
 
 var ctx = context.Background()
 
@@ -62,7 +61,6 @@ func NewManager(mc *memcache.Client, rdb *redis.Client, util util.Config) Manage
 	return newmanager
 }
 
-
 func NewSubscriptionManagerForTest(mc *memcache.Client, rdb *redis.Client) *manager {
 	manager := &manager{
 		mc: mc,
@@ -79,7 +77,6 @@ func (m *manager) Subscribe(conn *websocket.Conn, streams []string) {
 	m.clientSubs[conn] = streams
 	m.createInsufficientSubs() // TODO: this should be done in a goroutine
 }
-
 
 // Unsubscribe unsubscribes a client from a stream
 func (m *manager) Unsubscribe(conn *websocket.Conn) {
@@ -310,17 +307,6 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 	}
 	log.Printf("[remote] connection updated: %s > %s", domain, streams)
 }
-
-/*
-func (m *manager) updateChunks(newchunk string) {
-	// update cache
-	for _, streams := range m.remoteSubs {
-		for _, stream := range streams {
-			m.mc.Add(&memcache.Item{Key: "stream:body:all:" + stream + ":" + newchunk, Value: []byte("")})
-		}
-	}
-}
-*/
 
 // ConnectionKeeperRoutine
 // 接続が失われている場合、再接続を試みる

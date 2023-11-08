@@ -53,7 +53,10 @@ func (h handler) Connect(c echo.Context) error {
 		log.Println("Failed to upgrade WebSocket:", err)
 		c.Logger().Error(err)
 	}
-	defer ws.Close()
+	defer func() {
+		h.manager.Unsubscribe(ws)
+		ws.Close()
+	}()
 
 	ctx := c.Request().Context()
 

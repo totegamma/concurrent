@@ -32,6 +32,7 @@ var (
 
 type Manager interface {
 	Subscribe(conn *websocket.Conn, streams []string)
+	Unsubscribe(conn *websocket.Conn)
 }
 
 type manager struct {
@@ -76,9 +77,13 @@ func (m *manager) Subscribe(conn *websocket.Conn, streams []string) {
 	m.createInsufficientSubs() // TODO: this should be done in a goroutine
 }
 
+
 // Unsubscribe unsubscribes a client from a stream
 func (m *manager) Unsubscribe(conn *websocket.Conn) {
-	delete(m.clientSubs, conn)
+	if _, ok := m.clientSubs[conn]; ok {
+		log.Printf("[remote] unsubscribe: %v", conn.RemoteAddr())
+		delete(m.clientSubs, conn)
+	}
 }
 
 func (m *manager) createInsufficientSubs() {

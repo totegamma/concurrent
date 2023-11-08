@@ -46,7 +46,7 @@ func TestRepository(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockManager := mock_socket.NewMockManager(ctrl)
-	mockManager.EXPECT().GetAllRemoteSubs().Return([]string{})
+	mockManager.EXPECT().GetAllRemoteSubs().Return([]string{}).AnyTimes()
 
 	repo = NewRepository(db, rdb, mc, mockManager, util.Config{})
 

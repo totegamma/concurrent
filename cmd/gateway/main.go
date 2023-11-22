@@ -247,7 +247,7 @@ func main() {
 			}
 		}
 		return c.JSON(http.StatusOK, services)
-	})
+	}, cors)
 
 	e.GET("/health", func(c echo.Context) (err error) {
 		ctx := c.Request().Context()

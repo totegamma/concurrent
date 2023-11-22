@@ -32,6 +32,7 @@ export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Elemen
     const [formData, setFormData] = useState<any>({})
 
     const token = searchParams.get('token')
+    const callback = searchParams.get('callback')
     let ccaddr = ""
     if (token) {
         const split = token.split('.')
@@ -58,6 +59,13 @@ export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Elemen
         .then((data) => {
             console.log(data)
             setSuccess(true)
+
+            if (callback) {
+                setTimeout(() => {
+                    window.location.href = callback
+                }, 3000)
+            }
+
         }).catch((e) => {
             alert(e)
         }).finally(() => {
@@ -103,8 +111,10 @@ export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Elemen
             {profile.registration === 'close' ?
                 <Typography>登録は現在受け付けていません</Typography>
             : (
-            success ?
-                <>登録完了</>
+            success ? <>
+                <Typography>登録完了</Typography>
+                {callback && <Typography>元のページに戻ります...</Typography>}
+            </>
             :
                 <>
                 {profile.registration === 'invite' &&

@@ -134,7 +134,8 @@ func TestManager(t *testing.T) {
 
 	// 外からメッセージを流して、キャッシュが更新されることを確認
 
-	key := "stream:body:all:" + remotestream1 + ":" + core.Time2Chunk(pivot)
+	itrkey  := "stream:itr:all:" + remotestream1 + ":" + core.Time2Chunk(pivot)
+	bodykey := "stream:body:all:" + remotestream1 + ":" + core.Time2Chunk(pivot)
 
 	// - キャッシュが存在しないとき
 	testEvent := core.Event{
@@ -156,18 +157,19 @@ func TestManager(t *testing.T) {
 
 	time.Sleep(1 * time.Second)
 
-	_, err := mc.Get(key)
+	_, err := mc.Get(bodykey)
 	assert.Error(t, err)
 
 	// - キャッシュが存在するとき
-	mc.Set(&memcache.Item{Key: key,Value: []byte("")})
+	mc.Set(&memcache.Item{Key: itrkey,Value: []byte(bodykey)})
+	mc.Set(&memcache.Item{Key: bodykey,Value: []byte("")})
 	wshandler.EmitMessage(jsonstr)
 	json, err := json.Marshal(testEvent.Item)
 	json = append(json, ',')
 
 	time.Sleep(1 * time.Second)
 
-	cached, err := mc.Get(key)
+	cached, err := mc.Get(bodykey)
 	if assert.NoError(t, err) {
 		assert.Equal(t, string(json), string(cached.Value))
 	}
@@ -177,38 +179,5 @@ func TestManager(t *testing.T) {
 	assert.Len(t, m.remoteSubs[domain], 2) // 普通に増える
 	m.deleteExcessiveSubs()
 	assert.Len(t, m.remoteSubs[domain], 0) // リセットされる
-
-	// test updateChunks()
-	/*
-	key0 := "stream:body:all:" + remotestream0 + ":" + stream.Time2Chunk(pivot)
-	mc.Set(&memcache.Item{
-		Key: key0,
-		Value: []byte(""),
-	})
-	key1 := "stream:body:all:" + remotestream1 + ":" + stream.Time2Chunk(pivot)
-	mc.Set(&memcache.Item{
-		Key: key1,
-		Value: []byte(""),
-	})
-
-	// remotestream1だけ残しておく
-	m.Subscribe(&conn1, []string{remotestream1})
-
-	// 新しいpivotで更新
-	newPivot := pivot.Add(10 * time.Minute)
-	m.updateChunks(stream.Time2Chunk(newPivot))
-
-	// remotestream1だけ残っていることを確認
-
-	newkey0 := "stream:body:all:" + remotestream0 + ":" + stream.Time2Chunk(newPivot)
-	_, err = mc.Get(newkey0)
-	assert.Error(t, err)
-
-	newkey1 := "stream:body:all:" + remotestream1 + ":" + stream.Time2Chunk(newPivot)
-	newdat1, err := mc.Get(newkey1)
-	if assert.NoError(t, err) {
-		assert.Equal(t, newdat1.Value, []byte(""))
-	}
-	*/
 }
 

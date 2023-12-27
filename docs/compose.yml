@@ -67,6 +67,28 @@ services:
     networks:
       - internal
 
+#  mediaserver:
+#    image: ghcr.io/totegamma/cc-media-server:latest
+#    restart: always
+#    links:
+#      - db
+#    depends_on:
+#      db:
+#        condition: service_healthy
+#    expose:
+#      - 8000
+#    environment:
+#      bucketName:
+#      endpointUrl:
+#      accessKeyId:
+#      accessKeySecret:
+#      publicBaseUrl:
+#      quota:
+#      forcePathStyle:
+#      db_dsn: "host=db user=postgres password=postgres dbname=concurrent"
+#    networks:
+#      - internal
+
   db:
     restart: always
     image: postgres

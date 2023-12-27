@@ -25,3 +25,7 @@ services:
     path: /.well-known
     preservePath: true
     injectCors: true
+#  - name: mediaserver
+#    host: mediaserver
+#    port: 8000
+#    path: /storage

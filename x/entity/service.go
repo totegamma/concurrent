@@ -23,7 +23,7 @@ import (
 
 // Service is the interface for entity service
 type Service interface {
-	Create(ctx context.Context, ccid string, info string) error
+	Create(ctx context.Context, ccid string, payload string, signature string, info string) error
 	Register(ctx context.Context, ccid string, info string, inviterID string) error
 	Get(ctx context.Context, ccid string) (core.Entity, error)
 	List(ctx context.Context) ([]core.Entity, error)
@@ -61,13 +61,17 @@ func (s *service) Total(ctx context.Context) (int64, error) {
 }
 
 // Create creates new entity
-func (s *service) Create(ctx context.Context, ccid string, info string) error {
+func (s *service) Create(ctx context.Context, ccid string, payload string, signature string, info string) error {
 	ctx, span := tracer.Start(ctx, "ServiceCreate")
 	defer span.End()
+
+    // check certificate
 
     return s.repository.CreateEntity(ctx, &core.Entity{
         ID:   ccid,
         Tag:  "",
+        Payload: payload,
+        Signature: signature,
     }, &core.EntityMeta{
         ID:   ccid,
         Info: info,
@@ -76,7 +80,7 @@ func (s *service) Create(ctx context.Context, ccid string, info string) error {
 
 // Register creates new entity
 // check if registration is open
-func (s *service) Register(ctx context.Context, ccid string, info string, inviterID string) error {
+func (s *service) Register(ctx context.Context, ccid string, payload string, signature string, info string, inviterID string) error {
 	ctx, span := tracer.Start(ctx, "ServiceCreate")
 	defer span.End()
 
@@ -85,6 +89,7 @@ func (s *service) Register(ctx context.Context, ccid string, info string, invite
             &core.Entity{
                 ID:      ccid,
                 Tag:     "",
+                Signature: signature,
             },
             &core.EntityMeta{
                 Info:    info,

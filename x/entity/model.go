@@ -12,8 +12,10 @@ type createRequest struct {
 
 type registerRequest struct {
 	CCID    string `json:"ccid"`
-	Meta    string `json:"meta"`
-	Token   string `json:"token"`
+	Info    string `json:"info"`
+	Invite  string `json:"invite"`
+    Registration string `json:"registration"`
+    Signature string `json:"signature"`
 	Captcha string `json:"captcha"`
 }
 

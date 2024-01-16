@@ -101,32 +101,14 @@ func (a *agent) pullRemoteEntities(ctx context.Context, remote core.Domain) erro
 
 	body, _ := io.ReadAll(resp.Body)
 
-	var remoteEntities []entity.SafeEntity
+	var remoteEntities []core.Entity
 	json.Unmarshal(body, &remoteEntities)
 
 	errored := false
 	for _, entity := range remoteEntities {
 
-		certs := entity.Certs
-		if certs == "" {
-			certs = "null"
-		}
-
-		hostname := entity.Domain
-		if hostname == "" {
-			hostname = remote.ID
-		}
-
-		if hostname == a.config.Concurrent.FQDN {
-			continue
-		}
-
-		err := a.entity.Upsert(ctx, &core.Entity{
-			ID:     entity.ID,
-			Domain: hostname,
-			Certs:  certs,
-			Meta:   "null",
-		})
+        //TODO: validate signature
+        err := a.entity.UpdateAddress(ctx, entity.ID, remote.ID)
 
 		if err != nil {
 			span.RecordError(err)
@@ -134,7 +116,6 @@ func (a *agent) pullRemoteEntities(ctx context.Context, remote core.Domain) erro
 			log.Println(err)
 		}
 	}
-
 
 	if !errored {
 		log.Printf("[agent] pulled %d entities from %s", len(remoteEntities), remote.ID)

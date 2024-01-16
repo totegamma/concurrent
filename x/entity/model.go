@@ -17,17 +17,6 @@ type registerRequest struct {
 	Captcha string `json:"captcha"`
 }
 
-// SafeEntity is safe verison of entity
-type SafeEntity struct {
-	ID     string    `json:"ccid"`
-	Tag    string    `json:"tag"`
-	Score  int       `json:"score"`
-	Domain string    `json:"domain"`
-	Certs  string    `json:"certs"`
-	CDate  time.Time `json:"cdate"`
-	MDate  time.Time `json:"mdate"`
-}
-
 type AckSignedObject struct {
 	Type     string    `json:"type"`
 	From     string    `json:"from"`

@@ -46,14 +46,11 @@ func (s *service) Restrict(principal Principal) echo.MiddlewareFunc {
 					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
 				}
 
-				ent, err := s.entity.Get(ctx, claims.Audience)
+                _, err := s.entity.Get(ctx, claims.Audience)
 				if err != nil {
-					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not known"})
-				}
-
-				if ent.Domain != "" {
 					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not local"})
 				}
+
 			case ISKNOWN:
 				if claims.Subject != "CONCURRENT_API" {
 					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})

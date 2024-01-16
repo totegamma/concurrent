@@ -201,11 +201,13 @@ type JwtHeader struct {
 
 // JwtClaims is jwt payload type
 type JwtClaims struct {
-	Issuer         string `json:"iss"` // 発行者
-	Subject        string `json:"sub"` // 用途
-	Audience       string `json:"aud"` // 想定利用者
-	ExpirationTime string `json:"exp"` // 失効時刻
-	IssuedAt       string `json:"iat"` // 発行時刻
-	JWTID          string `json:"jti"` // JWT ID
-	Tag            string `json:"tag"` // タグ
+    Issuer         string `json:"iss,omitempty"` // 発行者
+    Subject        string `json:"sub,omitempty"` // 用途
+    Audience       string `json:"aud,omitempty"` // 想定利用者
+    ExpirationTime string `json:"exp,omitempty"` // 失効時刻
+    IssuedAt       string `json:"iat,omitempty"` // 発行時刻
+    JWTID          string `json:"jti,omitempty"` // JWT ID
+    Tag            string `json:"tag,omitempty"` // comma separated list of tags
+    Scope          string `json:"scp,omitempty"` // semicomma separated list of scopes
+    Principal      string `json:"prn,omitempty"` // principal
 }

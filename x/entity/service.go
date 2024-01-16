@@ -23,14 +23,13 @@ import (
 
 // Service is the interface for entity service
 type Service interface {
-	Create(ctx context.Context, ccid string, meta string) error
-	Register(ctx context.Context, ccid string, meta string, inviterID string) error
+	Create(ctx context.Context, ccid string, info string) error
+	Register(ctx context.Context, ccid string, info string, inviterID string) error
 	Get(ctx context.Context, ccid string) (core.Entity, error)
-	List(ctx context.Context) ([]SafeEntity, error)
-	ListModified(ctx context.Context, modified time.Time) ([]SafeEntity, error)
+	List(ctx context.Context) ([]core.Entity, error)
+	ListModified(ctx context.Context, modified time.Time) ([]core.Entity, error)
 	ResolveHost(ctx context.Context, user string) (string, error)
 	Update(ctx context.Context, entity *core.Entity) error
-	Upsert(ctx context.Context, entity *core.Entity) error
 	IsUserExists(ctx context.Context, user string) bool
 	Delete(ctx context.Context, id string) error
 	Ack(ctx context.Context, from, to string) error
@@ -38,6 +37,8 @@ type Service interface {
 	Total(ctx context.Context) (int64, error)
 	GetAcker(ctx context.Context, key string) ([]core.Ack, error)
 	GetAcking(ctx context.Context, key string) ([]core.Ack, error)
+    GetAddress(ctx context.Context, ccid string) (core.Address, error)
+    UpdateAddress(ctx context.Context, ccid string, domain string) error
 }
 
 type service struct {
@@ -50,6 +51,7 @@ func NewService(repository Repository, config util.Config) Service {
 	return &service{repository, config}
 }
 
+
 // Total returns the total number of entities
 func (s *service) Total(ctx context.Context) (int64, error) {
 	ctx, span := tracer.Start(ctx, "ServiceTotal")
@@ -59,36 +61,42 @@ func (s *service) Total(ctx context.Context) (int64, error) {
 }
 
 // Create creates new entity
-func (s *service) Create(ctx context.Context, ccid string, meta string) error {
+func (s *service) Create(ctx context.Context, ccid string, info string) error {
 	ctx, span := tracer.Start(ctx, "ServiceCreate")
 	defer span.End()
 
-	return s.repository.Create(ctx, &core.Entity{
-		ID:   ccid,
-		Tag:  "",
-		Meta: meta,
-	})
+    return s.repository.CreateEntity(ctx, &core.Entity{
+        ID:   ccid,
+        Tag:  "",
+    }, &core.EntityMeta{
+        ID:   ccid,
+        Info: info,
+    })
 }
 
 // Register creates new entity
 // check if registration is open
-func (s *service) Register(ctx context.Context, ccid string, meta string, inviterID string) error {
+func (s *service) Register(ctx context.Context, ccid string, info string, inviterID string) error {
 	ctx, span := tracer.Start(ctx, "ServiceCreate")
 	defer span.End()
 
 	if s.config.Concurrent.Registration == "open" {
-		return s.repository.Create(ctx, &core.Entity{
-			ID:      ccid,
-			Tag:     "",
-			Meta:    meta,
-			Inviter: "",
-		})
+		return s.repository.CreateEntity(ctx,
+            &core.Entity{
+                ID:      ccid,
+                Tag:     "",
+            },
+            &core.EntityMeta{
+                Info:    info,
+                Inviter: "",
+            },
+        )
 	} else if s.config.Concurrent.Registration == "invite" {
 		if inviterID == "" {
 			return fmt.Errorf("invitation code is required")
 		}
 
-		inviter, err := s.repository.Get(ctx, inviterID)
+		inviter, err := s.repository.GetEntity(ctx, inviterID)
 		if err != nil {
 			span.RecordError(err)
 			return err
@@ -99,12 +107,16 @@ func (s *service) Register(ctx context.Context, ccid string, meta string, invite
 			return fmt.Errorf("inviter is not allowed to invite")
 		}
 
-		return s.repository.Create(ctx, &core.Entity{
-			ID:      ccid,
-			Tag:     "",
-			Meta:    meta,
-			Inviter: inviterID,
-		})
+		return s.repository.CreateEntity(ctx,
+            &core.Entity{
+                ID:      ccid,
+                Tag:     "",
+            },
+            &core.EntityMeta{
+                Info:    info,
+                Inviter: inviterID,
+            },
+        )
 	} else {
 		return fmt.Errorf("registration is not open")
 	}
@@ -115,7 +127,7 @@ func (s *service) Get(ctx context.Context, key string) (core.Entity, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGet")
 	defer span.End()
 
-	entity, err := s.repository.Get(ctx, key)
+	entity, err := s.repository.GetEntity(ctx, key)
 	if err != nil {
 		span.RecordError(err)
 		return core.Entity{}, err
@@ -125,7 +137,7 @@ func (s *service) Get(ctx context.Context, key string) (core.Entity, error) {
 }
 
 // List returns all entities
-func (s *service) List(ctx context.Context) ([]SafeEntity, error) {
+func (s *service) List(ctx context.Context) ([]core.Entity, error) {
 	ctx, span := tracer.Start(ctx, "ServiceList")
 	defer span.End()
 
@@ -133,7 +145,7 @@ func (s *service) List(ctx context.Context) ([]SafeEntity, error) {
 }
 
 // ListModified returns all entities modified after time
-func (s *service) ListModified(ctx context.Context, time time.Time) ([]SafeEntity, error) {
+func (s *service) ListModified(ctx context.Context, time time.Time) ([]core.Entity, error) {
 	ctx, span := tracer.Start(ctx, "ServiceListModified")
 	defer span.End()
 
@@ -141,20 +153,26 @@ func (s *service) ListModified(ctx context.Context, time time.Time) ([]SafeEntit
 }
 
 // ResolveHost returns host for user
-func (s *service) ResolveHost(ctx context.Context, user string) (string, error) {
+func (s *service) ResolveHost(ctx context.Context, ccid string) (string, error) {
 	ctx, span := tracer.Start(ctx, "ServiceResolveHost")
 	defer span.End()
 
-	entity, err := s.repository.Get(ctx, user)
-	if err != nil {
-		span.RecordError(err)
-		return "", err
-	}
-	fqdn := entity.Domain
-	if fqdn == "" {
-		fqdn = s.config.Concurrent.FQDN
-	}
-	return fqdn, nil
+    addr, err := s.repository.GetAddress(ctx, ccid)
+    if err != nil {
+        span.RecordError(err)
+
+        // check for local user
+        _, err := s.repository.GetEntity(ctx, ccid)
+        if err != nil {
+            span.RecordError(err)
+            return "", err
+        }
+
+        return s.config.Concurrent.FQDN, nil
+
+    }
+
+    return addr.Domain, nil
 }
 
 // Update updates entity
@@ -162,15 +180,7 @@ func (s *service) Update(ctx context.Context, entity *core.Entity) error {
 	ctx, span := tracer.Start(ctx, "ServiceUpdate")
 	defer span.End()
 
-	return s.repository.Update(ctx, entity)
-}
-
-// Upsert upserts entity
-func (s *service) Upsert(ctx context.Context, entity *core.Entity) error {
-	ctx, span := tracer.Start(ctx, "ServiceUpsert")
-	defer span.End()
-
-	return s.repository.Upsert(ctx, entity)
+	return s.repository.UpdateEntity(ctx, entity)
 }
 
 // IsUserExists returns true if user exists
@@ -178,11 +188,11 @@ func (s *service) IsUserExists(ctx context.Context, user string) bool {
 	ctx, span := tracer.Start(ctx, "ServiceIsUserExists")
 	defer span.End()
 
-	entity, err := s.repository.Get(ctx, user)
+	_, err := s.repository.GetEntity(ctx, user)
 	if err != nil {
 		return false
 	}
-	return entity.ID != "" && entity.Domain == ""
+    return true
 }
 
 // Delete deletes entity
@@ -215,13 +225,8 @@ func (s *service) Ack(ctx context.Context, objectStr string, signature string) e
 		return err
 	}
 
-	targetEntity, err := s.repository.Get(ctx, object.To)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-
-	if targetEntity.Domain != "" {
+    address, err := s.repository.GetAddress(ctx, object.To)
+    if err == nil {
 		packet := ackRequest{
 			SignedObject: objectStr,
 			Signature:    signature,
@@ -232,7 +237,7 @@ func (s *service) Ack(ctx context.Context, objectStr string, signature string) e
 			return err
 		}
 
-		req, err := http.NewRequest("POST", "https://"+targetEntity.Domain+"/api/v1/entities/checkpoint/ack", bytes.NewBuffer([]byte(packetStr)))
+		req, err := http.NewRequest("POST", "https://"+address.Domain+"/api/v1/entities/checkpoint/ack", bytes.NewBuffer([]byte(packetStr)))
 
 		if err != nil {
 			span.RecordError(err)
@@ -244,7 +249,7 @@ func (s *service) Ack(ctx context.Context, objectStr string, signature string) e
 		jwt, err := util.CreateJWT(util.JwtClaims{
 			Issuer:         s.config.Concurrent.CCID,
 			Subject:        "CONCURRENT_API",
-			Audience:       targetEntity.Domain,
+			Audience:       address.Domain,
 			ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
 			IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
 			JWTID:          xid.New().String(),
@@ -291,13 +296,8 @@ func (s *service) Unack(ctx context.Context, objectStr string, signature string)
 		return err
 	}
 
-	targetEntity, err := s.repository.Get(ctx, object.To)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-
-	if targetEntity.Domain != "" {
+    address, err := s.repository.GetAddress(ctx, object.To)
+    if err == nil {
 		packet := ackRequest{
 			SignedObject: objectStr,
 			Signature:    signature,
@@ -308,7 +308,7 @@ func (s *service) Unack(ctx context.Context, objectStr string, signature string)
 			return err
 		}
 
-		req, err := http.NewRequest("DELETE", "https://"+targetEntity.Domain+"/api/v1/entities/checkpoint/ack", bytes.NewBuffer([]byte(packetStr)))
+		req, err := http.NewRequest("DELETE", "https://"+address.Domain+"/api/v1/entities/checkpoint/ack", bytes.NewBuffer([]byte(packetStr)))
 
 		if err != nil {
 			span.RecordError(err)
@@ -320,7 +320,7 @@ func (s *service) Unack(ctx context.Context, objectStr string, signature string)
 		jwt, err := util.CreateJWT(util.JwtClaims{
 			Issuer:         s.config.Concurrent.CCID,
 			Subject:        "CONCURRENT_API",
-			Audience:       targetEntity.Domain,
+			Audience:       address.Domain,
 			ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
 			IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
 			JWTID:          xid.New().String(),
@@ -354,6 +354,22 @@ func (s *service) GetAcking(ctx context.Context, user string) ([]core.Ack, error
 	defer span.End()
 
 	return s.repository.GetAcking(ctx, user)
+}
+
+// GetAddress returns the address of a entity
+func (s *service) GetAddress(ctx context.Context, ccid string) (core.Address, error) {
+    ctx, span := tracer.Start(ctx, "ServiceGetAddress")
+    defer span.End()
+
+    return s.repository.GetAddress(ctx, ccid)
+}
+
+// UpdateAddress updates the address of a entity
+func (s *service) UpdateAddress(ctx context.Context, ccid string, domain string) error {
+    ctx, span := tracer.Start(ctx, "ServiceUpdateAddress")
+    defer span.End()
+
+    return s.repository.UpdateAddress(ctx, ccid, domain)
 }
 
 

@@ -61,9 +61,9 @@ func (s *service) IssueJWT(ctx context.Context, request string) (string, error) 
 	}
 
 	// check if the entity is local user
-	if ent.Domain != "" {
-		return "", fmt.Errorf("requester is not a local user")
-	}
+	// if ent.Domain != "" {
+	// 	return "", fmt.Errorf("requester is not a local user")
+	// }
 
 	// create new jwt
 	response, err := util.CreateJWT(util.JwtClaims{

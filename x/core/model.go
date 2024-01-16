@@ -7,6 +7,26 @@ import (
 	"strconv"
 )
 
+type SignedObject struct {
+	Signer   string      `json:"signer"`
+	Type     string      `json:"type"`
+	Schema   string      `json:"schema,omitempty"`
+    KeyID    string      `json:"keyID"`
+	Body     interface{} `json:"body"`
+	Meta     interface{} `json:"meta,omitempty"`
+	SignedAt time.Time   `json:"signedAt"`
+}
+
+/*
+# SignedObject Body Schemas
+
+## Entity
+### Domain Affiliation
+{
+    domain: string,
+}
+*/
+
 // Association is one of a concurrent base object
 // immutable
 type Association struct {
@@ -39,17 +59,30 @@ type Character struct {
 // Entity is one of a concurrent base object
 // mutable
 type Entity struct {
+	ID        string    `json:"ccid" gorm:"type:char(42)"`
+	Tag       string    `json:"tag" gorm:"type:text;"`
+	Score     int       `json:"score" gorm:"type:integer;default:0"`
+    Fixed     bool      `json:"fixed" gorm:"type:boolean;default:false"`
+	Acking    Ack       `json:"acking" gorm:"foreignKey:From"`
+	Acker     Ack       `json:"acker" gorm:"foreignKey:To"`
+    Payload   string    `json:"payload" gorm:"type:json;default:'{}'"`
+    Signature string    `json:"signature" gorm:"type:char(130)"`
+	CDate     time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
+	MDate     time.Time `json:"mdate" gorm:"autoUpdateTime"`
+}
+
+type EntityMeta struct {
 	ID      string    `json:"ccid" gorm:"type:char(42)"`
-	Tag     string    `json:"tag" gorm:"type:text;"`
-	Domain  string    `json:"domain" gorm:"type:text"`
-	Certs   string    `json:"certs" gorm:"type:json;default:'null'"`
-	Meta    string    `json:"meta" gorm:"type:json;default:'null'"`
-	Score   int       `json:"score" gorm:"type:integer;default:0"`
 	Inviter string    `json:"inviter" gorm:"type:char(42)"`
+	Info    string    `json:"info" gorm:"type:json;default:'null'"`
+}
+
+// Address
+type Address struct {
+    ID     string    `json:"ccid" gorm:"type:char(42)"`
+    Domain string    `json:"domain" gorm:"type:text"`
 	CDate   time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 	MDate   time.Time `json:"mdate" gorm:"autoUpdateTime"`
-	Acking  Ack       `json:"acking" gorm:"foreignKey:From"`
-	Acker   Ack       `json:"acker" gorm:"foreignKey:To"`
 }
 
 // Domain is one of a concurrent base object

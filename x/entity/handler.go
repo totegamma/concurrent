@@ -57,14 +57,8 @@ func (h handler) Get(c echo.Context) error {
 		}
 		return err
 	}
-	publicInfo := SafeEntity{
-		ID:     entity.ID,
-		Tag:    entity.Tag,
-		Domain: entity.Domain,
-		Certs:  entity.Certs,
-		CDate:  entity.CDate,
-	}
-	return c.JSON(http.StatusOK, publicInfo)
+
+	return c.JSON(http.StatusOK, entity)
 }
 
 // Register creates a new entity

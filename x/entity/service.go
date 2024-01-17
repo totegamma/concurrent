@@ -72,6 +72,13 @@ func (s *service) Create(ctx context.Context, ccid, payload, signature, info str
 	defer span.End()
 
     // check certificate
+    err := util.VerifySignature(payload, ccid, signature)
+    if err != nil {
+        span.RecordError(err)
+        return err
+    }
+
+    // TOOD: check if ccid is known, validate registration
 
     return s.repository.CreateEntity(ctx, &core.Entity{
         ID:   ccid,
@@ -89,6 +96,14 @@ func (s *service) Create(ctx context.Context, ccid, payload, signature, info str
 func (s *service) Register(ctx context.Context, ccid, payload, signature, info, invitation string) error {
 	ctx, span := tracer.Start(ctx, "ServiceCreate")
 	defer span.End()
+
+    // check certificate
+    err := util.VerifySignature(payload, ccid, signature)
+    if err != nil {
+        span.RecordError(err)
+    }
+
+    // TOOD: check if ccid is known, validate registration
 
 	if s.config.Concurrent.Registration == "open" {
 		return s.repository.CreateEntity(ctx,

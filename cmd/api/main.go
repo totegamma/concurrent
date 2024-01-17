@@ -165,11 +165,11 @@ func main() {
 	streamHandler := SetupStreamHandler(db, rdb, mc, socketManager, config)
 	domainHandler := SetupDomainHandler(db, config)
 	entityHandler := SetupEntityHandler(db, rdb, config)
-	authHandler := SetupAuthHandler(db, config)
+	authHandler := SetupAuthHandler(db, rdb, config)
 	userkvHandler := SetupUserkvHandler(db, rdb, config)
 	collectionHandler := SetupCollectionHandler(db, rdb, config)
 
-	authService := SetupAuthService(db, config)
+	authService := SetupAuthService(db, rdb, config)
 
 	apiV1 := e.Group("", auth.ParseJWT)
 	apiV1.GET("/message/:id", messageHandler.Get)

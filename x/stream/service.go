@@ -18,6 +18,7 @@ import (
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/util"
+	"github.com/totegamma/concurrent/x/jwt"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -345,7 +346,7 @@ func (s *service) PostItem(ctx context.Context, stream string, item core.StreamI
 
 		otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
 
-		jwt, err := util.CreateJWT(util.JwtClaims{
+		jwt, err := jwt.Create(jwt.Claims{
 			Issuer:         s.config.Concurrent.CCID,
 			Subject:        "CONCURRENT_API",
 			Audience:       streamHost,
@@ -411,7 +412,7 @@ func (s *service) DistributeEvent(ctx context.Context, stream string, event core
 
 		otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
 
-		jwt, err := util.CreateJWT(util.JwtClaims{
+		jwt, err := jwt.Create(jwt.Claims{
 			Issuer:         s.config.Concurrent.CCID,
 			Subject:        "CONCURRENT_API",
 			Audience:       streamHost,

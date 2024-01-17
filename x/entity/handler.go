@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
 	"github.com/xinguang/go-recaptcha"
@@ -35,13 +34,12 @@ type Handler interface {
 
 type handler struct {
 	service Service
-	rdb     *redis.Client
 	config  util.Config
 }
 
 // NewHandler creates a new handler
-func NewHandler(service Service, rdb *redis.Client, config util.Config) Handler {
-	return &handler{service: service, rdb: rdb, config: config}
+func NewHandler(service Service, config util.Config) Handler {
+	return &handler{service: service, config: config}
 }
 
 // Get returns an entity by ID
@@ -88,42 +86,10 @@ func (h handler) Register(c echo.Context) error {
 		}
 	}
 
-	inviter := ""
-	jwtID := ""
-	expireAt := int64(0)
-	if request.Token != "" {
-		claims, err := util.ValidateJWT(request.Token)
-		if err != nil {
-			span.RecordError(err)
-			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid token"})
-		}
-		if claims.Subject != "CONCURRENT_INVITE" {
-			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid token"})
-		}
-		_, err = h.rdb.Get(ctx, "jti:"+claims.JWTID).Result()
-		if err == nil {
-			span.RecordError(err)
-			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "token is already used"})
-		}
-
-		inviter = claims.Issuer
-		jwtID = claims.JWTID
-		expireAt, _ = strconv.ParseInt(claims.ExpirationTime, 10, 64)
-	}
-
-	err = h.service.Register(ctx, request.CCID, request.Meta, inviter)
+	err = h.service.Register(ctx, request.CCID, request.Registration, request.Signature, request.Info, request.Invitation)
 	if err != nil {
 		span.RecordError(err)
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
-	}
-
-	if jwtID != "" {
-		expiration := time.Until(time.Unix(int64(expireAt), 0))
-		err = h.rdb.Set(ctx, "jti:"+jwtID, "1", expiration).Err()
-		if err != nil {
-			span.RecordError(err)
-			return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
-		}
 	}
 
 	return c.String(http.StatusCreated, "{\"message\": \"accept\"}")
@@ -139,7 +105,7 @@ func (h handler) Create(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	err = h.service.Create(ctx, request.CCID, request.Meta)
+	err = h.service.Create(ctx, request.CCID, request.Registration, request.Signature, request.Info)
 	if err != nil {
 		return err
 	}

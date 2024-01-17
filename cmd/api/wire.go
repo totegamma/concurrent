@@ -20,6 +20,7 @@ import (
 	"github.com/totegamma/concurrent/x/stream"
 	"github.com/totegamma/concurrent/x/userkv"
 	"github.com/totegamma/concurrent/x/util"
+	"github.com/totegamma/concurrent/x/jwt"
 )
 
 var domainHandlerProvider = wire.NewSet(domain.NewHandler, domain.NewService, domain.NewRepository)
@@ -31,8 +32,10 @@ var associationHandlerProvider = wire.NewSet(association.NewHandler, association
 var userkvHandlerProvider = wire.NewSet(userkv.NewHandler, userkv.NewService, userkv.NewRepository)
 var collectionHandlerProvider = wire.NewSet(collection.NewHandler, collection.NewService, collection.NewRepository)
 
+var jwtServiceProvider = wire.NewSet(jwt.NewService, jwt.NewRepository)
+
 func SetupMessageHandler(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) message.Handler {
-	wire.Build(messageHandlerProvider, stream.NewService, stream.NewRepository, entity.NewService, entity.NewRepository)
+	wire.Build(messageHandlerProvider, jwtServiceProvider, stream.NewService, stream.NewRepository, entity.NewService, entity.NewRepository)
 	return nil
 }
 
@@ -42,12 +45,12 @@ func SetupCharacterHandler(db *gorm.DB, config util.Config) character.Handler {
 }
 
 func SetupAssociationHandler(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) association.Handler {
-	wire.Build(associationHandlerProvider, stream.NewService, stream.NewRepository, entity.NewService, entity.NewRepository)
+	wire.Build(associationHandlerProvider, jwtServiceProvider, stream.NewService, stream.NewRepository, entity.NewService, entity.NewRepository)
 	return nil
 }
 
 func SetupStreamHandler(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) stream.Handler {
-	wire.Build(streamHandlerProvider)
+	wire.Build(streamHandlerProvider, jwtServiceProvider)
 	return nil
 }
 
@@ -57,7 +60,7 @@ func SetupDomainHandler(db *gorm.DB, config util.Config) domain.Handler {
 }
 
 func SetupEntityHandler(db *gorm.DB, rdb *redis.Client, config util.Config) entity.Handler {
-	wire.Build(entityHandlerProvider)
+	wire.Build(entityHandlerProvider, jwtServiceProvider)
 	return nil
 }
 
@@ -67,22 +70,22 @@ func SetupSocketHandler(rdb *redis.Client, manager socket.Manager, config util.C
 }
 
 func SetupAgent(db *gorm.DB, rdb *redis.Client, config util.Config) agent.Agent {
-	wire.Build(agent.NewAgent, domain.NewService, domain.NewRepository, entity.NewService, entity.NewRepository)
+	wire.Build(agent.NewAgent, jwtServiceProvider, domain.NewService, domain.NewRepository, entity.NewService, entity.NewRepository)
 	return nil
 }
 
-func SetupAuthHandler(db *gorm.DB, config util.Config) auth.Handler {
-	wire.Build(auth.NewHandler, auth.NewService, entity.NewService, entity.NewRepository, domain.NewService, domain.NewRepository)
+func SetupAuthHandler(db *gorm.DB, rdb *redis.Client, config util.Config) auth.Handler {
+	wire.Build(jwtServiceProvider, auth.NewHandler, auth.NewService, auth.NewRepository, entity.NewService, entity.NewRepository, domain.NewService, domain.NewRepository)
 	return nil
 }
 
-func SetupAuthService(db *gorm.DB, config util.Config) auth.Service {
-	wire.Build(auth.NewService, entity.NewService, entity.NewRepository, domain.NewService, domain.NewRepository)
+func SetupAuthService(db *gorm.DB, rdb *redis.Client, config util.Config) auth.Service {
+	wire.Build(jwtServiceProvider, auth.NewService, auth.NewRepository, entity.NewService, entity.NewRepository, domain.NewService, domain.NewRepository)
 	return nil
 }
 
 func SetupUserkvHandler(db *gorm.DB, rdb *redis.Client, config util.Config) userkv.Handler {
-	wire.Build(userkvHandlerProvider, entity.NewService, entity.NewRepository)
+	wire.Build(userkvHandlerProvider, jwtServiceProvider, entity.NewService, entity.NewRepository)
 	return nil
 }
 

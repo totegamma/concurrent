@@ -7,15 +7,17 @@ import (
 
 type createRequest struct {
 	CCID string `json:"ccid"`
-	Meta string `json:"meta"`
+    Registration string `json:"registration"`
+    Signature string `json:"signature"`
+	Info        string `json:"info"`
 }
 
 type registerRequest struct {
-	CCID    string `json:"ccid"`
-	Info    string `json:"info"`
-	Invite  string `json:"invite"`
+	CCID        string `json:"ccid"`
     Registration string `json:"registration"`
     Signature string `json:"signature"`
+	Info        string `json:"info"`
+	Invitation  string `json:"invitation"`
 	Captcha string `json:"captcha"`
 }
 

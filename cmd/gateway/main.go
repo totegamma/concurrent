@@ -23,6 +23,7 @@ import (
 
 	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/util"
+	"github.com/totegamma/concurrent/x/jwt"
 
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
@@ -193,7 +194,7 @@ func main() {
 		}
 
 		handler := func(c echo.Context) error {
-			claims, ok := c.Get("jwtclaims").(util.JwtClaims)
+			claims, ok := c.Get("jwtclaims").(jwt.Claims)
 			if ok {
 				c.Request().Header.Set("cc-issuer", claims.Issuer)
 				c.Request().Header.Set("cc-user-id", claims.Audience)

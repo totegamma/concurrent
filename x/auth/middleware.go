@@ -3,7 +3,7 @@ package auth
 import (
 	"fmt"
 	"github.com/labstack/echo/v4"
-	"github.com/totegamma/concurrent/x/util"
+	"github.com/totegamma/concurrent/x/jwt"
 	"go.opentelemetry.io/otel/attribute"
 	"golang.org/x/exp/slices"
 	"net/http"
@@ -27,7 +27,7 @@ func (s *service) Restrict(principal Principal) echo.MiddlewareFunc {
 		return func(c echo.Context) error {
 			ctx, span := tracer.Start(c.Request().Context(), "auth.Restrict")
 			defer span.End()
-			claims, ok := c.Get("jwtclaims").(util.JwtClaims)
+			claims, ok := c.Get("jwtclaims").(jwt.Claims)
 			if !ok {
 				return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid authentication header"})
 			}
@@ -119,13 +119,13 @@ func ParseJWT(next echo.HandlerFunc) echo.HandlerFunc {
 				span.RecordError(fmt.Errorf("invalid authentication header"))
 				goto skip
 			}
-			authType, jwt := split[0], split[1]
+			authType, token := split[0], split[1]
 			if authType != "Bearer" {
 				span.RecordError(fmt.Errorf("only Bearer is acceptable"))
 				goto skip
 			}
 
-			claims, err := util.ValidateJWT(jwt)
+			claims, err := jwt.Validate(token)
 			if err != nil {
 				span.RecordError(err)
 				goto skip

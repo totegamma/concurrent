@@ -11,7 +11,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/util"
+	"github.com/totegamma/concurrent/x/jwt"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
 )
@@ -165,7 +165,7 @@ func (h handler) ListMine(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerListMine")
 	defer span.End()
 
-	claims := c.Get("jwtclaims").(util.JwtClaims)
+	claims := c.Get("jwtclaims").(jwt.Claims)
 	requester := claims.Audience
 
 	list, err := h.service.ListStreamByAuthor(ctx, requester)
@@ -193,7 +193,7 @@ func (h handler) Delete(c echo.Context) error {
 		return err
 	}
 
-	claims := c.Get("jwtclaims").(util.JwtClaims)
+	claims := c.Get("jwtclaims").(jwt.Claims)
 	requester := claims.Audience
 
 	if target.Author != requester {
@@ -227,7 +227,7 @@ func (h handler) Remove(c echo.Context) error {
 		return err
 	}
 
-	claims := c.Get("jwtclaims").(util.JwtClaims)
+	claims := c.Get("jwtclaims").(jwt.Claims)
 	requester := claims.Audience
 
 	if target.Author != requester && target.Owner != requester {

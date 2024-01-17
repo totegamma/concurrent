@@ -14,6 +14,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/labstack/echo/v4"
+	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
 	"go.opentelemetry.io/otel"
@@ -173,7 +174,7 @@ func (h handler) SayHello(c echo.Context) error {
 	meStr, err := json.Marshal(me)
 
 	// challenge
-	jwt, err := util.CreateJWT(util.JwtClaims{
+	jwt, err := jwt.Create(jwt.Claims{
 		Issuer:         h.config.Concurrent.CCID,
 		Subject:        "CONCURRENT_API",
 		Audience:       target,

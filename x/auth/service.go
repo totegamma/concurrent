@@ -8,6 +8,7 @@ import (
 	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/util"
+	"github.com/totegamma/concurrent/x/jwt"
 	"strconv"
 	"time"
 )
@@ -19,14 +20,15 @@ type Service interface {
 }
 
 type service struct {
+    repository Repository
 	config util.Config
 	entity entity.Service
 	domain domain.Service
 }
 
 // NewService creates a new auth service
-func NewService(config util.Config, entity entity.Service, domain domain.Service) Service {
-	return &service{config, entity, domain}
+func NewService(repository Repository, config util.Config, entity entity.Service, domain domain.Service) Service {
+	return &service{repository, config, entity, domain}
 }
 
 // IssueJWT takes client signed JWT and returns server signed JWT
@@ -35,7 +37,7 @@ func (s *service) IssueJWT(ctx context.Context, request string) (string, error) 
 	defer span.End()
 
 	// check jwt basic info
-	claims, err := util.ValidateJWT(request)
+	claims, err := jwt.Validate(request)
 	if err != nil {
 		span.RecordError(err)
 		return "", err
@@ -66,7 +68,7 @@ func (s *service) IssueJWT(ctx context.Context, request string) (string, error) 
 	// }
 
 	// create new jwt
-	response, err := util.CreateJWT(util.JwtClaims{
+	response, err := jwt.Create(jwt.Claims{
 		Issuer:         s.config.Concurrent.CCID,
 		Subject:        "CONCURRENT_API",
 		Audience:       claims.Issuer,

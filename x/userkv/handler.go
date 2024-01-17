@@ -4,7 +4,7 @@ package userkv
 import (
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/x/entity"
-	"github.com/totegamma/concurrent/x/util"
+	"github.com/totegamma/concurrent/x/jwt"
 	"go.opentelemetry.io/otel"
 	"io/ioutil"
 	"net/http"
@@ -33,7 +33,7 @@ func (h handler) Get(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
 	defer span.End()
 
-	claims := c.Get("jwtclaims").(util.JwtClaims)
+	claims := c.Get("jwtclaims").(jwt.Claims)
 	userID := claims.Audience
 	if h.entityService.IsUserExists(ctx, userID) == false {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "user not found"})
@@ -51,7 +51,7 @@ func (h handler) Upsert(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerUpsert")
 	defer span.End()
 
-	claims := c.Get("jwtclaims").(util.JwtClaims)
+	claims := c.Get("jwtclaims").(jwt.Claims)
 	userID := claims.Audience
 	if h.entityService.IsUserExists(ctx, userID) == false {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "user not found"})

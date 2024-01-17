@@ -12,6 +12,7 @@ import (
 	"github.com/rs/xid"
 	"net/http"
 
+	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
 	"golang.org/x/exp/slices"
@@ -24,7 +25,7 @@ import (
 // Service is the interface for entity service
 type Service interface {
 	Create(ctx context.Context, ccid string, payload string, signature string, info string) error
-	Register(ctx context.Context, ccid string, info string, inviterID string) error
+	Register(ctx context.Context, ccid, payload, signature, info, invitation string) error
 	Get(ctx context.Context, ccid string) (core.Entity, error)
 	List(ctx context.Context) ([]core.Entity, error)
 	ListModified(ctx context.Context, modified time.Time) ([]core.Entity, error)
@@ -44,11 +45,16 @@ type Service interface {
 type service struct {
 	repository Repository
 	config     util.Config
+    jwtService jwt.Service
 }
 
 // NewService creates a new entity service
-func NewService(repository Repository, config util.Config) Service {
-	return &service{repository, config}
+func NewService(repository Repository, config util.Config, jwtService jwt.Service) Service {
+	return &service{
+        repository,
+        config,
+        jwtService,
+    }
 }
 
 
@@ -61,7 +67,7 @@ func (s *service) Total(ctx context.Context) (int64, error) {
 }
 
 // Create creates new entity
-func (s *service) Create(ctx context.Context, ccid string, payload string, signature string, info string) error {
+func (s *service) Create(ctx context.Context, ccid, payload, signature, info string) error {
 	ctx, span := tracer.Start(ctx, "ServiceCreate")
 	defer span.End()
 
@@ -80,7 +86,7 @@ func (s *service) Create(ctx context.Context, ccid string, payload string, signa
 
 // Register creates new entity
 // check if registration is open
-func (s *service) Register(ctx context.Context, ccid string, payload string, signature string, info string, inviterID string) error {
+func (s *service) Register(ctx context.Context, ccid, payload, signature, info, invitation string) error {
 	ctx, span := tracer.Start(ctx, "ServiceCreate")
 	defer span.End()
 
@@ -97,11 +103,29 @@ func (s *service) Register(ctx context.Context, ccid string, payload string, sig
             },
         )
 	} else if s.config.Concurrent.Registration == "invite" {
-		if inviterID == "" {
+		if invitation == "" {
 			return fmt.Errorf("invitation code is required")
 		}
 
-		inviter, err := s.repository.GetEntity(ctx, inviterID)
+		claims, err := jwt.Validate(invitation)
+		if err != nil {
+			span.RecordError(err)
+            return err
+		}
+		if claims.Subject != "CONCURRENT_INVITE" {
+            return fmt.Errorf("invalid invitation code")
+		}
+
+        ok, err := s.jwtService.CheckJTI(ctx, claims.JWTID)
+        if err != nil {
+            span.RecordError(err)
+            return err
+        }
+        if !ok {
+            return fmt.Errorf("token is already used")
+        }
+
+		inviter, err := s.repository.GetEntity(ctx, claims.Issuer)
 		if err != nil {
 			span.RecordError(err)
 			return err
@@ -112,16 +136,36 @@ func (s *service) Register(ctx context.Context, ccid string, payload string, sig
 			return fmt.Errorf("inviter is not allowed to invite")
 		}
 
-		return s.repository.CreateEntity(ctx,
+        err = s.repository.CreateEntity(ctx,
             &core.Entity{
                 ID:      ccid,
                 Tag:     "",
             },
             &core.EntityMeta{
                 Info:    info,
-                Inviter: inviterID,
+                Inviter: claims.Issuer,
             },
         )
+
+        if err != nil {
+            span.RecordError(err)
+            return err
+        }
+
+        expireAt, err := strconv.ParseInt(claims.ExpirationTime, 10, 64)
+        if err != nil {
+            span.RecordError(err)
+            return err
+        }
+        err = s.jwtService.InvalidateJTI(ctx, claims.JWTID, time.Unix(expireAt, 0))
+
+        if err != nil {
+            span.RecordError(err)
+            return err
+        }
+
+        return nil
+
 	} else {
 		return fmt.Errorf("registration is not open")
 	}
@@ -251,7 +295,7 @@ func (s *service) Ack(ctx context.Context, objectStr string, signature string) e
 
 		otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
 
-		jwt, err := util.CreateJWT(util.JwtClaims{
+		jwt, err := jwt.Create(jwt.Claims{
 			Issuer:         s.config.Concurrent.CCID,
 			Subject:        "CONCURRENT_API",
 			Audience:       address.Domain,
@@ -322,7 +366,7 @@ func (s *service) Unack(ctx context.Context, objectStr string, signature string)
 
 		otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
 
-		jwt, err := util.CreateJWT(util.JwtClaims{
+		jwt, err := jwt.Create(jwt.Claims{
 			Issuer:         s.config.Concurrent.CCID,
 			Subject:        "CONCURRENT_API",
 			Audience:       address.Domain,

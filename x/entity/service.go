@@ -39,7 +39,7 @@ type Service interface {
 	GetAcker(ctx context.Context, key string) ([]core.Ack, error)
 	GetAcking(ctx context.Context, key string) ([]core.Ack, error)
     GetAddress(ctx context.Context, ccid string) (core.Address, error)
-    UpdateAddress(ctx context.Context, ccid string, domain string) error
+    UpdateAddress(ctx context.Context, ccid string, domain string, signedAt time.Time) error
 }
 
 type service struct {
@@ -429,11 +429,11 @@ func (s *service) GetAddress(ctx context.Context, ccid string) (core.Address, er
 }
 
 // UpdateAddress updates the address of a entity
-func (s *service) UpdateAddress(ctx context.Context, ccid string, domain string) error {
+func (s *service) UpdateAddress(ctx context.Context, ccid string, domain string, signedAt time.Time) error {
     ctx, span := tracer.Start(ctx, "ServiceUpdateAddress")
     defer span.End()
 
-    return s.repository.UpdateAddress(ctx, ccid, domain)
+    return s.repository.UpdateAddress(ctx, ccid, domain, signedAt)
 }
 
 

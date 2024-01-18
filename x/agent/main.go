@@ -107,8 +107,25 @@ func (a *agent) pullRemoteEntities(ctx context.Context, remote core.Domain) erro
 	errored := false
 	for _, entity := range remoteEntities {
 
-        //TODO: validate signature
-        err := a.entity.UpdateAddress(ctx, entity.ID, remote.ID)
+        util.VerifySignature(entity.Payload, entity.ID, entity.Signature)
+
+        var signedObj core.SignedObject
+        err := json.Unmarshal([]byte(entity.Payload), &signedObj)
+        if err != nil {
+            span.RecordError(err)
+            log.Println(err)
+            continue
+        }
+
+        existance, err := a.entity.GetAddress(ctx, entity.ID)
+        if err == nil {
+            // compare signed date
+            if signedObj.SignedAt.Unix() <= existance.SignedAt.Unix() {
+                continue
+            }
+        }
+
+        err = a.entity.UpdateAddress(ctx, entity.ID, remote.ID, signedObj.SignedAt)
 
 		if err != nil {
 			span.RecordError(err)

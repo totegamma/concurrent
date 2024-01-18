@@ -21,7 +21,7 @@ type Repository interface {
 	GetAcker(ctx context.Context, key string) ([]core.Ack, error)
 	GetAcking(ctx context.Context, key string) ([]core.Ack, error)
     GetAddress(ctx context.Context, ccid string) (core.Address, error)
-    UpdateAddress(ctx context.Context, ccid string, domain string) error
+    UpdateAddress(ctx context.Context, ccid string, domain string, signedAt time.Time) error
 }
 
 type repository struct {
@@ -62,7 +62,7 @@ func (r *repository) SetAddress(ctx context.Context, ccid string, address string
 }
 
 // UpdateAddress updates the address of a entity
-func (r *repository) UpdateAddress(ctx context.Context, ccid string, domain string) error {
+func (r *repository) UpdateAddress(ctx context.Context, ccid string, domain string, signedAt time.Time) error {
     ctx, span := tracer.Start(ctx, "RepositoryUpdateAddress")
     defer span.End()
 
@@ -73,6 +73,7 @@ func (r *repository) UpdateAddress(ctx context.Context, ccid string, domain stri
         return r.db.WithContext(ctx).Create(&core.Address{
             ID: ccid,
             Domain: domain,
+            SignedAt: signedAt,
         }).Error
     }
 

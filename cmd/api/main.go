@@ -205,7 +205,7 @@ func main() {
 	apiV1.DELETE("/domain/:id", domainHandler.Delete, authService.Restrict(auth.ISADMIN))
 	apiV1.GET("/admin/sayhello/:fqdn", domainHandler.SayHello, authService.Restrict(auth.ISADMIN))
 
-	apiV1.POST("/entity", entityHandler.Register, authService.Restrict(auth.ISUNKNOWN))
+	apiV1.POST("/entity", entityHandler.Register, authService.Restrict(auth.ISNOTREGISTERED))
 	apiV1.DELETE("/entity/:id", entityHandler.Delete, authService.Restrict(auth.ISADMIN))
 	apiV1.PUT("/entity/:id", entityHandler.Update, authService.Restrict(auth.ISADMIN))
 	apiV1.POST("/entities/ack", entityHandler.Ack, authService.Restrict(auth.ISLOCAL))

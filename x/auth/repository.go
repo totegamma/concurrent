@@ -7,7 +7,5 @@ type repository struct {
 }
 
 func NewRepository() Repository {
-    return &repository {
-    }
+	return &repository{}
 }
-

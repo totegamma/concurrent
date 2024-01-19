@@ -8,9 +8,9 @@ import (
 	"strings"
 	"time"
 
-	"golang.org/x/crypto/sha3"
 	"github.com/ethereum/go-ethereum/crypto"
 	"github.com/totegamma/concurrent/x/util"
+	"golang.org/x/crypto/sha3"
 )
 
 // Create creates server signed JWT

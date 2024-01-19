@@ -303,11 +303,9 @@ func (h handler) GetChunks(c echo.Context) error {
 	}
 
 	responce := chunkResponse{
-		Status: "ok",
+		Status:  "ok",
 		Content: chunks,
 	}
 
 	return c.JSON(http.StatusOK, responce)
 }
-
-

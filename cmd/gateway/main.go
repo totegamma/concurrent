@@ -22,8 +22,8 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 
 	"github.com/totegamma/concurrent/x/auth"
-	"github.com/totegamma/concurrent/x/util"
 	"github.com/totegamma/concurrent/x/jwt"
+	"github.com/totegamma/concurrent/x/util"
 
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"

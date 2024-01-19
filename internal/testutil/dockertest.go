@@ -3,15 +3,15 @@ package testutil
 import (
 	"fmt"
 	"log"
-	"time"
 	"sync"
+	"time"
 
 	"github.com/ory/dockertest"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/x/core"
 )
 
@@ -49,7 +49,6 @@ func CreateDB() (*gorm.DB, func()) {
 		closeContainer(pool, resource)
 	}
 
-
 	port := resource.GetPort("5432/tcp")
 	log.Printf("Postgres running on port %s", port)
 
@@ -78,11 +77,11 @@ func CreateDB() (*gorm.DB, func()) {
 		&core.CollectionItem{},
 		&core.Ack{},
 	)
-	
+
 	return db, cleanup
 }
 
-func CreateMC() (*memcache.Client, func())  {
+func CreateMC() (*memcache.Client, func()) {
 
 	pool := getPool()
 
@@ -120,7 +119,7 @@ func CreateMC() (*memcache.Client, func())  {
 	return client, cleanup
 }
 
-func CreateRDB() (*redis.Client, func())  {
+func CreateRDB() (*redis.Client, func()) {
 
 	pool := getPool()
 
@@ -151,9 +150,9 @@ func CreateRDB() (*redis.Client, func())  {
 
 		var err error
 		client = redis.NewClient(&redis.Options{
-			Addr: "localhost:" + port,
+			Addr:     "localhost:" + port,
 			Password: "secret",
-			DB: 0,
+			DB:       0,
 		})
 		return err
 	}); err != nil {
@@ -182,4 +181,3 @@ func getPool() *dockertest.Pool {
 	}
 	return pool
 }
-

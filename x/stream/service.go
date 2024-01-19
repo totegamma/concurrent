@@ -17,8 +17,8 @@ import (
 	"github.com/rs/xid"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/entity"
-	"github.com/totegamma/concurrent/x/util"
 	"github.com/totegamma/concurrent/x/jwt"
+	"github.com/totegamma/concurrent/x/util"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -329,8 +329,8 @@ func (s *service) PostItem(ctx context.Context, stream string, item core.StreamI
 
 		packet := checkpointPacket{
 			Stream: stream,
-			Item: item,
-			Body: body,
+			Item:   item,
+			Body:   body,
 		}
 		packetStr, err := json.Marshal(packet)
 		if err != nil {
@@ -437,7 +437,6 @@ func (s *service) DistributeEvent(ctx context.Context, stream string, event core
 
 	return nil
 }
-
 
 // Create updates stream information
 func (s *service) CreateStream(ctx context.Context, obj core.Stream) (core.Stream, error) {

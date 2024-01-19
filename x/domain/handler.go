@@ -14,8 +14,8 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/labstack/echo/v4"
-	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/util"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/codes"

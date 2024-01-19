@@ -6,8 +6,8 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/jwt"
+	"github.com/totegamma/concurrent/x/message"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
 )

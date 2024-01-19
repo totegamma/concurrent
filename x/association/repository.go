@@ -107,7 +107,7 @@ func (r *repository) GetCountsBySchema(ctx context.Context, messageID string) (m
 	for _, count := range counts {
 		result[count.Schema] = count.Count
 	}
-	
+
 	return result, nil
 }
 
@@ -138,7 +138,7 @@ func (r *repository) GetCountsBySchemaAndVariant(ctx context.Context, messageID,
 
 	var counts []struct {
 		Variant string
-		Count  int64
+		Count   int64
 	}
 
 	err := r.db.WithContext(ctx).Model(&core.Association{}).Select("variant, count(*) as count").Where("target_id = ? AND schema = ?", messageID, schema).Group("variant").Scan(&counts).Error
@@ -168,4 +168,3 @@ func (r *repository) GetBySchemaAndVariant(ctx context.Context, messageID, schem
 
 	return associations, nil
 }
-

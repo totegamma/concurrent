@@ -9,19 +9,19 @@ import (
 	"github.com/gorilla/websocket"
 	"github.com/totegamma/concurrent/internal/testutil"
 
-	"github.com/totegamma/concurrent/x/core"
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/redis/go-redis/v9"
 	"github.com/stretchr/testify/assert"
+	"github.com/totegamma/concurrent/x/core"
 
 	"go.uber.org/mock/gomock"
 
+	"encoding/json"
 	"fmt"
-	"strings"
-	"sync/atomic"
 	"net/http"
 	"net/http/httptest"
-	"encoding/json"
+	"strings"
+	"sync/atomic"
 )
 
 // var ctx = context.Background()
@@ -49,7 +49,9 @@ func TestMain(tm *testing.M) {
 type wsHandler struct {
 	conn *websocket.Conn
 }
+
 var latestClientID = atomic.Int64{}
+
 func (h *wsHandler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	clientID := latestClientID.Add(1)
 	mylog := log.Default()
@@ -142,15 +144,15 @@ func TestManager(t *testing.T) {
 		Stream: remotestream1,
 		Action: "create",
 		Type:   "message",
-		Item:   core.StreamItem{
-			Type: "message",
+		Item: core.StreamItem{
+			Type:     "message",
 			ObjectID: "",
 			StreamID: remotestream1,
-			Owner: "",
-			Author: "",
-			CDate: pivot,
+			Owner:    "",
+			Author:   "",
+			CDate:    pivot,
 		},
-		Body:  []byte(`{"foo":"bar"}`),
+		Body: []byte(`{"foo":"bar"}`),
 	}
 	jsonstr, _ := json.Marshal(testEvent)
 	wshandler.EmitMessage(jsonstr)
@@ -180,4 +182,3 @@ func TestManager(t *testing.T) {
 	m.deleteExcessiveSubs()
 	assert.Len(t, m.remoteSubs[domain], 0) // リセットされる
 }
-

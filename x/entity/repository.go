@@ -20,8 +20,8 @@ type Repository interface {
 	Total(ctx context.Context) (int64, error)
 	GetAcker(ctx context.Context, key string) ([]core.Ack, error)
 	GetAcking(ctx context.Context, key string) ([]core.Ack, error)
-    GetAddress(ctx context.Context, ccid string) (core.Address, error)
-    UpdateAddress(ctx context.Context, ccid string, domain string, signedAt time.Time) error
+	GetAddress(ctx context.Context, ccid string) (core.Address, error)
+	UpdateAddress(ctx context.Context, ccid string, domain string, signedAt time.Time) error
 }
 
 type repository struct {
@@ -45,39 +45,39 @@ func NewRepository(db *gorm.DB) Repository {
 
 // GetAddress returns the address of a entity
 func (r *repository) GetAddress(ctx context.Context, ccid string) (core.Address, error) {
-    ctx, span := tracer.Start(ctx, "RepositoryGetAddress")
-    defer span.End()
+	ctx, span := tracer.Start(ctx, "RepositoryGetAddress")
+	defer span.End()
 
-    var addr core.Address
-    err := r.db.WithContext(ctx).First(&addr, "ccid = ?", ccid).Error
-    return addr, err
+	var addr core.Address
+	err := r.db.WithContext(ctx).First(&addr, "ccid = ?", ccid).Error
+	return addr, err
 }
 
 // SetAddress sets the address of a entity
 func (r *repository) SetAddress(ctx context.Context, ccid string, address string) error {
-    ctx, span := tracer.Start(ctx, "RepositorySetAddress")
-    defer span.End()
-    
-    return r.db.WithContext(ctx).Model(&core.Entity{}).Where("id = ?", ccid).Update("address", address).Error
+	ctx, span := tracer.Start(ctx, "RepositorySetAddress")
+	defer span.End()
+
+	return r.db.WithContext(ctx).Model(&core.Entity{}).Where("id = ?", ccid).Update("address", address).Error
 }
 
 // UpdateAddress updates the address of a entity
 func (r *repository) UpdateAddress(ctx context.Context, ccid string, domain string, signedAt time.Time) error {
-    ctx, span := tracer.Start(ctx, "RepositoryUpdateAddress")
-    defer span.End()
+	ctx, span := tracer.Start(ctx, "RepositoryUpdateAddress")
+	defer span.End()
 
-    // create if not exists
-    var addr core.Address
-    err := r.db.WithContext(ctx).First(&addr, "ccid = ?", ccid).Error
-    if err != nil {
-        return r.db.WithContext(ctx).Create(&core.Address{
-            ID: ccid,
-            Domain: domain,
-            SignedAt: signedAt,
-        }).Error
-    }
+	// create if not exists
+	var addr core.Address
+	err := r.db.WithContext(ctx).First(&addr, "ccid = ?", ccid).Error
+	if err != nil {
+		return r.db.WithContext(ctx).Create(&core.Address{
+			ID:       ccid,
+			Domain:   domain,
+			SignedAt: signedAt,
+		}).Error
+	}
 
-    return r.db.WithContext(ctx).Model(&core.Address{}).Where("ccid = ?", ccid).Update("domain", domain).Error
+	return r.db.WithContext(ctx).Model(&core.Address{}).Where("ccid = ?", ccid).Update("domain", domain).Error
 }
 
 // Get returns a entity by key
@@ -95,20 +95,20 @@ func (r *repository) CreateEntity(ctx context.Context, entity *core.Entity, meta
 	ctx, span := tracer.Start(ctx, "RepositoryCreate")
 	defer span.End()
 
-    err := r.db.Transaction(func(tx *gorm.DB) error {
+	err := r.db.Transaction(func(tx *gorm.DB) error {
 
-        if err := tx.WithContext(ctx).Create(&entity).Error; err != nil {
-            return err
-        }
+		if err := tx.WithContext(ctx).Create(&entity).Error; err != nil {
+			return err
+		}
 
-        if err := tx.WithContext(ctx).Create(&meta).Error; err != nil {
-            return err
-        }
+		if err := tx.WithContext(ctx).Create(&meta).Error; err != nil {
+			return err
+		}
 
-        return nil
-    })
+		return nil
+	})
 
-    return err
+	return err
 }
 
 // GetList returns all entities
@@ -182,4 +182,3 @@ func (r *repository) GetAcking(ctx context.Context, key string) ([]core.Ack, err
 	err := r.db.WithContext(ctx).Where("\"from\" = ?", key).Find(&acks).Error
 	return acks, err
 }
-

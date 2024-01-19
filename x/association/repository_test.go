@@ -33,10 +33,10 @@ func TestMain(m *testing.M) {
 func TestRepository(t *testing.T) {
 
 	// create dummy message
-	message := core.Message {
-		Author: "CC26a9C14888b558862252E185257331D2e48b3e6b",
-		Schema: "https://gammalab.net/test-message-schema.json",
-		Payload: "{}",
+	message := core.Message{
+		Author:    "CC26a9C14888b558862252E185257331D2e48b3e6b",
+		Schema:    "https://gammalab.net/test-message-schema.json",
+		Payload:   "{}",
 		Signature: "DUMMY",
 	}
 
@@ -44,54 +44,54 @@ func TestRepository(t *testing.T) {
 	assert.NoError(t, err)
 
 	// create association
-	like := core.Association {
-		Author: "CCb72AAc9dcF088F7088b6718BE5a494fBB3861439",
-		Schema: "https://gammalab.net/test-like-schema.json",
-		TargetID: message.ID,
-		TargetType: "message",
+	like := core.Association{
+		Author:      "CCb72AAc9dcF088F7088b6718BE5a494fBB3861439",
+		Schema:      "https://gammalab.net/test-like-schema.json",
+		TargetID:    message.ID,
+		TargetType:  "message",
 		ContentHash: "like",
-		Payload: "{}",
-		Variant: "",
-		Signature: "DUMMY",
+		Payload:     "{}",
+		Variant:     "",
+		Signature:   "DUMMY",
 	}
 	_, err = repo.Create(ctx, like)
 	assert.NoError(t, err)
 
-	emoji1 := core.Association {
-		Author: "CCb72AAc9dcF088F7088b6718BE5a494fBB3861439",
-		Schema: "https://gammalab.net/test-emoji-schema.json",
-		TargetID: message.ID,
-		TargetType: "message",
+	emoji1 := core.Association{
+		Author:      "CCb72AAc9dcF088F7088b6718BE5a494fBB3861439",
+		Schema:      "https://gammalab.net/test-emoji-schema.json",
+		TargetID:    message.ID,
+		TargetType:  "message",
 		ContentHash: "emoji1",
-		Payload: "{}",
-		Variant: "smile",
-		Signature: "DUMMY",
+		Payload:     "{}",
+		Variant:     "smile",
+		Signature:   "DUMMY",
 	}
 	_, err = repo.Create(ctx, emoji1)
 	assert.NoError(t, err)
 
-	emoji2 := core.Association {
-		Author: "CCb72AAc9dcF088F7088b6718BE5a494fBB3861439",
-		Schema: "https://gammalab.net/test-emoji-schema.json",
-		TargetID: message.ID,
-		TargetType: "message",
+	emoji2 := core.Association{
+		Author:      "CCb72AAc9dcF088F7088b6718BE5a494fBB3861439",
+		Schema:      "https://gammalab.net/test-emoji-schema.json",
+		TargetID:    message.ID,
+		TargetType:  "message",
 		ContentHash: "emoji2",
-		Payload: "{}",
-		Variant: "ultrafastpolar",
-		Signature: "DUMMY",
+		Payload:     "{}",
+		Variant:     "ultrafastpolar",
+		Signature:   "DUMMY",
 	}
 	_, err = repo.Create(ctx, emoji2)
 	assert.NoError(t, err)
 
-	emoji3 := core.Association {
-		Author: "CCb72AAc9dcF088F7088b6718BE5a494fBB3861439",
-		Schema: "https://gammalab.net/test-emoji-schema.json",
-		TargetID: message.ID,
-		TargetType: "message",
+	emoji3 := core.Association{
+		Author:      "CCb72AAc9dcF088F7088b6718BE5a494fBB3861439",
+		Schema:      "https://gammalab.net/test-emoji-schema.json",
+		TargetID:    message.ID,
+		TargetType:  "message",
 		ContentHash: "emoji3",
-		Payload: "{}",
-		Variant: "ultrafastpolar",
-		Signature: "DUMMY",
+		Payload:     "{}",
+		Variant:     "ultrafastpolar",
+		Signature:   "DUMMY",
 	}
 	_, err = repo.Create(ctx, emoji3)
 	assert.NoError(t, err)
@@ -125,4 +125,3 @@ func TestRepository(t *testing.T) {
 	}
 
 }
-

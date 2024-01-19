@@ -226,5 +226,3 @@ func (h handler) GetAcker(c echo.Context) error {
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": acks})
 }
-
-

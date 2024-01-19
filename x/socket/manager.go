@@ -12,11 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/util"
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
+	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/util"
 )
 
 // ソケット管理のルール
@@ -27,7 +27,7 @@ import (
 var ctx = context.Background()
 
 var (
-	pingInterval    = 10 * time.Second
+	pingInterval      = 10 * time.Second
 	disconnectTimeout = 30 * time.Second
 )
 
@@ -38,22 +38,22 @@ type Manager interface {
 }
 
 type manager struct {
-	mc *memcache.Client
-	rdb  *redis.Client
-	config  util.Config
+	mc     *memcache.Client
+	rdb    *redis.Client
+	config util.Config
 
-	clientSubs map[*websocket.Conn][]string
-	remoteSubs map[string][]string
+	clientSubs  map[*websocket.Conn][]string
+	remoteSubs  map[string][]string
 	remoteConns map[string]*websocket.Conn
 }
 
 func NewManager(mc *memcache.Client, rdb *redis.Client, util util.Config) Manager {
 	newmanager := &manager{
-		mc: mc,
-		rdb: rdb,
-		config: util,
-		clientSubs: make(map[*websocket.Conn][]string),
-		remoteSubs: make(map[string][]string),
+		mc:          mc,
+		rdb:         rdb,
+		config:      util,
+		clientSubs:  make(map[*websocket.Conn][]string),
+		remoteSubs:  make(map[string][]string),
 		remoteConns: make(map[string]*websocket.Conn),
 	}
 	go newmanager.chunkUpdaterRoutine()
@@ -63,10 +63,10 @@ func NewManager(mc *memcache.Client, rdb *redis.Client, util util.Config) Manage
 
 func NewSubscriptionManagerForTest(mc *memcache.Client, rdb *redis.Client) *manager {
 	manager := &manager{
-		mc: mc,
-		rdb: rdb,
-		clientSubs: make(map[*websocket.Conn][]string),
-		remoteSubs: make(map[string][]string),
+		mc:          mc,
+		rdb:         rdb,
+		clientSubs:  make(map[*websocket.Conn][]string),
+		remoteSubs:  make(map[string][]string),
 		remoteConns: make(map[string]*websocket.Conn),
 	}
 	return manager
@@ -256,68 +256,68 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 
 			for {
 				select {
-					case message := <-messageChan:
+				case message := <-messageChan:
 
-						log.Printf("[remote] <- %s\n", message[:64])
+					log.Printf("[remote] <- %s\n", message[:64])
 
-						var event core.Event
-						err = json.Unmarshal(message, &event)
-						if err != nil {
-							log.Printf("fail to Unmarshall redis message: %v", err)
-							continue
-						}
+					var event core.Event
+					err = json.Unmarshal(message, &event)
+					if err != nil {
+						log.Printf("fail to Unmarshall redis message: %v", err)
+						continue
+					}
 
-						// publish message to Redis
-						err = m.rdb.Publish(ctx, event.Stream, string(message)).Err()
-						if err != nil {
-							log.Printf("fail to publish message to Redis: %v", err)
-							continue
-						}
+					// publish message to Redis
+					err = m.rdb.Publish(ctx, event.Stream, string(message)).Err()
+					if err != nil {
+						log.Printf("fail to publish message to Redis: %v", err)
+						continue
+					}
 
-						// update cache
-						json, err := json.Marshal(event.Item)
-						if err != nil {
-							log.Printf("fail to Marshall item: %v", err)
-							continue
-						}
-						json = append(json, ',')
+					// update cache
+					json, err := json.Marshal(event.Item)
+					if err != nil {
+						log.Printf("fail to Marshall item: %v", err)
+						continue
+					}
+					json = append(json, ',')
 
-						streamID := event.Item.StreamID
-						if !strings.Contains(streamID, "@") {
-							streamID = streamID + "@" + domain
-						}
+					streamID := event.Item.StreamID
+					if !strings.Contains(streamID, "@") {
+						streamID = streamID + "@" + domain
+					}
 
-						// update cache
-						// first, try to get itr
-						itr := "stream:itr:all:" + streamID + ":" + core.Time2Chunk(event.Item.CDate)
-						itrVal, err := m.mc.Get(itr)
-						var cacheKey string
-						if err == nil {
-							cacheKey = string(itrVal.Value)
-						} else {
-							// 最新時刻のイテレーターがないということは、キャッシュがないということ
-							// とはいえ今後はいい感じにキャッシュを作れるようにしたい
-							// 例えば、今までのキャッシュを(現時点では取得不能)最新のitrが指すようにして
-							// 今までのキャッシュを更新し続けるとか... (TODO)
-							// cacheKey := "stream:body:all:" + event.Item.StreamID + ":" + core.Time2Chunk(event.Item.CDate)
-							log.Printf("[remote] no need to update cache: %s", itr)
-							continue
-						}
+					// update cache
+					// first, try to get itr
+					itr := "stream:itr:all:" + streamID + ":" + core.Time2Chunk(event.Item.CDate)
+					itrVal, err := m.mc.Get(itr)
+					var cacheKey string
+					if err == nil {
+						cacheKey = string(itrVal.Value)
+					} else {
+						// 最新時刻のイテレーターがないということは、キャッシュがないということ
+						// とはいえ今後はいい感じにキャッシュを作れるようにしたい
+						// 例えば、今までのキャッシュを(現時点では取得不能)最新のitrが指すようにして
+						// 今までのキャッシュを更新し続けるとか... (TODO)
+						// cacheKey := "stream:body:all:" + event.Item.StreamID + ":" + core.Time2Chunk(event.Item.CDate)
+						log.Printf("[remote] no need to update cache: %s", itr)
+						continue
+					}
 
-						err = m.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
-						if err != nil {
-							log.Printf("fail to update cache: %v", err)
-						}
+					err = m.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
+					if err != nil {
+						log.Printf("fail to update cache: %v", err)
+					}
 
-					case <-pingTicker.C:
-						if err := c.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
-							log.Printf("fail to send ping message: %v", err)
-							return
-						}
-						if lastPong.Before(time.Now().Add(-disconnectTimeout)) {
-							log.Printf("pong timeout: %s", domain)
-							return
-						}
+				case <-pingTicker.C:
+					if err := c.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
+						log.Printf("fail to send ping message: %v", err)
+						return
+					}
+					if lastPong.Before(time.Now().Add(-disconnectTimeout)) {
+						log.Printf("pong timeout: %s", domain)
+						return
+					}
 				}
 			}
 		}(c, messageChan)
@@ -388,4 +388,3 @@ func (m *manager) chunkUpdaterRoutine() {
 type channelRequest struct {
 	Channels []string `json:"channels"`
 }
-

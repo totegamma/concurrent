@@ -67,7 +67,6 @@ func VerifySignatureFromBytes(message []byte, signature []byte, address string) 
 	return errors.New("signature validation failed")
 }
 
-
 func SignBytes(bytes []byte, privatekey string) (string, error) {
 
 	hash := sha3.NewLegacyKeccak256()
@@ -87,4 +86,3 @@ func SignBytes(bytes []byte, privatekey string) (string, error) {
 
 	return encoded, nil
 }
-

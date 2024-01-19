@@ -3,9 +3,9 @@
 package main
 
 import (
+	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
-	"github.com/bradfitz/gomemcache/memcache"
 	"gorm.io/gorm"
 
 	"github.com/totegamma/concurrent/x/agent"
@@ -15,12 +15,12 @@ import (
 	"github.com/totegamma/concurrent/x/collection"
 	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
+	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/socket"
 	"github.com/totegamma/concurrent/x/stream"
 	"github.com/totegamma/concurrent/x/userkv"
 	"github.com/totegamma/concurrent/x/util"
-	"github.com/totegamma/concurrent/x/jwt"
 )
 
 var domainHandlerProvider = wire.NewSet(domain.NewHandler, domain.NewService, domain.NewRepository)

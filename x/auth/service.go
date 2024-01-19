@@ -7,8 +7,8 @@ import (
 	"github.com/rs/xid"
 	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
-	"github.com/totegamma/concurrent/x/util"
 	"github.com/totegamma/concurrent/x/jwt"
+	"github.com/totegamma/concurrent/x/util"
 	"strconv"
 	"time"
 )
@@ -20,11 +20,11 @@ type Service interface {
 }
 
 type service struct {
-    repository Repository
-	config util.Config
-	entity entity.Service
-	domain domain.Service
-    jwtService jwt.Service
+	repository Repository
+	config     util.Config
+	entity     entity.Service
+	domain     domain.Service
+	jwtService jwt.Service
 }
 
 // NewService creates a new auth service
@@ -44,15 +44,15 @@ func (s *service) IssuePassport(ctx context.Context, request string, remote stri
 		return "", err
 	}
 
-    // check if jwt is not used before
-    ok, err := s.jwtService.CheckJTI(ctx, claims.JWTID)
-    if err != nil {
-        span.RecordError(err)
-        return "", err
-    }
-    if !ok {
-        return "", fmt.Errorf("jti is not valid")
-    }
+	// check if jwt is not used before
+	ok, err := s.jwtService.CheckJTI(ctx, claims.JWTID)
+	if err != nil {
+		span.RecordError(err)
+		return "", err
+	}
+	if !ok {
+		return "", fmt.Errorf("jti is not valid")
+	}
 
 	// check aud
 	if claims.Audience != s.config.Concurrent.FQDN {
@@ -71,7 +71,7 @@ func (s *service) IssuePassport(ctx context.Context, request string, remote stri
 		Issuer:         s.config.Concurrent.CCID,
 		Subject:        "CC_PASSPORT",
 		Audience:       remote,
-        Principal:      claims.Issuer,
+		Principal:      claims.Issuer,
 		ExpirationTime: strconv.FormatInt(time.Now().Add(6*time.Hour).Unix(), 10),
 		IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
 		JWTID:          xid.New().String(),
@@ -83,17 +83,17 @@ func (s *service) IssuePassport(ctx context.Context, request string, remote stri
 		return "", err
 	}
 
-    // invalidate old jwt
-    expireAt, err := strconv.ParseInt(claims.ExpirationTime, 10, 64)
-    if err != nil {
-        span.RecordError(err)
-        return "", err
-    }
-    err = s.jwtService.InvalidateJTI(ctx, claims.JWTID, time.Unix(expireAt, 0))
-    if err != nil {
-        span.RecordError(err)
-        return "", err
-    }
+	// invalidate old jwt
+	expireAt, err := strconv.ParseInt(claims.ExpirationTime, 10, 64)
+	if err != nil {
+		span.RecordError(err)
+		return "", err
+	}
+	err = s.jwtService.InvalidateJTI(ctx, claims.JWTID, time.Unix(expireAt, 0))
+	if err != nil {
+		span.RecordError(err)
+		return "", err
+	}
 
 	return response, nil
 }

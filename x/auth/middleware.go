@@ -18,7 +18,7 @@ const (
 	ISADMIN = iota
 	ISLOCAL
 	ISKNOWN
-    ISNOTREGISTERED
+	ISNOTREGISTERED
 	ISUNITED
 	ISUNUNITED
 )
@@ -35,10 +35,10 @@ func (s *service) Restrict(principal Principal) echo.MiddlewareFunc {
 				return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid authentication header"})
 			}
 
-            if claims.Audience != s.config.Concurrent.FQDN {
-                span.RecordError(fmt.Errorf("jwt is not for this domain"))
-                return c.JSON(http.StatusUnauthorized, echo.Map{"error": "jwt is not for this domain"})
-            }
+			if claims.Audience != s.config.Concurrent.FQDN {
+				span.RecordError(fmt.Errorf("jwt is not for this domain"))
+				return c.JSON(http.StatusUnauthorized, echo.Map{"error": "jwt is not for this domain"})
+			}
 
 			switch principal {
 			case ISADMIN:
@@ -46,73 +46,73 @@ func (s *service) Restrict(principal Principal) echo.MiddlewareFunc {
 					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
 				}
 
-                entity, err := s.entity.Get(ctx, claims.Audience)
-                if err != nil {
-                    return c.JSON(http.StatusForbidden, echo.Map{
-                        "error": "you are not authorized to perform this action",
-                        "detail": "you are not on this domain",
-                    })
-                }
-
-                tags := core.ParseTags(entity.Tag)
-
-                if !tags.Has("_admin") {
+				entity, err := s.entity.Get(ctx, claims.Audience)
+				if err != nil {
 					return c.JSON(http.StatusForbidden, echo.Map{
-                        "error": "you are not authorized to perform this action",
-                        "detail": "you are not admin",
-                    })
-                }
+						"error":  "you are not authorized to perform this action",
+						"detail": "you are not on this domain",
+					})
+				}
+
+				tags := core.ParseTags(entity.Tag)
+
+				if !tags.Has("_admin") {
+					return c.JSON(http.StatusForbidden, echo.Map{
+						"error":  "you are not authorized to perform this action",
+						"detail": "you are not admin",
+					})
+				}
 
 			case ISLOCAL:
 				if claims.Subject != "CC_API" {
 					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
 				}
 
-                _, err := s.entity.Get(ctx, claims.Audience)
+				_, err := s.entity.Get(ctx, claims.Audience)
 				if err != nil {
 					return c.JSON(http.StatusForbidden, echo.Map{
-                        "error": "you are not authorized to perform this action",
-                        "detail": "you are not local",
-                    })
+						"error":  "you are not authorized to perform this action",
+						"detail": "you are not local",
+					})
 				}
 
 			case ISKNOWN:
 
 				if claims.Subject == "CC_API" { // internal user
-                    _, err := s.entity.Get(ctx, claims.Audience)
-                    if err != nil {
-                        return c.JSON(http.StatusForbidden, echo.Map{
-                            "error": "you are not authorized to perform this action",
-                            "detail": "you are not known",
-                        })
-                    }
+					_, err := s.entity.Get(ctx, claims.Audience)
+					if err != nil {
+						return c.JSON(http.StatusForbidden, echo.Map{
+							"error":  "you are not authorized to perform this action",
+							"detail": "you are not known",
+						})
+					}
 
-                    goto VALIDATE_OK
+					goto VALIDATE_OK
 				}
 
 				if claims.Subject == "CC_PASSPORT" { // external user
-                    _, err := s.entity.GetAddress(ctx, claims.Principal)
-                    if err != nil {
-                        return c.JSON(http.StatusForbidden, echo.Map{
-                            "error": "you are not authorized to perform this action",
-                            "detail": "you are not known",
-                        })
-                    }
+					_, err := s.entity.GetAddress(ctx, claims.Principal)
+					if err != nil {
+						return c.JSON(http.StatusForbidden, echo.Map{
+							"error":  "you are not authorized to perform this action",
+							"detail": "you are not known",
+						})
+					}
 
-                    // ckeck if domain or user is blocked
+					// ckeck if domain or user is blocked
 
-                    goto VALIDATE_OK
+					goto VALIDATE_OK
 				}
 
-                return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
+				return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
 
 			case ISNOTREGISTERED:
 				_, err := s.entity.Get(ctx, claims.Audience)
 				if err == nil {
 					return c.JSON(http.StatusForbidden, echo.Map{
-                        "error": "you are not authorized to perform this action",
-                        "detail": "you are already known",
-                    })
+						"error":  "you are not authorized to perform this action",
+						"detail": "you are already known",
+					})
 				}
 			case ISUNITED:
 				if claims.Subject != "CC_API" {
@@ -121,16 +121,16 @@ func (s *service) Restrict(principal Principal) echo.MiddlewareFunc {
 				domain, err := s.domain.GetByCCID(ctx, claims.Issuer)
 				if err != nil {
 					return c.JSON(http.StatusForbidden, echo.Map{
-                        "error": "you are not authorized to perform this action",
-                        "detail": "you are not united",
-                    })
+						"error":  "you are not authorized to perform this action",
+						"detail": "you are not united",
+					})
 				}
 				domainTags := strings.Split(domain.Tag, ",")
 				if slices.Contains(domainTags, "_blocked") {
 					return c.JSON(http.StatusForbidden, echo.Map{
-                        "error": "you are not authorized to perform this action",
-                        "detail": "you are not blocked",
-                    })
+						"error":  "you are not authorized to perform this action",
+						"detail": "you are not blocked",
+					})
 				}
 			case ISUNUNITED:
 				if claims.Subject != "CC_API" {
@@ -139,12 +139,12 @@ func (s *service) Restrict(principal Principal) echo.MiddlewareFunc {
 				_, err := s.domain.GetByCCID(ctx, claims.Issuer)
 				if err == nil {
 					return c.JSON(http.StatusForbidden, echo.Map{
-                        "error": "you are not authorized to perform this action",
-                        "detail": "you are already united",
-                    })
+						"error":  "you are not authorized to perform this action",
+						"detail": "you are already united",
+					})
 				}
 			}
-            VALIDATE_OK:
+		VALIDATE_OK:
 			c.SetRequest(c.Request().WithContext(ctx))
 			return next(c)
 		}

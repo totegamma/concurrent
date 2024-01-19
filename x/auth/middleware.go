@@ -2,13 +2,14 @@ package auth
 
 import (
 	"fmt"
-	"github.com/labstack/echo/v4"
-	"github.com/totegamma/concurrent/x/jwt"
-	"github.com/totegamma/concurrent/x/core"
-	"go.opentelemetry.io/otel/attribute"
-	"golang.org/x/exp/slices"
 	"net/http"
 	"strings"
+
+	"github.com/labstack/echo/v4"
+	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/jwt"
+	"go.opentelemetry.io/otel/attribute"
+	"golang.org/x/exp/slices"
 )
 
 type Principal int
@@ -33,6 +34,11 @@ func (s *service) Restrict(principal Principal) echo.MiddlewareFunc {
 			if !ok {
 				return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid authentication header"})
 			}
+
+            if claims.Audience != s.config.Concurrent.FQDN {
+                span.RecordError(fmt.Errorf("jwt is not for this domain"))
+                return c.JSON(http.StatusUnauthorized, echo.Map{"error": "jwt is not for this domain"})
+            }
 
 			switch principal {
 			case ISADMIN:
@@ -85,7 +91,7 @@ func (s *service) Restrict(principal Principal) echo.MiddlewareFunc {
 				}
 
 				if claims.Subject == "CC_PASSPORT" { // external user
-                    _, err := s.entity.GetAddress(ctx, claims.Audience)
+                    _, err := s.entity.GetAddress(ctx, claims.Principal)
                     if err != nil {
                         return c.JSON(http.StatusForbidden, echo.Map{
                             "error": "you are not authorized to perform this action",

@@ -11,7 +11,6 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/util"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
 )
@@ -165,8 +164,7 @@ func (h handler) ListMine(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerListMine")
 	defer span.End()
 
-	claims := c.Get("jwtclaims").(util.JwtClaims)
-	requester := claims.Audience
+	requester := c.Get("requester").(string)
 
 	list, err := h.service.ListStreamByAuthor(ctx, requester)
 	if err != nil {
@@ -193,8 +191,7 @@ func (h handler) Delete(c echo.Context) error {
 		return err
 	}
 
-	claims := c.Get("jwtclaims").(util.JwtClaims)
-	requester := claims.Audience
+	requester := c.Get("requester").(string)
 
 	if target.Author != requester {
 		return c.JSON(http.StatusForbidden, echo.Map{"error": "You are not owner of this stream"})
@@ -227,8 +224,7 @@ func (h handler) Remove(c echo.Context) error {
 		return err
 	}
 
-	claims := c.Get("jwtclaims").(util.JwtClaims)
-	requester := claims.Audience
+	requester := c.Get("requester").(string)
 
 	if target.Author != requester && target.Owner != requester {
 		return c.JSON(http.StatusForbidden, echo.Map{"error": "You are not owner of this stream element"})
@@ -303,11 +299,9 @@ func (h handler) GetChunks(c echo.Context) error {
 	}
 
 	responce := chunkResponse{
-		Status: "ok",
+		Status:  "ok",
 		Content: chunks,
 	}
 
 	return c.JSON(http.StatusOK, responce)
 }
-
-

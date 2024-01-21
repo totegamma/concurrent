@@ -1,5 +1,5 @@
 import { Box, Button, Tab, Tabs } from "@mui/material"
-import {  useState } from "react"
+import {  useEffect, useState } from "react"
 import { Navigate, useLocation } from "react-router-dom"
 import { Entities } from "../widgets/entities"
 import { Domains } from "../widgets/domains"
@@ -8,9 +8,17 @@ import { useApi } from "../context/apiContext"
 export const Home = (): JSX.Element => {
 
     const [tab, setTab] = useState(0)
+    const [tags, setTag] = useState<string[]>([])
     const { api } = useApi()
 
-    const tags = api.getTokenClaims()?.tag?.split(',') ?? []
+    const ccid = api.getTokenClaims()?.iss
+
+    useEffect(() => {
+        if (!ccid) return
+        api.readEntity(ccid).then((entity) => {
+            setTag(entity?.tag.split(',') ?? [])
+        })
+    }, [api])
 
     if (!api.token) return <Navigate to='/welcome' state={{ from: useLocation() }} replace={true} />
     return (
@@ -25,8 +33,8 @@ export const Home = (): JSX.Element => {
                 flexDirection='column'
                 width='100%'
             >
-                hello {api.getTokenClaims()?.aud}<br />
-                your tag is {api.getTokenClaims()?.tag}<br />
+                hello {ccid}<br />
+                your tag is {tags.join(',')}<br />
 
                 <Tabs
                     value={tab}

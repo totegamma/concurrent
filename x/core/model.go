@@ -1,11 +1,31 @@
 package core
 
 import (
-	"github.com/lib/pq"
-	"time"
 	"fmt"
+	"github.com/lib/pq"
 	"strconv"
+	"time"
 )
+
+type SignedObject struct {
+	Signer   string      `json:"signer"`
+	Type     string      `json:"type"`
+	Schema   string      `json:"schema,omitempty"`
+	KeyID    string      `json:"keyID"`
+	Body     interface{} `json:"body"`
+	Meta     interface{} `json:"meta,omitempty"`
+	SignedAt time.Time   `json:"signedAt"`
+}
+
+/*
+# SignedObject Body Schemas
+
+## Entity
+### Domain Affiliation
+{
+    domain: string,
+}
+*/
 
 // Association is one of a concurrent base object
 // immutable
@@ -16,7 +36,7 @@ type Association struct {
 	TargetID    string         `json:"targetID" gorm:"type:uuid;uniqueIndex:uniq_association"`
 	TargetType  string         `json:"targetType" gorm:"type:string;uniqueIndex:uniq_association"`
 	ContentHash string         `json:"contentHash" gorm:"type:char(64);uniqueIndex:uniq_association"`
-	Variant	    string         `json:"variant" gorm:"type:text"`
+	Variant     string         `json:"variant" gorm:"type:text"`
 	Payload     string         `json:"payload" gorm:"type:json"`
 	Signature   string         `json:"signature" gorm:"type:char(130)"`
 	CDate       time.Time      `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
@@ -39,44 +59,57 @@ type Character struct {
 // Entity is one of a concurrent base object
 // mutable
 type Entity struct {
-	ID      string    `json:"ccid" gorm:"type:char(42)"`
-	Tag     string    `json:"tag" gorm:"type:text;"`
-	Domain  string    `json:"domain" gorm:"type:text"`
-	Certs   string    `json:"certs" gorm:"type:json;default:'null'"`
-	Meta    string    `json:"meta" gorm:"type:json;default:'null'"`
-	Score   int       `json:"score" gorm:"type:integer;default:0"`
-	Inviter string    `json:"inviter" gorm:"type:char(42)"`
-	CDate   time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
-	MDate   time.Time `json:"mdate" gorm:"autoUpdateTime"`
-	Acking  Ack       `json:"acking" gorm:"foreignKey:From"`
-	Acker   Ack       `json:"acker" gorm:"foreignKey:To"`
+	ID           string    `json:"ccid" gorm:"type:char(42)"`
+	Tag          string    `json:"tag" gorm:"type:text;"`
+	Score        int       `json:"score" gorm:"type:integer;default:0"`
+	IsScoreFixed bool      `json:"isScoreFixed" gorm:"type:boolean;default:false"`
+	Payload      string    `json:"payload" gorm:"type:json;default:'{}'"`
+	Signature    string    `json:"signature" gorm:"type:char(130)"`
+	CDate        time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
+	MDate        time.Time `json:"mdate" gorm:"autoUpdateTime"`
+}
+
+type EntityMeta struct {
+	ID      string `json:"ccid" gorm:"type:char(42)"`
+	Inviter string `json:"inviter" gorm:"type:char(42)"`
+	Info    string `json:"info" gorm:"type:json;default:'null'"`
+}
+
+// Address
+type Address struct {
+	ID       string    `json:"ccid" gorm:"type:char(42)"`
+	Domain   string    `json:"domain" gorm:"type:text"`
+	SignedAt time.Time `json:"validFrom" gorm:"type:timestamp with time zone"`
+	CDate    time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
+	MDate    time.Time `json:"mdate" gorm:"autoUpdateTime"`
 }
 
 // Domain is one of a concurrent base object
 // mutable
 type Domain struct {
-	ID          string    `json:"fqdn" gorm:"type:text"` // FQDN
-	CCID        string    `json:"ccid" gorm:"type:char(42)"`
-	Tag         string    `json:"tag" gorm:"type:text;default:default"`
-	Score       int       `json:"score" gorm:"type:integer;default:0"`
-	Pubkey      string    `json:"pubkey" gorm:"type:text"`
-	CDate       time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
-	MDate       time.Time `json:"mdate" gorm:"autoUpdateTime"`
-	LastScraped time.Time `json:"lastScraped" gorm:"type:timestamp with time zone"`
+	ID           string    `json:"fqdn" gorm:"type:text"` // FQDN
+	CCID         string    `json:"ccid" gorm:"type:char(42)"`
+	Tag          string    `json:"tag" gorm:"type:text;default:default"`
+	Score        int       `json:"score" gorm:"type:integer;default:0"`
+	IsScoreFixed bool      `json:"isScoreFixed" gorm:"type:boolean;default:false"`
+	Pubkey       string    `json:"pubkey" gorm:"type:text"`
+	CDate        time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
+	MDate        time.Time `json:"mdate" gorm:"autoUpdateTime"`
+	LastScraped  time.Time `json:"lastScraped" gorm:"type:timestamp with time zone"`
 }
 
 // Message is one of a concurrent base object
 // immutable
 type Message struct {
-	ID           string         `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
-	Author       string         `json:"author" gorm:"type:char(42)"`
-	Schema       string         `json:"schema" gorm:"type:text"`
-	Payload      string         `json:"payload" gorm:"type:json"`
-	Signature    string         `json:"signature" gorm:"type:char(130)"`
-	CDate        time.Time      `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
-	Associations []Association  `json:"associations,omitempty" gorm:"polymorphic:Target"`
-	OwnAssociations []Association `json:"ownAssociations,omitempty" gorm:"-"`
-	Streams      pq.StringArray `json:"streams" gorm:"type:text[]"`
+	ID              string         `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	Author          string         `json:"author" gorm:"type:char(42)"`
+	Schema          string         `json:"schema" gorm:"type:text"`
+	Payload         string         `json:"payload" gorm:"type:json"`
+	Signature       string         `json:"signature" gorm:"type:char(130)"`
+	CDate           time.Time      `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
+	Associations    []Association  `json:"associations,omitempty" gorm:"polymorphic:Target"`
+	OwnAssociations []Association  `json:"ownAssociations,omitempty" gorm:"-"`
+	Streams         pq.StringArray `json:"streams" gorm:"type:text[]"`
 }
 
 // Stream is one of a base object of concurrent
@@ -137,13 +170,12 @@ type Ack struct {
 
 // Event is websocket root packet model
 type Event struct {
-	Stream string          `json:"stream"` // stream full id (ex: <streamID>@<domain>)
-	Type   string          `json:"type"`
-	Action string          `json:"action"`
-	Item   StreamItem `json:"item"`
-	Body   interface{}     `json:"body"`
+	Stream string      `json:"stream"` // stream full id (ex: <streamID>@<domain>)
+	Type   string      `json:"type"`
+	Action string      `json:"action"`
+	Item   StreamItem  `json:"item"`
+	Body   interface{} `json:"body"`
 }
-
 
 func Time2Chunk(t time.Time) string {
 	// chunk by 10 minutes

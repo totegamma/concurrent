@@ -117,7 +117,6 @@ func (s *service) PostAssociation(ctx context.Context, objectStr string, signatu
 		}
 	}
 
-
 	for _, postto := range targetMessage.Streams {
 		event := core.Event{
 			Stream: postto,
@@ -237,4 +236,3 @@ func (s *service) GetOwnByTarget(ctx context.Context, targetID, author string) (
 
 	return s.repo.GetOwnByTarget(ctx, targetID, author)
 }
-

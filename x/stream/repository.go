@@ -1,26 +1,25 @@
 package stream
 
 import (
-	"io"
-	"fmt"
-	"log"
-	"net/http"
 	"context"
 	"encoding/json"
-	"time"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
 	"strings"
+	"time"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/util"
 	"github.com/totegamma/concurrent/x/socket"
-	"slices"
+	"github.com/totegamma/concurrent/x/util"
 	"gorm.io/gorm"
+	"slices"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
-
 )
 
 // Repository is stream repository interface
@@ -51,11 +50,11 @@ type Repository interface {
 }
 
 type repository struct {
-	db *gorm.DB
-	rdb *redis.Client
-	mc *memcache.Client
+	db      *gorm.DB
+	rdb     *redis.Client
+	mc      *memcache.Client
 	manager socket.Manager
-	config util.Config
+	config  util.Config
 }
 
 // NewRepository creates a new stream repository
@@ -147,7 +146,7 @@ func (r *repository) SaveToCache(ctx context.Context, chunks map[string]Chunk, q
 			span.RecordError(err)
 			return err
 		}
-		value := string(b[1 : len(b)-1]) + ","
+		value := string(b[1:len(b)-1]) + ","
 		err = r.mc.Set(&memcache.Item{Key: chunk.Key, Value: []byte(value)})
 		if err != nil {
 			span.RecordError(err)
@@ -201,8 +200,8 @@ func (r *repository) GetChunksFromCache(ctx context.Context, streams []string, c
 			continue
 		}
 		slices.Reverse(items)
-		result[stream] = Chunk {
-			Key: targetKey,
+		result[stream] = Chunk{
+			Key:   targetKey,
 			Items: items,
 		}
 	}
@@ -242,8 +241,8 @@ func (r *repository) GetChunksFromDB(ctx context.Context, streams []string, chun
 			span.RecordError(err)
 			continue
 		}
-		result[stream] = Chunk {
-			Key: targetKey,
+		result[stream] = Chunk{
+			Key:   targetKey,
 			Items: items,
 		}
 
@@ -257,7 +256,7 @@ func (r *repository) GetChunksFromDB(ctx context.Context, streams []string, chun
 			span.RecordError(err)
 			continue
 		}
-		cacheStr := string(b[1 : len(b)-1]) + ","
+		cacheStr := string(b[1:len(b)-1]) + ","
 		err = r.mc.Set(&memcache.Item{Key: targetKey, Value: []byte(cacheStr)})
 		if err != nil {
 			span.RecordError(err)
@@ -342,16 +341,16 @@ func (r *repository) CreateItem(ctx context.Context, item core.StreamItem) (core
 	if err != nil {
 		// キャッシュに保存できなかった場合、新しいチャンクをDBから作成する必要がある
 		_, err = r.GetChunksFromDB(ctx, []string{streamID}, itemChunk)
-		
+
 		// 再実行 (誤り: これをするとデータが重複するでしょ)
 		/*
-		err = r.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
-		if err != nil {
-			// これは致命的にプログラムがおかしい
-			log.Printf("failed to append cache: %v", err)
-			span.RecordError(err)
-			return item, err
-		}
+			err = r.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
+			if err != nil {
+				// これは致命的にプログラムがおかしい
+				log.Printf("failed to append cache: %v", err)
+				span.RecordError(err)
+				return item, err
+			}
 		*/
 
 		if itemChunk != core.Time2Chunk(time.Now()) {

@@ -2,12 +2,14 @@ package auth
 
 import (
 	"fmt"
-	"github.com/labstack/echo/v4"
-	"github.com/totegamma/concurrent/x/util"
-	"go.opentelemetry.io/otel/attribute"
-	"golang.org/x/exp/slices"
 	"net/http"
 	"strings"
+
+	"github.com/labstack/echo/v4"
+	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/jwt"
+	"go.opentelemetry.io/otel/attribute"
+	"golang.org/x/exp/slices"
 )
 
 type Principal int
@@ -16,7 +18,6 @@ const (
 	ISADMIN = iota
 	ISLOCAL
 	ISKNOWN
-	ISUNKNOWN
 	ISUNITED
 	ISUNUNITED
 )
@@ -27,79 +28,114 @@ func (s *service) Restrict(principal Principal) echo.MiddlewareFunc {
 		return func(c echo.Context) error {
 			ctx, span := tracer.Start(c.Request().Context(), "auth.Restrict")
 			defer span.End()
-			claims, ok := c.Get("jwtclaims").(util.JwtClaims)
+
+			claims, ok := c.Get("jwtclaims").(jwt.Claims)
 			if !ok {
 				return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid authentication header"})
 			}
-			tags := strings.Split(claims.Tag, ",")
+
+			if claims.Audience != s.config.Concurrent.FQDN {
+				span.RecordError(fmt.Errorf("jwt is not for this domain"))
+				return c.JSON(http.StatusUnauthorized, echo.Map{"error": "jwt is not for this domain"})
+			}
 
 			switch principal {
 			case ISADMIN:
-				if claims.Subject != "CONCURRENT_API" {
+				if claims.Subject != "CC_API" {
 					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
 				}
-				if !slices.Contains(tags, "_admin") {
-					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not admin"})
+
+				entity, err := s.entity.Get(ctx, claims.Issuer)
+				if err != nil {
+					return c.JSON(http.StatusForbidden, echo.Map{
+						"error":  "you are not authorized to perform this action",
+						"detail": "you are not on this domain",
+					})
 				}
+
+				tags := core.ParseTags(entity.Tag)
+
+				if !tags.Has("_admin") {
+					return c.JSON(http.StatusForbidden, echo.Map{
+						"error":  "you are not authorized to perform this action",
+						"detail": "you are not admin",
+					})
+				}
+
 			case ISLOCAL:
-				if claims.Subject != "CONCURRENT_API" {
+				if claims.Subject != "CC_API" {
 					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
 				}
 
-				ent, err := s.entity.Get(ctx, claims.Audience)
+				_, err := s.entity.Get(ctx, claims.Issuer)
 				if err != nil {
-					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not known"})
+					return c.JSON(http.StatusForbidden, echo.Map{
+						"error":  "you are not authorized to perform this action",
+						"detail": "you are not local",
+					})
 				}
 
-				if ent.Domain != "" {
-					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not local"})
-				}
 			case ISKNOWN:
-				if claims.Subject != "CONCURRENT_API" {
-					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
-				}
-				_, err := s.entity.Get(ctx, claims.Audience)
-				if err != nil {
-					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not known"})
+
+				if claims.Subject == "CC_API" { // internal user
+					_, err := s.entity.Get(ctx, claims.Issuer)
+					if err != nil {
+						return c.JSON(http.StatusForbidden, echo.Map{
+							"error":  "you are not authorized to perform this action",
+							"detail": "you are not known",
+						})
+					}
+
+					goto VALIDATE_OK
 				}
 
-				// remote user must be checked if it's domain is not blocked
-				if claims.Issuer != s.config.Concurrent.CCID {
-					domain, err := s.domain.GetByCCID(ctx, claims.Issuer)
+				if claims.Subject == "CC_PASSPORT" { // external user
+					_, err := s.entity.GetAddress(ctx, claims.Principal)
 					if err != nil {
-						return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "your domain is not known"})
+						return c.JSON(http.StatusForbidden, echo.Map{
+							"error":  "you are not authorized to perform this action",
+							"detail": "you are not known",
+						})
 					}
-					domainTags := strings.Split(domain.Tag, ",")
-					if slices.Contains(domainTags, "_blocked") {
-						return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "your domain is blocked"})
-					}
+
+					// ckeck if domain or user is blocked
+
+					goto VALIDATE_OK
 				}
-			case ISUNKNOWN:
-				_, err := s.entity.Get(ctx, claims.Audience)
-				if err == nil {
-					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are already known"})
-				}
+
+				return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
+
 			case ISUNITED:
-				if claims.Subject != "CONCURRENT_API" {
+				if claims.Subject != "CC_API" {
 					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
 				}
 				domain, err := s.domain.GetByCCID(ctx, claims.Issuer)
 				if err != nil {
-					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not united"})
+					return c.JSON(http.StatusForbidden, echo.Map{
+						"error":  "you are not authorized to perform this action",
+						"detail": "you are not united",
+					})
 				}
 				domainTags := strings.Split(domain.Tag, ",")
 				if slices.Contains(domainTags, "_blocked") {
-					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are not blocked"})
+					return c.JSON(http.StatusForbidden, echo.Map{
+						"error":  "you are not authorized to perform this action",
+						"detail": "you are not blocked",
+					})
 				}
 			case ISUNUNITED:
-				if claims.Subject != "CONCURRENT_API" {
+				if claims.Subject != "CC_API" {
 					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
 				}
 				_, err := s.domain.GetByCCID(ctx, claims.Issuer)
 				if err == nil {
-					return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action", "detail": "you are already united"})
+					return c.JSON(http.StatusForbidden, echo.Map{
+						"error":  "you are not authorized to perform this action",
+						"detail": "you are already united",
+					})
 				}
 			}
+		VALIDATE_OK:
 			c.SetRequest(c.Request().WithContext(ctx))
 			return next(c)
 		}
@@ -122,23 +158,32 @@ func ParseJWT(next echo.HandlerFunc) echo.HandlerFunc {
 				span.RecordError(fmt.Errorf("invalid authentication header"))
 				goto skip
 			}
-			authType, jwt := split[0], split[1]
+			authType, token := split[0], split[1]
 			if authType != "Bearer" {
 				span.RecordError(fmt.Errorf("only Bearer is acceptable"))
 				goto skip
 			}
 
-			claims, err := util.ValidateJWT(jwt)
+			claims, err := jwt.Validate(token)
 			if err != nil {
 				span.RecordError(err)
 				goto skip
 			}
 
 			c.Set("jwtclaims", claims)
+
+			if claims.Subject == "CC_API" {
+				c.Set("requester", claims.Issuer)
+			} else if claims.Subject == "CC_PASSPORT" {
+				// TODO: needs to be validated
+				c.Set("requester", claims.Principal)
+			}
+
+			span.SetAttributes(attribute.String("Issuer", claims.Issuer))
 			span.SetAttributes(attribute.String("Audience", claims.Audience))
+			span.SetAttributes(attribute.String("Principal", claims.Principal))
 		}
 	skip:
-
 		c.SetRequest(c.Request().WithContext(ctx))
 		return next(c)
 	}

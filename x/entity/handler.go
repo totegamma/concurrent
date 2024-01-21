@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
 	"github.com/xinguang/go-recaptcha"
@@ -31,17 +30,17 @@ type Handler interface {
 	Unack(c echo.Context) error
 	GetAcker(c echo.Context) error
 	GetAcking(c echo.Context) error
+	Resolve(c echo.Context) error
 }
 
 type handler struct {
 	service Service
-	rdb     *redis.Client
 	config  util.Config
 }
 
 // NewHandler creates a new handler
-func NewHandler(service Service, rdb *redis.Client, config util.Config) Handler {
-	return &handler{service: service, rdb: rdb, config: config}
+func NewHandler(service Service, config util.Config) Handler {
+	return &handler{service: service, config: config}
 }
 
 // Get returns an entity by ID
@@ -53,18 +52,13 @@ func (h handler) Get(c echo.Context) error {
 	entity, err := h.service.Get(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+			span.RecordError(err)
 			return c.JSON(http.StatusNotFound, echo.Map{"error": "entity not found"})
 		}
 		return err
 	}
-	publicInfo := SafeEntity{
-		ID:     entity.ID,
-		Tag:    entity.Tag,
-		Domain: entity.Domain,
-		Certs:  entity.Certs,
-		CDate:  entity.CDate,
-	}
-	return c.JSON(http.StatusOK, publicInfo)
+
+	return c.JSON(http.StatusOK, entity)
 }
 
 // Register creates a new entity
@@ -78,6 +72,7 @@ func (h handler) Register(c echo.Context) error {
 	var request registerRequest
 	err := c.Bind(&request)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 
@@ -94,42 +89,10 @@ func (h handler) Register(c echo.Context) error {
 		}
 	}
 
-	inviter := ""
-	jwtID := ""
-	expireAt := int64(0)
-	if request.Token != "" {
-		claims, err := util.ValidateJWT(request.Token)
-		if err != nil {
-			span.RecordError(err)
-			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid token"})
-		}
-		if claims.Subject != "CONCURRENT_INVITE" {
-			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid token"})
-		}
-		_, err = h.rdb.Get(ctx, "jti:"+claims.JWTID).Result()
-		if err == nil {
-			span.RecordError(err)
-			return c.JSON(http.StatusUnauthorized, echo.Map{"error": "token is already used"})
-		}
-
-		inviter = claims.Issuer
-		jwtID = claims.JWTID
-		expireAt, _ = strconv.ParseInt(claims.ExpirationTime, 10, 64)
-	}
-
-	err = h.service.Register(ctx, request.CCID, request.Meta, inviter)
+	err = h.service.Register(ctx, request.CCID, request.Registration, request.Signature, request.Info, request.Invitation)
 	if err != nil {
 		span.RecordError(err)
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
-	}
-
-	if jwtID != "" {
-		expiration := time.Until(time.Unix(int64(expireAt), 0))
-		err = h.rdb.Set(ctx, "jti:"+jwtID, "1", expiration).Err()
-		if err != nil {
-			span.RecordError(err)
-			return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
-		}
 	}
 
 	return c.String(http.StatusCreated, "{\"message\": \"accept\"}")
@@ -143,10 +106,12 @@ func (h handler) Create(c echo.Context) error {
 	var request createRequest
 	err := c.Bind(&request)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
-	err = h.service.Create(ctx, request.CCID, request.Meta)
+	err = h.service.Create(ctx, request.CCID, request.Registration, request.Signature, request.Info)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 	return c.String(http.StatusCreated, "{\"message\": \"accept\"}")
@@ -161,12 +126,14 @@ func (h handler) List(c echo.Context) error {
 	if err != nil {
 		entities, err := h.service.List(ctx)
 		if err != nil {
+			span.RecordError(err)
 			return err
 		}
 		return c.JSON(http.StatusOK, entities)
 	} else {
 		entities, err := h.service.ListModified(ctx, time.Unix(since, 0))
 		if err != nil {
+			span.RecordError(err)
 			return err
 		}
 		return c.JSON(http.StatusOK, entities)
@@ -181,10 +148,12 @@ func (h handler) Update(c echo.Context) error {
 	var request core.Entity
 	err := c.Bind(&request)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 	err = h.service.Update(ctx, &request)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": request})
@@ -198,6 +167,7 @@ func (h handler) Delete(c echo.Context) error {
 	id := c.Param("id")
 	err := h.service.Delete(ctx, id)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
@@ -211,11 +181,13 @@ func (h handler) Ack(c echo.Context) error {
 	var request ackRequest
 	err := c.Bind(&request)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 
 	err = h.service.Ack(ctx, request.SignedObject, request.Signature)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 
@@ -230,11 +202,13 @@ func (h handler) Unack(c echo.Context) error {
 	var request ackRequest
 	err := c.Bind(&request)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 
 	err = h.service.Unack(ctx, request.SignedObject, request.Signature)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 
@@ -249,6 +223,7 @@ func (h handler) GetAcking(c echo.Context) error {
 	id := c.Param("id")
 	acks, err := h.service.GetAcking(ctx, id)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": acks})
@@ -262,9 +237,22 @@ func (h handler) GetAcker(c echo.Context) error {
 	id := c.Param("id")
 	acks, err := h.service.GetAcker(ctx, id)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": acks})
 }
 
+// Resolve returns entity domain affiliation
+func (h handler) Resolve(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerResolve")
+	defer span.End()
 
+	id := c.Param("id")
+	fqdn, err := h.service.ResolveHost(ctx, id)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": fqdn})
+}

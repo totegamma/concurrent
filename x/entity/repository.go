@@ -9,18 +9,19 @@ import (
 
 // Repository is the interface for host repository
 type Repository interface {
-	Get(ctx context.Context, key string) (core.Entity, error)
-	Create(ctx context.Context, entity *core.Entity) error
-	Upsert(ctx context.Context, entity *core.Entity) error
-	GetList(ctx context.Context) ([]SafeEntity, error)
-	ListModified(ctx context.Context, modified time.Time) ([]SafeEntity, error)
+	GetEntity(ctx context.Context, key string) (core.Entity, error)
+	CreateEntity(ctx context.Context, entity *core.Entity, meta *core.EntityMeta) error
+	UpdateEntity(ctx context.Context, entity *core.Entity) error
+	GetList(ctx context.Context) ([]core.Entity, error)
+	ListModified(ctx context.Context, modified time.Time) ([]core.Entity, error)
 	Delete(ctx context.Context, key string) error
-	Update(ctx context.Context, entity *core.Entity) error
 	Ack(ctx context.Context, ack *core.Ack) error
 	Unack(ctx context.Context, from, to string) error
 	Total(ctx context.Context) (int64, error)
 	GetAcker(ctx context.Context, key string) ([]core.Ack, error)
 	GetAcking(ctx context.Context, key string) ([]core.Ack, error)
+	GetAddress(ctx context.Context, ccid string) (core.Address, error)
+	UpdateAddress(ctx context.Context, ccid string, domain string, signedAt time.Time) error
 }
 
 type repository struct {
@@ -42,8 +43,45 @@ func NewRepository(db *gorm.DB) Repository {
 	return &repository{db: db}
 }
 
+// GetAddress returns the address of a entity
+func (r *repository) GetAddress(ctx context.Context, ccid string) (core.Address, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryGetAddress")
+	defer span.End()
+
+	var addr core.Address
+	err := r.db.WithContext(ctx).First(&addr, "id = ?", ccid).Error
+	return addr, err
+}
+
+// SetAddress sets the address of a entity
+func (r *repository) SetAddress(ctx context.Context, ccid string, address string) error {
+	ctx, span := tracer.Start(ctx, "RepositorySetAddress")
+	defer span.End()
+
+	return r.db.WithContext(ctx).Model(&core.Entity{}).Where("id = ?", ccid).Update("address", address).Error
+}
+
+// UpdateAddress updates the address of a entity
+func (r *repository) UpdateAddress(ctx context.Context, ccid string, domain string, signedAt time.Time) error {
+	ctx, span := tracer.Start(ctx, "RepositoryUpdateAddress")
+	defer span.End()
+
+	// create if not exists
+	var addr core.Address
+	err := r.db.WithContext(ctx).First(&addr, "id = ?", ccid).Error
+	if err != nil {
+		return r.db.WithContext(ctx).Create(&core.Address{
+			ID:       ccid,
+			Domain:   domain,
+			SignedAt: signedAt,
+		}).Error
+	}
+
+	return r.db.WithContext(ctx).Model(&core.Address{}).Where("id = ?", ccid).Update("domain", domain).Error
+}
+
 // Get returns a entity by key
-func (r *repository) Get(ctx context.Context, key string) (core.Entity, error) {
+func (r *repository) GetEntity(ctx context.Context, key string) (core.Entity, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGet")
 	defer span.End()
 
@@ -53,37 +91,42 @@ func (r *repository) Get(ctx context.Context, key string) (core.Entity, error) {
 }
 
 // Create creates new entity
-func (r *repository) Create(ctx context.Context, entity *core.Entity) error {
+func (r *repository) CreateEntity(ctx context.Context, entity *core.Entity, meta *core.EntityMeta) error {
 	ctx, span := tracer.Start(ctx, "RepositoryCreate")
 	defer span.End()
 
-	return r.db.WithContext(ctx).Create(&entity).Error
-}
+	err := r.db.Transaction(func(tx *gorm.DB) error {
 
-// Upsert updates a entity
-func (r *repository) Upsert(ctx context.Context, entity *core.Entity) error {
-	ctx, span := tracer.Start(ctx, "RepositoryUpsert")
-	defer span.End()
+		if err := tx.WithContext(ctx).Create(&entity).Error; err != nil {
+			return err
+		}
 
-	return r.db.WithContext(ctx).Save(&entity).Error
+		if err := tx.WithContext(ctx).Create(&meta).Error; err != nil {
+			return err
+		}
+
+		return nil
+	})
+
+	return err
 }
 
 // GetList returns all entities
-func (r *repository) GetList(ctx context.Context) ([]SafeEntity, error) {
+func (r *repository) GetList(ctx context.Context) ([]core.Entity, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGetList")
 	defer span.End()
 
-	var entities []SafeEntity
-	err := r.db.WithContext(ctx).Model(&core.Entity{}).Where("domain IS NULL or domain = ''").Find(&entities).Error
+	var entities []core.Entity
+	err := r.db.WithContext(ctx).Model(&core.Entity{}).Find(&entities).Error
 	return entities, err
 }
 
 // ListModified returns all entities which modified after given time
-func (r *repository) ListModified(ctx context.Context, time time.Time) ([]SafeEntity, error) {
+func (r *repository) ListModified(ctx context.Context, time time.Time) ([]core.Entity, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryListModified")
 	defer span.End()
 
-	var entities []SafeEntity
+	var entities []core.Entity
 	err := r.db.WithContext(ctx).Model(&core.Entity{}).Where("m_date > ?", time).Find(&entities).Error
 	return entities, err
 }
@@ -97,7 +140,7 @@ func (r *repository) Delete(ctx context.Context, id string) error {
 }
 
 // Update updates a entity
-func (r *repository) Update(ctx context.Context, entity *core.Entity) error {
+func (r *repository) UpdateEntity(ctx context.Context, entity *core.Entity) error {
 	ctx, span := tracer.Start(ctx, "RepositoryUpdate")
 	defer span.End()
 
@@ -139,4 +182,3 @@ func (r *repository) GetAcking(ctx context.Context, key string) ([]core.Ack, err
 	err := r.db.WithContext(ctx).Where("\"from\" = ?", key).Find(&acks).Error
 	return acks, err
 }
-

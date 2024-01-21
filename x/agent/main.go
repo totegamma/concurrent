@@ -101,32 +101,31 @@ func (a *agent) pullRemoteEntities(ctx context.Context, remote core.Domain) erro
 
 	body, _ := io.ReadAll(resp.Body)
 
-	var remoteEntities []entity.SafeEntity
+	var remoteEntities []core.Entity
 	json.Unmarshal(body, &remoteEntities)
 
 	errored := false
 	for _, entity := range remoteEntities {
 
-		certs := entity.Certs
-		if certs == "" {
-			certs = "null"
-		}
+		util.VerifySignature(entity.Payload, entity.ID, entity.Signature)
 
-		hostname := entity.Domain
-		if hostname == "" {
-			hostname = remote.ID
-		}
-
-		if hostname == a.config.Concurrent.FQDN {
+		var signedObj core.SignedObject
+		err := json.Unmarshal([]byte(entity.Payload), &signedObj)
+		if err != nil {
+			span.RecordError(err)
+			log.Println(err)
 			continue
 		}
 
-		err := a.entity.Upsert(ctx, &core.Entity{
-			ID:     entity.ID,
-			Domain: hostname,
-			Certs:  certs,
-			Meta:   "null",
-		})
+		existance, err := a.entity.GetAddress(ctx, entity.ID)
+		if err == nil {
+			// compare signed date
+			if signedObj.SignedAt.Unix() <= existance.SignedAt.Unix() {
+				continue
+			}
+		}
+
+		err = a.entity.UpdateAddress(ctx, entity.ID, remote.ID, signedObj.SignedAt)
 
 		if err != nil {
 			span.RecordError(err)
@@ -134,7 +133,6 @@ func (a *agent) pullRemoteEntities(ctx context.Context, remote core.Domain) erro
 			log.Println(err)
 		}
 	}
-
 
 	if !errored {
 		log.Printf("[agent] pulled %d entities from %s", len(remoteEntities), remote.ID)
@@ -145,4 +143,3 @@ func (a *agent) pullRemoteEntities(ctx context.Context, remote core.Domain) erro
 
 	return nil
 }
-

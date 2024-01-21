@@ -36,4 +36,3 @@ func GetVersion() string {
 func GetFullVersion() string {
 	return GetVersion() + "-" + GetGitShortHash()
 }
-

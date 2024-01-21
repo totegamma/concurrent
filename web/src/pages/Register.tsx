@@ -3,7 +3,7 @@ import type { RJSFSchema } from '@rjsf/utils'
 import Form from '@rjsf/mui'
 import validator from '@rjsf/validator-ajv8'
 import { useSearchParams } from 'react-router-dom'
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { DomainProfile } from '../model'
 import { useApi } from '../context/apiContext'
 import ReCAPTCHA from "react-google-recaptcha";
@@ -22,7 +22,7 @@ const schema: RJSFSchema = {
 
 export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Element => {
 
-    const { api, setJWT } = useApi()
+    const { api } = useApi()
 
     const [searchParams] = useSearchParams()
     const [loading, setLoading] = useState(false);
@@ -31,30 +31,24 @@ export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Elemen
     const [captcha, setCaptcha] = useState<string>("")
     const [formData, setFormData] = useState<any>({})
 
-    const token = searchParams.get('token')
+    const encodedregistration = searchParams.get('registration')
+    const registration = encodedregistration ? atob(encodedregistration.replace('-', '+').replace('_', '/')) : null
+    const signature = searchParams.get('signature')
     const callback = searchParams.get('callback')
     let ccaddr = ""
-    if (token) {
-        const split = token.split('.')
-        const encoded = split[1]
-        const payload = window.atob(
-            encoded.replace('-', '+').replace('_', '/') + '=='.slice((2 - encoded.length * 3) & 3)
-        )
-        const claims = JSON.parse(payload)
-        ccaddr = claims.iss
+    if (registration) {
+        const signedObj = JSON.parse(registration)
+        ccaddr = signedObj.signer
     }
 
-    useEffect(() => {
-        if (!token) return
-        setJWT(token)
-    }, [setJWT, token])
+    console.log('registration', registration)
+    console.log('signature', signature)
 
     const register = (meta: any): void => {
-        if (!token) return
+        if (!registration || !signature) return
         setLoading(true)
 
-
-        api.register(ccaddr, meta, inviteCode, captcha)
+        api.register(ccaddr, meta, registration, signature, inviteCode, captcha)
         .then(async (res) => await res.json())
         .then((data) => {
             console.log(data)
@@ -63,7 +57,7 @@ export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Elemen
             if (callback) {
                 setTimeout(() => {
                     window.location.href = callback
-                }, 3000)
+                }, 1000)
             }
 
         }).catch((e) => {

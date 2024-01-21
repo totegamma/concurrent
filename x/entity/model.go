@@ -6,26 +6,19 @@ import (
 )
 
 type createRequest struct {
-	CCID string `json:"ccid"`
-	Meta string `json:"meta"`
+	CCID         string `json:"ccid"`
+	Registration string `json:"registration"`
+	Signature    string `json:"signature"`
+	Info         string `json:"info"`
 }
 
 type registerRequest struct {
-	CCID    string `json:"ccid"`
-	Meta    string `json:"meta"`
-	Token   string `json:"token"`
-	Captcha string `json:"captcha"`
-}
-
-// SafeEntity is safe verison of entity
-type SafeEntity struct {
-	ID     string    `json:"ccid"`
-	Tag    string    `json:"tag"`
-	Score  int       `json:"score"`
-	Domain string    `json:"domain"`
-	Certs  string    `json:"certs"`
-	CDate  time.Time `json:"cdate"`
-	MDate  time.Time `json:"mdate"`
+	CCID         string `json:"ccid"`
+	Registration string `json:"registration"`
+	Signature    string `json:"signature"`
+	Info         string `json:"info"`
+	Invitation   string `json:"invitation"`
+	Captcha      string `json:"captcha"`
 }
 
 type AckSignedObject struct {

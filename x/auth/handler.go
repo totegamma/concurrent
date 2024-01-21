@@ -11,7 +11,7 @@ var tracer = otel.Tracer("auth")
 
 // Handler is the interface for handling HTTP requests
 type Handler interface {
-	Claim(c echo.Context) error
+	GetPassport(c echo.Context) error
 }
 
 type handler struct {
@@ -25,19 +25,18 @@ func NewHandler(service Service) Handler {
 
 // Claim is used for get server signed jwt
 // input user signed jwt
-func (h *handler) Claim(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerClaim")
+func (h *handler) GetPassport(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetPassport")
 	defer span.End()
 
-	request := c.Request().Header.Get("authorization")
-	if request == "" { // XXX for backward compatibility
-		request = c.Request().Header.Get("Authentication")
-	}
+	remote := c.Param("remote")
+	requester := c.Get("requester").(string)
 
-	response, err := h.service.IssueJWT(ctx, request)
+	response, err := h.service.IssuePassport(ctx, requester, remote)
 	if err != nil {
 		span.RecordError(err)
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": err.Error()})
 	}
-	return c.JSON(http.StatusOK, echo.Map{"jwt": response})
+
+	return c.JSON(http.StatusOK, echo.Map{"content": response})
 }

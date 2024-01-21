@@ -40,7 +40,7 @@ export const Domains = forwardRef<HTMLDivElement>((props, ref): JSX.Element => {
                     <Button
                         variant="contained"
                         onClick={(_) => {
-                            api.sayHello(remoteFqdn)
+                            api.addDomain(remoteFqdn)
                         }}
                     >
                         GO

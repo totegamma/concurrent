@@ -195,6 +195,7 @@ func main() {
 	apiV1.GET("/entities", entityHandler.List)
 	apiV1.GET("/auth/passport/:remote", authHandler.GetPassport)
 	apiV1.POST("/entity", entityHandler.Register)
+	apiV1.GET("/address/:id", entityHandler.Resolve)
 	apiV1.GET("/profile", func(c echo.Context) error {
 		profile := config.Profile
 		profile.Registration = config.Concurrent.Registration
@@ -206,7 +207,7 @@ func main() {
 
 	apiV1.PUT("/domain", domainHandler.Upsert, authService.Restrict(auth.ISADMIN))
 	apiV1.DELETE("/domain/:id", domainHandler.Delete, authService.Restrict(auth.ISADMIN))
-	apiV1.GET("/admin/sayhello/:fqdn", domainHandler.SayHello, authService.Restrict(auth.ISADMIN))
+	apiV1.PUT("/domain/:fqdn", domainHandler.SayHello, authService.Restrict(auth.ISADMIN))
 
 	apiV1.DELETE("/entity/:id", entityHandler.Delete, authService.Restrict(auth.ISADMIN))
 	apiV1.PUT("/entity/:id", entityHandler.Update, authService.Restrict(auth.ISADMIN))

@@ -49,7 +49,7 @@ func (r *repository) GetAddress(ctx context.Context, ccid string) (core.Address,
 	defer span.End()
 
 	var addr core.Address
-	err := r.db.WithContext(ctx).First(&addr, "ccid = ?", ccid).Error
+	err := r.db.WithContext(ctx).First(&addr, "id = ?", ccid).Error
 	return addr, err
 }
 
@@ -68,7 +68,7 @@ func (r *repository) UpdateAddress(ctx context.Context, ccid string, domain stri
 
 	// create if not exists
 	var addr core.Address
-	err := r.db.WithContext(ctx).First(&addr, "ccid = ?", ccid).Error
+	err := r.db.WithContext(ctx).First(&addr, "id = ?", ccid).Error
 	if err != nil {
 		return r.db.WithContext(ctx).Create(&core.Address{
 			ID:       ccid,
@@ -77,7 +77,7 @@ func (r *repository) UpdateAddress(ctx context.Context, ccid string, domain stri
 		}).Error
 	}
 
-	return r.db.WithContext(ctx).Model(&core.Address{}).Where("ccid = ?", ccid).Update("domain", domain).Error
+	return r.db.WithContext(ctx).Model(&core.Address{}).Where("id = ?", ccid).Update("domain", domain).Error
 }
 
 // Get returns a entity by key
@@ -117,7 +117,7 @@ func (r *repository) GetList(ctx context.Context) ([]core.Entity, error) {
 	defer span.End()
 
 	var entities []core.Entity
-	err := r.db.WithContext(ctx).Model(&core.Entity{}).Where("domain IS NULL or domain = ''").Find(&entities).Error
+	err := r.db.WithContext(ctx).Model(&core.Entity{}).Find(&entities).Error
 	return entities, err
 }
 

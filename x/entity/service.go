@@ -231,7 +231,6 @@ func (s *service) ResolveHost(ctx context.Context, ccid string) (string, error) 
 		}
 
 		return s.config.Concurrent.FQDN, nil
-
 	}
 
 	return addr.Domain, nil
@@ -310,7 +309,7 @@ func (s *service) Ack(ctx context.Context, objectStr string, signature string) e
 
 		jwt, err := jwt.Create(jwt.Claims{
 			Issuer:         s.config.Concurrent.CCID,
-			Subject:        "CONCURRENT_API",
+			Subject:        "CC_API",
 			Audience:       address.Domain,
 			ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
 			IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
@@ -381,7 +380,7 @@ func (s *service) Unack(ctx context.Context, objectStr string, signature string)
 
 		jwt, err := jwt.Create(jwt.Claims{
 			Issuer:         s.config.Concurrent.CCID,
-			Subject:        "CONCURRENT_API",
+			Subject:        "CC_API",
 			Audience:       address.Domain,
 			ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
 			IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),

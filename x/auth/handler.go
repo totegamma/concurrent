@@ -29,11 +29,10 @@ func (h *handler) GetPassport(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetPassport")
 	defer span.End()
 
-	request := c.Request().Header.Get("authorization")
-
 	remote := c.Param("remote")
+	requester := c.Get("requester").(string)
 
-	response, err := h.service.IssuePassport(ctx, request, remote)
+	response, err := h.service.IssuePassport(ctx, requester, remote)
 	if err != nil {
 		span.RecordError(err)
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": err.Error()})

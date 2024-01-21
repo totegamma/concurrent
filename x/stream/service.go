@@ -348,7 +348,7 @@ func (s *service) PostItem(ctx context.Context, stream string, item core.StreamI
 
 		jwt, err := jwt.Create(jwt.Claims{
 			Issuer:         s.config.Concurrent.CCID,
-			Subject:        "CONCURRENT_API",
+			Subject:        "CC_API",
 			Audience:       streamHost,
 			ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
 			IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
@@ -414,7 +414,7 @@ func (s *service) DistributeEvent(ctx context.Context, stream string, event core
 
 		jwt, err := jwt.Create(jwt.Claims{
 			Issuer:         s.config.Concurrent.CCID,
-			Subject:        "CONCURRENT_API",
+			Subject:        "CC_API",
 			Audience:       streamHost,
 			ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
 			IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),

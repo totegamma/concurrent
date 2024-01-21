@@ -30,6 +30,7 @@ type Handler interface {
 	Unack(c echo.Context) error
 	GetAcker(c echo.Context) error
 	GetAcking(c echo.Context) error
+	Resolve(c echo.Context) error
 }
 
 type handler struct {
@@ -51,6 +52,7 @@ func (h handler) Get(c echo.Context) error {
 	entity, err := h.service.Get(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
+			span.RecordError(err)
 			return c.JSON(http.StatusNotFound, echo.Map{"error": "entity not found"})
 		}
 		return err
@@ -70,6 +72,7 @@ func (h handler) Register(c echo.Context) error {
 	var request registerRequest
 	err := c.Bind(&request)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 
@@ -103,10 +106,12 @@ func (h handler) Create(c echo.Context) error {
 	var request createRequest
 	err := c.Bind(&request)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 	err = h.service.Create(ctx, request.CCID, request.Registration, request.Signature, request.Info)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 	return c.String(http.StatusCreated, "{\"message\": \"accept\"}")
@@ -121,12 +126,14 @@ func (h handler) List(c echo.Context) error {
 	if err != nil {
 		entities, err := h.service.List(ctx)
 		if err != nil {
+			span.RecordError(err)
 			return err
 		}
 		return c.JSON(http.StatusOK, entities)
 	} else {
 		entities, err := h.service.ListModified(ctx, time.Unix(since, 0))
 		if err != nil {
+			span.RecordError(err)
 			return err
 		}
 		return c.JSON(http.StatusOK, entities)
@@ -141,10 +148,12 @@ func (h handler) Update(c echo.Context) error {
 	var request core.Entity
 	err := c.Bind(&request)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 	err = h.service.Update(ctx, &request)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": request})
@@ -158,6 +167,7 @@ func (h handler) Delete(c echo.Context) error {
 	id := c.Param("id")
 	err := h.service.Delete(ctx, id)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
@@ -171,11 +181,13 @@ func (h handler) Ack(c echo.Context) error {
 	var request ackRequest
 	err := c.Bind(&request)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 
 	err = h.service.Ack(ctx, request.SignedObject, request.Signature)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 
@@ -190,11 +202,13 @@ func (h handler) Unack(c echo.Context) error {
 	var request ackRequest
 	err := c.Bind(&request)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 
 	err = h.service.Unack(ctx, request.SignedObject, request.Signature)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 
@@ -209,6 +223,7 @@ func (h handler) GetAcking(c echo.Context) error {
 	id := c.Param("id")
 	acks, err := h.service.GetAcking(ctx, id)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": acks})
@@ -222,7 +237,22 @@ func (h handler) GetAcker(c echo.Context) error {
 	id := c.Param("id")
 	acks, err := h.service.GetAcker(ctx, id)
 	if err != nil {
+		span.RecordError(err)
 		return err
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": acks})
+}
+
+// Resolve returns entity domain affiliation
+func (h handler) Resolve(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerResolve")
+	defer span.End()
+
+	id := c.Param("id")
+	fqdn, err := h.service.ResolveHost(ctx, id)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": fqdn})
 }

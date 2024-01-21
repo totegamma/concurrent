@@ -59,16 +59,16 @@ type Character struct {
 // Entity is one of a concurrent base object
 // mutable
 type Entity struct {
-	ID        string    `json:"ccid" gorm:"type:char(42)"`
-	Tag       string    `json:"tag" gorm:"type:text;"`
-	Score     int       `json:"score" gorm:"type:integer;default:0"`
-	Fixed     bool      `json:"fixed" gorm:"type:boolean;default:false"`
-	Acking    Ack       `json:"acking" gorm:"foreignKey:From"`
-	Acker     Ack       `json:"acker" gorm:"foreignKey:To"`
-	Payload   string    `json:"payload" gorm:"type:json;default:'{}'"`
-	Signature string    `json:"signature" gorm:"type:char(130)"`
-	CDate     time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
-	MDate     time.Time `json:"mdate" gorm:"autoUpdateTime"`
+	ID           string    `json:"ccid" gorm:"type:char(42)"`
+	Tag          string    `json:"tag" gorm:"type:text;"`
+	Score        int       `json:"score" gorm:"type:integer;default:0"`
+	IsScoreFixed bool      `json:"isScoreFixed" gorm:"type:boolean;default:false"`
+	Acking       Ack       `json:"acking" gorm:"foreignKey:From"`
+	Acker        Ack       `json:"acker" gorm:"foreignKey:To"`
+	Payload      string    `json:"payload" gorm:"type:json;default:'{}'"`
+	Signature    string    `json:"signature" gorm:"type:char(130)"`
+	CDate        time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
+	MDate        time.Time `json:"mdate" gorm:"autoUpdateTime"`
 }
 
 type EntityMeta struct {
@@ -89,14 +89,15 @@ type Address struct {
 // Domain is one of a concurrent base object
 // mutable
 type Domain struct {
-	ID          string    `json:"fqdn" gorm:"type:text"` // FQDN
-	CCID        string    `json:"ccid" gorm:"type:char(42)"`
-	Tag         string    `json:"tag" gorm:"type:text;default:default"`
-	Score       int       `json:"score" gorm:"type:integer;default:0"`
-	Pubkey      string    `json:"pubkey" gorm:"type:text"`
-	CDate       time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
-	MDate       time.Time `json:"mdate" gorm:"autoUpdateTime"`
-	LastScraped time.Time `json:"lastScraped" gorm:"type:timestamp with time zone"`
+	ID           string    `json:"fqdn" gorm:"type:text"` // FQDN
+	CCID         string    `json:"ccid" gorm:"type:char(42)"`
+	Tag          string    `json:"tag" gorm:"type:text;default:default"`
+	Score        int       `json:"score" gorm:"type:integer;default:0"`
+	IsScoreFixed bool      `json:"isScoreFixed" gorm:"type:boolean;default:false"`
+	Pubkey       string    `json:"pubkey" gorm:"type:text"`
+	CDate        time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
+	MDate        time.Time `json:"mdate" gorm:"autoUpdateTime"`
+	LastScraped  time.Time `json:"lastScraped" gorm:"type:timestamp with time zone"`
 }
 
 // Message is one of a concurrent base object

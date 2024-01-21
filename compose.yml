@@ -114,6 +114,7 @@ services:
       - --enable-feature=exemplar-storage
     volumes:
       - ./dev/prometheus.yaml:/etc/prometheus.yaml
+      - ./_composeData/prometheus:/etc/prometheus
     ports:
       - "9090:9090"
     networks:
@@ -125,6 +126,7 @@ services:
     command: [ "-config.file=/etc/tempo.yaml" ]
     volumes:
       - ./dev/tempo.yaml:/etc/tempo.yaml
+      - ./_composeData/tempo:/tmp/tempo
     networks:
       - internal
 

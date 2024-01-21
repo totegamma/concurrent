@@ -18,7 +18,6 @@ const (
 	ISADMIN = iota
 	ISLOCAL
 	ISKNOWN
-	ISNOTREGISTERED
 	ISUNITED
 	ISUNUNITED
 )
@@ -46,7 +45,7 @@ func (s *service) Restrict(principal Principal) echo.MiddlewareFunc {
 					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
 				}
 
-				entity, err := s.entity.Get(ctx, claims.Audience)
+				entity, err := s.entity.Get(ctx, claims.Issuer)
 				if err != nil {
 					return c.JSON(http.StatusForbidden, echo.Map{
 						"error":  "you are not authorized to perform this action",
@@ -68,7 +67,7 @@ func (s *service) Restrict(principal Principal) echo.MiddlewareFunc {
 					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
 				}
 
-				_, err := s.entity.Get(ctx, claims.Audience)
+				_, err := s.entity.Get(ctx, claims.Issuer)
 				if err != nil {
 					return c.JSON(http.StatusForbidden, echo.Map{
 						"error":  "you are not authorized to perform this action",
@@ -79,7 +78,7 @@ func (s *service) Restrict(principal Principal) echo.MiddlewareFunc {
 			case ISKNOWN:
 
 				if claims.Subject == "CC_API" { // internal user
-					_, err := s.entity.Get(ctx, claims.Audience)
+					_, err := s.entity.Get(ctx, claims.Issuer)
 					if err != nil {
 						return c.JSON(http.StatusForbidden, echo.Map{
 							"error":  "you are not authorized to perform this action",
@@ -106,14 +105,6 @@ func (s *service) Restrict(principal Principal) echo.MiddlewareFunc {
 
 				return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
 
-			case ISNOTREGISTERED:
-				_, err := s.entity.Get(ctx, claims.Audience)
-				if err == nil {
-					return c.JSON(http.StatusForbidden, echo.Map{
-						"error":  "you are not authorized to perform this action",
-						"detail": "you are already known",
-					})
-				}
 			case ISUNITED:
 				if claims.Subject != "CC_API" {
 					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
@@ -180,10 +171,19 @@ func ParseJWT(next echo.HandlerFunc) echo.HandlerFunc {
 			}
 
 			c.Set("jwtclaims", claims)
+
+			if claims.Subject == "CC_API" {
+				c.Set("requester", claims.Issuer)
+			} else if claims.Subject == "CC_PASSPORT" {
+				// TODO: needs to be validated
+				c.Set("requester", claims.Principal)
+			}
+
+			span.SetAttributes(attribute.String("Issuer", claims.Issuer))
 			span.SetAttributes(attribute.String("Audience", claims.Audience))
+			span.SetAttributes(attribute.String("Principal", claims.Principal))
 		}
 	skip:
-
 		c.SetRequest(c.Request().WithContext(ctx))
 		return next(c)
 	}

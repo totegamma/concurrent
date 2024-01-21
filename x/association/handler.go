@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/message"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
@@ -59,8 +58,7 @@ func (h handler) GetOwnByTarget(c echo.Context) error {
 
 	targetID := c.Param("id")
 
-	claims := c.Get("jwtclaims").(jwt.Claims)
-	requester := claims.Audience
+	requester := c.Get("requester").(string)
 
 	associations, err := h.service.GetOwnByTarget(ctx, targetID, requester)
 	if err != nil {
@@ -152,8 +150,8 @@ func (h handler) Delete(c echo.Context) error {
 
 	message, err := h.message.Get(ctx, association.TargetID)
 	if err == nil { // if target message exists
-		claims := c.Get("jwtclaims").(jwt.Claims)
-		requester := claims.Audience
+
+		requester := c.Get("requester").(string)
 		if (association.Author != requester) && (message.Author != requester) {
 			return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action"})
 		}

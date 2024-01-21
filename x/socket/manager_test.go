@@ -136,7 +136,7 @@ func TestManager(t *testing.T) {
 
 	// 外からメッセージを流して、キャッシュが更新されることを確認
 
-	itrkey  := "stream:itr:all:" + remotestream1 + ":" + core.Time2Chunk(pivot)
+	itrkey := "stream:itr:all:" + remotestream1 + ":" + core.Time2Chunk(pivot)
 	bodykey := "stream:body:all:" + remotestream1 + ":" + core.Time2Chunk(pivot)
 
 	// - キャッシュが存在しないとき
@@ -163,8 +163,8 @@ func TestManager(t *testing.T) {
 	assert.Error(t, err)
 
 	// - キャッシュが存在するとき
-	mc.Set(&memcache.Item{Key: itrkey,Value: []byte(bodykey)})
-	mc.Set(&memcache.Item{Key: bodykey,Value: []byte("")})
+	mc.Set(&memcache.Item{Key: itrkey, Value: []byte(bodykey)})
+	mc.Set(&memcache.Item{Key: bodykey, Value: []byte("")})
 	wshandler.EmitMessage(jsonstr)
 	json, err := json.Marshal(testEvent.Item)
 	json = append(json, ',')

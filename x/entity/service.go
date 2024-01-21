@@ -69,14 +69,11 @@ func (s *service) Create(ctx context.Context, ccid, payload, signature, info str
 	ctx, span := tracer.Start(ctx, "ServiceCreate")
 	defer span.End()
 
-	// check certificate
-	err := util.VerifySignature(payload, ccid, signature)
+	err := checkRegistration(ccid, payload, signature, s.config.Concurrent.FQDN)
 	if err != nil {
 		span.RecordError(err)
 		return err
 	}
-
-	// TOOD: check if ccid is known, validate registration
 
 	return s.repository.CreateEntity(ctx, &core.Entity{
 		ID:        ccid,
@@ -95,22 +92,22 @@ func (s *service) Register(ctx context.Context, ccid, payload, signature, info, 
 	ctx, span := tracer.Start(ctx, "ServiceCreate")
 	defer span.End()
 
-	// check certificate
-	err := util.VerifySignature(payload, ccid, signature)
+	err := checkRegistration(ccid, payload, signature, s.config.Concurrent.FQDN)
 	if err != nil {
 		span.RecordError(err)
+		return err
 	}
-
-	// TOOD: check if ccid is known, validate registration
 
 	if s.config.Concurrent.Registration == "open" {
 		return s.repository.CreateEntity(ctx,
 			&core.Entity{
 				ID:        ccid,
 				Tag:       "",
+				Payload:   payload,
 				Signature: signature,
 			},
 			&core.EntityMeta{
+				ID:      ccid,
 				Info:    info,
 				Inviter: "",
 			},
@@ -151,10 +148,13 @@ func (s *service) Register(ctx context.Context, ccid, payload, signature, info, 
 
 		err = s.repository.CreateEntity(ctx,
 			&core.Entity{
-				ID:  ccid,
-				Tag: "",
+				ID:        ccid,
+				Payload:   payload,
+				Signature: signature,
+				Tag:       "",
 			},
 			&core.EntityMeta{
+				ID:      ccid,
 				Info:    info,
 				Inviter: claims.Issuer,
 			},
@@ -432,4 +432,34 @@ func (s *service) UpdateAddress(ctx context.Context, ccid string, domain string,
 	defer span.End()
 
 	return s.repository.UpdateAddress(ctx, ccid, domain, signedAt)
+}
+
+// ---
+
+func checkRegistration(ccid, payload, signature, mydomain string) error {
+	err := util.VerifySignature(payload, ccid, signature)
+	if err != nil {
+		return err
+	}
+
+	var signedObject core.SignedObject
+	err = json.Unmarshal([]byte(payload), &signedObject)
+	if err != nil {
+		return err
+	}
+
+	if signedObject.Type != "Entity" {
+		return fmt.Errorf("object is not entity")
+	}
+
+	domain, ok := signedObject.Body.(map[string]interface{})["domain"].(string)
+	if !ok {
+		return fmt.Errorf("domain is not string")
+	}
+
+	if domain != mydomain {
+		return fmt.Errorf("domain is not match")
+	}
+
+	return nil
 }

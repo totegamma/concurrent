@@ -125,6 +125,8 @@ func main() {
 		&core.StreamItem{},
 		&core.Domain{},
 		&core.Entity{},
+		&core.EntityMeta{},
+		&core.Address{},
 		&core.Collection{},
 		&core.CollectionItem{},
 		&core.Ack{},
@@ -192,6 +194,7 @@ func main() {
 	apiV1.GET("/entity/:id/acker", entityHandler.GetAcker)
 	apiV1.GET("/entities", entityHandler.List)
 	apiV1.GET("/auth/passport/:remote", authHandler.GetPassport)
+	apiV1.POST("/entity", entityHandler.Register)
 	apiV1.GET("/profile", func(c echo.Context) error {
 		profile := config.Profile
 		profile.Registration = config.Concurrent.Registration
@@ -205,7 +208,6 @@ func main() {
 	apiV1.DELETE("/domain/:id", domainHandler.Delete, authService.Restrict(auth.ISADMIN))
 	apiV1.GET("/admin/sayhello/:fqdn", domainHandler.SayHello, authService.Restrict(auth.ISADMIN))
 
-	apiV1.POST("/entity", entityHandler.Register, authService.Restrict(auth.ISNOTREGISTERED))
 	apiV1.DELETE("/entity/:id", entityHandler.Delete, authService.Restrict(auth.ISADMIN))
 	apiV1.PUT("/entity/:id", entityHandler.Update, authService.Restrict(auth.ISADMIN))
 	apiV1.POST("/entities/ack", entityHandler.Ack, authService.Restrict(auth.ISLOCAL))

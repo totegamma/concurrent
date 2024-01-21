@@ -63,8 +63,6 @@ type Entity struct {
 	Tag          string    `json:"tag" gorm:"type:text;"`
 	Score        int       `json:"score" gorm:"type:integer;default:0"`
 	IsScoreFixed bool      `json:"isScoreFixed" gorm:"type:boolean;default:false"`
-	Acking       Ack       `json:"acking" gorm:"foreignKey:From"`
-	Acker        Ack       `json:"acker" gorm:"foreignKey:To"`
 	Payload      string    `json:"payload" gorm:"type:json;default:'{}'"`
 	Signature    string    `json:"signature" gorm:"type:char(130)"`
 	CDate        time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`

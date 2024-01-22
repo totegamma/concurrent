@@ -16,6 +16,10 @@ Concurrentでは公開鍵を用いて、ユーザーが発行するメッセー�
 ConcurrentではユーザーのIDはConcurrentアドレス(cc-address)(例えば、`CC3E31b2957F984e378EC5cE84AaC3871147BD7bBF`)を用いて識別されます。
 
 ## インスタンスの立ち上げ方
+
+> [!IMPORTANT]
+> 現在1/26に大きめのマイグレーション作業が必要になるアップデートのリリースを予定しており、このタイミングでの新規建造はあまりオススメしていません🙇‍♂️
+
 docs/README.mdを参照
 
 ## Contributing

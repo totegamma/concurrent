@@ -47,3 +47,6 @@ overrides:
     metrics_generator:
       processors: [service-graphs, span-metrics]
 
+usage_report:
+  reporting_enabled: false
+

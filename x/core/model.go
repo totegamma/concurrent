@@ -81,7 +81,6 @@ type Address struct {
 	Domain   string    `json:"domain" gorm:"type:text"`
 	SignedAt time.Time `json:"validFrom" gorm:"type:timestamp with time zone"`
 	CDate    time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
-	MDate    time.Time `json:"mdate" gorm:"autoUpdateTime"`
 }
 
 // Domain is one of a concurrent base object

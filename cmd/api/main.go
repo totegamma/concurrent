@@ -212,9 +212,7 @@ func main() {
 	apiV1.DELETE("/entity/:id", entityHandler.Delete, authService.Restrict(auth.ISADMIN))
 	apiV1.PUT("/entity/:id", entityHandler.Update, authService.Restrict(auth.ISADMIN))
 	apiV1.POST("/entities/ack", entityHandler.Ack, authService.Restrict(auth.ISLOCAL))
-	apiV1.DELETE("/entities/ack", entityHandler.Unack, authService.Restrict(auth.ISLOCAL))
 	apiV1.POST("/entities/checkpoint/ack", entityHandler.Ack, authService.Restrict(auth.ISUNITED))
-	apiV1.DELETE("/entities/checkpoint/ack", entityHandler.Unack, authService.Restrict(auth.ISUNITED))
 
 	apiV1.POST("/admin/entity", entityHandler.Create, authService.Restrict(auth.ISADMIN))
 

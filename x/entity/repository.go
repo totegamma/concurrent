@@ -16,7 +16,7 @@ type Repository interface {
 	ListModified(ctx context.Context, modified time.Time) ([]core.Entity, error)
 	Delete(ctx context.Context, key string) error
 	Ack(ctx context.Context, ack *core.Ack) error
-	Unack(ctx context.Context, from, to string) error
+	Unack(ctx context.Context, ack *core.Ack) error
 	Total(ctx context.Context) (int64, error)
 	GetAcker(ctx context.Context, key string) ([]core.Ack, error)
 	GetAcking(ctx context.Context, key string) ([]core.Ack, error)
@@ -152,15 +152,19 @@ func (r *repository) Ack(ctx context.Context, ack *core.Ack) error {
 	ctx, span := tracer.Start(ctx, "RepositoryAck")
 	defer span.End()
 
-	return r.db.WithContext(ctx).Create(&ack).Error
+	ack.Valid = true
+
+	return r.db.WithContext(ctx).Save(&ack).Error
 }
 
 // Unack deletes a ack
-func (r *repository) Unack(ctx context.Context, from, to string) error {
+func (r *repository) Unack(ctx context.Context, ack *core.Ack) error {
 	ctx, span := tracer.Start(ctx, "RepositoryUnack")
 	defer span.End()
 
-	return r.db.WithContext(ctx).Delete(&core.Ack{}, "\"from\" = ? AND \"to\" = ?", from, to).Error
+	ack.Valid = false
+
+	return r.db.WithContext(ctx).Save(&ack).Error
 }
 
 // GetAcker returns all acks for a entity
@@ -169,7 +173,7 @@ func (r *repository) GetAcker(ctx context.Context, key string) ([]core.Ack, erro
 	defer span.End()
 
 	var acks []core.Ack
-	err := r.db.WithContext(ctx).Where("\"to\" = ?", key).Find(&acks).Error
+	err := r.db.WithContext(ctx).Where("valid = true and \"to\" = ?", key).Find(&acks).Error
 	return acks, err
 }
 
@@ -179,6 +183,6 @@ func (r *repository) GetAcking(ctx context.Context, key string) ([]core.Ack, err
 	defer span.End()
 
 	var acks []core.Ack
-	err := r.db.WithContext(ctx).Where("\"from\" = ?", key).Find(&acks).Error
+	err := r.db.WithContext(ctx).Where("valid = true \"from\" = ?", key).Find(&acks).Error
 	return acks, err
 }

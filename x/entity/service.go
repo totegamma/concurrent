@@ -33,7 +33,6 @@ type Service interface {
 	IsUserExists(ctx context.Context, user string) bool
 	Delete(ctx context.Context, id string) error
 	Ack(ctx context.Context, from, to string) error
-	Unack(ctx context.Context, from, to string) error
 	Total(ctx context.Context) (int64, error)
 	GetAcker(ctx context.Context, key string) ([]core.Ack, error)
 	GetAcking(ctx context.Context, key string) ([]core.Ack, error)
@@ -276,129 +275,111 @@ func (s *service) Ack(ctx context.Context, objectStr string, signature string) e
 		return err
 	}
 
-	if object.Type != "ack" {
-		return fmt.Errorf("object is not ack")
-	}
-
-	err = util.VerifySignature(objectStr, object.From, signature)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-
-	address, err := s.repository.GetAddress(ctx, object.To)
-	if err == nil {
-		packet := ackRequest{
-			SignedObject: objectStr,
-			Signature:    signature,
-		}
-		packetStr, err := json.Marshal(packet)
+	switch object.Type {
+	case "ack":
+		err = util.VerifySignature(objectStr, object.From, signature)
 		if err != nil {
 			span.RecordError(err)
 			return err
 		}
 
-		req, err := http.NewRequest("POST", "https://"+address.Domain+"/api/v1/entities/checkpoint/ack", bytes.NewBuffer([]byte(packetStr)))
+		address, err := s.repository.GetAddress(ctx, object.To)
+		if err == nil {
+			packet := ackRequest{
+				SignedObject: objectStr,
+				Signature:    signature,
+			}
+			packetStr, err := json.Marshal(packet)
+			if err != nil {
+				span.RecordError(err)
+				return err
+			}
 
-		if err != nil {
-			span.RecordError(err)
-			return err
+			req, err := http.NewRequest("POST", "https://"+address.Domain+"/api/v1/entities/checkpoint/ack", bytes.NewBuffer([]byte(packetStr)))
+
+			if err != nil {
+				span.RecordError(err)
+				return err
+			}
+
+			otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+
+			jwt, err := jwt.Create(jwt.Claims{
+				Issuer:         s.config.Concurrent.CCID,
+				Subject:        "CC_API",
+				Audience:       address.Domain,
+				ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
+				IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
+				JWTID:          xid.New().String(),
+			}, s.config.Concurrent.PrivateKey)
+
+			req.Header.Add("content-type", "application/json")
+			req.Header.Add("authorization", "Bearer "+jwt)
+			client := new(http.Client)
+			resp, err := client.Do(req)
+			if err != nil {
+				span.RecordError(err)
+				return err
+			}
+			defer resp.Body.Close()
 		}
 
-		otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+		return s.repository.Ack(ctx, &core.Ack{
+			From:      object.From,
+			To:        object.To,
+			Signature: signature,
+			Payload:   objectStr,
+		})
+	case "unack":
+		address, err := s.repository.GetAddress(ctx, object.To)
+		if err == nil {
+			packet := ackRequest{
+				SignedObject: objectStr,
+				Signature:    signature,
+			}
+			packetStr, err := json.Marshal(packet)
+			if err != nil {
+				span.RecordError(err)
+				return err
+			}
 
-		jwt, err := jwt.Create(jwt.Claims{
-			Issuer:         s.config.Concurrent.CCID,
-			Subject:        "CC_API",
-			Audience:       address.Domain,
-			ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
-			IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
-			JWTID:          xid.New().String(),
-		}, s.config.Concurrent.PrivateKey)
+			req, err := http.NewRequest("POST", "https://"+address.Domain+"/api/v1/entities/checkpoint/ack", bytes.NewBuffer([]byte(packetStr)))
 
-		req.Header.Add("content-type", "application/json")
-		req.Header.Add("authorization", "Bearer "+jwt)
-		client := new(http.Client)
-		resp, err := client.Do(req)
-		if err != nil {
-			span.RecordError(err)
-			return err
+			if err != nil {
+				span.RecordError(err)
+				return err
+			}
+
+			otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+
+			jwt, err := jwt.Create(jwt.Claims{
+				Issuer:         s.config.Concurrent.CCID,
+				Subject:        "CC_API",
+				Audience:       address.Domain,
+				ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
+				IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
+				JWTID:          xid.New().String(),
+			}, s.config.Concurrent.PrivateKey)
+
+			req.Header.Add("content-type", "application/json")
+			req.Header.Add("authorization", "Bearer "+jwt)
+			client := new(http.Client)
+			resp, err := client.Do(req)
+			if err != nil {
+				span.RecordError(err)
+				return err
+			}
+			defer resp.Body.Close()
 		}
-		defer resp.Body.Close()
+		return s.repository.Unack(ctx, &core.Ack{
+			From:      object.From,
+			To:        object.To,
+			Signature: signature,
+			Payload:   objectStr,
+		})
+	default:
+		return fmt.Errorf("invalid object type")
 	}
-
-	return s.repository.Ack(ctx, &core.Ack{
-		From:      object.From,
-		To:        object.To,
-		Signature: signature,
-		Payload:   objectStr,
-	})
-}
-
-// Unack creates new Unack
-func (s *service) Unack(ctx context.Context, objectStr string, signature string) error {
-	ctx, span := tracer.Start(ctx, "ServiceUnack")
-	defer span.End()
-
-	var object AckSignedObject
-	err := json.Unmarshal([]byte(objectStr), &object)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-
-	if object.Type != "unack" {
-		return fmt.Errorf("object is not unack")
-	}
-
-	err = util.VerifySignature(objectStr, object.From, signature)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-
-	address, err := s.repository.GetAddress(ctx, object.To)
-	if err == nil {
-		packet := ackRequest{
-			SignedObject: objectStr,
-			Signature:    signature,
-		}
-		packetStr, err := json.Marshal(packet)
-		if err != nil {
-			span.RecordError(err)
-			return err
-		}
-
-		req, err := http.NewRequest("DELETE", "https://"+address.Domain+"/api/v1/entities/checkpoint/ack", bytes.NewBuffer([]byte(packetStr)))
-
-		if err != nil {
-			span.RecordError(err)
-			return err
-		}
-
-		otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
-
-		jwt, err := jwt.Create(jwt.Claims{
-			Issuer:         s.config.Concurrent.CCID,
-			Subject:        "CC_API",
-			Audience:       address.Domain,
-			ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
-			IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
-			JWTID:          xid.New().String(),
-		}, s.config.Concurrent.PrivateKey)
-
-		req.Header.Add("content-type", "application/json")
-		req.Header.Add("authorization", "Bearer "+jwt)
-		client := new(http.Client)
-		resp, err := client.Do(req)
-		if err != nil {
-			span.RecordError(err)
-			return err
-		}
-		defer resp.Body.Close()
-	}
-
-	return s.repository.Unack(ctx, object.From, object.To)
 }
 
 // GetAcker returns acker

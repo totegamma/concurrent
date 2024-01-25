@@ -186,4 +186,3 @@ func (r *repository) GetAcking(ctx context.Context, key string) ([]core.Ack, err
 	err := r.db.WithContext(ctx).Where("valid = true and \"from\" = ?", key).Find(&acks).Error
 	return acks, err
 }
-

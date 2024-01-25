@@ -174,68 +174,74 @@ func main() {
 	authService := SetupAuthService(db, rdb, config)
 
 	apiV1 := e.Group("", auth.ParseJWT)
-	apiV1.GET("/message/:id", messageHandler.Get)
-	apiV1.GET("/message/:id/associations", associationHandler.GetFiltered)
-	apiV1.GET("/message/:id/associationcounts", associationHandler.GetCounts)
-	apiV1.GET("/message/:id/associations/own", associationHandler.GetOwnByTarget, authService.Restrict(auth.ISKNOWN))
-	apiV1.GET("/characters", characterHandler.Get)
-	apiV1.GET("/association/:id", associationHandler.Get)
-	apiV1.GET("/stream/:id", streamHandler.Get)
-	apiV1.GET("/streams", streamHandler.List)
-	apiV1.GET("/streams/recent", streamHandler.Recent)
-	apiV1.GET("/streams/range", streamHandler.Range)
-	apiV1.GET("/socket", socketHandler.Connect)
+	// domain
 	apiV1.GET("/domain", domainHandler.Profile)
 	apiV1.GET("/domain/:id", domainHandler.Get)
+	apiV1.POST("/domain/:id", domainHandler.SayHello, authService.Restrict(auth.ISADMIN))
+	apiV1.PUT("/domain/:id", domainHandler.Upsert, authService.Restrict(auth.ISADMIN))
+	apiV1.DELETE("/domain/:id", domainHandler.Delete, authService.Restrict(auth.ISADMIN))
 	apiV1.GET("/domains", domainHandler.List)
+
 	apiV1.POST("/domains/hello", domainHandler.Hello)
+
+	// address
+	apiV1.GET("/address/:id", entityHandler.Resolve)
+
+	// entity
+	apiV1.POST("/entity", entityHandler.Register)
 	apiV1.GET("/entity/:id", entityHandler.Get)
+	apiV1.PUT("/entity/:id", entityHandler.Update, authService.Restrict(auth.ISADMIN))
+	apiV1.DELETE("/entity/:id", entityHandler.Delete, authService.Restrict(auth.ISADMIN))
 	apiV1.GET("/entity/:id/acking", entityHandler.GetAcking)
 	apiV1.GET("/entity/:id/acker", entityHandler.GetAcker)
 	apiV1.GET("/entities", entityHandler.List)
-	apiV1.GET("/auth/passport/:remote", authHandler.GetPassport)
-	apiV1.POST("/entity", entityHandler.Register)
-	apiV1.GET("/address/:id", entityHandler.Resolve)
-	apiV1.GET("/profile", func(c echo.Context) error {
-		profile := config.Profile
-		profile.Registration = config.Concurrent.Registration
-		profile.Version = util.GetVersion()
-		profile.Hash = util.GetGitHash()
-		profile.SiteKey = config.Server.CaptchaSitekey
-		return c.JSON(http.StatusOK, profile)
-	})
-
-	apiV1.PUT("/domain", domainHandler.Upsert, authService.Restrict(auth.ISADMIN))
-	apiV1.DELETE("/domain/:id", domainHandler.Delete, authService.Restrict(auth.ISADMIN))
-	apiV1.PUT("/domain/:fqdn", domainHandler.SayHello, authService.Restrict(auth.ISADMIN))
-
-	apiV1.DELETE("/entity/:id", entityHandler.Delete, authService.Restrict(auth.ISADMIN))
-	apiV1.PUT("/entity/:id", entityHandler.Update, authService.Restrict(auth.ISADMIN))
 	apiV1.POST("/entities/ack", entityHandler.Ack, authService.Restrict(auth.ISLOCAL))
 	apiV1.POST("/entities/checkpoint/ack", entityHandler.Ack, authService.Restrict(auth.ISUNITED))
 
 	apiV1.POST("/admin/entity", entityHandler.Create, authService.Restrict(auth.ISADMIN))
 
+	// message
 	apiV1.POST("/message", messageHandler.Post, authService.Restrict(auth.ISLOCAL))
+	apiV1.GET("/message/:id", messageHandler.Get)
 	apiV1.DELETE("/message/:id", messageHandler.Delete, authService.Restrict(auth.ISLOCAL))
+	apiV1.GET("/message/:id/associations", associationHandler.GetFiltered)
+	apiV1.GET("/message/:id/associationcounts", associationHandler.GetCounts)
+	apiV1.GET("/message/:id/associations/mine", associationHandler.GetOwnByTarget, authService.Restrict(auth.ISKNOWN))
 
-	apiV1.PUT("/character", characterHandler.Put, authService.Restrict(auth.ISLOCAL))
-
+	// association
 	apiV1.POST("/association", associationHandler.Post, authService.Restrict(auth.ISKNOWN))
+	apiV1.GET("/association/:id", associationHandler.Get)
 	apiV1.DELETE("/association/:id", associationHandler.Delete, authService.Restrict(auth.ISKNOWN))
 
+	// character
+	apiV1.PUT("/character", characterHandler.Put, authService.Restrict(auth.ISLOCAL))
+	apiV1.GET("/characters", characterHandler.Get)
+
+	// stream
 	apiV1.POST("/stream", streamHandler.Create, authService.Restrict(auth.ISLOCAL))
+	apiV1.GET("/stream/:id", streamHandler.Get)
 	apiV1.PUT("/stream/:id", streamHandler.Update, authService.Restrict(auth.ISLOCAL))
-	apiV1.POST("/streams/checkpoint", streamHandler.Checkpoint, authService.Restrict(auth.ISUNITED))
-	apiV1.POST("/streams/checkpoint/event", streamHandler.EventCheckpoint, authService.Restrict(auth.ISUNITED))
 	apiV1.DELETE("/stream/:id", streamHandler.Delete, authService.Restrict(auth.ISLOCAL))
 	apiV1.DELETE("/stream/:stream/:object", streamHandler.Remove, authService.Restrict(auth.ISLOCAL))
+	apiV1.GET("/streams", streamHandler.List)
 	apiV1.GET("/streams/mine", streamHandler.ListMine)
+	apiV1.GET("/streams/recent", streamHandler.Recent)
+	apiV1.GET("/streams/range", streamHandler.Range)
 	apiV1.GET("/streams/chunks", streamHandler.GetChunks)
+	apiV1.POST("/streams/checkpoint", streamHandler.Checkpoint, authService.Restrict(auth.ISUNITED))
+	apiV1.POST("/streams/checkpoint/event", streamHandler.EventCheckpoint, authService.Restrict(auth.ISUNITED))
 
+	// userkv
 	apiV1.GET("/kv/:key", userkvHandler.Get, authService.Restrict(auth.ISLOCAL))
 	apiV1.PUT("/kv/:key", userkvHandler.Upsert, authService.Restrict(auth.ISLOCAL))
 
+	// socket
+	apiV1.GET("/socket", socketHandler.Connect)
+
+	// auth
+	apiV1.GET("/auth/passport/:remote", authHandler.GetPassport)
+
+	// collection
 	apiV1.POST("/collection", collectionHandler.CreateCollection, authService.Restrict(auth.ISLOCAL))
 	apiV1.GET("/collection/:id", collectionHandler.GetCollection)
 	apiV1.PUT("/collection/:id", collectionHandler.UpdateCollection, authService.Restrict(auth.ISLOCAL))
@@ -246,6 +252,16 @@ func main() {
 	apiV1.PUT("/collection/:collection/:item", collectionHandler.UpdateItem, authService.Restrict(auth.ISLOCAL))
 	apiV1.DELETE("/collection/:collection/:item", collectionHandler.DeleteItem, authService.Restrict(auth.ISLOCAL))
 
+	// misc
+	apiV1.GET("/profile", func(c echo.Context) error {
+		profile := config.Profile
+		profile.Registration = config.Concurrent.Registration
+		profile.Version = util.GetVersion()
+		profile.Hash = util.GetGitHash()
+		profile.SiteKey = config.Server.CaptchaSitekey
+		return c.JSON(http.StatusOK, profile)
+	})
+	e.GET("/metrics", echoprometheus.NewHandler())
 	e.GET("/health", func(c echo.Context) (err error) {
 		ctx := c.Request().Context()
 
@@ -262,10 +278,7 @@ func main() {
 		return c.String(http.StatusOK, "ok")
 	})
 
-	e.GET("/metrics", echoprometheus.NewHandler())
-
 	agent.Boot()
-
 	e.Logger.Fatal(e.Start(":8000"))
 }
 

@@ -163,7 +163,7 @@ func (h handler) SayHello(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerSayHello")
 	defer span.End()
 
-	target := c.Param("fqdn")
+	target := c.Param("id")
 
 	me := Profile{
 		ID:     h.config.Concurrent.FQDN,

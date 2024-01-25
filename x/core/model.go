@@ -165,6 +165,7 @@ type Ack struct {
 	To        string `json:"to" gorm:"primaryKey;type:char(42)"`
 	Payload   string `json:"payload" gorm:"type:json;default:'{}'"`
 	Signature string `json:"signature" gorm:"type:char(130)"`
+	Valid     bool   `json:"valid" gorm:"type:boolean;default:false"`
 }
 
 // Event is websocket root packet model

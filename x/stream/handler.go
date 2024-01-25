@@ -3,7 +3,6 @@ package stream
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -55,7 +54,7 @@ func (h handler) Get(c echo.Context) error {
 		}
 		return err
 	}
-	return c.JSON(http.StatusOK, stream)
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": stream})
 }
 
 // Create creates a new stream
@@ -88,6 +87,7 @@ func (h handler) Update(c echo.Context) error {
 	var data core.Stream
 	err := c.Bind(&data)
 	if err != nil {
+		span.RecordError(err)
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
 	}
 
@@ -111,7 +111,7 @@ func (h handler) Recent(c echo.Context) error {
 	streams := strings.Split(streamsStr, ",")
 	messages, _ := h.service.GetRecentItems(ctx, streams, time.Now(), 16)
 
-	return c.JSON(http.StatusOK, messages)
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": messages})
 }
 
 // Range returns messages since to until in specified streams
@@ -131,7 +131,7 @@ func (h handler) Range(c echo.Context) error {
 		}
 		since := time.Unix(sinceEpoch, 0)
 		messages, _ := h.service.GetImmediateItems(ctx, streams, since, 16)
-		return c.JSON(http.StatusOK, messages)
+		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": messages})
 	} else if queryUntil != "" {
 		untilEpoch, err := strconv.ParseInt(queryUntil, 10, 64)
 		if err != nil {
@@ -139,7 +139,7 @@ func (h handler) Range(c echo.Context) error {
 		}
 		until := time.Unix(untilEpoch, 0)
 		messages, _ := h.service.GetRecentItems(ctx, streams, until, 16)
-		return c.JSON(http.StatusOK, messages)
+		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": messages})
 	} else {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
 	}
@@ -156,7 +156,7 @@ func (h handler) List(c echo.Context) error {
 		span.RecordError(err)
 		return err
 	}
-	return c.JSON(http.StatusOK, list)
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": list})
 }
 
 // ListMine returns stream ids which filtered by specific schema
@@ -171,7 +171,7 @@ func (h handler) ListMine(c echo.Context) error {
 		span.RecordError(err)
 		return err
 	}
-	return c.JSON(http.StatusOK, list)
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": list})
 }
 
 // Delete is for handling HTTP Delete Method
@@ -202,7 +202,7 @@ func (h handler) Delete(c echo.Context) error {
 		span.RecordError(err)
 		return err
 	}
-	return c.String(http.StatusOK, fmt.Sprintf("{\"message\": \"accept\"}"))
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
 }
 
 // Remove is remove stream element from stream
@@ -298,10 +298,5 @@ func (h handler) GetChunks(c echo.Context) error {
 		return err
 	}
 
-	responce := chunkResponse{
-		Status:  "ok",
-		Content: chunks,
-	}
-
-	return c.JSON(http.StatusOK, responce)
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": chunks})
 }

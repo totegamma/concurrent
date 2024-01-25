@@ -57,7 +57,7 @@ func (h handler) Get(c echo.Context) error {
 		return err
 	}
 
-	return c.JSON(http.StatusOK, entity)
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": entity})
 }
 
 // Register creates a new entity
@@ -94,7 +94,7 @@ func (h handler) Register(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
 	}
 
-	return c.String(http.StatusCreated, "{\"message\": \"accept\"}")
+	return c.JSON(http.StatusCreated, echo.Map{"status": "ok"})
 }
 
 // Create creates a new entity
@@ -113,7 +113,7 @@ func (h handler) Create(c echo.Context) error {
 		span.RecordError(err)
 		return err
 	}
-	return c.String(http.StatusCreated, "{\"message\": \"accept\"}")
+	return c.JSON(http.StatusCreated, echo.Map{"status": "ok"})
 }
 
 // List returns a list of entities
@@ -128,14 +128,14 @@ func (h handler) List(c echo.Context) error {
 			span.RecordError(err)
 			return err
 		}
-		return c.JSON(http.StatusOK, entities)
+		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": entities})
 	} else {
 		entities, err := h.service.ListModified(ctx, time.Unix(since, 0))
 		if err != nil {
 			span.RecordError(err)
 			return err
 		}
-		return c.JSON(http.StatusOK, entities)
+		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": entities})
 	}
 }
 

@@ -1,7 +1,6 @@
 package association
 
 import (
-	"github.com/totegamma/concurrent/x/core"
 	"time"
 )
 
@@ -15,10 +14,6 @@ type postRequest struct {
 	Streams      []string `json:"streams"`
 	TargetType   string   `json:"targetType"`
 	TargetHost   string   `json:"targetHost"`
-}
-
-type associationResponse struct {
-	Association core.Association `json:"association"`
 }
 
 type SignedObject struct {

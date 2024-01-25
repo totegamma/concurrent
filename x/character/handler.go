@@ -40,10 +40,7 @@ func (h handler) Get(c echo.Context) error {
 		}
 		return err
 	}
-	response := CharactersResponse{
-		Characters: characters,
-	}
-	return c.JSON(http.StatusOK, response)
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": characters})
 }
 
 // Put updates a character

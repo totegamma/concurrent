@@ -77,6 +77,11 @@ func (a *agent) Boot() {
 	}()
 }
 
+type entitiesResponse struct {
+	Status  string        `json:"status"`
+	Content []core.Entity `json:"content"`
+}
+
 // PullRemoteEntities copies remote entities
 func (a *agent) pullRemoteEntities(ctx context.Context, remote core.Domain) error {
 	ctx, span := tracer.Start(ctx, "ServicePullRemoteEntities")
@@ -101,11 +106,11 @@ func (a *agent) pullRemoteEntities(ctx context.Context, remote core.Domain) erro
 
 	body, _ := io.ReadAll(resp.Body)
 
-	var remoteEntities []core.Entity
+	var remoteEntities entitiesResponse
 	json.Unmarshal(body, &remoteEntities)
 
 	errored := false
-	for _, entity := range remoteEntities {
+	for _, entity := range remoteEntities.Content {
 
 		util.VerifySignature(entity.Payload, entity.ID, entity.Signature)
 
@@ -135,7 +140,7 @@ func (a *agent) pullRemoteEntities(ctx context.Context, remote core.Domain) erro
 	}
 
 	if !errored {
-		log.Printf("[agent] pulled %d entities from %s", len(remoteEntities), remote.ID)
+		log.Printf("[agent] pulled %d entities from %s", len(remoteEntities.Content), remote.ID)
 		a.domain.UpdateScrapeTime(ctx, remote.ID, requestTime)
 	} else {
 		log.Printf("[agent] failed to pull entities from %s", remote.ID)

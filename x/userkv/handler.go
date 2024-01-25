@@ -5,7 +5,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/x/entity"
 	"go.opentelemetry.io/otel"
-	"io/ioutil"
+	"io"
 	"net/http"
 )
 
@@ -55,7 +55,7 @@ func (h handler) Upsert(c echo.Context) error {
 	}
 	key := c.Param("key")
 	body := c.Request().Body
-	bytes, err := ioutil.ReadAll(body)
+	bytes, err := io.ReadAll(body)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, echo.Map{"status": "error", "message": err.Error()})
 	}

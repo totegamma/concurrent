@@ -46,10 +46,7 @@ func (h handler) Get(c echo.Context) error {
 		}
 		return err
 	}
-	response := associationResponse{
-		Association: association,
-	}
-	return c.JSON(http.StatusOK, response)
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": association})
 }
 
 func (h handler) GetOwnByTarget(c echo.Context) error {

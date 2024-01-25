@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io/ioutil"
+	"io"
 	"net/http"
 	"strconv"
 	"time"
@@ -59,7 +59,7 @@ func (h handler) Get(c echo.Context) error {
 		}
 		return err
 	}
-	return c.JSON(http.StatusOK, host)
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": host})
 
 }
 
@@ -77,7 +77,7 @@ func (h handler) Upsert(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return c.String(http.StatusCreated, "{\"message\": \"accept\"}")
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": host})
 }
 
 // List returns all hosts
@@ -89,7 +89,7 @@ func (h handler) List(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return c.JSON(http.StatusOK, hosts)
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": hosts})
 }
 
 // Profile returns the host profile
@@ -97,11 +97,11 @@ func (h handler) Profile(c echo.Context) error {
 	_, span := tracer.Start(c.Request().Context(), "HandlerProfile")
 	defer span.End()
 
-	return c.JSON(http.StatusOK, Profile{
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": Profile{
 		ID:     h.config.Concurrent.FQDN,
 		CCID:   h.config.Concurrent.CCID,
 		Pubkey: h.config.Concurrent.PublicKey,
-	})
+	}})
 }
 
 // Hello creates a challenge response for another host
@@ -133,7 +133,7 @@ func (h handler) Hello(c echo.Context) error {
 	}
 	defer resp.Body.Close()
 
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 
 	var fetchedProf Profile
 	json.Unmarshal(body, &fetchedProf)
@@ -149,10 +149,11 @@ func (h handler) Hello(c echo.Context) error {
 		Pubkey: newcomer.Pubkey,
 	})
 
-	return c.JSON(http.StatusOK, Profile{
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": Profile{
 		ID:     h.config.Concurrent.FQDN,
 		CCID:   h.config.Concurrent.CCID,
 		Pubkey: h.config.Concurrent.PublicKey,
+	},
 	})
 }
 
@@ -201,7 +202,7 @@ func (h handler) SayHello(c echo.Context) error {
 	}
 	defer resp.Body.Close()
 
-	body, _ := ioutil.ReadAll(resp.Body)
+	body, _ := io.ReadAll(resp.Body)
 
 	var fetchedProf Profile
 	json.Unmarshal(body, &fetchedProf)
@@ -218,7 +219,7 @@ func (h handler) SayHello(c echo.Context) error {
 		Pubkey: fetchedProf.Pubkey,
 	})
 
-	return c.JSON(http.StatusOK, fetchedProf)
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": fetchedProf})
 }
 
 // Delete removes a host from the registry
@@ -231,7 +232,7 @@ func (h handler) Delete(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return c.String(http.StatusOK, "{\"message\": \"accept\"}")
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": id})
 }
 
 // Update updates a host in the registry
@@ -248,5 +249,5 @@ func (h handler) Update(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	return c.String(http.StatusOK, "{\"message\": \"accept\"}")
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": host})
 }

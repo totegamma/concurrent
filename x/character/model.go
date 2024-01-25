@@ -1,14 +1,8 @@
 package character
 
 import (
-	"github.com/totegamma/concurrent/x/core"
 	"time"
 )
-
-// CharactersResponse is used to return charcter query
-type CharactersResponse struct {
-	Characters []core.Character `json:"characters"`
-}
 
 type postRequest struct {
 	SignedObject string `json:"signedObject"`

@@ -8,3 +8,6 @@ scrape_configs:
       - targets:
         - 'ccgateway:8080'
         - 'ccapi:8000'
+        - 'postgres-exporter:9187'
+        - 'redis-exporter:9121'
+        - 'memcached-exporter:9150'

@@ -33,6 +33,8 @@ var userkvHandlerProvider = wire.NewSet(userkv.NewHandler, userkv.NewService, us
 var collectionHandlerProvider = wire.NewSet(collection.NewHandler, collection.NewService, collection.NewRepository)
 
 var jwtServiceProvider = wire.NewSet(jwt.NewService, jwt.NewRepository)
+var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, jwtServiceProvider)
+var streamServiceProvider = wire.NewSet(stream.NewService, stream.NewRepository, entityServiceProvider)
 
 func SetupMessageHandler(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) message.Handler {
 	wire.Build(messageHandlerProvider, jwtServiceProvider, stream.NewService, stream.NewRepository, entity.NewService, entity.NewRepository)
@@ -51,6 +53,11 @@ func SetupAssociationHandler(db *gorm.DB, rdb *redis.Client, mc *memcache.Client
 
 func SetupStreamHandler(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) stream.Handler {
 	wire.Build(streamHandlerProvider, jwtServiceProvider)
+	return nil
+}
+
+func SetupStreamService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) stream.Service {
+	wire.Build(streamServiceProvider)
 	return nil
 }
 

@@ -18,6 +18,7 @@ import (
 	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
+	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/core"
@@ -261,7 +262,6 @@ func main() {
 		profile.SiteKey = config.Server.CaptchaSitekey
 		return c.JSON(http.StatusOK, profile)
 	})
-	e.GET("/metrics", echoprometheus.NewHandler())
 	e.GET("/health", func(c echo.Context) (err error) {
 		ctx := c.Request().Context()
 
@@ -277,6 +277,33 @@ func main() {
 
 		return c.String(http.StatusOK, "ok")
 	})
+
+	var streamSubscriptionMetrics = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cc_stream_subscriptions",
+			Help: "stream subscriptions",
+		},
+		[]string{"stream"},
+	)
+	prometheus.MustRegister(streamSubscriptionMetrics)
+
+	var streamService = SetupStreamService(db, rdb, mc, socketManager, config)
+
+	go func() {
+		for {
+			time.Sleep(15 * time.Second)
+			subscriptions, err := streamService.ListStreamSubscriptions(context.Background())
+			if err != nil {
+				log.Println("failed to list stream subscriptions", err)
+				continue
+			}
+			for stream, count := range subscriptions {
+				streamSubscriptionMetrics.WithLabelValues(stream).Set(float64(count))
+			}
+		}
+	}()
+
+	e.GET("/metrics", echoprometheus.NewHandler())
 
 	agent.Boot()
 	e.Logger.Fatal(e.Start(":8000"))

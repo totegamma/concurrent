@@ -47,6 +47,8 @@ type Service interface {
 
 	GetChunks(ctx context.Context, streams []string, pivot time.Time) (map[string]Chunk, error)
 	GetChunksFromRemote(ctx context.Context, host string, streams []string, pivot time.Time) (map[string]Chunk, error)
+
+	ListStreamSubscriptions(ctx context.Context) (map[string]int64, error)
 }
 
 type service struct {
@@ -528,4 +530,11 @@ func (s *service) DeleteStream(ctx context.Context, streamID string) error {
 	defer span.End()
 
 	return s.repository.DeleteStream(ctx, streamID)
+}
+
+func (s *service) ListStreamSubscriptions(ctx context.Context) (map[string]int64, error) {
+	ctx, span := tracer.Start(ctx, "ServiceListStreamSubscriptions")
+	defer span.End()
+
+	return s.repository.ListStreamSubscriptions(ctx)
 }

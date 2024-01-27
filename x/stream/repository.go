@@ -47,6 +47,8 @@ type Repository interface {
 	GetChunksFromRemote(ctx context.Context, host string, streams []string, queryTime time.Time) (map[string]Chunk, error)
 	SaveToCache(ctx context.Context, chunks map[string]Chunk, queryTime time.Time) error
 	PublishEvent(ctx context.Context, event core.Event) error
+
+	ListStreamSubscriptions(ctx context.Context) (map[string]int64, error)
 }
 
 type repository struct {
@@ -477,4 +479,26 @@ func (r *repository) HasReadAccess(ctx context.Context, streamID string, userAdd
 		return true
 	}
 	return slices.Contains(stream.Reader, userAddress)
+}
+
+// List Stream Subscriptions
+func (r *repository) ListStreamSubscriptions(ctx context.Context) (map[string]int64, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryListStreamSubscriptions")
+	defer span.End()
+
+	query_l := r.rdb.PubSubChannels(ctx, "*")
+	streams, err := query_l.Result()
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	query_n := r.rdb.PubSubNumSub(ctx, streams...)
+	result, err := query_n.Result()
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	return result, nil
 }

@@ -5,9 +5,9 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -35,14 +35,40 @@ import (
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.7.0"
+	"go.opentelemetry.io/otel/trace"
 	"gorm.io/plugin/opentelemetry/tracing"
 )
 
+type CustomHandler struct {
+	slog.Handler
+}
+
+func (h *CustomHandler) Handle(ctx context.Context, r slog.Record) error {
+
+	r.AddAttrs(slog.String("type", "app"))
+
+	span := trace.SpanFromContext(ctx)
+	if span.SpanContext().IsValid() {
+		r.AddAttrs(slog.String("traceID", span.SpanContext().TraceID().String()))
+		r.AddAttrs(slog.String("spanID", span.SpanContext().SpanID().String()))
+	}
+
+	return h.Handler.Handle(ctx, r)
+}
+
 func main() {
 
-	fmt.Print(concurrentBanner)
+	fmt.Fprint(os.Stderr, concurrentBanner)
+
+	handler := &CustomHandler{Handler: slog.NewJSONHandler(os.Stdout, nil)}
+	slogger := slog.New(handler)
+	slog.SetDefault(slogger)
+
+	slog.Info("Concurrent ", util.GetFullVersion(), " starting...")
 
 	e := echo.New()
+	e.HidePort = true
+	e.HideBanner = true
 	config := util.Config{}
 	configPath := os.Getenv("CONCURRENT_CONFIG")
 	if configPath == "" {
@@ -51,22 +77,10 @@ func main() {
 
 	err := config.Load(configPath)
 	if err != nil {
-		e.Logger.Fatal(err)
+		slog.Error("Failed to load config: ", err)
 	}
 
-	log.Print("Concurrent ", util.GetFullVersion(), " starting...")
-	log.Print("Config loaded! I am: ", config.Concurrent.CCID)
-
-	logfile, err := os.OpenFile(filepath.Join(config.Server.LogPath, "api-access.log"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer logfile.Close()
-
-	e.Logger.SetOutput(logfile)
-
-	e.HidePort = true
-	e.HideBanner = true
+	slog.Info(fmt.Sprintf("Config loaded! I am: %s", config.Concurrent.CCID))
 
 	if config.Server.EnableTrace {
 		cleanup, err := setupTraceProvider(config.Server.TraceEndpoint, config.Concurrent.FQDN+"/ccapi", util.GetFullVersion())
@@ -84,11 +98,10 @@ func main() {
 	}
 
 	e.Use(echoprometheus.NewMiddleware("ccapi"))
-	e.Use(middleware.Logger())
 	e.Use(middleware.Recover())
 
 	gormLogger := logger.New(
-		log.New(logfile, "\r\n", log.LstdFlags), // io writer
+		log.New(os.Stdout, "\r\n", log.LstdFlags), // io writer
 		logger.Config{
 			SlowThreshold:             300 * time.Millisecond, // Slow SQL threshold
 			LogLevel:                  logger.Warn,            // Log level

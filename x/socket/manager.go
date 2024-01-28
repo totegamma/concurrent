@@ -6,7 +6,9 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"fmt"
 	"log"
+	"log/slog"
 	"net/url"
 	"slices"
 	"strings"
@@ -344,7 +346,12 @@ func (m *manager) connectionKeeperRoutine() {
 	for {
 		select {
 		case <-ticker.C:
-			log.Printf("[remote] connection keeper: %d/%d\n", len(m.remoteSubs), len(m.remoteConns))
+			slog.InfoContext(
+				ctx,
+				fmt.Sprintf("connection keeper: %d/%d\n", len(m.remoteSubs), len(m.remoteConns)),
+				slog.String("module", "socket"),
+				slog.String("group", "remote"),
+			)
 			for domain := range m.remoteSubs {
 				if _, ok := m.remoteConns[domain]; !ok {
 					log.Printf("[remote] broken connection found: %s\n", domain)

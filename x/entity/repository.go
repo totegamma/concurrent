@@ -22,6 +22,7 @@ type Repository interface {
 	GetAcking(ctx context.Context, key string) ([]core.Ack, error)
 	GetAddress(ctx context.Context, ccid string) (core.Address, error)
 	UpdateAddress(ctx context.Context, ccid string, domain string, signedAt time.Time) error
+	UpdateRegistration(ctx context.Context, id string, payload string, signature string) error // NOTE: for migration. Remove later
 }
 
 type repository struct {
@@ -185,4 +186,14 @@ func (r *repository) GetAcking(ctx context.Context, key string) ([]core.Ack, err
 	var acks []core.Ack
 	err := r.db.WithContext(ctx).Where("valid = true and \"from\" = ?", key).Find(&acks).Error
 	return acks, err
+}
+
+func (r *repository) UpdateRegistration(ctx context.Context, id string, payload string, signature string) error {
+	ctx, span := tracer.Start(ctx, "RepositoryUpdateRegistration")
+	defer span.End()
+
+	return r.db.WithContext(ctx).Model(&core.Entity{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"payload":   payload,
+		"signature": signature,
+	}).Error
 }

@@ -30,6 +30,7 @@ type Handler interface {
 	GetAcker(c echo.Context) error
 	GetAcking(c echo.Context) error
 	Resolve(c echo.Context) error
+	UpdateRegistration(c echo.Context) error // NOTE: for migration. Remove later
 }
 
 type handler struct {
@@ -233,4 +234,23 @@ func (h handler) Resolve(c echo.Context) error {
 		return err
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": fqdn})
+}
+
+// UpdateRegistration updates an entity registration
+func (h handler) UpdateRegistration(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerUpdateRegistration")
+	defer span.End()
+
+	var request createRequest
+	err := c.Bind(&request)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+	err = h.service.UpdateRegistration(ctx, request.CCID, request.Registration, request.Signature)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
 }

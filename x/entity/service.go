@@ -38,6 +38,7 @@ type Service interface {
 	GetAcking(ctx context.Context, key string) ([]core.Ack, error)
 	GetAddress(ctx context.Context, ccid string) (core.Address, error)
 	UpdateAddress(ctx context.Context, ccid string, domain string, signedAt time.Time) error
+	UpdateRegistration(ctx context.Context, id string, payload string, signature string) error // NOTE: for migration. Remove later
 }
 
 type service struct {
@@ -412,6 +413,20 @@ func (s *service) UpdateAddress(ctx context.Context, ccid string, domain string,
 	defer span.End()
 
 	return s.repository.UpdateAddress(ctx, ccid, domain, signedAt)
+}
+
+// UpdateRegistration updates the registration of a entity
+func (s *service) UpdateRegistration(ctx context.Context, id string, payload string, signature string) error {
+	ctx, span := tracer.Start(ctx, "ServiceUpdateRegistration")
+	defer span.End()
+
+	err := checkRegistration(id, payload, signature, s.config.Concurrent.FQDN)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	return s.repository.UpdateRegistration(ctx, id, payload, signature)
 }
 
 // ---

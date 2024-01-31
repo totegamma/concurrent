@@ -57,7 +57,7 @@ func (h *CustomHandler) Handle(ctx context.Context, r slog.Record) error {
 }
 
 var (
-    version = "unknown"
+	version = "unknown"
 )
 
 func main() {
@@ -68,7 +68,7 @@ func main() {
 	slogger := slog.New(handler)
 	slog.SetDefault(slogger)
 
-    slog.Info(fmt.Sprintf("Concurrent %s starting...", version))
+	slog.Info(fmt.Sprintf("Concurrent %s starting...", version))
 
 	e := echo.New()
 	e.HidePort = true
@@ -248,7 +248,8 @@ func main() {
 	apiV1.GET("/streams/recent", streamHandler.Recent)
 	apiV1.GET("/streams/range", streamHandler.Range)
 	apiV1.GET("/streams/chunks", streamHandler.GetChunks)
-	apiV1.POST("/streams/checkpoint", streamHandler.Checkpoint, authService.Restrict(auth.ISUNITED))
+	apiV1.POST("/streams/checkpoint", streamHandler.Checkpoint, authService.Restrict(auth.ISUNITED))      // OLD API Remove for next release
+	apiV1.POST("/streams/checkpoint/item", streamHandler.Checkpoint, authService.Restrict(auth.ISUNITED)) // NEW API will be used for next release
 	apiV1.POST("/streams/checkpoint/event", streamHandler.EventCheckpoint, authService.Restrict(auth.ISUNITED))
 
 	// userkv

@@ -40,7 +40,7 @@ import (
 )
 
 var (
-    version = "unknown"
+	version = "unknown"
 )
 
 func main() {

@@ -56,6 +56,10 @@ func (h *CustomHandler) Handle(ctx context.Context, r slog.Record) error {
 	return h.Handler.Handle(ctx, r)
 }
 
+var (
+    version = "unknown"
+)
+
 func main() {
 
 	fmt.Fprint(os.Stderr, concurrentBanner)
@@ -64,7 +68,7 @@ func main() {
 	slogger := slog.New(handler)
 	slog.SetDefault(slogger)
 
-	slog.Info("Concurrent ", util.GetFullVersion(), " starting...")
+    slog.Info(fmt.Sprintf("Concurrent %s starting...", version))
 
 	e := echo.New()
 	e.HidePort = true
@@ -83,7 +87,7 @@ func main() {
 	slog.Info(fmt.Sprintf("Config loaded! I am: %s", config.Concurrent.CCID))
 
 	if config.Server.EnableTrace {
-		cleanup, err := setupTraceProvider(config.Server.TraceEndpoint, config.Concurrent.FQDN+"/ccapi", util.GetFullVersion())
+		cleanup, err := setupTraceProvider(config.Server.TraceEndpoint, config.Concurrent.FQDN+"/ccapi", version)
 		if err != nil {
 			panic(err)
 		}
@@ -272,8 +276,7 @@ func main() {
 	apiV1.GET("/profile", func(c echo.Context) error {
 		profile := config.Profile
 		profile.Registration = config.Concurrent.Registration
-		profile.Version = util.GetVersion()
-		profile.Hash = util.GetGitHash()
+		profile.Version = version
 		profile.SiteKey = config.Server.CaptchaSitekey
 		return c.JSON(http.StatusOK, profile)
 	})

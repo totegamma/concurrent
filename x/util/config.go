@@ -50,7 +50,6 @@ type Profile struct {
 	// internal generated
 	Registration string `yaml:"registration" json:"registration"`
 	Version      string `yaml:"version" json:"version"`
-	Hash         string `yaml:"hash" json:"hash"`
 	SiteKey      string `yaml:"captchaSiteKey" json:"captchaSiteKey"`
 }
 

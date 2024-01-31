@@ -39,6 +39,10 @@ import (
 	"gorm.io/plugin/opentelemetry/tracing"
 )
 
+var (
+    version = "unknown"
+)
+
 func main() {
 
 	e := echo.New()
@@ -64,7 +68,7 @@ func main() {
 		e.Logger.Fatal(err)
 	}
 
-	log.Print("Concurrent ", util.GetFullVersion(), " starting...")
+	log.Print("Concurrent ", version, " starting...")
 	log.Print("Config loaded! I am: ", config.Concurrent.CCID)
 
 	// Echoの設定
@@ -82,7 +86,7 @@ func main() {
 	e.Use(middleware.Recover())
 
 	if config.Server.EnableTrace {
-		cleanup, err := setupTraceProvider(config.Server.TraceEndpoint, config.Concurrent.FQDN+"/ccgateway", util.GetFullVersion())
+		cleanup, err := setupTraceProvider(config.Server.TraceEndpoint, config.Concurrent.FQDN+"/ccgateway", version)
 		if err != nil {
 			panic(err)
 		}

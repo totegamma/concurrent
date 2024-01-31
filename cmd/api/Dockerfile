@@ -6,7 +6,7 @@ COPY ./go.mod ./go.sum ./
 RUN go mod download && go mod verify
 COPY ./ ./
 RUN wire ./cmd/api \
- && go build -o ccapi ./cmd/api
+ && go build -ldflags "-s -w -X main.version=$(git describe)" -o ccapi ./cmd/api
 
 FROM golang:latest
 

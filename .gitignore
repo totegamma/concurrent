@@ -6,4 +6,3 @@ _composeData
 *.log
 .idea/
 wire_gen.go
-mock/

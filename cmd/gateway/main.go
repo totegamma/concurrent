@@ -40,7 +40,10 @@ import (
 )
 
 var (
-	version = "unknown"
+	version      = "unknown"
+	buildMachine = "unknown"
+	buildTime    = "unknown"
+	goVersion    = "unknown"
 )
 
 func main() {

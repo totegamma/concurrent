@@ -57,7 +57,10 @@ func (h *CustomHandler) Handle(ctx context.Context, r slog.Record) error {
 }
 
 var (
-	version = "unknown"
+	version      = "unknown"
+	buildMachine = "unknown"
+	buildTime    = "unknown"
+	goVersion    = "unknown"
 )
 
 func main() {
@@ -278,6 +281,11 @@ func main() {
 		profile := config.Profile
 		profile.Registration = config.Concurrent.Registration
 		profile.Version = version
+		profile.BuildInfo = util.BuildInfo{
+			BuildTime:    buildTime,
+			BuildMachine: buildMachine,
+			GoVersion:    goVersion,
+		}
 		profile.SiteKey = config.Server.CaptchaSitekey
 		return c.JSON(http.StatusOK, profile)
 	})

@@ -25,7 +25,7 @@ export default function ApiProvider(props: ApiProviderProps): JSX.Element {
 
     const setJWT = useMemo(() => (jwt: string) => {
         setToken(jwt)
-        setApi(new Api({host: '', token: jwt}))
+        setApi(new Api({host: location.host, token: jwt}))
     }, [setApi])
 
     const apiContextState = useMemo(() => ({

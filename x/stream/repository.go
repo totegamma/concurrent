@@ -5,7 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -73,7 +73,11 @@ func (r *repository) PublishEvent(ctx context.Context, event core.Event) error {
 	err := r.rdb.Publish(context.Background(), event.Stream, jsonstr).Err()
 	if err != nil {
 		span.RecordError(err)
-		log.Printf("fail to publish message to Redis: %v", err)
+		slog.ErrorContext(
+			ctx, "fail to publish message to Redis",
+			slog.String("error", err.Error()),
+			slog.String("module", "stream"),
+		)
 	}
 
 	return nil
@@ -123,7 +127,11 @@ func (r *repository) GetChunksFromRemote(ctx context.Context, host string, strea
 
 	err = r.SaveToCache(ctx, cacheChunks, queryTime)
 	if err != nil {
-		log.Printf("Error: %v", err)
+		slog.ErrorContext(
+			ctx, "fail to save cache",
+			slog.String("error", err.Error()),
+			slog.String("module", "stream"),
+		)
 		span.RecordError(err)
 		return nil, err
 	}

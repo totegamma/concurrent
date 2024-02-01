@@ -137,7 +137,7 @@ func main() {
 	}
 
 	// Migrate the schema
-	log.Println("start migrate")
+	slog.Info("start migrate")
 	db.AutoMigrate(
 		&core.Message{},
 		&core.Character{},
@@ -172,7 +172,6 @@ func main() {
 	}
 
 	mc := memcache.New(config.Server.MemcachedAddr)
-	log.Println("config.Server.MemcachedAddr", config.Server.MemcachedAddr)
 	if err != nil {
 		panic("failed to connect memcached")
 	}
@@ -321,7 +320,7 @@ func main() {
 			time.Sleep(15 * time.Second)
 			subscriptions, err := streamService.ListStreamSubscriptions(context.Background())
 			if err != nil {
-				log.Println("failed to list stream subscriptions", err)
+				slog.Error(fmt.Sprintf("failed to list stream subscriptions: %v", err))
 				continue
 			}
 			for stream, count := range subscriptions {
@@ -371,7 +370,7 @@ func setupTraceProvider(endpoint string, serviceName string, serviceVersion stri
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		if err := tracerProvider.Shutdown(ctx); err != nil {
-			log.Printf("Failed to shutdown tracer provider: %v", err)
+			slog.Error(fmt.Sprintf("Failed to shutdown tracer provider: %v", err))
 		}
 	}
 	return cleanup, nil

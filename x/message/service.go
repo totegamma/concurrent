@@ -3,7 +3,8 @@ package message
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"fmt"
+	"log/slog"
 
 	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/x/core"
@@ -111,7 +112,8 @@ func (s *service) Delete(ctx context.Context, id string) (core.Message, error) {
 	defer span.End()
 
 	deleted, err := s.repo.Delete(ctx, id)
-	log.Printf("deleted: %v", deleted)
+	slog.DebugContext(ctx, fmt.Sprintf("deleted: %v", deleted), slog.String("module", "message"))
+
 	if err != nil {
 		span.RecordError(err)
 		return core.Message{}, err

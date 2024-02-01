@@ -4,6 +4,7 @@ package agent
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/x/core"
@@ -13,7 +14,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 	"io"
-	"log"
+	"log/slog"
 	"math/rand"
 	"net/http"
 	"strconv"
@@ -62,7 +63,7 @@ func (a *agent) collectUsers(ctx context.Context) {
 
 // Boot starts agent
 func (a *agent) Boot() {
-	log.Printf("agent start!")
+	slog.Info("agent start!")
 	ticker60 := time.NewTicker(60 * time.Second)
 	go func() {
 		for {
@@ -118,7 +119,11 @@ func (a *agent) pullRemoteEntities(ctx context.Context, remote core.Domain) erro
 		err := json.Unmarshal([]byte(entity.Payload), &signedObj)
 		if err != nil {
 			span.RecordError(err)
-			log.Println(err)
+			slog.Error(
+				"pullRemoteEntities",
+				slog.String("error", err.Error()),
+				slog.String("module", "agent"),
+			)
 			continue
 		}
 
@@ -134,16 +139,26 @@ func (a *agent) pullRemoteEntities(ctx context.Context, remote core.Domain) erro
 
 		if err != nil {
 			span.RecordError(err)
+			slog.Error(
+				"pullRemoteEntities",
+				slog.String("error", err.Error()),
+				slog.String("module", "agent"),
+			)
 			errored = true
-			log.Println(err)
 		}
 	}
 
 	if !errored {
-		log.Printf("[agent] pulled %d entities from %s", len(remoteEntities.Content), remote.ID)
+		slog.Info(
+			fmt.Sprintf("[agent] pulled %d entities from %s", len(remoteEntities.Content), remote.ID),
+			slog.String("module", "agent"),
+		)
 		a.domain.UpdateScrapeTime(ctx, remote.ID, requestTime)
 	} else {
-		log.Printf("[agent] failed to pull entities from %s", remote.ID)
+		slog.Error(
+			fmt.Sprintf("[agent] failed to pull entities from %s", remote.ID),
+			slog.String("module", "agent"),
+		)
 	}
 
 	return nil

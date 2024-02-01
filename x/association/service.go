@@ -5,7 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
-	"log"
+	"log/slog"
 
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/message"
@@ -112,8 +112,8 @@ func (s *service) PostAssociation(ctx context.Context, objectStr string, signatu
 	for _, stream := range association.Streams {
 		err = s.stream.PostItem(ctx, stream, item, created)
 		if err != nil {
+			slog.ErrorContext(ctx, "failed to post stream", slog.String("error", err.Error()), slog.String("module", "association"))
 			span.RecordError(err)
-			log.Printf("fail to post stream: %v", err)
 		}
 	}
 
@@ -128,8 +128,8 @@ func (s *service) PostAssociation(ctx context.Context, objectStr string, signatu
 		err = s.stream.DistributeEvent(ctx, postto, event)
 
 		if err != nil {
+			slog.ErrorContext(ctx, "failed to publish message to Redis", slog.String("error", err.Error()), slog.String("module", "association"))
 			span.RecordError(err)
-			log.Printf("fail to publish message to Redis: %v", err)
 		}
 	}
 
@@ -181,7 +181,7 @@ func (s *service) Delete(ctx context.Context, id string) (core.Association, erro
 		}
 		err := s.stream.DistributeEvent(ctx, posted, event)
 		if err != nil {
-			log.Printf("fail to publish message to Redis: %v", err)
+			slog.ErrorContext(ctx, "failed to publish message to Redis", slog.String("error", err.Error()), slog.String("module", "association"))
 			span.RecordError(err)
 			return deleted, err
 		}

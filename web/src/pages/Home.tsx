@@ -15,7 +15,7 @@ export const Home = (): JSX.Element => {
 
     useEffect(() => {
         if (!ccid) return
-        api.readEntity(ccid).then((entity) => {
+        api.getEntity(ccid).then((entity) => {
             setTag(entity?.tag.split(',') ?? [])
         })
     }, [api])

@@ -7,7 +7,6 @@ import (
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
-	"log"
 	"log/slog"
 	"net/url"
 	"slices"
@@ -190,7 +189,11 @@ func (m *manager) deleteExcessiveSubs() {
 		delete(m.remoteConns, domain)
 	}
 
-	log.Printf("[remote] subscription cleaned up: %v", closeList)
+	slog.Info(
+		fmt.Sprintf("subscription cleaned up: %v", closeList),
+		slog.String("module", "socket"),
+		slog.String("group", "remote"),
+	)
 }
 
 // RemoteSubRoutine subscribes to a remote server
@@ -206,7 +209,12 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 
 		c, _, err := dialer.Dial(u.String(), nil)
 		if err != nil {
-			log.Printf("[remote websocket] fail to dial: %v", err)
+			slog.Error(
+				fmt.Sprintf("fail to dial: %v", err),
+				slog.String("module", "socket"),
+				slog.String("group", "remote"),
+			)
+
 			delete(m.remoteConns, domain)
 			return
 		}
@@ -221,17 +229,29 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 					c.Close()
 				}
 				delete(m.remoteConns, domain)
-				log.Printf("[remote ws.reader] remote connection closed: %s", domain)
+				slog.Info(
+					fmt.Sprintf("remote connection closed: %s", domain),
+					slog.String("module", "socket"),
+					slog.String("group", "remote"),
+				)
 			}()
 			for {
 				// check if the connection is still alive
 				if c == nil {
-					log.Printf("connection is nil (domain: %s)", domain)
+					slog.Info(
+						fmt.Sprintf("connection is nil (domain: %s)", domain),
+						slog.String("module", "socket"),
+						slog.String("group", "remote"),
+					)
 					break
 				}
 				_, message, err := c.ReadMessage()
 				if err != nil {
-					log.Printf("fail to read message: %v", err)
+					slog.Error(
+						fmt.Sprintf("fail to read message: %v", err),
+						slog.String("module", "socket"),
+						slog.String("group", "remote"),
+					)
 					break
 				}
 				messageChan <- message
@@ -247,7 +267,11 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 				}
 				pingTicker.Stop()
 				delete(m.remoteConns, domain)
-				log.Printf("[remote ws.publisher] remote connection closed: %s", domain)
+				slog.Info(
+					fmt.Sprintf("remote connection closed: %s", domain),
+					slog.String("module", "socket"),
+					slog.String("group", "remote ws.publisher"),
+				)
 			}()
 
 			var lastPong time.Time = time.Now()
@@ -260,26 +284,45 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 				select {
 				case message := <-messageChan:
 
-					log.Printf("[remote] <- %s\n", message[:64])
+					slog.Debug(
+						fmt.Sprintf("remote message received: %s", message[:64]),
+						slog.String("module", "socket"),
+						slog.String("group", "remote"),
+					)
 
 					var event core.Event
 					err = json.Unmarshal(message, &event)
 					if err != nil {
-						log.Printf("fail to Unmarshall redis message: %v", err)
+						slog.Error(
+							fmt.Sprintf("fail to Unmarshall redis message"),
+							slog.String("error", err.Error()),
+							slog.String("module", "socket"),
+							slog.String("group", "remote"),
+						)
 						continue
 					}
 
 					// publish message to Redis
 					err = m.rdb.Publish(ctx, event.Stream, string(message)).Err()
 					if err != nil {
-						log.Printf("fail to publish message to Redis: %v", err)
+						slog.Error(
+							fmt.Sprintf("fail to publish message to Redis"),
+							slog.String("error", err.Error()),
+							slog.String("module", "socket"),
+							slog.String("group", "remote"),
+						)
 						continue
 					}
 
 					// update cache
 					json, err := json.Marshal(event.Item)
 					if err != nil {
-						log.Printf("fail to Marshall item: %v", err)
+						slog.Error(
+							"fail to Marshall item",
+							slog.String("error", err.Error()),
+							slog.String("module", "socket"),
+							slog.String("group", "remote"),
+						)
 						continue
 					}
 					json = append(json, ',')
@@ -302,22 +345,39 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 						// 例えば、今までのキャッシュを(現時点では取得不能)最新のitrが指すようにして
 						// 今までのキャッシュを更新し続けるとか... (TODO)
 						// cacheKey := "stream:body:all:" + event.Item.StreamID + ":" + core.Time2Chunk(event.Item.CDate)
-						log.Printf("[remote] no need to update cache: %s", itr)
+						slog.Info(
+							fmt.Sprintf("no need to update cache: %s", itr),
+							slog.String("module", "socket"),
+							slog.String("group", "remote"),
+						)
 						continue
 					}
 
 					err = m.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
 					if err != nil {
-						log.Printf("fail to update cache: %v", err)
+						slog.Error(
+							fmt.Sprintf("fail to update cache: %s", itr),
+							slog.String("error", err.Error()),
+							slog.String("module", "socket"),
+							slog.String("group", "remote"),
+						)
 					}
 
 				case <-pingTicker.C:
 					if err := c.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
-						log.Printf("fail to send ping message: %v", err)
+						slog.Error(
+							fmt.Sprintf("fail to send ping message: %v", err),
+							slog.String("module", "socket"),
+							slog.String("group", "remote"),
+						)
 						return
 					}
 					if lastPong.Before(time.Now().Add(-disconnectTimeout)) {
-						log.Printf("pong timeout: %s", domain)
+						slog.Warn(
+							fmt.Sprintf("pong timeout: %s", domain),
+							slog.String("module", "socket"),
+							slog.String("group", "remote"),
+						)
 						return
 					}
 				}
@@ -329,11 +389,21 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 	}
 	err := m.remoteConns[domain].WriteJSON(request)
 	if err != nil {
-		log.Printf("[remote] fail to send subscribe request to remote server %v: %v", domain, err)
+		slog.Error(
+			fmt.Sprintf("fail to send subscribe request to remote server %v", domain),
+			slog.String("error", err.Error()),
+			slog.String("module", "socket"),
+			slog.String("group", "remote"),
+		)
+
 		delete(m.remoteConns, domain)
 		return
 	}
-	log.Printf("[remote] connection updated: %s > %s", domain, streams)
+	slog.Info(
+		fmt.Sprintf("remote connection updated: %s > %s", domain, streams),
+		slog.String("module", "socket"),
+		slog.String("group", "remote"),
+	)
 }
 
 // ConnectionKeeperRoutine
@@ -348,13 +418,17 @@ func (m *manager) connectionKeeperRoutine() {
 		case <-ticker.C:
 			slog.InfoContext(
 				ctx,
-				fmt.Sprintf("connection keeper: %d/%d\n", len(m.remoteSubs), len(m.remoteConns)),
+				fmt.Sprintf("connection keeper: %d/%d", len(m.remoteSubs), len(m.remoteConns)),
 				slog.String("module", "socket"),
 				slog.String("group", "remote"),
 			)
 			for domain := range m.remoteSubs {
 				if _, ok := m.remoteConns[domain]; !ok {
-					log.Printf("[remote] broken connection found: %s\n", domain)
+					slog.Info(
+						fmt.Sprintf("broken connection found: %s", domain),
+						slog.String("module", "socket"),
+						slog.String("group", "remote"),
+					)
 					m.RemoteSubRoutine(domain, m.remoteSubs[domain])
 				}
 			}
@@ -383,7 +457,11 @@ func (m *manager) chunkUpdaterRoutine() {
 			continue
 		}
 
-		log.Printf("[manager] update chunks: %s -> %s", currentChunk, newChunk)
+		slog.Info(
+			fmt.Sprintf("update chunks: %s -> %s", currentChunk, newChunk),
+			slog.String("module", "socket"),
+			slog.String("group", "remote"),
+		)
 
 		m.deleteExcessiveSubs()
 		//m.updateChunks(newChunk)

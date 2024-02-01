@@ -2,10 +2,11 @@
 package socket
 
 import (
+	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
-	"log"
+	"log/slog"
 	"net/http"
 	"sync"
 )
@@ -50,8 +51,11 @@ func (h handler) send(ws *websocket.Conn, message string) error {
 func (h handler) Connect(c echo.Context) error {
 	ws, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
 	if err != nil {
-		log.Println("Failed to upgrade WebSocket:", err)
-		c.Logger().Error(err)
+		slog.Error(
+			"Failed to upgrade WebSocket",
+			slog.String("error", err.Error()),
+			slog.String("module", "socket"),
+		)
 	}
 	defer func() {
 		h.manager.Unsubscribe(ws)
@@ -70,13 +74,33 @@ func (h handler) Connect(c echo.Context) error {
 		for {
 			select {
 			case <-quit:
-				log.Println("[socket] closed")
+				slog.InfoContext(
+					ctx, "Socket closed",
+					slog.String("module", "socket"),
+				)
 				return
 			case msg := <-psch:
-				log.Printf("[socket] -> %s\n", msg.Payload[:64])
+
+				if msg == nil {
+					slog.WarnContext(
+						ctx, "received nil message",
+						slog.String("module", "socket"),
+					)
+					return
+				}
+
+				slog.DebugContext(
+					ctx, fmt.Sprintf("Socket message: %s", msg.Payload[:64]),
+					slog.String("module", "socket"),
+				)
+
 				err = h.send(ws, msg.Payload)
 				if err != nil {
-					log.Println("Error writing message: ", err)
+					slog.ErrorContext(
+						ctx, "Error writing message",
+						slog.String("error", err.Error()),
+						slog.String("module", "socket"),
+					)
 					return
 				}
 			}
@@ -87,20 +111,31 @@ func (h handler) Connect(c echo.Context) error {
 		var req Request
 		err := ws.ReadJSON(&req)
 		if err != nil {
-			log.Println("Error reading JSON: ", err)
+			slog.ErrorContext(
+				ctx, "Error reading JSON",
+				slog.String("error", err.Error()),
+				slog.String("module", "socket"),
+			)
 			break
 		}
 
 		if req.Type == "ping" {
 			err = h.send(ws, "{\"type\":\"pong\"}")
 			if err != nil {
-				log.Println("Error writing message: ", err)
+				slog.ErrorContext(
+					ctx, "Error writing message",
+					slog.String("error", err.Error()),
+					slog.String("module", "socket"),
+				)
 				break
 			}
 			continue
 		}
 
-		log.Printf("[socket] subscribe: %s\n", req.Channels)
+		slog.DebugContext(
+			ctx, fmt.Sprintf("Socket subscribe: %s", req.Channels),
+			slog.String("module", "socket"),
+		)
 		pubsub.Unsubscribe(ctx)
 		pubsub.Subscribe(ctx, req.Channels...)
 		h.manager.Subscribe(ws, req.Channels)

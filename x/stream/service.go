@@ -7,7 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"sort"
 	"strconv"
@@ -97,7 +97,7 @@ func (s *service) GetChunks(ctx context.Context, streams []string, until time.Ti
 	untilChunk := core.Time2Chunk(until)
 	items, err := s.repository.GetChunksFromCache(ctx, streams, untilChunk)
 	if err != nil {
-		log.Printf("Error: %v", err)
+		slog.ErrorContext(ctx, "failed to get chunks from cache", slog.String("error", err.Error()), slog.String("module", "stream"))
 		span.RecordError(err)
 		return nil, err
 	}
@@ -114,7 +114,7 @@ func (s *service) GetChunks(ctx context.Context, streams []string, until time.Ti
 		// get from db
 		dbItems, err := s.repository.GetChunksFromDB(ctx, missingStreams, untilChunk)
 		if err != nil {
-			log.Printf("Error: %v", err)
+			slog.ErrorContext(ctx, "failed to get chunks from db", slog.String("error", err.Error()), slog.String("module", "stream"))
 			span.RecordError(err)
 			return nil, err
 		}
@@ -148,7 +148,7 @@ func (s *service) GetRecentItems(ctx context.Context, streams []string, until ti
 	untilChunk := core.Time2Chunk(until)
 	items, err := s.repository.GetChunksFromCache(ctx, streams, untilChunk)
 	if err != nil {
-		log.Printf("Error: %v", err)
+		slog.ErrorContext(ctx, "failed to get chunks from cache", slog.String("error", err.Error()), slog.String("module", "stream"))
 		span.RecordError(err)
 		return nil, err
 	}
@@ -169,7 +169,7 @@ func (s *service) GetRecentItems(ctx context.Context, streams []string, until ti
 		if host == s.config.Concurrent.FQDN {
 			chunks, err := s.repository.GetChunksFromDB(ctx, streams, untilChunk)
 			if err != nil {
-				log.Printf("Error: %v", err)
+				slog.ErrorContext(ctx, "failed to get chunks from db", slog.String("error", err.Error()), slog.String("module", "stream"))
 				span.RecordError(err)
 				return nil, err
 			}
@@ -179,7 +179,7 @@ func (s *service) GetRecentItems(ctx context.Context, streams []string, until ti
 		} else {
 			chunks, err := s.repository.GetChunksFromRemote(ctx, host, streams, until)
 			if err != nil {
-				log.Printf("Error: %v", err)
+				slog.ErrorContext(ctx, "failed to get chunks from remote", slog.String("error", err.Error()), slog.String("module", "stream"))
 				span.RecordError(err)
 				continue
 			}
@@ -295,18 +295,26 @@ func (s *service) PostItem(ctx context.Context, stream string, item core.StreamI
 			author = item.Owner
 		}
 		if !s.repository.HasWriteAccess(ctx, streamID, author) {
-			span.RecordError(fmt.Errorf("You don't have write access to %v", streamID))
-			log.Printf("You don't have write access to %v", streamID)
+			slog.InfoContext(
+				ctx, "failed to post to stream",
+				slog.String("type", "audit"),
+				slog.String("principal", author),
+				slog.String("stream", streamID),
+				slog.String("module", "stream"),
+			)
 			return fmt.Errorf("You don't have write access to %v", streamID)
 		}
 
-		log.Printf("[socket] post to local stream: %v to %v", item.ObjectID, streamID)
+		slog.DebugContext(
+			ctx, fmt.Sprintf("post to local stream: %v to %v", item.ObjectID, streamID),
+			slog.String("module", "stream"),
+		)
 
 		// add to stream
 		created, err := s.repository.CreateItem(ctx, item)
 		if err != nil {
+			slog.ErrorContext(ctx, "failed to create item", slog.String("error", err.Error()), slog.String("module", "stream"))
 			span.RecordError(err)
-			log.Printf("fail to create item: %v", err)
 			return err
 		}
 
@@ -321,13 +329,16 @@ func (s *service) PostItem(ctx context.Context, stream string, item core.StreamI
 
 		err = s.repository.PublishEvent(ctx, event)
 		if err != nil {
+			slog.ErrorContext(ctx, "failed to publish event", slog.String("error", err.Error()), slog.String("module", "stream"))
 			span.RecordError(err)
-			log.Printf("fail to publish message to Redis: %v", err)
 			return err
 		}
 	} else {
 
-		log.Printf("[socket] post to remote stream: %v to %v@%v", item.ObjectID, streamID, streamHost)
+		slog.DebugContext(
+			ctx, fmt.Sprintf("post to remote stream: %v to %v@%v", item.ObjectID, streamID, streamHost),
+			slog.String("module", "stream"),
+		)
 
 		packet := checkpointPacket{
 			Stream: stream,

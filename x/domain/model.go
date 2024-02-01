@@ -6,3 +6,8 @@ type Profile struct {
 	CCID   string `json:"ccid" gorm:"type:char(42)"`
 	Pubkey string `json:"pubkey" gorm:"type:text"`
 }
+
+type ProfileResponse struct {
+	Status  string  `json:"status"`
+	Content Profile `json:"content"`
+}

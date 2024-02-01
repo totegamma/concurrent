@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -116,6 +117,11 @@ func (h handler) Hello(c echo.Context) error {
 		return err
 	}
 
+	slog.DebugContext(
+		ctx, fmt.Sprintf("hello from %s", newcomer.ID),
+		slog.String("module", "domain"),
+	)
+
 	// challenge
 	req, err := http.NewRequest("GET", "https://"+newcomer.ID+"/api/v1/domain", nil)
 	if err != nil {
@@ -135,10 +141,21 @@ func (h handler) Hello(c echo.Context) error {
 
 	body, _ := io.ReadAll(resp.Body)
 
-	var fetchedProf Profile
-	json.Unmarshal(body, &fetchedProf)
+	var fetchedProf ProfileResponse
+	err = json.Unmarshal(body, &fetchedProf)
+	if err != nil {
+		slog.ErrorContext(
+			ctx, fmt.Sprintf("failed to unmarshal profile: %s", err.Error()),
+			slog.String("module", "domain"),
+		)
+		return c.String(http.StatusBadRequest, err.Error())
+	}
 
-	if newcomer.ID != fetchedProf.ID {
+	if newcomer.ID != fetchedProf.Content.ID {
+		slog.ErrorContext(
+			ctx, fmt.Sprintf("target does not match fetched profile: %v", fetchedProf.Content.ID),
+			slog.String("module", "domain"),
+		)
 		return c.String(http.StatusBadRequest, "validation failed")
 	}
 
@@ -148,6 +165,12 @@ func (h handler) Hello(c echo.Context) error {
 		Tag:    "",
 		Pubkey: newcomer.Pubkey,
 	})
+
+	slog.InfoContext(
+		ctx, fmt.Sprint("Successfully added ", newcomer.ID),
+		slog.String("module", "domain"),
+		slog.String("type", "audit"),
+	)
 
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": Profile{
 		ID:     h.config.Concurrent.FQDN,
@@ -165,6 +188,11 @@ func (h handler) SayHello(c echo.Context) error {
 	defer span.End()
 
 	target := c.Param("id")
+
+	slog.DebugContext(
+		ctx, fmt.Sprintf("saying hello to %s", target),
+		slog.String("module", "domain"),
+	)
 
 	me := Profile{
 		ID:     h.config.Concurrent.FQDN,
@@ -202,22 +230,47 @@ func (h handler) SayHello(c echo.Context) error {
 	}
 	defer resp.Body.Close()
 
-	body, _ := io.ReadAll(resp.Body)
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		slog.ErrorContext(
+			ctx, fmt.Sprintf("failed to read response body"),
+			slog.String("error", err.Error()),
+			slog.String("module", "domain"),
+		)
+	}
 
-	var fetchedProf Profile
+	var fetchedProf ProfileResponse
 	json.Unmarshal(body, &fetchedProf)
+	if err != nil {
+		slog.ErrorContext(
+			ctx, fmt.Sprintf("failed to unmarshal profile"),
+			slog.String("error", err.Error()),
+			slog.String("module", "domain"),
+		)
+		return c.String(http.StatusBadRequest, err.Error())
+	}
 
-	if target != fetchedProf.ID {
-		span.SetStatus(codes.Error, fmt.Sprintf("target does not match fetched profile: %v", fetchedProf.ID))
+	if target != fetchedProf.Content.ID {
+		slog.ErrorContext(
+			ctx, fmt.Sprintf("target does not match fetched profile: %v", fetchedProf.Content.ID),
+			slog.String("module", "domain"),
+		)
+		span.SetStatus(codes.Error, fmt.Sprintf("target does not match fetched profile: %v", fetchedProf.Content.ID))
 		return c.String(http.StatusBadRequest, "validation failed")
 	}
 
 	h.service.Upsert(ctx, &core.Domain{
-		ID:     fetchedProf.ID,
-		CCID:   fetchedProf.CCID,
+		ID:     fetchedProf.Content.ID,
+		CCID:   fetchedProf.Content.CCID,
 		Tag:    "",
-		Pubkey: fetchedProf.Pubkey,
+		Pubkey: fetchedProf.Content.Pubkey,
 	})
+
+	slog.InfoContext(
+		ctx, fmt.Sprint("Successfully added ", fetchedProf.Content.ID),
+		slog.String("module", "domain"),
+		slog.String("type", "audit"),
+	)
 
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": fetchedProf})
 }

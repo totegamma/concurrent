@@ -210,9 +210,7 @@ func main() {
 			c.Response().Header().Set("cc-service", service.Name)
 			claims, ok := c.Get("jwtclaims").(jwt.Claims)
 			if ok {
-				c.Request().Header.Set("cc-issuer", claims.Issuer)
-				c.Request().Header.Set("cc-user-id", claims.Audience)
-				c.Request().Header.Set("cc-user-tag", claims.Subject)
+				c.Request().Header.Set("cc-user-id", claims.Issuer)
 			}
 			proxy.ServeHTTP(c.Response(), c.Request())
 			return nil

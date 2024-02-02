@@ -9,9 +9,6 @@ on:
   push:
     # Publish semver tags as releases.
     tags: [ 'v*.*.*' ]
-    branches:
-      - 'master'
-      - 'develop'
 
 env:
   # Use docker.io for Docker Hub if empty
@@ -44,6 +41,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
 
       - name: setup go
         uses: actions/setup-go@v2

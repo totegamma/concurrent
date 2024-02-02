@@ -336,6 +336,14 @@ func main() {
 	)
 	prometheus.MustRegister(resourceCountMetrics)
 
+	var socketConnectionMetrics = prometheus.NewGauge(
+		prometheus.GaugeOpts{
+			Name: "cc_socket_connections",
+			Help: "socket connections",
+		},
+	)
+	prometheus.MustRegister(socketConnectionMetrics)
+
 	go func() {
 		for {
 			time.Sleep(15 * time.Second)
@@ -384,6 +392,9 @@ func main() {
 				continue
 			}
 			resourceCountMetrics.WithLabelValues("stream").Set(float64(count))
+
+			count = socketHandler.CurrentConnectionCount()
+			socketConnectionMetrics.Set(float64(count))
 		}
 	}()
 

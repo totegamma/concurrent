@@ -9,11 +9,13 @@ import (
 	"log/slog"
 	"net/http"
 	"sync"
+	"sync/atomic"
 )
 
 // Handler is the interface for handling websocket
 type Handler interface {
 	Connect(c echo.Context) error
+	CurrentConnectionCount() int64
 }
 
 type handler struct {
@@ -21,6 +23,7 @@ type handler struct {
 	manager Manager
 	rdb     *redis.Client
 	mutex   *sync.Mutex
+	counter int64
 }
 
 // NewHandler creates a new handler
@@ -30,6 +33,7 @@ func NewHandler(service Service, rdb *redis.Client, manager Manager) Handler {
 		manager,
 		rdb,
 		&sync.Mutex{},
+		0,
 	}
 }
 
@@ -41,14 +45,18 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-func (h handler) send(ws *websocket.Conn, message string) error {
-	h.mutex.Lock()
+func (h *handler) CurrentConnectionCount() int64 {
+	return atomic.LoadInt64(&h.counter)
+}
+
+func (h *handler) send(ws *websocket.Conn, message string) error {
+	h.mutex.Lock() // XXX: このロックってなんで必要なんだっけ？
 	defer h.mutex.Unlock()
 	return ws.WriteMessage(websocket.TextMessage, []byte(message))
 }
 
 // Connect is used for start websocket connection
-func (h handler) Connect(c echo.Context) error {
+func (h *handler) Connect(c echo.Context) error {
 	ws, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
 	if err != nil {
 		slog.Error(
@@ -69,6 +77,9 @@ func (h handler) Connect(c echo.Context) error {
 
 	psch := pubsub.Channel()
 	quit := make(chan struct{})
+
+	atomic.AddInt64(&h.counter, 1)
+	defer atomic.AddInt64(&h.counter, -1)
 
 	go func() {
 		for {

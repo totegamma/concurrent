@@ -5,6 +5,7 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"fmt"
 	"log/slog"
 
 	"github.com/totegamma/concurrent/x/core"
@@ -18,7 +19,7 @@ type Service interface {
 	PostAssociation(ctx context.Context, objectStr string, signature string, streams []string, targetType string) (core.Association, error)
 	Get(ctx context.Context, id string) (core.Association, error)
 	GetOwn(ctx context.Context, author string) ([]core.Association, error)
-	Delete(ctx context.Context, id string) (core.Association, error)
+	Delete(ctx context.Context, id, requester string) (core.Association, error)
 
 	GetByTarget(ctx context.Context, targetID string) ([]core.Association, error)
 	GetCountsBySchema(ctx context.Context, messageID string) (map[string]int64, error)
@@ -26,6 +27,7 @@ type Service interface {
 	GetCountsBySchemaAndVariant(ctx context.Context, messageID string, schema string) (map[string]int64, error)
 	GetBySchemaAndVariant(ctx context.Context, messageID string, schema string, variant string) ([]core.Association, error)
 	GetOwnByTarget(ctx context.Context, targetID, author string) ([]core.Association, error)
+	Count(ctx context.Context) (int64, error)
 }
 
 type service struct {
@@ -37,6 +39,14 @@ type service struct {
 // NewService creates a new association service
 func NewService(repo Repository, stream stream.Service, message message.Service) Service {
 	return &service{repo, stream, message}
+}
+
+// Count returns the count number of messages
+func (s *service) Count(ctx context.Context) (int64, error) {
+	ctx, span := tracer.Start(ctx, "ServiceCount")
+	defer span.End()
+
+	return s.repo.Count(ctx)
 }
 
 // PostAssociation creates a new association
@@ -153,9 +163,25 @@ func (s *service) GetOwn(ctx context.Context, author string) ([]core.Association
 }
 
 // Delete deletes an association by ID
-func (s *service) Delete(ctx context.Context, id string) (core.Association, error) {
+func (s *service) Delete(ctx context.Context, id, requester string) (core.Association, error) {
 	ctx, span := tracer.Start(ctx, "ServiceDelete")
 	defer span.End()
+
+	targetAssociation, err := s.repo.Get(ctx, id)
+	if err != nil {
+		span.RecordError(err)
+		return core.Association{}, err
+	}
+
+	targetMessage, err := s.message.Get(ctx, targetAssociation.TargetID)
+	if err != nil {
+		span.RecordError(err)
+		return core.Association{}, err
+	}
+
+	if (targetAssociation.Author != requester) && (targetMessage.Author != requester) {
+		return core.Association{}, fmt.Errorf("you are not authorized to perform this action")
+	}
 
 	deleted, err := s.repo.Delete(ctx, id)
 	if err != nil {
@@ -167,11 +193,6 @@ func (s *service) Delete(ctx context.Context, id string) (core.Association, erro
 		return deleted, nil
 	}
 
-	targetMessage, err := s.message.Get(ctx, deleted.TargetID)
-	if err != nil {
-		span.RecordError(err)
-		return deleted, err
-	}
 	for _, posted := range targetMessage.Streams {
 		event := core.Event{
 			Stream: posted,

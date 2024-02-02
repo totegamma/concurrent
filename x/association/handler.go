@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"github.com/totegamma/concurrent/x/message"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
 )
@@ -25,12 +24,11 @@ type Handler interface {
 
 type handler struct {
 	service Service
-	message message.Service
 }
 
 // NewHandler creates a new handler
-func NewHandler(service Service, message message.Service) Handler {
-	return &handler{service: service, message: message}
+func NewHandler(service Service) Handler {
+	return &handler{service: service}
 }
 
 // Get returns an association by ID
@@ -139,22 +137,9 @@ func (h handler) Delete(c echo.Context) error {
 	defer span.End()
 
 	associationID := c.Param("id")
+	requester := c.Get("requester").(string)
 
-	association, err := h.service.Get(ctx, associationID)
-	if err != nil {
-		return c.JSON(http.StatusNotFound, echo.Map{"error": "target association not found"})
-	}
-
-	message, err := h.message.Get(ctx, association.TargetID)
-	if err == nil { // if target message exists
-
-		requester := c.Get("requester").(string)
-		if (association.Author != requester) && (message.Author != requester) {
-			return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action"})
-		}
-	}
-
-	deleted, err := h.service.Delete(ctx, associationID)
+	deleted, err := h.service.Delete(ctx, associationID, requester)
 	if err != nil {
 		return err
 	}

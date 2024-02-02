@@ -11,6 +11,7 @@ import (
 type Service interface {
 	GetCharacters(ctx context.Context, owner string, schema string) ([]core.Character, error)
 	PutCharacter(ctx context.Context, objectStr string, signature string, id string) (core.Character, error)
+	Count(ctx context.Context) (int64, error)
 }
 
 type service struct {
@@ -20,6 +21,14 @@ type service struct {
 // NewService creates a new character service
 func NewService(repo Repository) Service {
 	return &service{repo: repo}
+}
+
+// Count returns the count number of messages
+func (s *service) Count(ctx context.Context) (int64, error) {
+	ctx, span := tracer.Start(ctx, "ServiceCount")
+	defer span.End()
+
+	return s.repo.Count(ctx)
 }
 
 // GetCharacters returns characters by owner and schema

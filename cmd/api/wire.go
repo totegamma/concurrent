@@ -24,35 +24,28 @@ import (
 )
 
 var domainHandlerProvider = wire.NewSet(domain.NewHandler, domain.NewService, domain.NewRepository)
-var entityHandlerProvider = wire.NewSet(entity.NewHandler, entity.NewService, entity.NewRepository)
-var streamHandlerProvider = wire.NewSet(stream.NewHandler, stream.NewService, stream.NewRepository, entity.NewService, entity.NewRepository)
-var messageHandlerProvider = wire.NewSet(message.NewHandler, message.NewService, message.NewRepository)
-var characterHandlerProvider = wire.NewSet(character.NewHandler, character.NewService, character.NewRepository)
-var associationHandlerProvider = wire.NewSet(association.NewHandler, association.NewService, association.NewRepository, message.NewService, message.NewRepository)
 var userkvHandlerProvider = wire.NewSet(userkv.NewHandler, userkv.NewService, userkv.NewRepository)
 var collectionHandlerProvider = wire.NewSet(collection.NewHandler, collection.NewService, collection.NewRepository)
 
 var jwtServiceProvider = wire.NewSet(jwt.NewService, jwt.NewRepository)
 var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, jwtServiceProvider)
 var streamServiceProvider = wire.NewSet(stream.NewService, stream.NewRepository, entityServiceProvider)
+var messageServiceProvider = wire.NewSet(message.NewService, message.NewRepository, streamServiceProvider)
+var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, messageServiceProvider)
+var characterServiceProvider = wire.NewSet(character.NewService, character.NewRepository)
 
-func SetupMessageHandler(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) message.Handler {
-	wire.Build(messageHandlerProvider, jwtServiceProvider, stream.NewService, stream.NewRepository, entity.NewService, entity.NewRepository)
+func SetupMessageService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) message.Service {
+	wire.Build(messageServiceProvider)
 	return nil
 }
 
-func SetupCharacterHandler(db *gorm.DB, config util.Config) character.Handler {
-	wire.Build(characterHandlerProvider)
+func SetupCharacterService(db *gorm.DB, mc *memcache.Client, config util.Config) character.Service {
+	wire.Build(characterServiceProvider)
 	return nil
 }
 
-func SetupAssociationHandler(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) association.Handler {
-	wire.Build(associationHandlerProvider, jwtServiceProvider, stream.NewService, stream.NewRepository, entity.NewService, entity.NewRepository)
-	return nil
-}
-
-func SetupStreamHandler(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) stream.Handler {
-	wire.Build(streamHandlerProvider, jwtServiceProvider)
+func SetupAssociationService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) association.Service {
+	wire.Build(associationServiceProvider)
 	return nil
 }
 
@@ -66,8 +59,8 @@ func SetupDomainHandler(db *gorm.DB, config util.Config) domain.Handler {
 	return nil
 }
 
-func SetupEntityHandler(db *gorm.DB, rdb *redis.Client, config util.Config) entity.Handler {
-	wire.Build(entityHandlerProvider, jwtServiceProvider)
+func SetupEntityService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) entity.Service {
+	wire.Build(entityServiceProvider)
 	return nil
 }
 
@@ -76,22 +69,17 @@ func SetupSocketHandler(rdb *redis.Client, manager socket.Manager, config util.C
 	return nil
 }
 
-func SetupAgent(db *gorm.DB, rdb *redis.Client, config util.Config) agent.Agent {
+func SetupAgent(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) agent.Agent {
 	wire.Build(agent.NewAgent, jwtServiceProvider, domain.NewService, domain.NewRepository, entity.NewService, entity.NewRepository)
 	return nil
 }
 
-func SetupAuthHandler(db *gorm.DB, rdb *redis.Client, config util.Config) auth.Handler {
-	wire.Build(jwtServiceProvider, auth.NewHandler, auth.NewService, auth.NewRepository, entity.NewService, entity.NewRepository, domain.NewService, domain.NewRepository)
-	return nil
-}
-
-func SetupAuthService(db *gorm.DB, rdb *redis.Client, config util.Config) auth.Service {
+func SetupAuthService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) auth.Service {
 	wire.Build(jwtServiceProvider, auth.NewService, auth.NewRepository, entity.NewService, entity.NewRepository, domain.NewService, domain.NewRepository)
 	return nil
 }
 
-func SetupUserkvHandler(db *gorm.DB, rdb *redis.Client, config util.Config) userkv.Handler {
+func SetupUserkvHandler(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) userkv.Handler {
 	wire.Build(userkvHandlerProvider, jwtServiceProvider, entity.NewService, entity.NewRepository)
 	return nil
 }

@@ -19,7 +19,7 @@ type Service interface {
 	GetWithOwnAssociations(ctx context.Context, id string, requester string) (core.Message, error)
 	PostMessage(ctx context.Context, objectStr string, signature string, streams []string) (core.Message, error)
 	Delete(ctx context.Context, id string) (core.Message, error)
-	Total(ctx context.Context) (int64, error)
+	Count(ctx context.Context) (int64, error)
 }
 
 type service struct {
@@ -33,12 +33,12 @@ func NewService(rdb *redis.Client, repo Repository, stream stream.Service) Servi
 	return &service{rdb, repo, stream}
 }
 
-// Total returns the total number of messages
-func (s *service) Total(ctx context.Context) (int64, error) {
-	ctx, span := tracer.Start(ctx, "ServiceTotal")
+// Count returns the count number of messages
+func (s *service) Count(ctx context.Context) (int64, error) {
+	ctx, span := tracer.Start(ctx, "ServiceCount")
 	defer span.End()
 
-	return s.repo.Total(ctx)
+	return s.repo.Count(ctx)
 }
 
 // Get returns a message by ID

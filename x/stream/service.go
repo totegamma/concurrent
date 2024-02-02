@@ -49,6 +49,7 @@ type Service interface {
 	GetChunksFromRemote(ctx context.Context, host string, streams []string, pivot time.Time) (map[string]Chunk, error)
 
 	ListStreamSubscriptions(ctx context.Context) (map[string]int64, error)
+	Count(ctx context.Context) (int64, error)
 }
 
 type service struct {
@@ -60,6 +61,14 @@ type service struct {
 // NewService creates a new service
 func NewService(repository Repository, entity entity.Service, config util.Config) Service {
 	return &service{repository, entity, config}
+}
+
+// Count returns the count number of messages
+func (s *service) Count(ctx context.Context) (int64, error) {
+	ctx, span := tracer.Start(ctx, "ServiceCount")
+	defer span.End()
+
+	return s.repository.Count(ctx)
 }
 
 func min(a, b int) int {

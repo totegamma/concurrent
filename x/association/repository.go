@@ -3,8 +3,11 @@ package association
 import (
 	"context"
 	"fmt"
+	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/totegamma/concurrent/x/core"
 	"gorm.io/gorm"
+	"log/slog"
+	"strconv"
 )
 
 // Repository is the interface for association repository
@@ -19,15 +22,48 @@ type Repository interface {
 	GetCountsBySchemaAndVariant(ctx context.Context, messageID string, schema string) (map[string]int64, error)
 	GetBySchemaAndVariant(ctx context.Context, messageID string, schema string, variant string) ([]core.Association, error)
 	GetOwnByTarget(ctx context.Context, targetID, author string) ([]core.Association, error)
+	Count(ctx context.Context) (int64, error)
 }
 
 type repository struct {
 	db *gorm.DB
+	mc *memcache.Client
 }
 
 // NewRepository creates a new association repository
-func NewRepository(db *gorm.DB) Repository {
-	return &repository{db: db}
+func NewRepository(db *gorm.DB, mc *memcache.Client) Repository {
+
+	var count int64
+	err := db.Model(&core.Association{}).Count(&count).Error
+	if err != nil {
+		slog.Error(
+			"failed to count associations",
+			slog.String("error", err.Error()),
+		)
+	}
+
+	mc.Set(&memcache.Item{Key: "association_count", Value: []byte(strconv.FormatInt(count, 10))})
+
+	return &repository{db, mc}
+}
+
+// Total returns the total number of associations
+func (r *repository) Count(ctx context.Context) (int64, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryTotal")
+	defer span.End()
+
+	item, err := r.mc.Get("association_count")
+	if err != nil {
+		span.RecordError(err)
+		return 0, err
+	}
+
+	count, err := strconv.ParseInt(string(item.Value), 10, 64)
+	if err != nil {
+		span.RecordError(err)
+		return 0, err
+	}
+	return count, nil
 }
 
 // Create creates new association
@@ -36,6 +72,8 @@ func (r *repository) Create(ctx context.Context, association core.Association) (
 	defer span.End()
 
 	err := r.db.WithContext(ctx).Create(&association).Error
+
+	r.mc.Increment("association_count", 1)
 
 	return association, err
 }
@@ -75,6 +113,9 @@ func (r *repository) Delete(ctx context.Context, id string) (core.Association, e
 		fmt.Printf("Error deleting association: %v\n", err)
 		return core.Association{}, err
 	}
+
+	r.mc.Decrement("association_count", 1)
+
 	return deleted, nil
 }
 

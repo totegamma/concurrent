@@ -33,12 +33,12 @@ type Service interface {
 	IsUserExists(ctx context.Context, user string) bool
 	Delete(ctx context.Context, id string) error
 	Ack(ctx context.Context, from, to string) error
-	Total(ctx context.Context) (int64, error)
 	GetAcker(ctx context.Context, key string) ([]core.Ack, error)
 	GetAcking(ctx context.Context, key string) ([]core.Ack, error)
 	GetAddress(ctx context.Context, ccid string) (core.Address, error)
 	UpdateAddress(ctx context.Context, ccid string, domain string, signedAt time.Time) error
 	UpdateRegistration(ctx context.Context, id string, payload string, signature string) error // NOTE: for migration. Remove later
+	Count(ctx context.Context) (int64, error)
 }
 
 type service struct {
@@ -56,12 +56,12 @@ func NewService(repository Repository, config util.Config, jwtService jwt.Servic
 	}
 }
 
-// Total returns the total number of entities
-func (s *service) Total(ctx context.Context) (int64, error) {
-	ctx, span := tracer.Start(ctx, "ServiceTotal")
+// Total returns the count number of entities
+func (s *service) Count(ctx context.Context) (int64, error) {
+	ctx, span := tracer.Start(ctx, "ServiceCount")
 	defer span.End()
 
-	return s.repository.Total(ctx)
+	return s.repository.Count(ctx)
 }
 
 // Create creates new entity

@@ -2,9 +2,13 @@ package entity
 
 import (
 	"context"
-	"github.com/totegamma/concurrent/x/core"
 	"gorm.io/gorm"
+	"log/slog"
+	"strconv"
 	"time"
+
+	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/totegamma/concurrent/x/core"
 )
 
 // Repository is the interface for host repository
@@ -17,7 +21,7 @@ type Repository interface {
 	Delete(ctx context.Context, key string) error
 	Ack(ctx context.Context, ack *core.Ack) error
 	Unack(ctx context.Context, ack *core.Ack) error
-	Total(ctx context.Context) (int64, error)
+	Count(ctx context.Context) (int64, error)
 	GetAcker(ctx context.Context, key string) ([]core.Ack, error)
 	GetAcking(ctx context.Context, key string) ([]core.Ack, error)
 	GetAddress(ctx context.Context, ccid string) (core.Address, error)
@@ -27,21 +31,43 @@ type Repository interface {
 
 type repository struct {
 	db *gorm.DB
-}
-
-// Total returns the total number of entities
-func (r *repository) Total(ctx context.Context) (int64, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryTotal")
-	defer span.End()
-
-	var count int64
-	err := r.db.WithContext(ctx).Model(&core.Entity{}).Count(&count).Error
-	return count, err
+	mc *memcache.Client
 }
 
 // NewRepository creates a new host repository
-func NewRepository(db *gorm.DB) Repository {
-	return &repository{db: db}
+func NewRepository(db *gorm.DB, mc *memcache.Client) Repository {
+
+	var count int64
+	err := db.Model(&core.Entity{}).Count(&count).Error
+	if err != nil {
+		slog.Error(
+			"failed to count entities",
+			slog.String("error", err.Error()),
+		)
+	}
+
+	mc.Set(&memcache.Item{Key: "entity_count", Value: []byte(strconv.FormatInt(count, 10))})
+
+	return &repository{db, mc}
+}
+
+// Count returns the total number of entities
+func (r *repository) Count(ctx context.Context) (int64, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryCount")
+	defer span.End()
+
+	item, err := r.mc.Get("entity_count")
+	if err != nil {
+		span.RecordError(err)
+		return 0, err
+	}
+
+	count, err := strconv.ParseInt(string(item.Value), 10, 64)
+	if err != nil {
+		span.RecordError(err)
+		return 0, err
+	}
+	return count, nil
 }
 
 // GetAddress returns the address of a entity
@@ -109,6 +135,10 @@ func (r *repository) CreateEntity(ctx context.Context, entity *core.Entity, meta
 		return nil
 	})
 
+	if err == nil {
+		r.mc.Increment("entity_count", 1)
+	}
+
 	return err
 }
 
@@ -137,7 +167,13 @@ func (r *repository) Delete(ctx context.Context, id string) error {
 	ctx, span := tracer.Start(ctx, "RepositoryDelete")
 	defer span.End()
 
-	return r.db.WithContext(ctx).Delete(&core.Entity{}, "id = ?", id).Error
+	err := r.db.WithContext(ctx).Delete(&core.Entity{}, "id = ?", id).Error
+
+	if err == nil {
+		r.mc.Decrement("entity_count", 1)
+	}
+
+	return err
 }
 
 // Update updates a entity

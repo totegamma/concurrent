@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -49,6 +50,7 @@ type Repository interface {
 	PublishEvent(ctx context.Context, event core.Event) error
 
 	ListStreamSubscriptions(ctx context.Context) (map[string]int64, error)
+	Count(ctx context.Context) (int64, error)
 }
 
 type repository struct {
@@ -61,7 +63,38 @@ type repository struct {
 
 // NewRepository creates a new stream repository
 func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) Repository {
+
+	var count int64
+	err := db.Model(&core.Stream{}).Count(&count).Error
+	if err != nil {
+		slog.Error(
+			"failed to count streams",
+			slog.String("error", err.Error()),
+		)
+	}
+
+	mc.Set(&memcache.Item{Key: "stream_count", Value: []byte(strconv.FormatInt(count, 10))})
+
 	return &repository{db, rdb, mc, manager, config}
+}
+
+// Total returns the total number of messages
+func (r *repository) Count(ctx context.Context) (int64, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryTotal")
+	defer span.End()
+
+	item, err := r.mc.Get("stream_count")
+	if err != nil {
+		span.RecordError(err)
+		return 0, err
+	}
+
+	count, err := strconv.ParseInt(string(item.Value), 10, 64)
+	if err != nil {
+		span.RecordError(err)
+		return 0, err
+	}
+	return count, nil
 }
 
 func (r *repository) PublishEvent(ctx context.Context, event core.Event) error {
@@ -418,6 +451,9 @@ func (r *repository) CreateStream(ctx context.Context, stream core.Stream) (core
 	defer span.End()
 
 	err := r.db.WithContext(ctx).Create(&stream).Error
+
+	r.mc.Increment("stream_count", 1)
+
 	return stream, err
 }
 
@@ -459,6 +495,8 @@ func (r *repository) ListStreamByAuthor(ctx context.Context, author string) ([]c
 func (r *repository) DeleteStream(ctx context.Context, streamID string) error {
 	ctx, span := tracer.Start(ctx, "RepositoryDeleteStream")
 	defer span.End()
+
+	r.mc.Decrement("stream_count", 1)
 
 	return r.db.WithContext(ctx).Delete(&core.Stream{}, "id = ?", streamID).Error
 }

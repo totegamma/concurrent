@@ -9,7 +9,6 @@ import (
 	"net/http/httputil"
 	"net/url"
 	"os"
-	"path/filepath"
 	"strconv"
 	"strings"
 
@@ -75,14 +74,6 @@ func main() {
 	log.Print("Config loaded! I am: ", config.Concurrent.CCID)
 
 	// Echoの設定
-	logfile, err := os.OpenFile(filepath.Join(config.Server.LogPath, "gateway-access.log"), os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		log.Fatal(err)
-	}
-	defer logfile.Close()
-
-	e.Logger.SetOutput(logfile)
-
 	e.HidePort = true
 	e.HideBanner = true
 
@@ -127,8 +118,23 @@ func main() {
 		},
 	}))
 
-	e.Use(echoprometheus.NewMiddleware("ccgateway"))
 	e.Use(auth.ParseJWT)
+
+	e.Use(echoprometheus.NewMiddlewareWithConfig(echoprometheus.MiddlewareConfig{
+		Namespace: "ccgateway",
+		LabelFuncs: map[string]echoprometheus.LabelValueFunc{
+			"service": func(c echo.Context, err error) string {
+				service := c.Response().Header().Get("cc-service")
+				if service == "" {
+					service = "unknown"
+				}
+				return service
+			},
+		},
+		Skipper: func(c echo.Context) bool {
+			return c.Path() == "/metrics" || c.Path() == "/health"
+		},
+	}))
 
 	// Postrgresqlとの接続
 	db, err := gorm.Open(postgres.Open(config.Server.Dsn), &gorm.Config{})
@@ -201,6 +207,7 @@ func main() {
 		}
 
 		handler := func(c echo.Context) error {
+			c.Response().Header().Set("cc-service", service.Name)
 			claims, ok := c.Get("jwtclaims").(jwt.Claims)
 			if ok {
 				c.Request().Header.Set("cc-issuer", claims.Issuer)

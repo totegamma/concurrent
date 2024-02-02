@@ -1,4 +1,3 @@
-//go:generate go run github.com/google/wire/cmd/wire gen .
 package main
 
 import (
@@ -20,8 +19,13 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/auth"
+	"github.com/totegamma/concurrent/x/character"
 	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/entity"
+	"github.com/totegamma/concurrent/x/message"
+	"github.com/totegamma/concurrent/x/stream"
 	"github.com/totegamma/concurrent/x/util"
 
 	"github.com/bradfitz/gomemcache/memcache"
@@ -177,21 +181,31 @@ func main() {
 	}
 	defer mc.Close()
 
-	agent := SetupAgent(db, rdb, config)
+	agent := SetupAgent(db, rdb, mc, config)
 
 	socketManager := SetupSocketManager(mc, db, rdb, config)
 	socketHandler := SetupSocketHandler(rdb, socketManager, config)
-	messageHandler := SetupMessageHandler(db, rdb, mc, socketManager, config)
-	characterHandler := SetupCharacterHandler(db, config)
-	associationHandler := SetupAssociationHandler(db, rdb, mc, socketManager, config)
-	streamHandler := SetupStreamHandler(db, rdb, mc, socketManager, config)
 	domainHandler := SetupDomainHandler(db, config)
-	entityHandler := SetupEntityHandler(db, rdb, config)
-	authHandler := SetupAuthHandler(db, rdb, config)
-	userkvHandler := SetupUserkvHandler(db, rdb, config)
+	userkvHandler := SetupUserkvHandler(db, rdb, mc, config)
 	collectionHandler := SetupCollectionHandler(db, rdb, config)
 
-	authService := SetupAuthService(db, rdb, config)
+	messageService := SetupMessageService(db, rdb, mc, socketManager, config)
+	messageHandler := message.NewHandler(messageService)
+
+	associationService := SetupAssociationService(db, rdb, mc, socketManager, config)
+	associationHandler := association.NewHandler(associationService)
+
+	characterService := SetupCharacterService(db, mc, config)
+	characterHandler := character.NewHandler(characterService)
+
+	streamService := SetupStreamService(db, rdb, mc, socketManager, config)
+	streamHandler := stream.NewHandler(streamService)
+
+	entityService := SetupEntityService(db, rdb, mc, config)
+	entityHandler := entity.NewHandler(entityService, config)
+
+	authService := SetupAuthService(db, rdb, mc, config)
+	authHandler := auth.NewHandler(authService)
 
 	apiV1 := e.Group("", auth.ParseJWT)
 	// domain
@@ -313,12 +327,21 @@ func main() {
 	)
 	prometheus.MustRegister(streamSubscriptionMetrics)
 
-	var streamService = SetupStreamService(db, rdb, mc, socketManager, config)
+	var resourceCountMetrics = prometheus.NewGaugeVec(
+		prometheus.GaugeOpts{
+			Name: "cc_resources_count",
+			Help: "resources count",
+		},
+		[]string{"type"},
+	)
+	prometheus.MustRegister(resourceCountMetrics)
 
 	go func() {
 		for {
 			time.Sleep(15 * time.Second)
-			subscriptions, err := streamService.ListStreamSubscriptions(context.Background())
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			subscriptions, err := streamService.ListStreamSubscriptions(ctx)
 			if err != nil {
 				slog.Error(fmt.Sprintf("failed to list stream subscriptions: %v", err))
 				continue
@@ -326,6 +349,41 @@ func main() {
 			for stream, count := range subscriptions {
 				streamSubscriptionMetrics.WithLabelValues(stream).Set(float64(count))
 			}
+
+			count, err := messageService.Count(ctx)
+			if err != nil {
+				slog.Error(fmt.Sprintf("failed to count messages: %v", err))
+				continue
+			}
+			resourceCountMetrics.WithLabelValues("message").Set(float64(count))
+
+			count, err = entityService.Count(ctx)
+			if err != nil {
+				slog.Error(fmt.Sprintf("failed to count entities: %v", err))
+				continue
+			}
+			resourceCountMetrics.WithLabelValues("entity").Set(float64(count))
+
+			count, err = characterService.Count(ctx)
+			if err != nil {
+				slog.Error(fmt.Sprintf("failed to count characters: %v", err))
+				continue
+			}
+			resourceCountMetrics.WithLabelValues("character").Set(float64(count))
+
+			count, err = associationService.Count(ctx)
+			if err != nil {
+				slog.Error(fmt.Sprintf("failed to count associations: %v", err))
+				continue
+			}
+			resourceCountMetrics.WithLabelValues("association").Set(float64(count))
+
+			count, err = streamService.Count(ctx)
+			if err != nil {
+				slog.Error(fmt.Sprintf("failed to count streams: %v", err))
+				continue
+			}
+			resourceCountMetrics.WithLabelValues("stream").Set(float64(count))
 		}
 	}()
 

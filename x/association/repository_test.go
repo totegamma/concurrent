@@ -5,6 +5,7 @@ import (
 	"log"
 	"testing"
 
+	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/stretchr/testify/assert"
 	"github.com/totegamma/concurrent/internal/testutil"
 	"github.com/totegamma/concurrent/x/core"
@@ -14,16 +15,20 @@ import (
 var ctx = context.Background()
 var repo Repository
 var db *gorm.DB
+var mc *memcache.Client
 
 func TestMain(m *testing.M) {
 	log.Println("Test Start")
 
 	var cleanup_db func()
-	_db, cleanup_db := testutil.CreateDB()
+	db, cleanup_db = testutil.CreateDB()
 	defer cleanup_db()
-	db = _db
 
-	repo = NewRepository(_db)
+	var cleanup_mc func()
+	mc, cleanup_mc = testutil.CreateMC()
+	defer cleanup_mc()
+
+	repo = NewRepository(db, mc)
 
 	m.Run()
 

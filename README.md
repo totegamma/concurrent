@@ -17,11 +17,7 @@ ConcurrentではユーザーのIDはConcurrentアドレス(cc-address)(例えば
 
 ## インスタンスの立ち上げ方
 
-> [!IMPORTANT]
-> 現在1/26に大きめのマイグレーション作業が必要になるアップデートのリリースを予定しており、このタイミングでの新規建造はあまりオススメしていません🙇‍♂️
-
-docs/README.mdを参照
+[concurrent square](https://square.concurrent.world/operator/basic/index.html) を参照
 
 ## Contributing
 コードのPRは必ずissueでその可否のコンセンサスをとってからにしてください(せっかく作ってくれたPRをcloseするのは心が痛いので)。
-

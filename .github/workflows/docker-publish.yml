@@ -42,7 +42,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v3
         with:
-          fetch-tags: ${{ github.ref_name }}
+          fetch-depth: 0
 
       - name: setup go
         uses: actions/setup-go@v2

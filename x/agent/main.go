@@ -113,10 +113,19 @@ func (a *agent) pullRemoteEntities(ctx context.Context, remote core.Domain) erro
 	errored := false
 	for _, entity := range remoteEntities.Content {
 
-		util.VerifySignature(entity.Payload, entity.ID, entity.Signature)
+		err := util.VerifySignature(entity.Payload, entity.ID, entity.Signature)
+		if err != nil {
+			span.RecordError(err)
+			slog.Error(
+				"Invalid signature",
+				slog.String("error", err.Error()),
+				slog.String("module", "agent"),
+			)
+			continue
+		}
 
 		var signedObj core.SignedObject
-		err := json.Unmarshal([]byte(entity.Payload), &signedObj)
+		err = json.Unmarshal([]byte(entity.Payload), &signedObj)
 		if err != nil {
 			span.RecordError(err)
 			slog.Error(
@@ -127,10 +136,17 @@ func (a *agent) pullRemoteEntities(ctx context.Context, remote core.Domain) erro
 			continue
 		}
 
-		existance, err := a.entity.GetAddress(ctx, entity.ID)
+		existanceAddr, err := a.entity.GetAddress(ctx, entity.ID)
 		if err == nil {
 			// compare signed date
-			if signedObj.SignedAt.Unix() <= existance.SignedAt.Unix() {
+			if signedObj.SignedAt.Unix() <= existanceAddr.SignedAt.Unix() {
+				continue
+			}
+		}
+
+		existanceEntity, err := a.entity.Get(ctx, entity.ID)
+		if err == nil {
+			if signedObj.SignedAt.Unix() <= existanceEntity.CDate.Unix() {
 				continue
 			}
 		}

@@ -7,17 +7,17 @@ import (
 	"time"
 )
 
-type SignedObject struct {
-	Signer   string      `json:"signer"`
-	Type     string      `json:"type"`
-	Schema   string      `json:"schema,omitempty"`
-	KeyID    string      `json:"keyID"`
-	Body     interface{} `json:"body"`
-	Meta     interface{} `json:"meta,omitempty"`
-	SignedAt time.Time   `json:"signedAt"`
+type SignedObject[T any] struct {
+	Signer   string    `json:"signer"`
+	Type     string    `json:"type"`
+	Schema   string    `json:"schema,omitempty"`
+	KeyID    string    `json:"keyID,omitempty"`
+	Body     T         `json:"body"`
+	Meta     any       `json:"meta,omitempty"`
+	SignedAt time.Time `json:"signedAt"`
 }
 
-type Key struct {
+type Key struct { // signtype: enact | revoke
 	ID           string `json:"id" gorm:"primaryKey;type:char(42)"` // e.g. CK...
 	Root         string `json:"root" gorm:"type:char(42)"`
 	Parent       string `json:"parent" gorm:"type:char(42)"`
@@ -40,9 +40,19 @@ type Key struct {
 	CDate           time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 }
 
+type Enact struct {
+	CKID   string `json:"ckid"`
+	Root   string `json:"root"`
+	Parent string `json:"parent"`
+}
+
+type Revoke struct {
+	CKID string `json:"ckid"`
+}
+
 // Association is one of a concurrent base object
 // immutable
-type Association struct {
+type Association struct { // signtype: association
 	ID          string         `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
 	Author      string         `json:"author" gorm:"type:char(42);uniqueIndex:uniq_association"`
 	Schema      string         `json:"schema"  gorm:"type:text;uniqueIndex:uniq_association"`
@@ -58,7 +68,7 @@ type Association struct {
 
 // Character is one of  a Concurrent base object
 // mutable
-type Character struct {
+type Character struct { // signtype: character
 	ID           string        `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
 	Author       string        `json:"author" gorm:"type:char(42)"`
 	Schema       string        `json:"schema" gorm:"type:text"`
@@ -71,7 +81,7 @@ type Character struct {
 
 // Entity is one of a concurrent base object
 // mutable
-type Entity struct {
+type Entity struct { // signtype: affiliation
 	ID           string `json:"ccid" gorm:"type:char(42)"`
 	Tag          string `json:"tag" gorm:"type:text;"`
 	Score        int    `json:"score" gorm:"type:integer;default:0"`
@@ -86,6 +96,10 @@ type Entity struct {
 	Signature string    `json:"signature" gorm:"type:char(130)"`
 	CDate     time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 	MDate     time.Time `json:"mdate" gorm:"autoUpdateTime"`
+}
+
+type Affiliation struct {
+	Domain string `json:"domain"`
 }
 
 type EntityMeta struct {
@@ -118,7 +132,7 @@ type Domain struct {
 
 // Message is one of a concurrent base object
 // immutable
-type Message struct {
+type Message struct { // signtype: message
 	ID              string         `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
 	Author          string         `json:"author" gorm:"type:char(42)"`
 	Schema          string         `json:"schema" gorm:"type:text"`
@@ -132,7 +146,7 @@ type Message struct {
 
 // Stream is one of a base object of concurrent
 // mutable
-type Stream struct {
+type Stream struct { // non-signed object
 	ID         string         `json:"id" gorm:"primaryKey;type:char(20);"`
 	Visible    bool           `json:"visible" gorm:"type:boolean;default:false"`
 	Author     string         `json:"author" gorm:"type:char(42)"`
@@ -158,7 +172,7 @@ type StreamItem struct {
 
 // Collection is one of a base object of concurrent
 // mutable
-type Collection struct {
+type Collection struct { // non-signed object
 	ID         string           `json:"id" gorm:"primaryKey;type:char(20);"`
 	Visible    bool             `json:"visible" gorm:"type:boolean;default:false"`
 	Author     string           `json:"author" gorm:"type:char(42)"`
@@ -179,7 +193,7 @@ type CollectionItem struct {
 	Payload    string `json:"payload" gorm:"type:json;default:'{}'"`
 }
 
-type Ack struct {
+type Ack struct { // signtype: ack | unack
 	From      string `json:"from" gorm:"primaryKey;type:char(42)"`
 	To        string `json:"to" gorm:"primaryKey;type:char(42)"`
 	Payload   string `json:"payload" gorm:"type:json;default:'{}'"`

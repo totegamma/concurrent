@@ -73,9 +73,12 @@ func CreateDB() (*gorm.DB, func()) {
 		&core.StreamItem{},
 		&core.Domain{},
 		&core.Entity{},
+		&core.EntityMeta{},
+		&core.Address{},
 		&core.Collection{},
 		&core.CollectionItem{},
 		&core.Ack{},
+		&core.Key{},
 	)
 
 	return db, cleanup

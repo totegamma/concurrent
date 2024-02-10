@@ -103,7 +103,7 @@ func SetupAgent(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util
 }
 
 func SetupAuthService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) auth.Service {
-	repository := auth.NewRepository()
+	repository := auth.NewRepository(db)
 	entityRepository := entity.NewRepository(db, mc)
 	jwtRepository := jwt.NewRepository(rdb)
 	service := jwt.NewService(jwtRepository)

@@ -17,15 +17,28 @@ type SignedObject struct {
 	SignedAt time.Time   `json:"signedAt"`
 }
 
-/*
-# SignedObject Body Schemas
-
-## Entity
-### Domain Affiliation
-{
-    domain: string,
+type Key struct {
+	ID           string `json:"id" gorm:"primaryKey;type:char(42)"` // e.g. CK...
+	Root         string `json:"root" gorm:"type:char(42)"`
+	Parent       string `json:"parent" gorm:"type:char(42)"`
+	EnactPayload string `json:"enactPayload" gorm:"type:json"`
+	/* type: enact
+	   {
+	       CKID: string,
+	       root: string,
+	       parent: string,
+	   }
+	*/
+	EnactSignature string `json:"enactSignature" gorm:"type:char(130)"`
+	RevokePayload  string `json:"revokePayload" gorm:"type:json"`
+	/* type: revoke
+	   {
+	       CKID: string,
+	   }
+	*/
+	RevokeSignature string    `json:"revokeSignature" gorm:"type:char(130)"`
+	CDate           time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 }
-*/
 
 // Association is one of a concurrent base object
 // immutable
@@ -59,14 +72,20 @@ type Character struct {
 // Entity is one of a concurrent base object
 // mutable
 type Entity struct {
-	ID           string    `json:"ccid" gorm:"type:char(42)"`
-	Tag          string    `json:"tag" gorm:"type:text;"`
-	Score        int       `json:"score" gorm:"type:integer;default:0"`
-	IsScoreFixed bool      `json:"isScoreFixed" gorm:"type:boolean;default:false"`
-	Payload      string    `json:"payload" gorm:"type:json;default:'{}'"`
-	Signature    string    `json:"signature" gorm:"type:char(130)"`
-	CDate        time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
-	MDate        time.Time `json:"mdate" gorm:"autoUpdateTime"`
+	ID           string `json:"ccid" gorm:"type:char(42)"`
+	Tag          string `json:"tag" gorm:"type:text;"`
+	Score        int    `json:"score" gorm:"type:integer;default:0"`
+	IsScoreFixed bool   `json:"isScoreFixed" gorm:"type:boolean;default:false"`
+	Payload      string `json:"payload" gorm:"type:json;default:'{}'"`
+	/* Domain Affiliation
+	   {
+	       type: affiliation,
+	       domain: string,
+	   }
+	*/
+	Signature string    `json:"signature" gorm:"type:char(130)"`
+	CDate     time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
+	MDate     time.Time `json:"mdate" gorm:"autoUpdateTime"`
 }
 
 type EntityMeta struct {

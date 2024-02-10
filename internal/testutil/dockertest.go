@@ -16,17 +16,20 @@ import (
 )
 
 var (
-	user     = "postgres"
-	password = "secret"
-	dbName   = "unittest"
-	dialect  = "postgres"
-	dsn      = "postgres://%s:%s@localhost:%s/%s?sslmode=disable"
+	user        = "postgres"
+	password    = "secret"
+	dbName      = "unittest"
+	dialect     = "postgres"
+	dsnTemplate = "postgres://%s:%s@localhost:%s/%s?sslmode=disable"
 )
 
 var pool *dockertest.Pool
 var poolLock = &sync.Mutex{}
+var dbLock = &sync.Mutex{}
 
 func CreateDB() (*gorm.DB, func()) {
+	dbLock.Lock()
+	defer dbLock.Unlock()
 
 	pool := getPool()
 
@@ -50,14 +53,15 @@ func CreateDB() (*gorm.DB, func()) {
 	}
 
 	port := resource.GetPort("5432/tcp")
-	log.Printf("Postgres running on port %s", port)
+	log.Printf("Postgres running on port %s\n", port)
+	dsn := fmt.Sprintf(dsnTemplate, user, password, port, dbName)
+	log.Printf("DSN: %s\n", dsn)
 
 	var db *gorm.DB
 	if err := pool.Retry(func() error {
-		time.Sleep(time.Second * 10)
+		time.Sleep(time.Second * 2)
 
 		var err error
-		dsn = fmt.Sprintf(dsn, user, password, port, dbName)
 
 		db, err = gorm.Open(postgres.Open(dsn), &gorm.Config{})
 		return err
@@ -111,7 +115,7 @@ func CreateMC() (*memcache.Client, func()) {
 	// Memcached(コンテナ)との接続
 	var client *memcache.Client
 	if err := pool.Retry(func() error {
-		time.Sleep(time.Second * 10)
+		time.Sleep(time.Second * 1)
 
 		var err error
 		client = memcache.New("localhost:" + port)
@@ -149,7 +153,7 @@ func CreateRDB() (*redis.Client, func()) {
 	// Redis(コンテナ)との接続
 	var client *redis.Client
 	if err := pool.Retry(func() error {
-		time.Sleep(time.Second * 10)
+		time.Sleep(time.Second * 1)
 
 		var err error
 		client = redis.NewClient(&redis.Options{
@@ -177,7 +181,7 @@ func getPool() *dockertest.Pool {
 	if pool == nil {
 		var err error
 		pool, err = dockertest.NewPool("")
-		pool.MaxWait = time.Minute * 2
+		pool.MaxWait = time.Second * 10
 		if err != nil {
 			log.Fatalf("Could not connect to docker: %s", err)
 		}

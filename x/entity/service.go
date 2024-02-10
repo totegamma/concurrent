@@ -437,7 +437,7 @@ func checkRegistration(ccid, payload, signature, mydomain string) error {
 		return err
 	}
 
-	var signedObject core.SignedObject
+	var signedObject core.SignedObject[any] //TODO
 	err = json.Unmarshal([]byte(payload), &signedObject)
 	if err != nil {
 		return err

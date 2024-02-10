@@ -2,20 +2,26 @@ package auth
 
 import (
 	"context"
+	"encoding/json"
+	"strconv"
+	"time"
+
 	"github.com/labstack/echo/v4"
 	"github.com/rs/xid"
+
+	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/util"
-	"strconv"
-	"time"
 )
 
 // Service is the interface for auth service
 type Service interface {
 	IssuePassport(ctx context.Context, request string, remote string) (string, error)
 	Restrict(principal Principal) echo.MiddlewareFunc
+
+	EnactKey(ctx context.Context, payload, signature string) (core.Key, error)
 }
 
 type service struct {
@@ -60,4 +66,35 @@ func (s *service) IssuePassport(ctx context.Context, requester, remote string) (
 	}
 
 	return response, nil
+}
+
+// EnactKey validates new subkey and save it if valid
+func (s *service) EnactKey(ctx context.Context, payload, signature string) (core.Key, error) {
+	ctx, span := tracer.Start(ctx, "ServiceEnactKey")
+	defer span.End()
+
+	object := core.SignedObject[core.Enact]{}
+	err := json.Unmarshal([]byte(payload), &object)
+	if err != nil {
+		span.RecordError(err)
+		return core.Key{}, err
+	}
+
+	// TODO: add validation logic
+
+	key := core.Key{
+		ID:             object.Body.CKID,
+		Root:           object.Body.Root,
+		Parent:         object.Body.Parent,
+		EnactPayload:   payload,
+		EnactSignature: signature,
+	}
+
+	created, err := s.repository.Enact(ctx, key)
+	if err != nil {
+		span.RecordError(err)
+		return core.Key{}, err
+	}
+
+	return created, nil
 }

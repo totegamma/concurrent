@@ -124,7 +124,7 @@ func (a *agent) pullRemoteEntities(ctx context.Context, remote core.Domain) erro
 			continue
 		}
 
-		var signedObj core.SignedObject
+		var signedObj core.SignedObject[any] // TODO
 		err = json.Unmarshal([]byte(entity.Payload), &signedObj)
 		if err != nil {
 			span.RecordError(err)

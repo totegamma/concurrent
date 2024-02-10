@@ -30,7 +30,7 @@ type Key struct { // signtype: enact | revoke
 	   }
 	*/
 	EnactSignature string `json:"enactSignature" gorm:"type:char(130)"`
-	RevokePayload  string `json:"revokePayload" gorm:"type:json"`
+	RevokePayload  string `json:"revokePayload" gorm:"type:json;default:'null'"`
 	/* type: revoke
 	   {
 	       CKID: string,

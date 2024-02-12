@@ -3,7 +3,9 @@ package auth
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -22,6 +24,7 @@ type Service interface {
 	Restrict(principal Principal) echo.MiddlewareFunc
 
 	EnactKey(ctx context.Context, payload, signature string) (core.Key, error)
+	ValidateSignedObject(ctx context.Context, payload, signature string) error
 }
 
 type service struct {
@@ -73,14 +76,18 @@ func (s *service) EnactKey(ctx context.Context, payload, signature string) (core
 	ctx, span := tracer.Start(ctx, "ServiceEnactKey")
 	defer span.End()
 
-	object := core.SignedObject[core.Enact]{}
-	err := json.Unmarshal([]byte(payload), &object)
+	err := s.ValidateSignedObject(ctx, payload, signature)
 	if err != nil {
 		span.RecordError(err)
 		return core.Key{}, err
 	}
 
-	// TODO: add validation logic
+	object := core.SignedObject[core.Enact]{}
+	err = json.Unmarshal([]byte(payload), &object)
+	if err != nil {
+		span.RecordError(err)
+		return core.Key{}, err
+	}
 
 	key := core.Key{
 		ID:             object.Body.CKID,
@@ -97,4 +104,29 @@ func (s *service) EnactKey(ctx context.Context, payload, signature string) (core
 	}
 
 	return created, nil
+}
+
+func (s *service) ValidateSignedObject(ctx context.Context, payload, signature string) error {
+	ctx, span := tracer.Start(ctx, "ServiceValidate")
+	defer span.End()
+
+	object := core.SignedObject[any]{}
+	err := json.Unmarshal([]byte(payload), &object)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	// マスターキーの場合: そのまま検証して終了
+	if object.KeyID == "" {
+		err := util.VerifySignature(payload, object.Signer, signature)
+		if err != nil {
+			span.RecordError(err)
+			return err
+		}
+	} else { // サブキーの場合: 親キーを取得して検証
+		return errors.New("not implemented")
+	}
+
+	return nil
 }

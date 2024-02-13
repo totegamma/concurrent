@@ -3,9 +3,8 @@ package auth
 import (
 	"context"
 	"encoding/json"
-	"errors"
+	"fmt"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/labstack/echo/v4"
@@ -24,7 +23,9 @@ type Service interface {
 	Restrict(principal Principal) echo.MiddlewareFunc
 
 	EnactKey(ctx context.Context, payload, signature string) (core.Key, error)
+	RevokeKey(ctx context.Context, payload, signature string) (core.Key, error)
 	ValidateSignedObject(ctx context.Context, payload, signature string) error
+	IsKeyChainValid(ctx context.Context, keyID string) error
 }
 
 type service struct {
@@ -106,6 +107,58 @@ func (s *service) EnactKey(ctx context.Context, payload, signature string) (core
 	return created, nil
 }
 
+// RevokeKey validates new subkey and save it if valid
+func (s *service) RevokeKey(ctx context.Context, payload, signature string) (core.Key, error) {
+	ctx, span := tracer.Start(ctx, "ServiceRevokeKey")
+	defer span.End()
+
+	err := s.ValidateSignedObject(ctx, payload, signature)
+	if err != nil {
+		span.RecordError(err)
+		return core.Key{}, err
+	}
+
+	object := core.SignedObject[core.Revoke]{}
+	err = json.Unmarshal([]byte(payload), &object)
+	if err != nil {
+		span.RecordError(err)
+		return core.Key{}, err
+	}
+
+	if object.Type != "revoke" {
+		return core.Key{}, fmt.Errorf("Invalid type: %s", object.Type)
+	}
+
+	targetKeyDepth, err := s.GetKeyDepth(ctx, object.Body.CKID)
+	if err != nil {
+		span.RecordError(err)
+		return core.Key{}, err
+	}
+
+	performerKey := object.KeyID
+	if performerKey == "" {
+		performerKey = object.Signer
+	}
+
+	performerKeyDepth, err := s.GetKeyDepth(ctx, performerKey)
+	if err != nil {
+		span.RecordError(err)
+		return core.Key{}, err
+	}
+
+	if targetKeyDepth < performerKeyDepth {
+		return core.Key{}, fmt.Errorf("KeyDepth is not enough. target: %d, performer: %d", targetKeyDepth, performerKeyDepth)
+	}
+
+	revoked, err := s.repository.Revoke(ctx, object.Body.CKID, payload, signature)
+	if err != nil {
+		span.RecordError(err)
+		return core.Key{}, err
+	}
+
+	return revoked, nil
+}
+
 func (s *service) ValidateSignedObject(ctx context.Context, payload, signature string) error {
 	ctx, span := tracer.Start(ctx, "ServiceValidate")
 	defer span.End()
@@ -125,8 +178,74 @@ func (s *service) ValidateSignedObject(ctx context.Context, payload, signature s
 			return err
 		}
 	} else { // サブキーの場合: 親キーを取得して検証
-		return errors.New("not implemented")
+		err := s.IsKeyChainValid(ctx, object.KeyID)
+		if err != nil {
+			span.RecordError(err)
+			return err
+		}
+		err = util.VerifySignature(payload, object.KeyID, signature)
+		if err != nil {
+			span.RecordError(err)
+			return err
+		}
 	}
 
 	return nil
+}
+
+func (s *service) IsKeyChainValid(ctx context.Context, keyID string) error {
+	ctx, span := tracer.Start(ctx, "ServiceIsKeyChainValid")
+	defer span.End()
+
+	validationTrace := keyID
+
+	for {
+		if isCCID(keyID) {
+			return nil
+		}
+
+		key, err := s.repository.Get(ctx, keyID)
+		if err != nil {
+			return err
+		}
+
+		if !isKeyValid(ctx, key) {
+			return fmt.Errorf("Key %s is revoked. trace: %s", keyID, validationTrace)
+		}
+
+		keyID = key.Parent
+		validationTrace += " -> " + keyID
+	}
+}
+
+func (s *service) GetKeyDepth(ctx context.Context, keyID string) (int, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetKeyDepth")
+	defer span.End()
+
+	depth := 0
+	for {
+		if isCCID(keyID) {
+			return depth, nil
+		}
+
+		key, err := s.repository.Get(ctx, keyID)
+		if err != nil {
+			return 0, err
+		}
+
+		keyID = key.Parent
+		depth++
+	}
+}
+
+func isKeyValid(ctx context.Context, key core.Key) bool {
+	return key.RevokePayload == "null"
+}
+
+func isCKID(keyID string) bool {
+	return keyID[:2] == "CK"
+}
+
+func isCCID(keyID string) bool {
+	return keyID[:2] == "CC"
 }

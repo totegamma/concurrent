@@ -108,7 +108,18 @@ func main() {
 		e.Use(otelecho.Middleware("api", skipper))
 	}
 
-	e.Use(echoprometheus.NewMiddleware("ccapi"))
+	e.Use(echoprometheus.NewMiddlewareWithConfig(echoprometheus.MiddlewareConfig{
+		Namespace: "ccapi",
+		LabelFuncs: map[string]echoprometheus.LabelValueFunc{
+			"url": func(c echo.Context, err error) string {
+				return "REDACTED"
+			},
+		},
+		Skipper: func(c echo.Context) bool {
+			return c.Path() == "/metrics" || c.Path() == "/health"
+		},
+	}))
+
 	e.Use(middleware.Recover())
 
 	gormLogger := logger.New(

@@ -130,6 +130,9 @@ func main() {
 				}
 				return service
 			},
+			"url": func(c echo.Context, err error) string {
+				return "REDACTED"
+			},
 		},
 		Skipper: func(c echo.Context) bool {
 			return c.Path() == "/metrics" || c.Path() == "/health"

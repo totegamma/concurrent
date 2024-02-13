@@ -141,8 +141,6 @@ func SetupSocketManager(mc *memcache.Client, db *gorm.DB, rdb *redis.Client, con
 
 var domainHandlerProvider = wire.NewSet(domain.NewHandler, domain.NewService, domain.NewRepository)
 
-var streamHandlerProvider = wire.NewSet(stream.NewHandler, stream.NewService, stream.NewRepository, entity.NewService, entity.NewRepository)
-
 var userkvHandlerProvider = wire.NewSet(userkv.NewHandler, userkv.NewService, userkv.NewRepository)
 
 var collectionHandlerProvider = wire.NewSet(collection.NewHandler, collection.NewService, collection.NewRepository)

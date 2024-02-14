@@ -25,7 +25,7 @@ type Service interface {
 	EnactKey(ctx context.Context, payload, signature string) (core.Key, error)
 	RevokeKey(ctx context.Context, payload, signature string) (core.Key, error)
 	ValidateSignedObject(ctx context.Context, payload, signature string) error
-	IsKeyChainValid(ctx context.Context, keyID string) error
+	ResolveKeychain(ctx context.Context, keyID string) (string, error)
 }
 
 type service struct {
@@ -178,7 +178,7 @@ func (s *service) ValidateSignedObject(ctx context.Context, payload, signature s
 			return err
 		}
 	} else { // サブキーの場合: 親キーを取得して検証
-		err := s.IsKeyChainValid(ctx, object.KeyID)
+		_, err := s.ResolveKeychain(ctx, object.KeyID)
 		if err != nil {
 			span.RecordError(err)
 			return err
@@ -193,7 +193,7 @@ func (s *service) ValidateSignedObject(ctx context.Context, payload, signature s
 	return nil
 }
 
-func (s *service) IsKeyChainValid(ctx context.Context, keyID string) error {
+func (s *service) ResolveKeychain(ctx context.Context, keyID string) (string, error) {
 	ctx, span := tracer.Start(ctx, "ServiceIsKeyChainValid")
 	defer span.End()
 
@@ -201,16 +201,16 @@ func (s *service) IsKeyChainValid(ctx context.Context, keyID string) error {
 
 	for {
 		if isCCID(keyID) {
-			return nil
+			return "", nil
 		}
 
 		key, err := s.repository.Get(ctx, keyID)
 		if err != nil {
-			return err
+			return "", err
 		}
 
 		if !isKeyValid(ctx, key) {
-			return fmt.Errorf("Key %s is revoked. trace: %s", keyID, validationTrace)
+			return "", fmt.Errorf("Key %s is revoked. trace: %s", keyID, validationTrace)
 		}
 
 		keyID = key.Parent

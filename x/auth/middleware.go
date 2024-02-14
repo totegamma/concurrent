@@ -142,6 +142,95 @@ func (s *service) Restrict(principal Principal) echo.MiddlewareFunc {
 	}
 }
 
+func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		ctx, span := tracer.Start(c.Request().Context(), "auth.IdentifyIdentity")
+		defer span.End()
+
+		authHeader := c.Request().Header.Get("authorization")
+
+		if authHeader != "" {
+			split := strings.Split(authHeader, " ")
+			if len(split) != 2 {
+				span.RecordError(fmt.Errorf("invalid authentication header"))
+				goto skip
+			}
+
+			authType, token := split[0], split[1]
+			if authType != "Bearer" {
+				span.RecordError(fmt.Errorf("only Bearer is acceptable"))
+				goto skip
+			}
+
+			claims, err := jwt.Validate(token)
+			if err != nil {
+				span.RecordError(err)
+				goto skip
+			}
+
+			c.Set("jwtclaims", claims)
+
+			if claims.Subject == "CC_API" {
+
+				ccid := ""
+				if isCCID(claims.Issuer) {
+					ccid = claims.Issuer
+				} else if isCKID(claims.Issuer) {
+					ccid, err = s.ResolveKeychain(ctx, claims.Issuer)
+					if err != nil {
+						span.RecordError(err)
+						goto skip
+					}
+				} else {
+					span.RecordError(fmt.Errorf("invalid issuer"))
+					goto skip
+				}
+
+				requester, err := s.entity.Get(ctx, ccid)
+				if err != nil {
+					span.RecordError(err)
+					goto skip
+				}
+
+				c.Set(RequesterIdCtxKey, requester.ID)
+				c.Set(RequesterTagCtxKey, requester.Tag)
+
+			} else if claims.Subject == "CC_PASSPORT" {
+
+				domain, err := s.domain.GetByCCID(ctx, claims.Issuer)
+				if err != nil {
+					span.RecordError(err)
+					goto skip
+				}
+
+				// TODO: resolve remote keychain
+
+				// pull entity from remote if not registered
+				_, err = s.entity.GetAddress(ctx, claims.Principal)
+				if err != nil {
+					err = s.entity.PullEntityFromRemote(ctx, claims.Principal, domain.ID)
+					if err != nil {
+						span.RecordError(err)
+						goto skip
+					}
+				}
+
+				c.Set(RequesterIdCtxKey, claims.Principal)
+				c.Set(RequesterDomainCtxKey, domain.ID)
+
+				c.Set("requester", claims.Principal)
+			}
+
+			span.SetAttributes(attribute.String("Issuer", claims.Issuer))
+			span.SetAttributes(attribute.String("Principal", claims.Principal))
+
+		}
+	skip:
+		c.SetRequest(c.Request().WithContext(ctx))
+		return next(c)
+	}
+}
+
 // ParseJWT is middleware which validate jwt
 // ignore if jwt is missing
 // error only if jwt is invalid

@@ -2,13 +2,13 @@ package entity
 
 import (
 	"context"
-	"gorm.io/gorm"
 	"log/slog"
 	"strconv"
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/totegamma/concurrent/x/core"
+	"gorm.io/gorm"
 )
 
 // Repository is the interface for host repository

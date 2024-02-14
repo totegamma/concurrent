@@ -5,6 +5,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -39,6 +41,7 @@ type Service interface {
 	UpdateAddress(ctx context.Context, ccid string, domain string, signedAt time.Time) error
 	UpdateRegistration(ctx context.Context, id string, payload string, signature string) error // NOTE: for migration. Remove later
 	Count(ctx context.Context) (int64, error)
+	PullEntityFromRemote(ctx context.Context, id, domain string) error
 }
 
 type service struct {
@@ -54,6 +57,87 @@ func NewService(repository Repository, config util.Config, jwtService jwt.Servic
 		config,
 		jwtService,
 	}
+}
+
+// PullEntityFromRemote pulls entity from remote
+func (s *service) PullEntityFromRemote(ctx context.Context, id, domain string) error {
+	ctx, span := tracer.Start(ctx, "RepositoryPullEntityFromRemote")
+	defer span.End()
+
+	req, err := http.NewRequest("GET", "https://"+domain+"/api/v1/entity/"+id, nil)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+
+	client := new(http.Client)
+	resp, err := client.Do(req)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+
+	var remoteEntity entityResponse
+	json.Unmarshal(body, &remoteEntity)
+
+	entity := remoteEntity.Content
+
+	err = util.VerifySignature(entity.Payload, entity.ID, entity.Signature)
+	if err != nil {
+		span.RecordError(err)
+		slog.Error(
+			"Invalid signature",
+			slog.String("error", err.Error()),
+			slog.String("module", "agent"),
+		)
+		return fmt.Errorf("Invalid signature")
+	}
+
+	var signedObj core.SignedObject[core.Affiliation]
+	err = json.Unmarshal([]byte(entity.Payload), &signedObj)
+	if err != nil {
+		span.RecordError(err)
+		slog.Error(
+			"pullRemoteEntities",
+			slog.String("error", err.Error()),
+			slog.String("module", "agent"),
+		)
+		return fmt.Errorf("Invalid payload")
+	}
+
+	existanceAddr, err := s.GetAddress(ctx, entity.ID)
+	if err == nil {
+		// compare signed date
+		if signedObj.SignedAt.Unix() <= existanceAddr.SignedAt.Unix() {
+			return fmt.Errorf("Remote entity is older than local entity")
+		}
+	}
+
+	existanceEntity, err := s.Get(ctx, entity.ID)
+	if err == nil {
+		if signedObj.SignedAt.Unix() <= existanceEntity.CDate.Unix() {
+			return fmt.Errorf("Remote entity is older than local entity")
+		}
+	}
+
+	err = s.UpdateAddress(ctx, entity.ID, domain, signedObj.SignedAt)
+
+	if err != nil {
+		span.RecordError(err)
+		slog.Error(
+			"pullRemoteEntities",
+			slog.String("error", err.Error()),
+			slog.String("module", "agent"),
+		)
+		return err
+	}
+
+	return nil
 }
 
 // Total returns the count number of entities

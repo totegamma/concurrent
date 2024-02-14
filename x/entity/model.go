@@ -2,6 +2,7 @@
 package entity
 
 import (
+	"github.com/totegamma/concurrent/x/core"
 	"time"
 )
 
@@ -31,4 +32,9 @@ type AckSignedObject struct {
 type ackRequest struct {
 	SignedObject string `json:"signedObject"`
 	Signature    string `json:"signature"`
+}
+
+type entityResponse struct {
+	Status  string      `json:"status"`
+	Content core.Entity `json:"content"`
 }

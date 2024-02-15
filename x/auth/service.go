@@ -25,7 +25,8 @@ type Service interface {
 	EnactKey(ctx context.Context, payload, signature string) (core.Key, error)
 	RevokeKey(ctx context.Context, payload, signature string) (core.Key, error)
 	ValidateSignedObject(ctx context.Context, payload, signature string) error
-	ResolveKeychain(ctx context.Context, keyID string) (string, error)
+	ResolveSubkey(ctx context.Context, keyID string) (string, error)
+	GetKeyResolution(ctx context.Context, keyID string) ([]core.Key, error)
 }
 
 type service struct {
@@ -129,7 +130,7 @@ func (s *service) RevokeKey(ctx context.Context, payload, signature string) (cor
 		return core.Key{}, fmt.Errorf("Invalid type: %s", object.Type)
 	}
 
-	targetKeyDepth, err := s.GetKeyDepth(ctx, object.Body.CKID)
+	targetKeyResolution, err := s.GetKeyResolution(ctx, object.Body.CKID)
 	if err != nil {
 		span.RecordError(err)
 		return core.Key{}, err
@@ -140,14 +141,14 @@ func (s *service) RevokeKey(ctx context.Context, payload, signature string) (cor
 		performerKey = object.Signer
 	}
 
-	performerKeyDepth, err := s.GetKeyDepth(ctx, performerKey)
+	performerKeyResolution, err := s.GetKeyResolution(ctx, performerKey)
 	if err != nil {
 		span.RecordError(err)
 		return core.Key{}, err
 	}
 
-	if targetKeyDepth < performerKeyDepth {
-		return core.Key{}, fmt.Errorf("KeyDepth is not enough. target: %d, performer: %d", targetKeyDepth, performerKeyDepth)
+	if len(targetKeyResolution) < len(performerKeyResolution) {
+		return core.Key{}, fmt.Errorf("KeyDepth is not enough. target: %d, performer: %d", len(targetKeyResolution), len(performerKeyResolution))
 	}
 
 	revoked, err := s.repository.Revoke(ctx, object.Body.CKID, payload, signature)
@@ -178,7 +179,7 @@ func (s *service) ValidateSignedObject(ctx context.Context, payload, signature s
 			return err
 		}
 	} else { // サブキーの場合: 親キーを取得して検証
-		_, err := s.ResolveKeychain(ctx, object.KeyID)
+		_, err := s.ResolveSubkey(ctx, object.KeyID)
 		if err != nil {
 			span.RecordError(err)
 			return err
@@ -193,48 +194,47 @@ func (s *service) ValidateSignedObject(ctx context.Context, payload, signature s
 	return nil
 }
 
-func (s *service) ResolveKeychain(ctx context.Context, keyID string) (string, error) {
+func (s *service) ResolveSubkey(ctx context.Context, keyID string) (string, error) {
 	ctx, span := tracer.Start(ctx, "ServiceIsKeyChainValid")
 	defer span.End()
 
+	rootKey := keyID
 	validationTrace := keyID
 
-	for {
-		if isCCID(keyID) {
-			return "", nil
-		}
+	keychain, err := s.GetKeyResolution(ctx, keyID)
+	if err != nil {
+		span.RecordError(err)
+		return "", err
+	}
 
-		key, err := s.repository.Get(ctx, keyID)
-		if err != nil {
-			return "", err
-		}
-
+	for _, key := range keychain {
+		rootKey = key.ID
+		validationTrace += " -> " + key.ID
 		if !isKeyValid(ctx, key) {
 			return "", fmt.Errorf("Key %s is revoked. trace: %s", keyID, validationTrace)
 		}
-
-		keyID = key.Parent
-		validationTrace += " -> " + keyID
 	}
+
+	return rootKey, nil
 }
 
-func (s *service) GetKeyDepth(ctx context.Context, keyID string) (int, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetKeyDepth")
+func (s *service) GetKeyResolution(ctx context.Context, keyID string) ([]core.Key, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetKeyResolution")
 	defer span.End()
 
-	depth := 0
+	var keys []core.Key
 	for {
 		if isCCID(keyID) {
-			return depth, nil
+			return keys, nil
 		}
 
 		key, err := s.repository.Get(ctx, keyID)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 
+		keys = append(keys, key)
 		keyID = key.Parent
-		depth++
 	}
 }
 

@@ -176,7 +176,7 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				if isCCID(claims.Issuer) {
 					ccid = claims.Issuer
 				} else if isCKID(claims.Issuer) {
-					ccid, err = s.ResolveKeychain(ctx, claims.Issuer)
+					ccid, err = s.ResolveSubkey(ctx, claims.Issuer)
 					if err != nil {
 						span.RecordError(err)
 						goto skip

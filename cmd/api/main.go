@@ -288,7 +288,9 @@ func main() {
 	apiV1.GET("/socket", socketHandler.Connect)
 
 	// auth
-	apiV1.GET("/auth/passport/:remote", authHandler.GetPassport)
+	apiV1.GET("/auth/passport/:remote", authHandler.GetPassport, authService.Restrict(auth.ISLOCAL))
+	apiV1.GET("/auth/key/:id", authHandler.GetKeyResolution)
+	apiV1.POST("auth/keys", authHandler.UpdateKey, authService.Restrict(auth.ISLOCAL))
 
 	// collection
 	apiV1.POST("/collection", collectionHandler.CreateCollection, authService.Restrict(auth.ISLOCAL))

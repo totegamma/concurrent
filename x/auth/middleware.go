@@ -203,22 +203,27 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 					goto skip
 				}
 
-				// TODO: resolve remote keychain
-
-				// pull entity from remote if not registered
-				_, err = s.entity.GetAddress(ctx, claims.Principal)
-				if err != nil {
-					err = s.entity.PullEntityFromRemote(ctx, claims.Principal, domain.ID)
+				ccid := claims.Principal
+				if isCKID(ccid) {
+					ccid, err = s.ResolveRemoteSubkey(ctx, claims.Principal, domain.ID)
 					if err != nil {
 						span.RecordError(err)
 						goto skip
 					}
 				}
 
-				c.Set(RequesterIdCtxKey, claims.Principal)
-				c.Set(RequesterDomainCtxKey, domain.ID)
+				// pull entity from remote if not registered
+				_, err = s.entity.GetAddress(ctx, ccid)
+				if err != nil {
+					err = s.entity.PullEntityFromRemote(ctx, ccid, domain.ID)
+					if err != nil {
+						span.RecordError(err)
+						goto skip
+					}
+				}
 
-				c.Set("requester", claims.Principal)
+				c.Set(RequesterIdCtxKey, ccid)
+				c.Set(RequesterDomainCtxKey, domain.ID)
 			}
 
 			span.SetAttributes(attribute.String("Issuer", claims.Issuer))

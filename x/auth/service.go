@@ -4,11 +4,15 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"strconv"
 	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/rs/xid"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/propagation"
 
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/domain"
@@ -26,6 +30,7 @@ type Service interface {
 	RevokeKey(ctx context.Context, payload, signature string) (core.Key, error)
 	ValidateSignedObject(ctx context.Context, payload, signature string) error
 	ResolveSubkey(ctx context.Context, keyID string) (string, error)
+	ResolveRemoteSubkey(ctx context.Context, keyID, domain string) (string, error)
 	GetKeyResolution(ctx context.Context, keyID string) ([]core.Key, error)
 }
 
@@ -192,6 +197,101 @@ func (s *service) ValidateSignedObject(ctx context.Context, payload, signature s
 	}
 
 	return nil
+}
+
+type keyResponse struct {
+	Status  string     `json:"status"`
+	Content []core.Key `json:"content"`
+}
+
+func (s *service) ResolveRemoteSubkey(ctx context.Context, keyID, domain string) (string, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetRemoteKeyResolution")
+	defer span.End()
+
+	// TODO: search cache
+
+	req, err := http.NewRequest("GET", "https://"+domain+"/api/v1/key/"+keyID, nil)
+	if err != nil {
+		span.RecordError(err)
+		return "", err
+	}
+
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+
+	client := new(http.Client)
+	resp, err := client.Do(req)
+	if err != nil {
+		span.RecordError(err)
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+
+	var remoteKey keyResponse
+	json.Unmarshal(body, &remoteKey)
+
+	keychain := remoteKey.Content
+
+	if len(keychain) == 0 {
+		return "", fmt.Errorf("Key not found")
+	}
+
+	rootKey := ""
+	nextKey := ""
+	for _, key := range keychain {
+
+		if (nextKey != "") && (nextKey != key.ID) {
+			return "", fmt.Errorf("Key %s is not a child of %s", key.ID, nextKey)
+		}
+
+		if isCCID(key.ID) {
+			break
+		}
+
+		// まず署名を検証
+		err := s.ValidateSignedObject(ctx, key.EnactPayload, key.EnactSignature)
+		if err != nil {
+			return "", err
+		}
+
+		// 署名の内容が正しいか検証
+		var enact core.SignedObject[core.Enact]
+		err = json.Unmarshal([]byte(key.EnactPayload), &enact)
+		if err != nil {
+			return "", err
+		}
+
+		if enact.Body.CKID != key.ID {
+			return "", fmt.Errorf("KeyID in payload is not matched with the keyID")
+		}
+
+		if enact.Body.Parent != key.Parent {
+			return "", fmt.Errorf("Parent in payload is not matched with the parent")
+		}
+
+		if enact.Body.Root != key.Root {
+			return "", fmt.Errorf("Root in payload is not matched with the root")
+		}
+
+		if rootKey == "" {
+			rootKey = key.ID
+		} else {
+			if rootKey != key.Root {
+				return "", fmt.Errorf("Root is not matched with the previous key")
+			}
+		}
+
+		if key.RevokePayload != "null" {
+			return "", fmt.Errorf("Key %s is revoked", key.ID)
+		}
+
+		nextKey = key.Parent
+	}
+
+	//TODO: cache keychain
+
+	return rootKey, nil
 }
 
 func (s *service) ResolveSubkey(ctx context.Context, keyID string) (string, error) {

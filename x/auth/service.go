@@ -24,14 +24,14 @@ import (
 // Service is the interface for auth service
 type Service interface {
 	IssuePassport(ctx context.Context, request string, remote string) (string, error)
-	Restrict(principal Principal) echo.MiddlewareFunc
-
 	EnactKey(ctx context.Context, payload, signature string) (core.Key, error)
 	RevokeKey(ctx context.Context, payload, signature string) (core.Key, error)
 	ValidateSignedObject(ctx context.Context, payload, signature string) error
 	ResolveSubkey(ctx context.Context, keyID string) (string, error)
 	ResolveRemoteSubkey(ctx context.Context, keyID, domain string) (string, error)
 	GetKeyResolution(ctx context.Context, keyID string) ([]core.Key, error)
+
+	IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc
 }
 
 type service struct {
@@ -308,7 +308,7 @@ func (s *service) ResolveSubkey(ctx context.Context, keyID string) (string, erro
 	}
 
 	for _, key := range keychain {
-		rootKey = key.ID
+		rootKey = key.Root
 		validationTrace += " -> " + key.ID
 		if !isKeyValid(ctx, key) {
 			return "", fmt.Errorf("Key %s is revoked. trace: %s", keyID, validationTrace)

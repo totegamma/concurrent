@@ -3,13 +3,13 @@ package auth
 import (
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/jwt"
 	"go.opentelemetry.io/otel/attribute"
-	"golang.org/x/exp/slices"
 )
 
 type Principal int
@@ -19,43 +19,20 @@ const (
 	ISLOCAL
 	ISKNOWN
 	ISUNITED
-	ISUNUNITED
 )
 
-// Restrict is a middleware that restricts access to certain routes
-func (s *service) Restrict(principal Principal) echo.MiddlewareFunc {
+func Restrict(principal Principal) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 			ctx, span := tracer.Start(c.Request().Context(), "auth.Restrict")
 			defer span.End()
 
-			claims, ok := c.Get("jwtclaims").(jwt.Claims)
-			if !ok {
-				return c.JSON(http.StatusUnauthorized, echo.Map{"error": "invalid authentication header"})
-			}
-
-			if claims.Audience != s.config.Concurrent.FQDN {
-				span.RecordError(fmt.Errorf("jwt is not for this domain"))
-				return c.JSON(http.StatusUnauthorized, echo.Map{"error": "jwt is not for this domain"})
-			}
+			requesterType := c.Get(RequesterTypeCtxKey).(int)
+			requesterTags := c.Get(RequesterTagCtxKey).(core.Tags)
 
 			switch principal {
 			case ISADMIN:
-				if claims.Subject != "CC_API" {
-					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
-				}
-
-				entity, err := s.entity.Get(ctx, claims.Issuer)
-				if err != nil {
-					return c.JSON(http.StatusForbidden, echo.Map{
-						"error":  "you are not authorized to perform this action",
-						"detail": "you are not on this domain",
-					})
-				}
-
-				tags := core.ParseTags(entity.Tag)
-
-				if !tags.Has("_admin") {
+				if !requesterTags.Has("_admin") {
 					return c.JSON(http.StatusForbidden, echo.Map{
 						"error":  "you are not authorized to perform this action",
 						"detail": "you are not admin",
@@ -63,12 +40,7 @@ func (s *service) Restrict(principal Principal) echo.MiddlewareFunc {
 				}
 
 			case ISLOCAL:
-				if claims.Subject != "CC_API" {
-					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
-				}
-
-				_, err := s.entity.Get(ctx, claims.Issuer)
-				if err != nil {
+				if requesterType != LocalUser {
 					return c.JSON(http.StatusForbidden, echo.Map{
 						"error":  "you are not authorized to perform this action",
 						"detail": "you are not local",
@@ -76,69 +48,74 @@ func (s *service) Restrict(principal Principal) echo.MiddlewareFunc {
 				}
 
 			case ISKNOWN:
-
-				if claims.Subject == "CC_API" { // internal user
-					_, err := s.entity.Get(ctx, claims.Issuer)
-					if err != nil {
-						return c.JSON(http.StatusForbidden, echo.Map{
-							"error":  "you are not authorized to perform this action",
-							"detail": "you are not known",
-						})
-					}
-
-					goto VALIDATE_OK
+				if requesterType != Unknown {
+					return c.JSON(http.StatusForbidden, echo.Map{
+						"error":  "you are not authorized to perform this action",
+						"detail": "you are not known",
+					})
 				}
-
-				if claims.Subject == "CC_PASSPORT" { // external user
-					_, err := s.entity.GetAddress(ctx, claims.Principal)
-					if err != nil {
-						return c.JSON(http.StatusForbidden, echo.Map{
-							"error":  "you are not authorized to perform this action",
-							"detail": "you are not known",
-						})
-					}
-
-					// ckeck if domain or user is blocked
-
-					goto VALIDATE_OK
-				}
-
-				return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
 
 			case ISUNITED:
-				if claims.Subject != "CC_API" {
-					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
-				}
-				domain, err := s.domain.GetByCCID(ctx, claims.Issuer)
-				if err != nil {
+				if requesterType != RemoteDomain {
 					return c.JSON(http.StatusForbidden, echo.Map{
 						"error":  "you are not authorized to perform this action",
 						"detail": "you are not united",
 					})
 				}
-				domainTags := strings.Split(domain.Tag, ",")
-				if slices.Contains(domainTags, "_blocked") {
-					return c.JSON(http.StatusForbidden, echo.Map{
-						"error":  "you are not authorized to perform this action",
-						"detail": "you are not blocked",
-					})
-				}
-			case ISUNUNITED:
-				if claims.Subject != "CC_API" {
-					return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid jwt"})
-				}
-				_, err := s.domain.GetByCCID(ctx, claims.Issuer)
-				if err == nil {
-					return c.JSON(http.StatusForbidden, echo.Map{
-						"error":  "you are not authorized to perform this action",
-						"detail": "you are already united",
-					})
-				}
 			}
-		VALIDATE_OK:
+
 			c.SetRequest(c.Request().WithContext(ctx))
 			return next(c)
 		}
+	}
+}
+
+func ReceiveGatewayAuthPropagation(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		ctx, span := tracer.Start(c.Request().Context(), "auth.ReceiveGatewayAuthPropagation")
+		defer span.End()
+
+		reqTypeHeader := c.Request().Header.Get(RequesterTypeHeader)
+		reqIdHeader := c.Request().Header.Get(RequesterIdHeader)
+		reqTagHeader := c.Request().Header.Get(RequesterTagHeader)
+		reqDomainHeader := c.Request().Header.Get(RequesterDomainHeader)
+		reqKeyDepathHeader := c.Request().Header.Get(RequesterKeyDepathHeader)
+		reqDomainTagsHeader := c.Request().Header.Get(RequesterDomainTagsHeader)
+		reqRemoteTagsHeader := c.Request().Header.Get(RequesterRemoteTagsHeader)
+
+		if reqTypeHeader != "" {
+			reqType, err := strconv.Atoi(reqTypeHeader)
+			if err == nil {
+				c.Set(RequesterTypeCtxKey, reqType)
+			}
+		}
+
+		if reqIdHeader != "" {
+			c.Set(RequesterIdCtxKey, reqIdHeader)
+		}
+
+		if reqTagHeader != "" {
+			c.Set(RequesterTagCtxKey, core.ParseTags(reqTagHeader))
+		}
+
+		if reqDomainHeader != "" {
+			c.Set(RequesterDomainCtxKey, reqDomainHeader)
+		}
+
+		if reqKeyDepathHeader != "" {
+			c.Set(RequesterKeyDepathKey, reqKeyDepathHeader)
+		}
+
+		if reqDomainTagsHeader != "" {
+			c.Set(RequesterDomainTagsKey, core.ParseTags(reqDomainTagsHeader))
+		}
+
+		if reqRemoteTagsHeader != "" {
+			c.Set(RequesterRemoteTagsKey, core.ParseTags(reqRemoteTagsHeader))
+		}
+
+		c.SetRequest(c.Request().WithContext(ctx))
+		return next(c)
 	}
 }
 
@@ -168,6 +145,11 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				goto skip
 			}
 
+			if claims.Audience != s.config.Concurrent.FQDN {
+				span.RecordError(fmt.Errorf("jwt is not for this domain"))
+				goto skip
+			}
+
 			c.Set("jwtclaims", claims)
 
 			if claims.Subject == "CC_API" {
@@ -186,14 +168,36 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 					goto skip
 				}
 
-				requester, err := s.entity.Get(ctx, ccid)
-				if err != nil {
-					span.RecordError(err)
-					goto skip
+				var requester core.Entity
+				var domain core.Domain
+				var err error
+				tags := &core.Tags{}
+
+				requester, err = s.entity.Get(ctx, ccid)
+				if err == nil {
+					tags = core.ParseTags(requester.Tag)
+					c.Set(RequesterTypeCtxKey, LocalUser)
+					c.Set(RequesterTagCtxKey, tags)
+				} else {
+					domain, err = s.domain.GetByCCID(ctx, claims.Issuer)
+					if err != nil {
+						span.RecordError(err)
+						goto skip
+					}
+					tags = core.ParseTags(domain.Tag)
+					c.Set(RequesterTypeCtxKey, RemoteDomain)
+					c.Set(RequesterDomainCtxKey, domain.ID)
+					c.Set(RequesterDomainTagsKey, tags)
 				}
 
 				c.Set(RequesterIdCtxKey, requester.ID)
-				c.Set(RequesterTagCtxKey, requester.Tag)
+
+				if tags.Has("_block") {
+					return c.JSON(http.StatusForbidden, echo.Map{
+						"error":  "you are not authorized to perform this action",
+						"detail": "you are blocked",
+					})
+				}
 
 			} else if claims.Subject == "CC_PASSPORT" {
 
@@ -201,6 +205,14 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				if err != nil {
 					span.RecordError(err)
 					goto skip
+				}
+
+				tags := core.ParseTags(domain.Tag)
+				if tags.Has("_block") {
+					return c.JSON(http.StatusForbidden, echo.Map{
+						"error":  "you are not authorized to perform this action",
+						"detail": "you are blocked",
+					})
 				}
 
 				ccid := claims.Principal
@@ -222,6 +234,7 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 					}
 				}
 
+				c.Set(RequesterTypeCtxKey, RemoteUser)
 				c.Set(RequesterIdCtxKey, ccid)
 				c.Set(RequesterDomainCtxKey, domain.ID)
 			}
@@ -229,53 +242,6 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 			span.SetAttributes(attribute.String("Issuer", claims.Issuer))
 			span.SetAttributes(attribute.String("Principal", claims.Principal))
 
-		}
-	skip:
-		c.SetRequest(c.Request().WithContext(ctx))
-		return next(c)
-	}
-}
-
-// ParseJWT is middleware which validate jwt
-// ignore if jwt is missing
-// error only if jwt is invalid
-func ParseJWT(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		ctx, span := tracer.Start(c.Request().Context(), "auth.ParseJWT")
-		defer span.End()
-
-		authHeader := c.Request().Header.Get("authorization")
-
-		if authHeader != "" {
-			split := strings.Split(authHeader, " ")
-			if len(split) != 2 {
-				span.RecordError(fmt.Errorf("invalid authentication header"))
-				goto skip
-			}
-			authType, token := split[0], split[1]
-			if authType != "Bearer" {
-				span.RecordError(fmt.Errorf("only Bearer is acceptable"))
-				goto skip
-			}
-
-			claims, err := jwt.Validate(token)
-			if err != nil {
-				span.RecordError(err)
-				goto skip
-			}
-
-			c.Set("jwtclaims", claims)
-
-			if claims.Subject == "CC_API" {
-				c.Set("requester", claims.Issuer)
-			} else if claims.Subject == "CC_PASSPORT" {
-				// TODO: needs to be validated
-				c.Set("requester", claims.Principal)
-			}
-
-			span.SetAttributes(attribute.String("Issuer", claims.Issuer))
-			span.SetAttributes(attribute.String("Audience", claims.Audience))
-			span.SetAttributes(attribute.String("Principal", claims.Principal))
 		}
 	skip:
 		c.SetRequest(c.Request().WithContext(ctx))

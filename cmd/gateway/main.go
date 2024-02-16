@@ -21,8 +21,10 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 
 	"github.com/totegamma/concurrent/x/auth"
-	"github.com/totegamma/concurrent/x/jwt"
+	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
+
+	"github.com/bradfitz/gomemcache/memcache"
 
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
@@ -118,8 +120,6 @@ func main() {
 		},
 	}))
 
-	e.Use(auth.ParseJWT)
-
 	e.Use(echoprometheus.NewMiddlewareWithConfig(echoprometheus.MiddlewareConfig{
 		Namespace: "ccgateway",
 		LabelFuncs: map[string]echoprometheus.LabelValueFunc{
@@ -176,6 +176,13 @@ func main() {
 		panic("failed to setup tracing plugin")
 	}
 
+	mc := memcache.New(config.Server.MemcachedAddr)
+	defer mc.Close()
+
+	authService := SetupAuthService(db, rdb, mc, config)
+
+	e.Use(authService.IdentifyIdentity)
+
 	cors := middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins:  []string{"*"},
 		AllowHeaders:  []string{echo.HeaderOrigin, echo.HeaderContentType, echo.HeaderAccept, echo.HeaderAuthorization},
@@ -211,10 +218,42 @@ func main() {
 
 		handler := func(c echo.Context) error {
 			c.Response().Header().Set("cc-service", service.Name)
-			claims, ok := c.Get("jwtclaims").(jwt.Claims)
+
+			requesterType, ok := c.Get(auth.RequesterTypeCtxKey).(int)
 			if ok {
-				c.Request().Header.Set("cc-user-id", claims.Issuer)
+				c.Request().Header.Set(auth.RequesterTypeHeader, strconv.Itoa(requesterType))
 			}
+
+			requesterId, ok := c.Get(auth.RequesterIdCtxKey).(string)
+			if ok {
+				c.Request().Header.Set(auth.RequesterIdHeader, requesterId)
+			}
+
+			requesterTag, ok := c.Get(auth.RequesterTagCtxKey).(core.Tags)
+			if ok {
+				c.Request().Header.Set(auth.RequesterTagHeader, requesterTag.ToString())
+			}
+
+			requesterDomain, ok := c.Get(auth.RequesterDomainCtxKey).(string)
+			if ok {
+				c.Request().Header.Set(auth.RequesterDomainHeader, requesterDomain)
+			}
+
+			requesterKeyDepath, ok := c.Get(auth.RequesterKeyDepathKey).(string)
+			if ok {
+				c.Request().Header.Set(auth.RequesterKeyDepathHeader, requesterKeyDepath)
+			}
+
+			requesterDomainTags, ok := c.Get(auth.RequesterDomainTagsKey).(core.Tags)
+			if ok {
+				c.Request().Header.Set(auth.RequesterDomainTagsHeader, requesterDomainTags.ToString())
+			}
+
+			requesterRemoteTags, ok := c.Get(auth.RequesterRemoteTagsKey).(core.Tags)
+			if ok {
+				c.Request().Header.Set(auth.RequesterRemoteTagsHeader, requesterRemoteTags.ToString())
+			}
+
 			proxy.ServeHTTP(c.Response(), c.Request())
 			return nil
 		}

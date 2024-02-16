@@ -85,6 +85,18 @@ func TestService(t *testing.T) {
 	err = test_service.ValidateSignedObject(ctx, objStr0, objSig0)
 	assert.NoError(t, err)
 
+	// test3.1 test GetKeyResolution
+	resolution0, err := test_service.GetKeyResolution(ctx, SubKey1)
+	if assert.NoError(t, err) {
+		assert.Len(t, resolution0, 1)
+	}
+
+	// Test3.2 サブキーからルートキーを解決する
+	root0, err := test_service.ResolveSubkey(ctx, SubKey1)
+	if assert.NoError(t, err) {
+		assert.Equal(t, RootKey, root0)
+	}
+
 	// Test4. サブキーのサブキーを新しく登録する
 
 	payload2 := core.SignedObject[core.Enact]{
@@ -112,6 +124,18 @@ func TestService(t *testing.T) {
 	created2, err := test_service.EnactKey(ctx, objStr2, objSig2)
 	if assert.NoError(t, err) {
 		assert.NotNil(t, created2)
+	}
+
+	// test4.1 test GetKeyResolution
+	resolution1, err := test_service.GetKeyResolution(ctx, SubKey2)
+	if assert.NoError(t, err) {
+		assert.Len(t, resolution1, 2)
+	}
+
+	// Test4.2 サブキーからルートキーを解決する
+	root1, err := test_service.ResolveSubkey(ctx, SubKey2)
+	if assert.NoError(t, err) {
+		assert.Equal(t, RootKey, root1)
 	}
 
 	// Test5. 登録したサブキーのサブキーで署名されたオブジェクトを検証する
@@ -193,6 +217,12 @@ func TestService(t *testing.T) {
 	// Test9. 無効化したサブキーのサブキーで署名されたオブジェクトを検証する(失敗する)
 
 	err = test_service.ValidateSignedObject(ctx, objStr3, objSig3)
+	assert.Error(t, err)
+
+	_, err = test_service.ResolveSubkey(ctx, SubKey2)
+	assert.Error(t, err)
+
+	_, err = test_service.ResolveSubkey(ctx, SubKey1)
 	assert.Error(t, err)
 
 }

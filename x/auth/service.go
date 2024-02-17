@@ -12,6 +12,7 @@ import (
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/util"
+	"github.com/totegamma/concurrent/x/key"
 )
 
 // Service is the interface for auth service
@@ -21,15 +22,15 @@ type Service interface {
 }
 
 type service struct {
-	repository Repository
 	config     util.Config
 	entity     entity.Service
 	domain     domain.Service
+    key       key.Service
 }
 
 // NewService creates a new auth service
-func NewService(repository Repository, config util.Config, entity entity.Service, domain domain.Service) Service {
-	return &service{repository, config, entity, domain}
+func NewService(config util.Config, entity entity.Service, domain domain.Service, key key.Service) Service {
+	return &service{config, entity, domain, key}
 }
 
 // GetPassport takes client signed JWT and returns server signed JWT

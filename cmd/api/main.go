@@ -25,8 +25,10 @@ import (
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
+	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/stream"
+	"github.com/totegamma/concurrent/x/userkv"
 	"github.com/totegamma/concurrent/x/util"
 
 	"github.com/bradfitz/gomemcache/memcache"
@@ -193,12 +195,16 @@ func main() {
 
 	agent := SetupAgent(db, rdb, mc, config)
 
+	collectionHandler := SetupCollectionHandler(db, rdb, config)
+
 	socketManager := SetupSocketManager(mc, db, rdb, config)
 	socketHandler := SetupSocketHandler(rdb, socketManager, config)
+
 	domainService := SetupDomainService(db, config)
 	domainHandler := domain.NewHandler(domainService, config)
-	userkvHandler := SetupUserkvHandler(db, rdb, mc, config)
-	collectionHandler := SetupCollectionHandler(db, rdb, config)
+
+    userKvService := SetupUserkvService(rdb)
+	userkvHandler := userkv.NewHandler(userKvService)
 
 	messageService := SetupMessageService(db, rdb, mc, socketManager, config)
 	messageHandler := message.NewHandler(messageService)
@@ -217,6 +223,9 @@ func main() {
 
 	authService := SetupAuthService(db, rdb, mc, config)
 	authHandler := auth.NewHandler(authService)
+
+    keyService := SetupKeyService(db, config)
+    keyHandler := key.NewHandler(keyService)
 
 	apiV1 := e.Group("", auth.ReceiveGatewayAuthPropagation)
 	// domain
@@ -288,9 +297,11 @@ func main() {
 
 	// auth
 	apiV1.GET("/auth/passport/:remote", authHandler.GetPassport, auth.Restrict(auth.ISLOCAL))
-	apiV1.GET("/auth/key/:id", authHandler.GetKeyResolution)
-	apiV1.POST("auth/key", authHandler.UpdateKey, auth.Restrict(auth.ISLOCAL))
-	apiV1.GET("/auth/keys/mine", authHandler.GetKeyMine, auth.Restrict(auth.ISLOCAL))
+
+    // key
+	apiV1.GET("/key/:id", keyHandler.GetKeyResolution)
+	apiV1.POST("key", keyHandler.UpdateKey, auth.Restrict(auth.ISLOCAL))
+	apiV1.GET("/keys/mine", keyHandler.GetKeyMine, auth.Restrict(auth.ISLOCAL))
 
 	// collection
 	apiV1.POST("/collection", collectionHandler.CreateCollection, auth.Restrict(auth.ISLOCAL))

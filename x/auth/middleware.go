@@ -9,6 +9,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/jwt"
+	"github.com/totegamma/concurrent/x/key"
 	"go.opentelemetry.io/otel/attribute"
 )
 
@@ -57,10 +58,10 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 			if claims.Subject == "CC_API" {
 
 				ccid := ""
-				if isCCID(claims.Issuer) {
+				if key.IsCCID(claims.Issuer) {
 					ccid = claims.Issuer
-				} else if isCKID(claims.Issuer) {
-					ccid, err = s.ResolveSubkey(ctx, claims.Issuer)
+				} else if key.IsCKID(claims.Issuer) {
+					ccid, err = s.key.ResolveSubkey(ctx, claims.Issuer)
 					if err != nil {
 						span.RecordError(err)
 						goto skip
@@ -78,9 +79,9 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				requester, err = s.entity.Get(ctx, ccid)
 				if err == nil {
 					tags = core.ParseTags(requester.Tag)
-					c.Set(RequesterTypeCtxKey, LocalUser)
-					c.Set(RequesterTagCtxKey, tags)
-					span.SetAttributes(attribute.String("RequesterType", RequesterTypeString(LocalUser)))
+					c.Set(core.RequesterTypeCtxKey, core.LocalUser)
+					c.Set(core.RequesterTagCtxKey, tags)
+					span.SetAttributes(attribute.String("RequesterType", core.RequesterTypeString(core.LocalUser)))
 					span.SetAttributes(attribute.String("RequesterTag", requester.Tag))
 				} else {
 					domain, err = s.domain.GetByCCID(ctx, claims.Issuer)
@@ -89,15 +90,15 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 						goto skip
 					}
 					tags = core.ParseTags(domain.Tag)
-					c.Set(RequesterTypeCtxKey, RemoteDomain)
-					c.Set(RequesterDomainCtxKey, domain.ID)
-					c.Set(RequesterDomainTagsKey, tags)
-					span.SetAttributes(attribute.String("RequesterType", RequesterTypeString(RemoteDomain)))
+					c.Set(core.RequesterTypeCtxKey, core.RemoteDomain)
+					c.Set(core.RequesterDomainCtxKey, domain.ID)
+					c.Set(core.RequesterDomainTagsKey, tags)
+					span.SetAttributes(attribute.String("RequesterType", core.RequesterTypeString(core.RemoteDomain)))
 					span.SetAttributes(attribute.String("RequesterDomain", domain.ID))
 					span.SetAttributes(attribute.String("RequesterDomainTags", domain.Tag))
 				}
 
-				c.Set(RequesterIdCtxKey, requester.ID)
+				c.Set(core.RequesterIdCtxKey, requester.ID)
 
 				if tags.Has("_block") {
 					return c.JSON(http.StatusForbidden, echo.Map{
@@ -123,8 +124,8 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				}
 
 				ccid := claims.Principal
-				if isCKID(ccid) {
-					ccid, err = s.ResolveRemoteSubkey(ctx, claims.Principal, domain.ID)
+				if key.IsCKID(ccid) {
+					ccid, err = s.key.ResolveRemoteSubkey(ctx, claims.Principal, domain.ID)
 					if err != nil {
 						span.RecordError(err)
 						goto skip
@@ -141,10 +142,10 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 					}
 				}
 
-				c.Set(RequesterTypeCtxKey, RemoteUser)
-				c.Set(RequesterIdCtxKey, ccid)
-				c.Set(RequesterDomainCtxKey, domain.ID)
-				span.SetAttributes(attribute.String("RequesterType", RequesterTypeString(RemoteUser)))
+				c.Set(core.RequesterTypeCtxKey, core.RemoteUser)
+				c.Set(core.RequesterIdCtxKey, ccid)
+				c.Set(core.RequesterDomainCtxKey, domain.ID)
+				span.SetAttributes(attribute.String("RequesterType", core.RequesterTypeString(core.RemoteUser)))
 				span.SetAttributes(attribute.String("RequesterId", ccid))
 				span.SetAttributes(attribute.String("RequesterDomain", domain.ID))
 			}
@@ -160,49 +161,49 @@ func ReceiveGatewayAuthPropagation(next echo.HandlerFunc) echo.HandlerFunc {
 		ctx, span := tracer.Start(c.Request().Context(), "auth.ReceiveGatewayAuthPropagation")
 		defer span.End()
 
-		reqTypeHeader := c.Request().Header.Get(RequesterTypeHeader)
-		reqIdHeader := c.Request().Header.Get(RequesterIdHeader)
-		reqTagHeader := c.Request().Header.Get(RequesterTagHeader)
-		reqDomainHeader := c.Request().Header.Get(RequesterDomainHeader)
-		reqKeyDepathHeader := c.Request().Header.Get(RequesterKeyDepathHeader)
-		reqDomainTagsHeader := c.Request().Header.Get(RequesterDomainTagsHeader)
-		reqRemoteTagsHeader := c.Request().Header.Get(RequesterRemoteTagsHeader)
+		reqTypeHeader := c.Request().Header.Get(core.RequesterTypeHeader)
+		reqIdHeader := c.Request().Header.Get(core.RequesterIdHeader)
+		reqTagHeader := c.Request().Header.Get(core.RequesterTagHeader)
+		reqDomainHeader := c.Request().Header.Get(core.RequesterDomainHeader)
+		reqKeyDepathHeader := c.Request().Header.Get(core.RequesterKeyDepathHeader)
+		reqDomainTagsHeader := c.Request().Header.Get(core.RequesterDomainTagsHeader)
+		reqRemoteTagsHeader := c.Request().Header.Get(core.RequesterRemoteTagsHeader)
 
 		if reqTypeHeader != "" {
 			reqType, err := strconv.Atoi(reqTypeHeader)
 			if err == nil {
-				c.Set(RequesterTypeCtxKey, reqType)
-				span.SetAttributes(attribute.String("RequesterType", RequesterTypeString(reqType)))
+				c.Set(core.RequesterTypeCtxKey, reqType)
+				span.SetAttributes(attribute.String("RequesterType", core.RequesterTypeString(reqType)))
 			}
 		}
 
 		if reqIdHeader != "" {
-			c.Set(RequesterIdCtxKey, reqIdHeader)
+			c.Set(core.RequesterIdCtxKey, reqIdHeader)
 			span.SetAttributes(attribute.String("RequesterId", reqIdHeader))
 		}
 
 		if reqTagHeader != "" {
-			c.Set(RequesterTagCtxKey, core.ParseTags(reqTagHeader))
+			c.Set(core.RequesterTagCtxKey, core.ParseTags(reqTagHeader))
 			span.SetAttributes(attribute.String("RequesterTag", reqTagHeader))
 		}
 
 		if reqDomainHeader != "" {
-			c.Set(RequesterDomainCtxKey, reqDomainHeader)
+			c.Set(core.RequesterDomainCtxKey, reqDomainHeader)
 			span.SetAttributes(attribute.String("RequesterDomain", reqDomainHeader))
 		}
 
 		if reqKeyDepathHeader != "" {
-			c.Set(RequesterKeyDepathKey, reqKeyDepathHeader)
+			c.Set(core.RequesterKeyDepathKey, reqKeyDepathHeader)
 			span.SetAttributes(attribute.String("RequesterKeyDepath", reqKeyDepathHeader))
 		}
 
 		if reqDomainTagsHeader != "" {
-			c.Set(RequesterDomainTagsKey, core.ParseTags(reqDomainTagsHeader))
+			c.Set(core.RequesterDomainTagsKey, core.ParseTags(reqDomainTagsHeader))
 			span.SetAttributes(attribute.String("RequesterDomainTags", reqDomainTagsHeader))
 		}
 
 		if reqRemoteTagsHeader != "" {
-			c.Set(RequesterRemoteTagsKey, core.ParseTags(reqRemoteTagsHeader))
+			c.Set(core.RequesterRemoteTagsKey, core.ParseTags(reqRemoteTagsHeader))
 			span.SetAttributes(attribute.String("RequesterRemoteTags", reqRemoteTagsHeader))
 		}
 
@@ -217,8 +218,8 @@ func Restrict(principal Principal) echo.MiddlewareFunc {
 			ctx, span := tracer.Start(c.Request().Context(), "auth.Restrict")
 			defer span.End()
 
-			requesterType, _ := c.Get(RequesterTypeCtxKey).(int)
-			requesterTags, _ := c.Get(RequesterTagCtxKey).(core.Tags)
+			requesterType, _ := c.Get(core.RequesterTypeCtxKey).(int)
+			requesterTags, _ := c.Get(core.RequesterTagCtxKey).(core.Tags)
 
 			switch principal {
 			case ISADMIN:
@@ -230,7 +231,7 @@ func Restrict(principal Principal) echo.MiddlewareFunc {
 				}
 
 			case ISLOCAL:
-				if requesterType != LocalUser {
+				if requesterType != core.LocalUser {
 					return c.JSON(http.StatusForbidden, echo.Map{
 						"error":  "you are not authorized to perform this action",
 						"detail": "you are not local",
@@ -238,7 +239,7 @@ func Restrict(principal Principal) echo.MiddlewareFunc {
 				}
 
 			case ISKNOWN:
-				if requesterType == Unknown {
+				if requesterType == core.Unknown {
 					return c.JSON(http.StatusForbidden, echo.Map{
 						"error":  "you are not authorized to perform this action",
 						"detail": "you are not known",
@@ -246,7 +247,7 @@ func Restrict(principal Principal) echo.MiddlewareFunc {
 				}
 
 			case ISUNITED:
-				if requesterType != RemoteDomain {
+				if requesterType != core.RemoteDomain {
 					return c.JSON(http.StatusForbidden, echo.Map{
 						"error":  "you are not authorized to perform this action",
 						"detail": "you are not united",

@@ -5,6 +5,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"go.opentelemetry.io/otel"
 	"net/http"
+	"github.com/totegamma/concurrent/x/core"
 )
 
 var tracer = otel.Tracer("auth")
@@ -30,7 +31,7 @@ func (h *handler) GetPassport(c echo.Context) error {
 	defer span.End()
 
 	remote := c.Param("remote")
-	requester, ok := c.Get(RequesterIdCtxKey).(string)
+	requester, ok := c.Get(core.RequesterIdCtxKey).(string)
 	if !ok {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}

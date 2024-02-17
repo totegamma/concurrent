@@ -7,7 +7,7 @@ import (
 	"log/slog"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/totegamma/concurrent/x/auth"
+	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/stream"
 )
@@ -26,12 +26,12 @@ type service struct {
 	rdb    *redis.Client
 	repo   Repository
 	stream stream.Service
-	auth   auth.Service
+	key key.Service
 }
 
 // NewService creates a new message service
-func NewService(rdb *redis.Client, repo Repository, stream stream.Service, auth auth.Service) Service {
-	return &service{rdb, repo, stream, auth}
+func NewService(rdb *redis.Client, repo Repository, stream stream.Service, key key.Service) Service {
+	return &service{rdb, repo, stream, key}
 }
 
 // Count returns the count number of messages
@@ -71,7 +71,7 @@ func (s *service) PostMessage(ctx context.Context, objectStr string, signature s
 		return core.Message{}, err
 	}
 
-	err = s.auth.ValidateSignedObject(ctx, objectStr, signature)
+	err = s.key.ValidateSignedObject(ctx, objectStr, signature)
 	if err != nil {
 		span.RecordError(err)
 		return core.Message{}, err

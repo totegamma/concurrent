@@ -1,4 +1,4 @@
-package auth
+package key
 
 import (
 	"context"
@@ -31,7 +31,7 @@ func TestService(t *testing.T) {
 	defer cleanup_db()
 
 	test_repo := NewRepository(db)
-	test_service := NewService(test_repo, util.Config{}, nil, nil)
+	test_service := NewService(test_repo, util.Config{})
 
 	// Test1. 登録してないサブキーで署名されたオブジェクトを検証する
 	payload0 := core.SignedObject[any]{

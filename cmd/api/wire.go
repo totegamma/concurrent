@@ -21,22 +21,29 @@ import (
 	"github.com/totegamma/concurrent/x/stream"
 	"github.com/totegamma/concurrent/x/userkv"
 	"github.com/totegamma/concurrent/x/util"
+	"github.com/totegamma/concurrent/x/key"
 )
 
-var userkvHandlerProvider = wire.NewSet(userkv.NewHandler, userkv.NewService, userkv.NewRepository)
 var collectionHandlerProvider = wire.NewSet(collection.NewHandler, collection.NewService, collection.NewRepository)
 
 var jwtServiceProvider = wire.NewSet(jwt.NewService, jwt.NewRepository)
 var domainServiceProvider = wire.NewSet(domain.NewService, domain.NewRepository)
-var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService)
+var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService, SetupKeyService)
 var streamServiceProvider = wire.NewSet(stream.NewService, stream.NewRepository, SetupEntityService)
-var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupStreamService, SetupMessageService)
-var characterServiceProvider = wire.NewSet(character.NewService, character.NewRepository)
-var authServiceProvider = wire.NewSet(auth.NewService, auth.NewRepository, SetupEntityService, SetupDomainService)
-var messageServiceProvider = wire.NewSet(message.NewService, message.NewRepository, SetupStreamService, SetupAuthService)
+var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupStreamService, SetupMessageService, SetupKeyService)
+var characterServiceProvider = wire.NewSet(character.NewService, character.NewRepository, SetupKeyService)
+var authServiceProvider = wire.NewSet(auth.NewService, SetupEntityService, SetupDomainService, SetupKeyService)
+var messageServiceProvider = wire.NewSet(message.NewService, message.NewRepository, SetupStreamService, SetupKeyService)
+var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository)
+var userKvServiceProvider = wire.NewSet(userkv.NewService, userkv.NewRepository)
 
 func SetupJwtService(rdb *redis.Client) jwt.Service {
     wire.Build(jwtServiceProvider)
+    return nil
+}
+
+func SetupKeyService(db *gorm.DB, config util.Config) key.Service {
+    wire.Build(keyServiceProvider)
     return nil
 }
 
@@ -76,7 +83,7 @@ func SetupSocketHandler(rdb *redis.Client, manager socket.Manager, config util.C
 }
 
 func SetupAgent(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) agent.Agent {
-	wire.Build(agent.NewAgent, jwtServiceProvider, domain.NewService, domain.NewRepository, entity.NewService, entity.NewRepository)
+	wire.Build(agent.NewAgent, SetupEntityService, SetupDomainService)
 	return nil
 }
 
@@ -85,8 +92,8 @@ func SetupAuthService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, confi
 	return nil
 }
 
-func SetupUserkvHandler(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) userkv.Handler {
-	wire.Build(userkvHandlerProvider, jwtServiceProvider, entity.NewService, entity.NewRepository)
+func SetupUserkvService(rdb *redis.Client) userkv.Service {
+	wire.Build(userKvServiceProvider)
 	return nil
 }
 

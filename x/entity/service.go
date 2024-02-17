@@ -17,7 +17,7 @@ import (
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/util"
-	"github.com/totegamma/concurrent/x/auth"
+	"github.com/totegamma/concurrent/x/key"
 	"golang.org/x/exp/slices"
 
 	"go.opentelemetry.io/otel"
@@ -49,14 +49,16 @@ type service struct {
 	repository Repository
 	config     util.Config
 	jwtService jwt.Service
+    key      key.Service
 }
 
 // NewService creates a new entity service
-func NewService(repository Repository, config util.Config, jwtService jwt.Service) Service {
+func NewService(repository Repository, config util.Config, jwtService jwt.Service, key key.Service) Service {
 	return &service{
 		repository,
 		config,
 		jwtService,
+        key,
 	}
 }
 
@@ -354,28 +356,22 @@ func (s *service) Ack(ctx context.Context, objectStr string, signature string) e
 	ctx, span := tracer.Start(ctx, "ServiceAck")
 	defer span.End()
 
-	var object AckSignedObject
+	var object core.SignedObject[core.AckPayload]
 	err := json.Unmarshal([]byte(objectStr), &object)
 	if err != nil {
 		span.RecordError(err)
 		return err
 	}
 
-	err = s.auth.ValidateSignedObject(ctx, objectStr, signature)
+	err = s.key.ValidateSignedObject(ctx, objectStr, signature)
 	if err != nil {
 		span.RecordError(err)
-		return core.Message{}, err
+		return err
 	}
 
 	switch object.Type {
 	case "ack":
-		err = util.VerifySignature(objectStr, object.From, signature)
-		if err != nil {
-			span.RecordError(err)
-			return err
-		}
-
-		address, err := s.repository.GetAddress(ctx, object.To)
+		address, err := s.repository.GetAddress(ctx, object.Body.To)
 		if err == nil {
 			packet := ackRequest{
 				SignedObject: objectStr,
@@ -417,13 +413,13 @@ func (s *service) Ack(ctx context.Context, objectStr string, signature string) e
 		}
 
 		return s.repository.Ack(ctx, &core.Ack{
-			From:      object.From,
-			To:        object.To,
+			From:      object.Body.From,
+			To:        object.Body.To,
 			Signature: signature,
 			Payload:   objectStr,
 		})
 	case "unack":
-		address, err := s.repository.GetAddress(ctx, object.To)
+		address, err := s.repository.GetAddress(ctx, object.Body.To)
 		if err == nil {
 			packet := ackRequest{
 				SignedObject: objectStr,
@@ -464,8 +460,8 @@ func (s *service) Ack(ctx context.Context, objectStr string, signature string) e
 			defer resp.Body.Close()
 		}
 		return s.repository.Unack(ctx, &core.Ack{
-			From:      object.From,
-			To:        object.To,
+			From:      object.Body.From,
+			To:        object.Body.To,
 			Signature: signature,
 			Payload:   objectStr,
 		})

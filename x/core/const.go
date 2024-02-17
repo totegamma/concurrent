@@ -1,4 +1,4 @@
-package key
+package core
 
 const (
 	RequesterTypeCtxKey    = "cc-requesterType"

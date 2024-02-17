@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/core"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
@@ -165,7 +164,7 @@ func (h handler) ListMine(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerListMine")
 	defer span.End()
 
-	requester, ok := c.Get(auth.RequesterIdCtxKey).(string)
+	requester, ok := c.Get(core.RequesterIdCtxKey).(string)
 	if !ok {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}
@@ -195,7 +194,7 @@ func (h handler) Delete(c echo.Context) error {
 		return err
 	}
 
-	requester, ok := c.Get(auth.RequesterIdCtxKey).(string)
+	requester, ok := c.Get(core.RequesterIdCtxKey).(string)
 	if !ok {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}
@@ -231,7 +230,7 @@ func (h handler) Remove(c echo.Context) error {
 		return err
 	}
 
-	requester, ok := c.Get(auth.RequesterIdCtxKey).(string)
+	requester, ok := c.Get(core.RequesterIdCtxKey).(string)
 	if !ok {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}

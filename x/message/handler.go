@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/core"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
@@ -37,7 +36,7 @@ func (h handler) Get(c echo.Context) error {
 
 	id := c.Param("id")
 
-	requester, ok := c.Get(auth.RequesterIdCtxKey).(string)
+	requester, ok := c.Get(core.RequesterIdCtxKey).(string)
 	var message core.Message
 	var err error
 	if ok {
@@ -94,7 +93,7 @@ func (h handler) Delete(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, echo.Map{"error": "target message not found"})
 	}
 
-	requester, ok := c.Get(auth.RequesterIdCtxKey).(string)
+	requester, ok := c.Get(core.RequesterIdCtxKey).(string)
 	if !ok {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}

@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/totegamma/concurrent/x/core"
-    "github.com/totegamma/concurrent/x/auth"
+    "github.com/totegamma/concurrent/x/key"
 )
 
 // Service is the interface for character service
@@ -16,13 +16,13 @@ type Service interface {
 
 type service struct {
 	repo Repository
-	auth   auth.Service
+	key key.Service
 
 }
 
 // NewService creates a new character service
-func NewService(repo Repository, auth auth.Service) Service {
-	return &service{repo, auth}
+func NewService(repo Repository, key key.Service) Service {
+	return &service{repo, key}
 }
 
 // Count returns the count number of messages
@@ -58,7 +58,7 @@ func (s *service) PutCharacter(ctx context.Context, objectStr string, signature 
 		return core.Character{}, err
 	}
 
-	err = s.auth.ValidateSignedObject(ctx, objectStr, signature)
+	err = s.key.ValidateSignedObject(ctx, objectStr, signature)
 	if err != nil {
 		span.RecordError(err)
 		return core.Character{}, err
@@ -80,3 +80,4 @@ func (s *service) PutCharacter(ctx context.Context, objectStr string, signature 
 
 	return character, nil
 }
+

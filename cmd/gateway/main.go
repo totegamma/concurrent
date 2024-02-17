@@ -20,7 +20,6 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
-	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
 
@@ -219,39 +218,39 @@ func main() {
 		handler := func(c echo.Context) error {
 			c.Response().Header().Set("cc-service", service.Name)
 
-			requesterType, ok := c.Get(auth.RequesterTypeCtxKey).(int)
+			requesterType, ok := c.Get(core.RequesterTypeCtxKey).(int)
 			if ok {
-				c.Request().Header.Set(auth.RequesterTypeHeader, strconv.Itoa(requesterType))
+				c.Request().Header.Set(core.RequesterTypeHeader, strconv.Itoa(requesterType))
 			}
 
-			requesterId, ok := c.Get(auth.RequesterIdCtxKey).(string)
+			requesterId, ok := c.Get(core.RequesterIdCtxKey).(string)
 			if ok {
-				c.Request().Header.Set(auth.RequesterIdHeader, requesterId)
+				c.Request().Header.Set(core.RequesterIdHeader, requesterId)
 			}
 
-			requesterTag, ok := c.Get(auth.RequesterTagCtxKey).(core.Tags)
+			requesterTag, ok := c.Get(core.RequesterTagCtxKey).(core.Tags)
 			if ok {
-				c.Request().Header.Set(auth.RequesterTagHeader, requesterTag.ToString())
+				c.Request().Header.Set(core.RequesterTagHeader, requesterTag.ToString())
 			}
 
-			requesterDomain, ok := c.Get(auth.RequesterDomainCtxKey).(string)
+			requesterDomain, ok := c.Get(core.RequesterDomainCtxKey).(string)
 			if ok {
-				c.Request().Header.Set(auth.RequesterDomainHeader, requesterDomain)
+				c.Request().Header.Set(core.RequesterDomainHeader, requesterDomain)
 			}
 
-			requesterKeyDepath, ok := c.Get(auth.RequesterKeyDepathKey).(string)
+			requesterKeyDepath, ok := c.Get(core.RequesterKeyDepathKey).(string)
 			if ok {
-				c.Request().Header.Set(auth.RequesterKeyDepathHeader, requesterKeyDepath)
+				c.Request().Header.Set(core.RequesterKeyDepathHeader, requesterKeyDepath)
 			}
 
-			requesterDomainTags, ok := c.Get(auth.RequesterDomainTagsKey).(core.Tags)
+			requesterDomainTags, ok := c.Get(core.RequesterDomainTagsKey).(core.Tags)
 			if ok {
-				c.Request().Header.Set(auth.RequesterDomainTagsHeader, requesterDomainTags.ToString())
+				c.Request().Header.Set(core.RequesterDomainTagsHeader, requesterDomainTags.ToString())
 			}
 
-			requesterRemoteTags, ok := c.Get(auth.RequesterRemoteTagsKey).(core.Tags)
+			requesterRemoteTags, ok := c.Get(core.RequesterRemoteTagsKey).(core.Tags)
 			if ok {
-				c.Request().Header.Set(auth.RequesterRemoteTagsHeader, requesterRemoteTags.ToString())
+				c.Request().Header.Set(core.RequesterRemoteTagsHeader, requesterRemoteTags.ToString())
 			}
 
 			proxy.ServeHTTP(c.Response(), c.Request())

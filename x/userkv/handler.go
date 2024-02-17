@@ -3,8 +3,7 @@ package userkv
 
 import (
 	"github.com/labstack/echo/v4"
-	"github.com/totegamma/concurrent/x/auth"
-	"github.com/totegamma/concurrent/x/entity"
+	"github.com/totegamma/concurrent/x/core"
 	"go.opentelemetry.io/otel"
 	"io"
 	"net/http"
@@ -20,12 +19,11 @@ type Handler interface {
 
 type handler struct {
 	service       Service
-	entityService entity.Service
 }
 
 // NewHandler creates a new handler
-func NewHandler(service Service, entityService entity.Service) Handler {
-	return &handler{service, entityService}
+func NewHandler(service Service) Handler {
+	return &handler{service}
 }
 
 // Get returns a userkv by ID
@@ -33,7 +31,7 @@ func (h handler) Get(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
 	defer span.End()
 
-	requester, ok := c.Get(auth.RequesterIdCtxKey).(string)
+	requester, ok := c.Get(core.RequesterIdCtxKey).(string)
 	if !ok {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}
@@ -51,7 +49,7 @@ func (h handler) Upsert(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerUpsert")
 	defer span.End()
 
-	requester, ok := c.Get(auth.RequesterIdCtxKey).(string)
+	requester, ok := c.Get(core.RequesterIdCtxKey).(string)
 	if !ok {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}

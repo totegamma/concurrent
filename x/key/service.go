@@ -202,7 +202,7 @@ func (s *service) ResolveRemoteSubkey(ctx context.Context, keyID, domain string)
 			return "", fmt.Errorf("Key %s is not a child of %s", key.ID, nextKey)
 		}
 
-		if isCCID(key.ID) {
+		if IsCCID(key.ID) {
 			break
 		}
 
@@ -267,7 +267,7 @@ func (s *service) ResolveSubkey(ctx context.Context, keyID string) (string, erro
 	for _, key := range keychain {
 		rootKey = key.Root
 		validationTrace += " -> " + key.ID
-		if !isKeyValid(ctx, key) {
+		if !IsKeyValid(ctx, key) {
 			return "", fmt.Errorf("Key %s is revoked. trace: %s", keyID, validationTrace)
 		}
 	}
@@ -281,7 +281,7 @@ func (s *service) GetKeyResolution(ctx context.Context, keyID string) ([]core.Ke
 
 	var keys []core.Key
 	for {
-		if isCCID(keyID) {
+		if IsCCID(keyID) {
 			return keys, nil
 		}
 
@@ -302,15 +302,15 @@ func (s *service) GetAllKeys(ctx context.Context, owner string) ([]core.Key, err
 	return s.repository.GetAll(ctx, owner)
 }
 
-func isKeyValid(ctx context.Context, key core.Key) bool {
+func IsKeyValid(ctx context.Context, key core.Key) bool {
 	return key.RevokePayload == "null"
 }
 
-func isCKID(keyID string) bool {
+func IsCKID(keyID string) bool {
 	return keyID[:2] == "CK"
 }
 
-func isCCID(keyID string) bool {
+func IsCCID(keyID string) bool {
 	return keyID[:2] == "CC"
 }
 

@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"github.com/totegamma/concurrent/x/auth"
+	"github.com/totegamma/concurrent/x/core"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
 )
@@ -54,7 +54,7 @@ func (h handler) GetOwnByTarget(c echo.Context) error {
 
 	targetID := c.Param("id")
 
-	requester, _ := c.Get(auth.RequesterIdCtxKey).(string)
+	requester, _ := c.Get(core.RequesterIdCtxKey).(string)
 
 	associations, err := h.service.GetOwnByTarget(ctx, targetID, requester)
 	if err != nil {
@@ -138,7 +138,7 @@ func (h handler) Delete(c echo.Context) error {
 	defer span.End()
 
 	associationID := c.Param("id")
-	requester, _ := c.Get(auth.RequesterIdCtxKey).(string)
+	requester, _ := c.Get(core.RequesterIdCtxKey).(string)
 
 	deleted, err := h.service.Delete(ctx, associationID, requester)
 	if err != nil {

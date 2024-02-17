@@ -3,7 +3,6 @@ package entity
 
 import (
 	"github.com/totegamma/concurrent/x/core"
-	"time"
 )
 
 type createRequest struct {
@@ -20,13 +19,6 @@ type registerRequest struct {
 	Info         string `json:"info"`
 	Invitation   string `json:"invitation"`
 	Captcha      string `json:"captcha"`
-}
-
-type AckSignedObject struct {
-	Type     string    `json:"type"`
-	From     string    `json:"from"`
-	To       string    `json:"to"`
-	SignedAt time.Time `json:"signedAt"`
 }
 
 type ackRequest struct {

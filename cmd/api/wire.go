@@ -26,14 +26,19 @@ import (
 var userkvHandlerProvider = wire.NewSet(userkv.NewHandler, userkv.NewService, userkv.NewRepository)
 var collectionHandlerProvider = wire.NewSet(collection.NewHandler, collection.NewService, collection.NewRepository)
 
-var domainServiceProvider = wire.NewSet(domain.NewService, domain.NewRepository)
 var jwtServiceProvider = wire.NewSet(jwt.NewService, jwt.NewRepository)
-var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, jwtServiceProvider)
-var streamServiceProvider = wire.NewSet(stream.NewService, stream.NewRepository, entityServiceProvider)
-var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, messageServiceProvider)
+var domainServiceProvider = wire.NewSet(domain.NewService, domain.NewRepository)
+var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService)
+var streamServiceProvider = wire.NewSet(stream.NewService, stream.NewRepository, SetupEntityService)
+var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupStreamService, SetupMessageService)
 var characterServiceProvider = wire.NewSet(character.NewService, character.NewRepository)
-var authServiceProvider = wire.NewSet(auth.NewService, auth.NewRepository, entityServiceProvider, domainServiceProvider, jwtServiceProvider)
-var messageServiceProvider = wire.NewSet(message.NewService, message.NewRepository, streamServiceProvider, authServiceProvider)
+var authServiceProvider = wire.NewSet(auth.NewService, auth.NewRepository, SetupEntityService, SetupDomainService)
+var messageServiceProvider = wire.NewSet(message.NewService, message.NewRepository, SetupStreamService, SetupAuthService)
+
+func SetupJwtService(rdb *redis.Client) jwt.Service {
+    wire.Build(jwtServiceProvider)
+    return nil
+}
 
 func SetupMessageService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) message.Service {
 	wire.Build(messageServiceProvider)

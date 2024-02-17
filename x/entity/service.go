@@ -17,6 +17,7 @@ import (
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/util"
+	"github.com/totegamma/concurrent/x/auth"
 	"golang.org/x/exp/slices"
 
 	"go.opentelemetry.io/otel"
@@ -358,6 +359,12 @@ func (s *service) Ack(ctx context.Context, objectStr string, signature string) e
 	if err != nil {
 		span.RecordError(err)
 		return err
+	}
+
+	err = s.auth.ValidateSignedObject(ctx, objectStr, signature)
+	if err != nil {
+		span.RecordError(err)
+		return core.Message{}, err
 	}
 
 	switch object.Type {

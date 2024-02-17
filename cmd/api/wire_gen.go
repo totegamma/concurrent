@@ -28,15 +28,17 @@ import (
 
 // Injectors from wire.go:
 
+func SetupJwtService(rdb *redis.Client) jwt.Service {
+	repository := jwt.NewRepository(rdb)
+	service := jwt.NewService(repository)
+	return service
+}
+
 func SetupMessageService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) message.Service {
 	repository := message.NewRepository(db, mc)
-	streamRepository := stream.NewRepository(db, rdb, mc, manager, config)
-	entityRepository := entity.NewRepository(db, mc)
-	jwtRepository := jwt.NewRepository(rdb)
-	service := jwt.NewService(jwtRepository)
-	entityService := entity.NewService(entityRepository, config, service)
-	streamService := stream.NewService(streamRepository, entityService, config)
-	messageService := message.NewService(rdb, repository, streamService)
+	service := SetupStreamService(db, rdb, mc, manager, config)
+	authService := SetupAuthService(db, rdb, mc, config)
+	messageService := message.NewService(rdb, repository, service, authService)
 	return messageService
 }
 
@@ -48,39 +50,28 @@ func SetupCharacterService(db *gorm.DB, mc *memcache.Client, config util.Config)
 
 func SetupAssociationService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) association.Service {
 	repository := association.NewRepository(db, mc)
-	streamRepository := stream.NewRepository(db, rdb, mc, manager, config)
-	entityRepository := entity.NewRepository(db, mc)
-	jwtRepository := jwt.NewRepository(rdb)
-	service := jwt.NewService(jwtRepository)
-	entityService := entity.NewService(entityRepository, config, service)
-	streamService := stream.NewService(streamRepository, entityService, config)
-	messageRepository := message.NewRepository(db, mc)
-	messageService := message.NewService(rdb, messageRepository, streamService)
-	associationService := association.NewService(repository, streamService, messageService)
+	service := SetupStreamService(db, rdb, mc, manager, config)
+	messageService := SetupMessageService(db, rdb, mc, manager, config)
+	associationService := association.NewService(repository, service, messageService)
 	return associationService
 }
 
 func SetupStreamService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) stream.Service {
 	repository := stream.NewRepository(db, rdb, mc, manager, config)
-	entityRepository := entity.NewRepository(db, mc)
-	jwtRepository := jwt.NewRepository(rdb)
-	service := jwt.NewService(jwtRepository)
-	entityService := entity.NewService(entityRepository, config, service)
-	streamService := stream.NewService(repository, entityService, config)
+	service := SetupEntityService(db, rdb, mc, config)
+	streamService := stream.NewService(repository, service, config)
 	return streamService
 }
 
-func SetupDomainHandler(db *gorm.DB, config util.Config) domain.Handler {
+func SetupDomainService(db *gorm.DB, config util.Config) domain.Service {
 	repository := domain.NewRepository(db)
 	service := domain.NewService(repository)
-	handler := domain.NewHandler(service, config)
-	return handler
+	return service
 }
 
 func SetupEntityService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) entity.Service {
 	repository := entity.NewRepository(db, mc)
-	jwtRepository := jwt.NewRepository(rdb)
-	service := jwt.NewService(jwtRepository)
+	service := SetupJwtService(rdb)
 	entityService := entity.NewService(repository, config, service)
 	return entityService
 }
@@ -104,13 +95,9 @@ func SetupAgent(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util
 
 func SetupAuthService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) auth.Service {
 	repository := auth.NewRepository(db)
-	entityRepository := entity.NewRepository(db, mc)
-	jwtRepository := jwt.NewRepository(rdb)
-	service := jwt.NewService(jwtRepository)
-	entityService := entity.NewService(entityRepository, config, service)
-	domainRepository := domain.NewRepository(db)
-	domainService := domain.NewService(domainRepository)
-	authService := auth.NewService(repository, config, entityService, domainService)
+	service := SetupEntityService(db, rdb, mc, config)
+	domainService := SetupDomainService(db, config)
+	authService := auth.NewService(repository, config, service, domainService)
 	return authService
 }
 
@@ -139,20 +126,22 @@ func SetupSocketManager(mc *memcache.Client, db *gorm.DB, rdb *redis.Client, con
 
 // wire.go:
 
-var domainHandlerProvider = wire.NewSet(domain.NewHandler, domain.NewService, domain.NewRepository)
-
 var userkvHandlerProvider = wire.NewSet(userkv.NewHandler, userkv.NewService, userkv.NewRepository)
 
 var collectionHandlerProvider = wire.NewSet(collection.NewHandler, collection.NewService, collection.NewRepository)
 
 var jwtServiceProvider = wire.NewSet(jwt.NewService, jwt.NewRepository)
 
-var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, jwtServiceProvider)
+var domainServiceProvider = wire.NewSet(domain.NewService, domain.NewRepository)
 
-var streamServiceProvider = wire.NewSet(stream.NewService, stream.NewRepository, entityServiceProvider)
+var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService)
 
-var messageServiceProvider = wire.NewSet(message.NewService, message.NewRepository, streamServiceProvider)
+var streamServiceProvider = wire.NewSet(stream.NewService, stream.NewRepository, SetupEntityService)
 
-var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, messageServiceProvider)
+var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupStreamService, SetupMessageService)
 
 var characterServiceProvider = wire.NewSet(character.NewService, character.NewRepository)
+
+var authServiceProvider = wire.NewSet(auth.NewService, auth.NewRepository, SetupEntityService, SetupDomainService)
+
+var messageServiceProvider = wire.NewSet(message.NewService, message.NewRepository, SetupStreamService, SetupAuthService)

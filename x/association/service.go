@@ -11,7 +11,7 @@ import (
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/stream"
-	"github.com/totegamma/concurrent/x/util"
+    "github.com/totegamma/concurrent/x/auth"
 )
 
 // Service is the interface for association service
@@ -34,11 +34,12 @@ type service struct {
 	repo    Repository
 	stream  stream.Service
 	message message.Service
+    auth    auth.Service
 }
 
 // NewService creates a new association service
-func NewService(repo Repository, stream stream.Service, message message.Service) Service {
-	return &service{repo, stream, message}
+func NewService(repo Repository, stream stream.Service, message message.Service, auth auth.Service) Service {
+	return &service{repo, stream, message, auth}
 }
 
 // Count returns the count number of messages
@@ -63,7 +64,8 @@ func (s *service) PostAssociation(ctx context.Context, objectStr string, signatu
 		return core.Association{}, err
 	}
 
-	if err := util.VerifySignature(objectStr, object.Signer, signature); err != nil {
+	err = s.auth.ValidateSignedObject(ctx, objectStr, signature)
+	if err != nil {
 		span.RecordError(err)
 		return core.Association{}, err
 	}

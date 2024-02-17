@@ -11,6 +11,7 @@ type Repository interface {
 	Enact(ctx context.Context, key core.Key) (core.Key, error)
 	Revoke(ctx context.Context, keyID string, payload string, signature string) (core.Key, error)
 	Get(ctx context.Context, keyID string) (core.Key, error)
+	GetAll(ctx context.Context, owner string) ([]core.Key, error)
 }
 
 type repository struct {
@@ -62,4 +63,17 @@ func (r *repository) Revoke(ctx context.Context, keyID string, payload string, s
 	}
 
 	return key, nil
+}
+
+func (r *repository) GetAll(ctx context.Context, owner string) ([]core.Key, error) {
+	ctx, span := tracer.Start(ctx, "Repository.GetAll")
+	defer span.End()
+
+	var keys []core.Key
+	err := r.db.Where("root = ?", owner).Find(&keys).Error
+	if err != nil {
+		return nil, err
+	}
+
+	return keys, nil
 }

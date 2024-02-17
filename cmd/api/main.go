@@ -23,6 +23,7 @@ import (
 	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/character"
 	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/stream"
@@ -194,7 +195,8 @@ func main() {
 
 	socketManager := SetupSocketManager(mc, db, rdb, config)
 	socketHandler := SetupSocketHandler(rdb, socketManager, config)
-	domainHandler := SetupDomainHandler(db, config)
+	domainService := SetupDomainService(db, config)
+	domainHandler := domain.NewHandler(domainService, config)
 	userkvHandler := SetupUserkvHandler(db, rdb, mc, config)
 	collectionHandler := SetupCollectionHandler(db, rdb, config)
 
@@ -287,7 +289,8 @@ func main() {
 	// auth
 	apiV1.GET("/auth/passport/:remote", authHandler.GetPassport, auth.Restrict(auth.ISLOCAL))
 	apiV1.GET("/auth/key/:id", authHandler.GetKeyResolution)
-	apiV1.POST("auth/keys", authHandler.UpdateKey, auth.Restrict(auth.ISLOCAL))
+	apiV1.POST("auth/key", authHandler.UpdateKey, auth.Restrict(auth.ISLOCAL))
+	apiV1.GET("/auth/keys/mine", authHandler.GetKeyMine, auth.Restrict(auth.ISLOCAL))
 
 	// collection
 	apiV1.POST("/collection", collectionHandler.CreateCollection, auth.Restrict(auth.ISLOCAL))

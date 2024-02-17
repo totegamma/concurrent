@@ -30,6 +30,7 @@ type Service interface {
 	ResolveSubkey(ctx context.Context, keyID string) (string, error)
 	ResolveRemoteSubkey(ctx context.Context, keyID, domain string) (string, error)
 	GetKeyResolution(ctx context.Context, keyID string) ([]core.Key, error)
+	GetAllKeys(ctx context.Context, owner string) ([]core.Key, error)
 
 	IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc
 }
@@ -336,6 +337,13 @@ func (s *service) GetKeyResolution(ctx context.Context, keyID string) ([]core.Ke
 		keys = append(keys, key)
 		keyID = key.Parent
 	}
+}
+
+func (s *service) GetAllKeys(ctx context.Context, owner string) ([]core.Key, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetAll")
+	defer span.End()
+
+	return s.repository.GetAll(ctx, owner)
 }
 
 func isKeyValid(ctx context.Context, key core.Key) bool {

@@ -16,6 +16,7 @@ var tracer = otel.Tracer("auth")
 type Handler interface {
 	GetPassport(c echo.Context) error
 	GetKeyResolution(c echo.Context) error
+	GetKeyMine(c echo.Context) error
 	UpdateKey(c echo.Context) error
 }
 
@@ -106,4 +107,23 @@ func (h *handler) UpdateKey(c echo.Context) error {
 	} else {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "invalid type"})
 	}
+}
+
+// GetKeyMine is used for get all keys of requester
+func (h *handler) GetKeyMine(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetKeyMine")
+	defer span.End()
+
+	requester, ok := c.Get(RequesterIdCtxKey).(string)
+	if !ok {
+		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
+	}
+
+	response, err := h.service.GetAllKeys(ctx, requester)
+	if err != nil {
+		span.RecordError(err)
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{"content": response})
 }

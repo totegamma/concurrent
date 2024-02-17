@@ -3,6 +3,7 @@ package userkv
 
 import (
 	"github.com/labstack/echo/v4"
+	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/entity"
 	"go.opentelemetry.io/otel"
 	"io"
@@ -32,10 +33,11 @@ func (h handler) Get(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
 	defer span.End()
 
-	requester := c.Get("requester").(string)
-	if h.entityService.IsUserExists(ctx, requester) == false {
-		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "user not found"})
+	requester, ok := c.Get(auth.RequesterIdCtxKey).(string)
+	if !ok {
+		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}
+
 	key := c.Param("key")
 	value, err := h.service.Get(ctx, requester, key)
 	if err != nil {
@@ -49,10 +51,11 @@ func (h handler) Upsert(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerUpsert")
 	defer span.End()
 
-	requester := c.Get("requester").(string)
-	if h.entityService.IsUserExists(ctx, requester) == false {
-		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "user not found"})
+	requester, ok := c.Get(auth.RequesterIdCtxKey).(string)
+	if !ok {
+		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}
+
 	key := c.Param("key")
 	body := c.Request().Body
 	bytes, err := io.ReadAll(body)

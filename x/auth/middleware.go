@@ -21,104 +21,6 @@ const (
 	ISUNITED
 )
 
-func Restrict(principal Principal) echo.MiddlewareFunc {
-	return func(next echo.HandlerFunc) echo.HandlerFunc {
-		return func(c echo.Context) error {
-			ctx, span := tracer.Start(c.Request().Context(), "auth.Restrict")
-			defer span.End()
-
-			requesterType := c.Get(RequesterTypeCtxKey).(int)
-			requesterTags := c.Get(RequesterTagCtxKey).(core.Tags)
-
-			switch principal {
-			case ISADMIN:
-				if !requesterTags.Has("_admin") {
-					return c.JSON(http.StatusForbidden, echo.Map{
-						"error":  "you are not authorized to perform this action",
-						"detail": "you are not admin",
-					})
-				}
-
-			case ISLOCAL:
-				if requesterType != LocalUser {
-					return c.JSON(http.StatusForbidden, echo.Map{
-						"error":  "you are not authorized to perform this action",
-						"detail": "you are not local",
-					})
-				}
-
-			case ISKNOWN:
-				if requesterType != Unknown {
-					return c.JSON(http.StatusForbidden, echo.Map{
-						"error":  "you are not authorized to perform this action",
-						"detail": "you are not known",
-					})
-				}
-
-			case ISUNITED:
-				if requesterType != RemoteDomain {
-					return c.JSON(http.StatusForbidden, echo.Map{
-						"error":  "you are not authorized to perform this action",
-						"detail": "you are not united",
-					})
-				}
-			}
-
-			c.SetRequest(c.Request().WithContext(ctx))
-			return next(c)
-		}
-	}
-}
-
-func ReceiveGatewayAuthPropagation(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		ctx, span := tracer.Start(c.Request().Context(), "auth.ReceiveGatewayAuthPropagation")
-		defer span.End()
-
-		reqTypeHeader := c.Request().Header.Get(RequesterTypeHeader)
-		reqIdHeader := c.Request().Header.Get(RequesterIdHeader)
-		reqTagHeader := c.Request().Header.Get(RequesterTagHeader)
-		reqDomainHeader := c.Request().Header.Get(RequesterDomainHeader)
-		reqKeyDepathHeader := c.Request().Header.Get(RequesterKeyDepathHeader)
-		reqDomainTagsHeader := c.Request().Header.Get(RequesterDomainTagsHeader)
-		reqRemoteTagsHeader := c.Request().Header.Get(RequesterRemoteTagsHeader)
-
-		if reqTypeHeader != "" {
-			reqType, err := strconv.Atoi(reqTypeHeader)
-			if err == nil {
-				c.Set(RequesterTypeCtxKey, reqType)
-			}
-		}
-
-		if reqIdHeader != "" {
-			c.Set(RequesterIdCtxKey, reqIdHeader)
-		}
-
-		if reqTagHeader != "" {
-			c.Set(RequesterTagCtxKey, core.ParseTags(reqTagHeader))
-		}
-
-		if reqDomainHeader != "" {
-			c.Set(RequesterDomainCtxKey, reqDomainHeader)
-		}
-
-		if reqKeyDepathHeader != "" {
-			c.Set(RequesterKeyDepathKey, reqKeyDepathHeader)
-		}
-
-		if reqDomainTagsHeader != "" {
-			c.Set(RequesterDomainTagsKey, core.ParseTags(reqDomainTagsHeader))
-		}
-
-		if reqRemoteTagsHeader != "" {
-			c.Set(RequesterRemoteTagsKey, core.ParseTags(reqRemoteTagsHeader))
-		}
-
-		c.SetRequest(c.Request().WithContext(ctx))
-		return next(c)
-	}
-}
-
 func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		ctx, span := tracer.Start(c.Request().Context(), "auth.IdentifyIdentity")
@@ -178,6 +80,8 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 					tags = core.ParseTags(requester.Tag)
 					c.Set(RequesterTypeCtxKey, LocalUser)
 					c.Set(RequesterTagCtxKey, tags)
+					span.SetAttributes(attribute.String("RequesterType", RequesterTypeString(LocalUser)))
+					span.SetAttributes(attribute.String("RequesterTag", requester.Tag))
 				} else {
 					domain, err = s.domain.GetByCCID(ctx, claims.Issuer)
 					if err != nil {
@@ -188,6 +92,9 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 					c.Set(RequesterTypeCtxKey, RemoteDomain)
 					c.Set(RequesterDomainCtxKey, domain.ID)
 					c.Set(RequesterDomainTagsKey, tags)
+					span.SetAttributes(attribute.String("RequesterType", RequesterTypeString(RemoteDomain)))
+					span.SetAttributes(attribute.String("RequesterDomain", domain.ID))
+					span.SetAttributes(attribute.String("RequesterDomainTags", domain.Tag))
 				}
 
 				c.Set(RequesterIdCtxKey, requester.ID)
@@ -237,14 +144,118 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				c.Set(RequesterTypeCtxKey, RemoteUser)
 				c.Set(RequesterIdCtxKey, ccid)
 				c.Set(RequesterDomainCtxKey, domain.ID)
+				span.SetAttributes(attribute.String("RequesterType", RequesterTypeString(RemoteUser)))
+				span.SetAttributes(attribute.String("RequesterId", ccid))
+				span.SetAttributes(attribute.String("RequesterDomain", domain.ID))
 			}
-
-			span.SetAttributes(attribute.String("Issuer", claims.Issuer))
-			span.SetAttributes(attribute.String("Principal", claims.Principal))
-
 		}
 	skip:
 		c.SetRequest(c.Request().WithContext(ctx))
 		return next(c)
+	}
+}
+
+func ReceiveGatewayAuthPropagation(next echo.HandlerFunc) echo.HandlerFunc {
+	return func(c echo.Context) error {
+		ctx, span := tracer.Start(c.Request().Context(), "auth.ReceiveGatewayAuthPropagation")
+		defer span.End()
+
+		reqTypeHeader := c.Request().Header.Get(RequesterTypeHeader)
+		reqIdHeader := c.Request().Header.Get(RequesterIdHeader)
+		reqTagHeader := c.Request().Header.Get(RequesterTagHeader)
+		reqDomainHeader := c.Request().Header.Get(RequesterDomainHeader)
+		reqKeyDepathHeader := c.Request().Header.Get(RequesterKeyDepathHeader)
+		reqDomainTagsHeader := c.Request().Header.Get(RequesterDomainTagsHeader)
+		reqRemoteTagsHeader := c.Request().Header.Get(RequesterRemoteTagsHeader)
+
+		if reqTypeHeader != "" {
+			reqType, err := strconv.Atoi(reqTypeHeader)
+			if err == nil {
+				c.Set(RequesterTypeCtxKey, reqType)
+				span.SetAttributes(attribute.String("RequesterType", RequesterTypeString(reqType)))
+			}
+		}
+
+		if reqIdHeader != "" {
+			c.Set(RequesterIdCtxKey, reqIdHeader)
+			span.SetAttributes(attribute.String("RequesterId", reqIdHeader))
+		}
+
+		if reqTagHeader != "" {
+			c.Set(RequesterTagCtxKey, core.ParseTags(reqTagHeader))
+			span.SetAttributes(attribute.String("RequesterTag", reqTagHeader))
+		}
+
+		if reqDomainHeader != "" {
+			c.Set(RequesterDomainCtxKey, reqDomainHeader)
+			span.SetAttributes(attribute.String("RequesterDomain", reqDomainHeader))
+		}
+
+		if reqKeyDepathHeader != "" {
+			c.Set(RequesterKeyDepathKey, reqKeyDepathHeader)
+			span.SetAttributes(attribute.String("RequesterKeyDepath", reqKeyDepathHeader))
+		}
+
+		if reqDomainTagsHeader != "" {
+			c.Set(RequesterDomainTagsKey, core.ParseTags(reqDomainTagsHeader))
+			span.SetAttributes(attribute.String("RequesterDomainTags", reqDomainTagsHeader))
+		}
+
+		if reqRemoteTagsHeader != "" {
+			c.Set(RequesterRemoteTagsKey, core.ParseTags(reqRemoteTagsHeader))
+			span.SetAttributes(attribute.String("RequesterRemoteTags", reqRemoteTagsHeader))
+		}
+
+		c.SetRequest(c.Request().WithContext(ctx))
+		return next(c)
+	}
+}
+
+func Restrict(principal Principal) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			ctx, span := tracer.Start(c.Request().Context(), "auth.Restrict")
+			defer span.End()
+
+			requesterType, _ := c.Get(RequesterTypeCtxKey).(int)
+			requesterTags, _ := c.Get(RequesterTagCtxKey).(core.Tags)
+
+			switch principal {
+			case ISADMIN:
+				if !requesterTags.Has("_admin") {
+					return c.JSON(http.StatusForbidden, echo.Map{
+						"error":  "you are not authorized to perform this action",
+						"detail": "you are not admin",
+					})
+				}
+
+			case ISLOCAL:
+				if requesterType != LocalUser {
+					return c.JSON(http.StatusForbidden, echo.Map{
+						"error":  "you are not authorized to perform this action",
+						"detail": "you are not local",
+					})
+				}
+
+			case ISKNOWN:
+				if requesterType == Unknown {
+					return c.JSON(http.StatusForbidden, echo.Map{
+						"error":  "you are not authorized to perform this action",
+						"detail": "you are not known",
+					})
+				}
+
+			case ISUNITED:
+				if requesterType != RemoteDomain {
+					return c.JSON(http.StatusForbidden, echo.Map{
+						"error":  "you are not authorized to perform this action",
+						"detail": "you are not united",
+					})
+				}
+			}
+
+			c.SetRequest(c.Request().WithContext(ctx))
+			return next(c)
+		}
 	}
 }

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
+	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/core"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
@@ -164,7 +165,10 @@ func (h handler) ListMine(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerListMine")
 	defer span.End()
 
-	requester := c.Get("requester").(string)
+	requester, ok := c.Get(auth.RequesterIdCtxKey).(string)
+	if !ok {
+		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
+	}
 
 	list, err := h.service.ListStreamByAuthor(ctx, requester)
 	if err != nil {
@@ -191,7 +195,10 @@ func (h handler) Delete(c echo.Context) error {
 		return err
 	}
 
-	requester := c.Get("requester").(string)
+	requester, ok := c.Get(auth.RequesterIdCtxKey).(string)
+	if !ok {
+		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
+	}
 
 	if target.Author != requester {
 		return c.JSON(http.StatusForbidden, echo.Map{"error": "You are not owner of this stream"})
@@ -224,7 +231,10 @@ func (h handler) Remove(c echo.Context) error {
 		return err
 	}
 
-	requester := c.Get("requester").(string)
+	requester, ok := c.Get(auth.RequesterIdCtxKey).(string)
+	if !ok {
+		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
+	}
 
 	if target.Author != requester && target.Owner != requester {
 		return c.JSON(http.StatusForbidden, echo.Map{"error": "You are not owner of this stream element"})

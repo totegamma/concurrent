@@ -26,3 +26,18 @@ const (
 	RemoteUser
 	RemoteDomain
 )
+
+func RequesterTypeString(t int) string {
+	switch t {
+	case LocalUser:
+		return "LocalUser"
+	case RemoteUser:
+		return "RemoteUser"
+	case RemoteDomain:
+		return "RemoteDomain"
+	case Unknown:
+		return "Unknown"
+	default:
+		return "Error"
+	}
+}

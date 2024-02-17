@@ -35,7 +35,10 @@ func (h *handler) GetPassport(c echo.Context) error {
 	defer span.End()
 
 	remote := c.Param("remote")
-	requester := c.Get("requester").(string)
+	requester, ok := c.Get(RequesterIdCtxKey).(string)
+	if !ok {
+		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
+	}
 
 	response, err := h.service.IssuePassport(ctx, requester, remote)
 	if err != nil {

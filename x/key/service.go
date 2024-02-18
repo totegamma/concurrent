@@ -144,7 +144,7 @@ func (s *service) ValidateSignedObject(ctx context.Context, payload, signature s
 		}
 	} else { // サブキーの場合: 親キーを取得して検証
 
-		domain, err := s.entity.ResolveHost(ctx, object.Signer)
+		domain, err := s.entity.ResolveHost(ctx, object.Signer, "")
 		if err != nil {
 			span.RecordError(err)
 			return err

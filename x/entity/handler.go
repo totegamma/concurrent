@@ -176,7 +176,8 @@ func (h handler) Resolve(c echo.Context) error {
 	defer span.End()
 
 	id := c.Param("id")
-	fqdn, err := h.service.ResolveHost(ctx, id)
+	hint := c.QueryParam("hint")
+	fqdn, err := h.service.ResolveHost(ctx, id, hint)
 	if err != nil {
 		span.RecordError(err)
 		return err

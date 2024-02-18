@@ -154,11 +154,12 @@ func (mr *MockServiceMockRecorder) ListModified(ctx, modified interface{}) *gomo
 }
 
 // PullEntityFromRemote mocks base method.
-func (m *MockService) PullEntityFromRemote(ctx context.Context, id, domain string) error {
+func (m *MockService) PullEntityFromRemote(ctx context.Context, id, domain string) (string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "PullEntityFromRemote", ctx, id, domain)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // PullEntityFromRemote indicates an expected call of PullEntityFromRemote.
@@ -182,18 +183,18 @@ func (mr *MockServiceMockRecorder) Register(ctx, ccid, payload, signature, info,
 }
 
 // ResolveHost mocks base method.
-func (m *MockService) ResolveHost(ctx context.Context, user string) (string, error) {
+func (m *MockService) ResolveHost(ctx context.Context, user, hint string) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ResolveHost", ctx, user)
+	ret := m.ctrl.Call(m, "ResolveHost", ctx, user, hint)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ResolveHost indicates an expected call of ResolveHost.
-func (mr *MockServiceMockRecorder) ResolveHost(ctx, user interface{}) *gomock.Call {
+func (mr *MockServiceMockRecorder) ResolveHost(ctx, user, hint interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveHost", reflect.TypeOf((*MockService)(nil).ResolveHost), ctx, user)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveHost", reflect.TypeOf((*MockService)(nil).ResolveHost), ctx, user, hint)
 }
 
 // Update mocks base method.

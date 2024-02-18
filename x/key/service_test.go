@@ -36,7 +36,7 @@ func TestService(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockEntity := mock_entity.NewMockService(ctrl)
-	mockEntity.EXPECT().ResolveHost(gomock.Any(), gomock.Any()).Return("", nil).AnyTimes()
+	mockEntity.EXPECT().ResolveHost(gomock.Any(), gomock.Any(), gomock.Any()).Return("", nil).AnyTimes()
 
 	test_repo := NewRepository(db)
 	test_service := NewService(test_repo, mockEntity, util.Config{})

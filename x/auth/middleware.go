@@ -127,7 +127,7 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				// pull entity from remote if not registered
 				_, err = s.entity.GetAddress(ctx, ccid)
 				if err != nil {
-					err = s.entity.PullEntityFromRemote(ctx, ccid, domain.ID)
+					_, err = s.entity.PullEntityFromRemote(ctx, ccid, domain.ID)
 					if err != nil {
 						span.RecordError(err)
 						goto skip

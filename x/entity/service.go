@@ -30,7 +30,7 @@ type Service interface {
 	Get(ctx context.Context, ccid string) (core.Entity, error)
 	List(ctx context.Context) ([]core.Entity, error)
 	ListModified(ctx context.Context, modified time.Time) ([]core.Entity, error)
-	ResolveHost(ctx context.Context, user string) (string, error)
+	ResolveHost(ctx context.Context, user, hint string) (string, error)
 	Update(ctx context.Context, entity *core.Entity) error
 	IsUserExists(ctx context.Context, user string) bool
 	Delete(ctx context.Context, id string) error
@@ -38,7 +38,7 @@ type Service interface {
 	UpdateAddress(ctx context.Context, ccid string, domain string, signedAt time.Time) error
 	UpdateRegistration(ctx context.Context, id string, payload string, signature string) error // NOTE: for migration. Remove later
 	Count(ctx context.Context) (int64, error)
-	PullEntityFromRemote(ctx context.Context, id, domain string) error
+	PullEntityFromRemote(ctx context.Context, id, domain string) (string, error)
 }
 
 type service struct {
@@ -56,28 +56,60 @@ func NewService(repository Repository, config util.Config, jwtService jwt.Servic
 	}
 }
 
+type addressResponse struct {
+	Status  string `json:"status"`
+	Content string `json:"content"`
+}
+
 // PullEntityFromRemote pulls entity from remote
-func (s *service) PullEntityFromRemote(ctx context.Context, id, domain string) error {
+func (s *service) PullEntityFromRemote(ctx context.Context, id, domain string) (string, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryPullEntityFromRemote")
 	defer span.End()
 
-	req, err := http.NewRequest("GET", "https://"+domain+"/api/v1/entity/"+id, nil)
+	client := new(http.Client)
+
+	req, err := http.NewRequest("GET", "https://"+domain+"/api/v1/address/"+id, nil)
 	if err != nil {
 		span.RecordError(err)
-		return err
+		return "", err
 	}
 
 	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
 
-	client := new(http.Client)
 	resp, err := client.Do(req)
 	if err != nil {
 		span.RecordError(err)
-		return err
+		return "", err
 	}
 	defer resp.Body.Close()
 
 	body, _ := io.ReadAll(resp.Body)
+
+	var remoteAddress addressResponse
+	json.Unmarshal(body, &remoteAddress)
+
+	if remoteAddress.Status != "ok" {
+		return "", fmt.Errorf("Remote address is not found")
+	}
+
+	targetDomain := remoteAddress.Content
+
+	req, err = http.NewRequest("GET", "https://"+targetDomain+"/api/v1/entity/"+id, nil)
+	if err != nil {
+		span.RecordError(err)
+		return "", err
+	}
+
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+
+	resp, err = client.Do(req)
+	if err != nil {
+		span.RecordError(err)
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	body, _ = io.ReadAll(resp.Body)
 
 	var remoteEntity entityResponse
 	json.Unmarshal(body, &remoteEntity)
@@ -92,7 +124,7 @@ func (s *service) PullEntityFromRemote(ctx context.Context, id, domain string) e
 			slog.String("error", err.Error()),
 			slog.String("module", "agent"),
 		)
-		return fmt.Errorf("Invalid signature")
+		return "", fmt.Errorf("Invalid signature")
 	}
 
 	var signedObj core.SignedObject[core.Affiliation]
@@ -104,21 +136,21 @@ func (s *service) PullEntityFromRemote(ctx context.Context, id, domain string) e
 			slog.String("error", err.Error()),
 			slog.String("module", "agent"),
 		)
-		return fmt.Errorf("Invalid payload")
+		return "", fmt.Errorf("Invalid payload")
 	}
 
 	existanceAddr, err := s.GetAddress(ctx, entity.ID)
 	if err == nil {
 		// compare signed date
 		if signedObj.SignedAt.Unix() <= existanceAddr.SignedAt.Unix() {
-			return fmt.Errorf("Remote entity is older than local entity")
+			return "", fmt.Errorf("Remote entity is older than local entity")
 		}
 	}
 
 	existanceEntity, err := s.Get(ctx, entity.ID)
 	if err == nil {
 		if signedObj.SignedAt.Unix() <= existanceEntity.CDate.Unix() {
-			return fmt.Errorf("Remote entity is older than local entity")
+			return "", fmt.Errorf("Remote entity is older than local entity")
 		}
 	}
 
@@ -131,10 +163,10 @@ func (s *service) PullEntityFromRemote(ctx context.Context, id, domain string) e
 			slog.String("error", err.Error()),
 			slog.String("module", "agent"),
 		)
-		return err
+		return "", err
 	}
 
-	return nil
+	return targetDomain, nil
 }
 
 // Total returns the count number of entities
@@ -296,25 +328,30 @@ func (s *service) ListModified(ctx context.Context, time time.Time) ([]core.Enti
 }
 
 // ResolveHost returns host for user
-func (s *service) ResolveHost(ctx context.Context, ccid string) (string, error) {
+func (s *service) ResolveHost(ctx context.Context, ccid string, hint string) (string, error) {
 	ctx, span := tracer.Start(ctx, "ServiceResolveHost")
 	defer span.End()
 
+	// check address book
 	addr, err := s.repository.GetAddress(ctx, ccid)
-	if err != nil {
-		span.RecordError(err)
+	if err == nil {
+		return addr.Domain, nil
+	}
 
-		// check for local user
-		_, err := s.repository.GetEntity(ctx, ccid)
-		if err != nil {
-			span.RecordError(err)
-			return "", err
-		}
-
+	// check local user
+	_, err = s.repository.GetEntity(ctx, ccid)
+	if err == nil {
 		return s.config.Concurrent.FQDN, nil
 	}
 
-	return addr.Domain, nil
+	if hint != "" {
+		host, err := s.PullEntityFromRemote(ctx, ccid, hint)
+		if err == nil {
+			return host, nil
+		}
+	}
+
+	return "", fmt.Errorf("User not found")
 }
 
 // Update updates entity

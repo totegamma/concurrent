@@ -84,7 +84,7 @@ func SetupStreamService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, man
 
 func SetupDomainService(db *gorm.DB, config util.Config) domain.Service {
 	repository := domain.NewRepository(db)
-	service := domain.NewService(repository)
+	service := domain.NewService(repository, config)
 	return service
 }
 

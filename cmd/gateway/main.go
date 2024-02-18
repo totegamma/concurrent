@@ -11,18 +11,21 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 
 	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
-	"github.com/totegamma/concurrent/x/auth"
-	"github.com/totegamma/concurrent/x/jwt"
+	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
+
+	"github.com/bradfitz/gomemcache/memcache"
 
 	"github.com/redis/go-redis/extra/redisotel/v9"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
@@ -118,8 +121,6 @@ func main() {
 		},
 	}))
 
-	e.Use(auth.ParseJWT)
-
 	e.Use(echoprometheus.NewMiddlewareWithConfig(echoprometheus.MiddlewareConfig{
 		Namespace: "ccgateway",
 		LabelFuncs: map[string]echoprometheus.LabelValueFunc{
@@ -139,8 +140,20 @@ func main() {
 		},
 	}))
 
+	gormLogger := logger.New(
+		log.New(os.Stdout, "\r\n", log.LstdFlags), // io writer
+		logger.Config{
+			SlowThreshold:             300 * time.Millisecond, // Slow SQL threshold
+			LogLevel:                  logger.Warn,            // Log level
+			IgnoreRecordNotFoundError: true,                   // Ignore ErrRecordNotFound error for logger
+			Colorful:                  true,                   // Enable color
+		},
+	)
+
 	// Postrgresqlとの接続
-	db, err := gorm.Open(postgres.Open(config.Server.Dsn), &gorm.Config{})
+	db, err := gorm.Open(postgres.Open(config.Server.Dsn), &gorm.Config{
+		Logger: gormLogger,
+	})
 	if err != nil {
 		panic("failed to connect database")
 	}
@@ -175,6 +188,13 @@ func main() {
 	if err != nil {
 		panic("failed to setup tracing plugin")
 	}
+
+	mc := memcache.New(config.Server.MemcachedAddr)
+	defer mc.Close()
+
+	authService := SetupAuthService(db, rdb, mc, config)
+
+	e.Use(authService.IdentifyIdentity)
 
 	cors := middleware.CORSWithConfig(middleware.CORSConfig{
 		AllowOrigins:  []string{"*"},
@@ -211,10 +231,42 @@ func main() {
 
 		handler := func(c echo.Context) error {
 			c.Response().Header().Set("cc-service", service.Name)
-			claims, ok := c.Get("jwtclaims").(jwt.Claims)
+
+			requesterType, ok := c.Get(core.RequesterTypeCtxKey).(int)
 			if ok {
-				c.Request().Header.Set("cc-user-id", claims.Issuer)
+				c.Request().Header.Set(core.RequesterTypeHeader, strconv.Itoa(requesterType))
 			}
+
+			requesterId, ok := c.Get(core.RequesterIdCtxKey).(string)
+			if ok {
+				c.Request().Header.Set(core.RequesterIdHeader, requesterId)
+			}
+
+			requesterTag, ok := c.Get(core.RequesterTagCtxKey).(core.Tags)
+			if ok {
+				c.Request().Header.Set(core.RequesterTagHeader, requesterTag.ToString())
+			}
+
+			requesterDomain, ok := c.Get(core.RequesterDomainCtxKey).(string)
+			if ok {
+				c.Request().Header.Set(core.RequesterDomainHeader, requesterDomain)
+			}
+
+			requesterKeyDepath, ok := c.Get(core.RequesterKeyDepathKey).(string)
+			if ok {
+				c.Request().Header.Set(core.RequesterKeyDepathHeader, requesterKeyDepath)
+			}
+
+			requesterDomainTags, ok := c.Get(core.RequesterDomainTagsKey).(core.Tags)
+			if ok {
+				c.Request().Header.Set(core.RequesterDomainTagsHeader, requesterDomainTags.ToString())
+			}
+
+			requesterRemoteTags, ok := c.Get(core.RequesterRemoteTagsKey).(core.Tags)
+			if ok {
+				c.Request().Header.Set(core.RequesterRemoteTagsHeader, requesterRemoteTags.ToString())
+			}
+
 			proxy.ServeHTTP(c.Response(), c.Request())
 			return nil
 		}

@@ -2,32 +2,35 @@ package auth
 
 import (
 	"context"
+	"strconv"
+	"time"
+
 	"github.com/labstack/echo/v4"
 	"github.com/rs/xid"
+
 	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/jwt"
+	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/util"
-	"strconv"
-	"time"
 )
 
 // Service is the interface for auth service
 type Service interface {
 	IssuePassport(ctx context.Context, request string, remote string) (string, error)
-	Restrict(principal Principal) echo.MiddlewareFunc
+	IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc
 }
 
 type service struct {
-	repository Repository
-	config     util.Config
-	entity     entity.Service
-	domain     domain.Service
+	config util.Config
+	entity entity.Service
+	domain domain.Service
+	key    key.Service
 }
 
 // NewService creates a new auth service
-func NewService(repository Repository, config util.Config, entity entity.Service, domain domain.Service) Service {
-	return &service{repository, config, entity, domain}
+func NewService(config util.Config, entity entity.Service, domain domain.Service, key key.Service) Service {
+	return &service{config, entity, domain, key}
 }
 
 // GetPassport takes client signed JWT and returns server signed JWT

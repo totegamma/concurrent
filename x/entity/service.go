@@ -1,15 +1,17 @@
+//go:generate go run go.uber.org/mock/mockgen -source=service.go -destination=mock/service.go
+
 package entity
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
+	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/rs/xid"
 	"net/http"
 
 	"github.com/totegamma/concurrent/x/core"
@@ -32,13 +34,11 @@ type Service interface {
 	Update(ctx context.Context, entity *core.Entity) error
 	IsUserExists(ctx context.Context, user string) bool
 	Delete(ctx context.Context, id string) error
-	Ack(ctx context.Context, from, to string) error
-	GetAcker(ctx context.Context, key string) ([]core.Ack, error)
-	GetAcking(ctx context.Context, key string) ([]core.Ack, error)
 	GetAddress(ctx context.Context, ccid string) (core.Address, error)
 	UpdateAddress(ctx context.Context, ccid string, domain string, signedAt time.Time) error
 	UpdateRegistration(ctx context.Context, id string, payload string, signature string) error // NOTE: for migration. Remove later
 	Count(ctx context.Context) (int64, error)
+	PullEntityFromRemote(ctx context.Context, id, domain string) error
 }
 
 type service struct {
@@ -54,6 +54,87 @@ func NewService(repository Repository, config util.Config, jwtService jwt.Servic
 		config,
 		jwtService,
 	}
+}
+
+// PullEntityFromRemote pulls entity from remote
+func (s *service) PullEntityFromRemote(ctx context.Context, id, domain string) error {
+	ctx, span := tracer.Start(ctx, "RepositoryPullEntityFromRemote")
+	defer span.End()
+
+	req, err := http.NewRequest("GET", "https://"+domain+"/api/v1/entity/"+id, nil)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+
+	client := new(http.Client)
+	resp, err := client.Do(req)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+
+	var remoteEntity entityResponse
+	json.Unmarshal(body, &remoteEntity)
+
+	entity := remoteEntity.Content
+
+	err = util.VerifySignature(entity.Payload, entity.ID, entity.Signature)
+	if err != nil {
+		span.RecordError(err)
+		slog.Error(
+			"Invalid signature",
+			slog.String("error", err.Error()),
+			slog.String("module", "agent"),
+		)
+		return fmt.Errorf("Invalid signature")
+	}
+
+	var signedObj core.SignedObject[core.Affiliation]
+	err = json.Unmarshal([]byte(entity.Payload), &signedObj)
+	if err != nil {
+		span.RecordError(err)
+		slog.Error(
+			"pullRemoteEntities",
+			slog.String("error", err.Error()),
+			slog.String("module", "agent"),
+		)
+		return fmt.Errorf("Invalid payload")
+	}
+
+	existanceAddr, err := s.GetAddress(ctx, entity.ID)
+	if err == nil {
+		// compare signed date
+		if signedObj.SignedAt.Unix() <= existanceAddr.SignedAt.Unix() {
+			return fmt.Errorf("Remote entity is older than local entity")
+		}
+	}
+
+	existanceEntity, err := s.Get(ctx, entity.ID)
+	if err == nil {
+		if signedObj.SignedAt.Unix() <= existanceEntity.CDate.Unix() {
+			return fmt.Errorf("Remote entity is older than local entity")
+		}
+	}
+
+	err = s.UpdateAddress(ctx, entity.ID, domain, signedObj.SignedAt)
+
+	if err != nil {
+		span.RecordError(err)
+		slog.Error(
+			"pullRemoteEntities",
+			slog.String("error", err.Error()),
+			slog.String("module", "agent"),
+		)
+		return err
+	}
+
+	return nil
 }
 
 // Total returns the count number of entities
@@ -264,141 +345,6 @@ func (s *service) Delete(ctx context.Context, id string) error {
 	return s.repository.Delete(ctx, id)
 }
 
-// Ack creates new Ack
-func (s *service) Ack(ctx context.Context, objectStr string, signature string) error {
-	ctx, span := tracer.Start(ctx, "ServiceAck")
-	defer span.End()
-
-	var object AckSignedObject
-	err := json.Unmarshal([]byte(objectStr), &object)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-
-	switch object.Type {
-	case "ack":
-		err = util.VerifySignature(objectStr, object.From, signature)
-		if err != nil {
-			span.RecordError(err)
-			return err
-		}
-
-		address, err := s.repository.GetAddress(ctx, object.To)
-		if err == nil {
-			packet := ackRequest{
-				SignedObject: objectStr,
-				Signature:    signature,
-			}
-			packetStr, err := json.Marshal(packet)
-			if err != nil {
-				span.RecordError(err)
-				return err
-			}
-
-			req, err := http.NewRequest("POST", "https://"+address.Domain+"/api/v1/entities/checkpoint/ack", bytes.NewBuffer([]byte(packetStr)))
-
-			if err != nil {
-				span.RecordError(err)
-				return err
-			}
-
-			otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
-
-			jwt, err := jwt.Create(jwt.Claims{
-				Issuer:         s.config.Concurrent.CCID,
-				Subject:        "CC_API",
-				Audience:       address.Domain,
-				ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
-				IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
-				JWTID:          xid.New().String(),
-			}, s.config.Concurrent.PrivateKey)
-
-			req.Header.Add("content-type", "application/json")
-			req.Header.Add("authorization", "Bearer "+jwt)
-			client := new(http.Client)
-			resp, err := client.Do(req)
-			if err != nil {
-				span.RecordError(err)
-				return err
-			}
-			defer resp.Body.Close()
-		}
-
-		return s.repository.Ack(ctx, &core.Ack{
-			From:      object.From,
-			To:        object.To,
-			Signature: signature,
-			Payload:   objectStr,
-		})
-	case "unack":
-		address, err := s.repository.GetAddress(ctx, object.To)
-		if err == nil {
-			packet := ackRequest{
-				SignedObject: objectStr,
-				Signature:    signature,
-			}
-			packetStr, err := json.Marshal(packet)
-			if err != nil {
-				span.RecordError(err)
-				return err
-			}
-
-			req, err := http.NewRequest("POST", "https://"+address.Domain+"/api/v1/entities/checkpoint/ack", bytes.NewBuffer([]byte(packetStr)))
-
-			if err != nil {
-				span.RecordError(err)
-				return err
-			}
-
-			otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
-
-			jwt, err := jwt.Create(jwt.Claims{
-				Issuer:         s.config.Concurrent.CCID,
-				Subject:        "CC_API",
-				Audience:       address.Domain,
-				ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
-				IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
-				JWTID:          xid.New().String(),
-			}, s.config.Concurrent.PrivateKey)
-
-			req.Header.Add("content-type", "application/json")
-			req.Header.Add("authorization", "Bearer "+jwt)
-			client := new(http.Client)
-			resp, err := client.Do(req)
-			if err != nil {
-				span.RecordError(err)
-				return err
-			}
-			defer resp.Body.Close()
-		}
-		return s.repository.Unack(ctx, &core.Ack{
-			From:      object.From,
-			To:        object.To,
-			Signature: signature,
-			Payload:   objectStr,
-		})
-	default:
-		return fmt.Errorf("invalid object type")
-	}
-}
-
-// GetAcker returns acker
-func (s *service) GetAcker(ctx context.Context, user string) ([]core.Ack, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetAcker")
-	defer span.End()
-
-	return s.repository.GetAcker(ctx, user)
-}
-
-// GetAcking returns acking
-func (s *service) GetAcking(ctx context.Context, user string) ([]core.Ack, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetAcking")
-	defer span.End()
-
-	return s.repository.GetAcking(ctx, user)
-}
-
 // GetAddress returns the address of a entity
 func (s *service) GetAddress(ctx context.Context, ccid string) (core.Address, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGetAddress")
@@ -437,7 +383,7 @@ func checkRegistration(ccid, payload, signature, mydomain string) error {
 		return err
 	}
 
-	var signedObject core.SignedObject
+	var signedObject core.SignedObject[any] //TODO
 	err = json.Unmarshal([]byte(payload), &signedObject)
 	if err != nil {
 		return err

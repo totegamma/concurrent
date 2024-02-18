@@ -3,6 +3,7 @@ package auth
 
 import (
 	"github.com/labstack/echo/v4"
+	"github.com/totegamma/concurrent/x/core"
 	"go.opentelemetry.io/otel"
 	"net/http"
 )
@@ -30,7 +31,10 @@ func (h *handler) GetPassport(c echo.Context) error {
 	defer span.End()
 
 	remote := c.Param("remote")
-	requester := c.Get("requester").(string)
+	requester, ok := c.Get(core.RequesterIdCtxKey).(string)
+	if !ok {
+		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
+	}
 
 	response, err := h.service.IssuePassport(ctx, requester, remote)
 	if err != nil {

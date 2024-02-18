@@ -2,7 +2,7 @@
 package entity
 
 import (
-	"time"
+	"github.com/totegamma/concurrent/x/core"
 )
 
 type createRequest struct {
@@ -21,14 +21,7 @@ type registerRequest struct {
 	Captcha      string `json:"captcha"`
 }
 
-type AckSignedObject struct {
-	Type     string    `json:"type"`
-	From     string    `json:"from"`
-	To       string    `json:"to"`
-	SignedAt time.Time `json:"signedAt"`
-}
-
-type ackRequest struct {
-	SignedObject string `json:"signedObject"`
-	Signature    string `json:"signature"`
+type entityResponse struct {
+	Status  string      `json:"status"`
+	Content core.Entity `json:"content"`
 }

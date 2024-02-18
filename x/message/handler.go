@@ -36,7 +36,7 @@ func (h handler) Get(c echo.Context) error {
 
 	id := c.Param("id")
 
-	requester, ok := c.Get("requester").(string)
+	requester, ok := c.Get(core.RequesterIdCtxKey).(string)
 	var message core.Message
 	var err error
 	if ok {
@@ -93,7 +93,10 @@ func (h handler) Delete(c echo.Context) error {
 		return c.JSON(http.StatusNotFound, echo.Map{"error": "target message not found"})
 	}
 
-	requester := c.Get("requester").(string)
+	requester, ok := c.Get(core.RequesterIdCtxKey).(string)
+	if !ok {
+		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
+	}
 	if target.Author != requester {
 		return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action"})
 	}

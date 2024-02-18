@@ -16,7 +16,7 @@ import (
 	"gorm.io/gorm"
 )
 
-var tracer = otel.Tracer("handler")
+var tracer = otel.Tracer("entity")
 
 // Handler is the interface for handling HTTP requests
 type Handler interface {
@@ -26,9 +26,6 @@ type Handler interface {
 	List(c echo.Context) error
 	Update(c echo.Context) error
 	Delete(c echo.Context) error
-	Ack(c echo.Context) error
-	GetAcker(c echo.Context) error
-	GetAcking(c echo.Context) error
 	Resolve(c echo.Context) error
 	UpdateRegistration(c echo.Context) error // NOTE: for migration. Remove later
 }
@@ -171,55 +168,6 @@ func (h handler) Delete(c echo.Context) error {
 		return err
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
-}
-
-// Ack creates a new ack
-func (h handler) Ack(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerAck")
-	defer span.End()
-
-	var request ackRequest
-	err := c.Bind(&request)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-
-	err = h.service.Ack(ctx, request.SignedObject, request.Signature)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
-}
-
-// GetAcking returns acking entities
-func (h handler) GetAcking(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetAcking")
-	defer span.End()
-
-	id := c.Param("id")
-	acks, err := h.service.GetAcking(ctx, id)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": acks})
-}
-
-// GetAcker returns an acker
-func (h handler) GetAcker(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetAcker")
-	defer span.End()
-
-	id := c.Param("id")
-	acks, err := h.service.GetAcker(ctx, id)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": acks})
 }
 
 // Resolve returns entity domain affiliation

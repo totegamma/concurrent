@@ -19,13 +19,17 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/totegamma/concurrent/x/ack"
 	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/character"
 	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
+	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/stream"
+	"github.com/totegamma/concurrent/x/userkv"
 	"github.com/totegamma/concurrent/x/util"
 
 	"github.com/bradfitz/gomemcache/memcache"
@@ -166,6 +170,7 @@ func main() {
 		&core.Collection{},
 		&core.CollectionItem{},
 		&core.Ack{},
+		&core.Key{},
 	)
 
 	rdb := redis.NewClient(&redis.Options{
@@ -187,18 +192,20 @@ func main() {
 	}
 
 	mc := memcache.New(config.Server.MemcachedAddr)
-	if err != nil {
-		panic("failed to connect memcached")
-	}
 	defer mc.Close()
 
 	agent := SetupAgent(db, rdb, mc, config)
 
+	collectionHandler := SetupCollectionHandler(db, rdb, config)
+
 	socketManager := SetupSocketManager(mc, db, rdb, config)
 	socketHandler := SetupSocketHandler(rdb, socketManager, config)
-	domainHandler := SetupDomainHandler(db, config)
-	userkvHandler := SetupUserkvHandler(db, rdb, mc, config)
-	collectionHandler := SetupCollectionHandler(db, rdb, config)
+
+	domainService := SetupDomainService(db, config)
+	domainHandler := domain.NewHandler(domainService, config)
+
+	userKvService := SetupUserkvService(rdb)
+	userkvHandler := userkv.NewHandler(userKvService)
 
 	messageService := SetupMessageService(db, rdb, mc, socketManager, config)
 	messageHandler := message.NewHandler(messageService)
@@ -206,7 +213,7 @@ func main() {
 	associationService := SetupAssociationService(db, rdb, mc, socketManager, config)
 	associationHandler := association.NewHandler(associationService)
 
-	characterService := SetupCharacterService(db, mc, config)
+	characterService := SetupCharacterService(db, rdb, mc, config)
 	characterHandler := character.NewHandler(characterService)
 
 	streamService := SetupStreamService(db, rdb, mc, socketManager, config)
@@ -218,13 +225,19 @@ func main() {
 	authService := SetupAuthService(db, rdb, mc, config)
 	authHandler := auth.NewHandler(authService)
 
-	apiV1 := e.Group("", auth.ParseJWT)
+	keyService := SetupKeyService(db, rdb, mc, config)
+	keyHandler := key.NewHandler(keyService)
+
+	ackService := SetupAckService(db, rdb, mc, config)
+	ackHandler := ack.NewHandler(ackService)
+
+	apiV1 := e.Group("", auth.ReceiveGatewayAuthPropagation)
 	// domain
 	apiV1.GET("/domain", domainHandler.Profile)
 	apiV1.GET("/domain/:id", domainHandler.Get)
-	apiV1.POST("/domain/:id", domainHandler.SayHello, authService.Restrict(auth.ISADMIN))
-	apiV1.PUT("/domain/:id", domainHandler.Upsert, authService.Restrict(auth.ISADMIN))
-	apiV1.DELETE("/domain/:id", domainHandler.Delete, authService.Restrict(auth.ISADMIN))
+	apiV1.POST("/domain/:id", domainHandler.SayHello, auth.Restrict(auth.ISADMIN))
+	apiV1.PUT("/domain/:id", domainHandler.Upsert, auth.Restrict(auth.ISADMIN))
+	apiV1.DELETE("/domain/:id", domainHandler.Delete, auth.Restrict(auth.ISADMIN))
 	apiV1.GET("/domains", domainHandler.List)
 
 	apiV1.POST("/domains/hello", domainHandler.Hello)
@@ -235,70 +248,75 @@ func main() {
 	// entity
 	apiV1.POST("/entity", entityHandler.Register)
 	apiV1.GET("/entity/:id", entityHandler.Get)
-	apiV1.PUT("/entity/:id", entityHandler.Update, authService.Restrict(auth.ISADMIN))
-	apiV1.DELETE("/entity/:id", entityHandler.Delete, authService.Restrict(auth.ISADMIN))
-	apiV1.GET("/entity/:id/acking", entityHandler.GetAcking)
-	apiV1.GET("/entity/:id/acker", entityHandler.GetAcker)
+	apiV1.PUT("/entity/:id", entityHandler.Update, auth.Restrict(auth.ISADMIN))
+	apiV1.DELETE("/entity/:id", entityHandler.Delete, auth.Restrict(auth.ISADMIN))
+	apiV1.GET("/entity/:id/acking", ackHandler.GetAcking)
+	apiV1.GET("/entity/:id/acker", ackHandler.GetAcker)
 	apiV1.GET("/entities", entityHandler.List)
-	apiV1.POST("/entities/ack", entityHandler.Ack, authService.Restrict(auth.ISLOCAL))
-	apiV1.POST("/entities/checkpoint/ack", entityHandler.Ack, authService.Restrict(auth.ISUNITED))
+	apiV1.POST("/entities/ack", ackHandler.Ack, auth.Restrict(auth.ISLOCAL))
+	apiV1.POST("/entities/checkpoint/ack", ackHandler.Ack, auth.Restrict(auth.ISUNITED))
 
-	apiV1.PUT("/tmp/entity/:id", entityHandler.UpdateRegistration, authService.Restrict(auth.ISLOCAL)) // NOTE: for migration. Remove later
+	apiV1.PUT("/tmp/entity/:id", entityHandler.UpdateRegistration, auth.Restrict(auth.ISLOCAL)) // NOTE: for migration. Remove later
 
-	apiV1.POST("/admin/entity", entityHandler.Create, authService.Restrict(auth.ISADMIN))
+	apiV1.POST("/admin/entity", entityHandler.Create, auth.Restrict(auth.ISADMIN))
 
 	// message
-	apiV1.POST("/message", messageHandler.Post, authService.Restrict(auth.ISLOCAL))
+	apiV1.POST("/message", messageHandler.Post, auth.Restrict(auth.ISLOCAL))
 	apiV1.GET("/message/:id", messageHandler.Get)
-	apiV1.DELETE("/message/:id", messageHandler.Delete, authService.Restrict(auth.ISLOCAL))
+	apiV1.DELETE("/message/:id", messageHandler.Delete, auth.Restrict(auth.ISLOCAL))
 	apiV1.GET("/message/:id/associations", associationHandler.GetFiltered)
 	apiV1.GET("/message/:id/associationcounts", associationHandler.GetCounts)
-	apiV1.GET("/message/:id/associations/mine", associationHandler.GetOwnByTarget, authService.Restrict(auth.ISKNOWN))
+	apiV1.GET("/message/:id/associations/mine", associationHandler.GetOwnByTarget, auth.Restrict(auth.ISKNOWN))
 
 	// association
-	apiV1.POST("/association", associationHandler.Post, authService.Restrict(auth.ISKNOWN))
+	apiV1.POST("/association", associationHandler.Post, auth.Restrict(auth.ISKNOWN))
 	apiV1.GET("/association/:id", associationHandler.Get)
-	apiV1.DELETE("/association/:id", associationHandler.Delete, authService.Restrict(auth.ISKNOWN))
+	apiV1.DELETE("/association/:id", associationHandler.Delete, auth.Restrict(auth.ISKNOWN))
 
 	// character
-	apiV1.PUT("/character", characterHandler.Put, authService.Restrict(auth.ISLOCAL))
+	apiV1.PUT("/character", characterHandler.Put, auth.Restrict(auth.ISLOCAL))
 	apiV1.GET("/characters", characterHandler.Get)
 
 	// stream
-	apiV1.POST("/stream", streamHandler.Create, authService.Restrict(auth.ISLOCAL))
+	apiV1.POST("/stream", streamHandler.Create, auth.Restrict(auth.ISLOCAL))
 	apiV1.GET("/stream/:id", streamHandler.Get)
-	apiV1.PUT("/stream/:id", streamHandler.Update, authService.Restrict(auth.ISLOCAL))
-	apiV1.DELETE("/stream/:id", streamHandler.Delete, authService.Restrict(auth.ISLOCAL))
-	apiV1.DELETE("/stream/:stream/:object", streamHandler.Remove, authService.Restrict(auth.ISLOCAL))
+	apiV1.PUT("/stream/:id", streamHandler.Update, auth.Restrict(auth.ISLOCAL))
+	apiV1.DELETE("/stream/:id", streamHandler.Delete, auth.Restrict(auth.ISLOCAL))
+	apiV1.DELETE("/stream/:stream/:object", streamHandler.Remove, auth.Restrict(auth.ISLOCAL))
 	apiV1.GET("/streams", streamHandler.List)
 	apiV1.GET("/streams/mine", streamHandler.ListMine)
 	apiV1.GET("/streams/recent", streamHandler.Recent)
 	apiV1.GET("/streams/range", streamHandler.Range)
 	apiV1.GET("/streams/chunks", streamHandler.GetChunks)
-	apiV1.POST("/streams/checkpoint", streamHandler.Checkpoint, authService.Restrict(auth.ISUNITED))      // OLD API Remove for next release
-	apiV1.POST("/streams/checkpoint/item", streamHandler.Checkpoint, authService.Restrict(auth.ISUNITED)) // NEW API will be used for next release
-	apiV1.POST("/streams/checkpoint/event", streamHandler.EventCheckpoint, authService.Restrict(auth.ISUNITED))
+	apiV1.POST("/streams/checkpoint", streamHandler.Checkpoint, auth.Restrict(auth.ISUNITED))      // OLD API Remove for next release
+	apiV1.POST("/streams/checkpoint/item", streamHandler.Checkpoint, auth.Restrict(auth.ISUNITED)) // NEW API will be used for next release
+	apiV1.POST("/streams/checkpoint/event", streamHandler.EventCheckpoint, auth.Restrict(auth.ISUNITED))
 
 	// userkv
-	apiV1.GET("/kv/:key", userkvHandler.Get, authService.Restrict(auth.ISLOCAL))
-	apiV1.PUT("/kv/:key", userkvHandler.Upsert, authService.Restrict(auth.ISLOCAL))
+	apiV1.GET("/kv/:key", userkvHandler.Get, auth.Restrict(auth.ISLOCAL))
+	apiV1.PUT("/kv/:key", userkvHandler.Upsert, auth.Restrict(auth.ISLOCAL))
 
 	// socket
 	apiV1.GET("/socket", socketHandler.Connect)
 
 	// auth
-	apiV1.GET("/auth/passport/:remote", authHandler.GetPassport)
+	apiV1.GET("/auth/passport/:remote", authHandler.GetPassport, auth.Restrict(auth.ISLOCAL))
+
+	// key
+	apiV1.GET("/key/:id", keyHandler.GetKeyResolution)
+	apiV1.POST("key", keyHandler.UpdateKey, auth.Restrict(auth.ISLOCAL))
+	apiV1.GET("/keys/mine", keyHandler.GetKeyMine, auth.Restrict(auth.ISLOCAL))
 
 	// collection
-	apiV1.POST("/collection", collectionHandler.CreateCollection, authService.Restrict(auth.ISLOCAL))
+	apiV1.POST("/collection", collectionHandler.CreateCollection, auth.Restrict(auth.ISLOCAL))
 	apiV1.GET("/collection/:id", collectionHandler.GetCollection)
-	apiV1.PUT("/collection/:id", collectionHandler.UpdateCollection, authService.Restrict(auth.ISLOCAL))
-	apiV1.DELETE("/collection/:id", collectionHandler.DeleteCollection, authService.Restrict(auth.ISLOCAL))
+	apiV1.PUT("/collection/:id", collectionHandler.UpdateCollection, auth.Restrict(auth.ISLOCAL))
+	apiV1.DELETE("/collection/:id", collectionHandler.DeleteCollection, auth.Restrict(auth.ISLOCAL))
 
-	apiV1.POST("/collection/:collection", collectionHandler.CreateItem, authService.Restrict(auth.ISLOCAL))
+	apiV1.POST("/collection/:collection", collectionHandler.CreateItem, auth.Restrict(auth.ISLOCAL))
 	apiV1.GET("/collection/:collection/:item", collectionHandler.GetItem)
-	apiV1.PUT("/collection/:collection/:item", collectionHandler.UpdateItem, authService.Restrict(auth.ISLOCAL))
-	apiV1.DELETE("/collection/:collection/:item", collectionHandler.DeleteItem, authService.Restrict(auth.ISLOCAL))
+	apiV1.PUT("/collection/:collection/:item", collectionHandler.UpdateItem, auth.Restrict(auth.ISLOCAL))
+	apiV1.DELETE("/collection/:collection/:item", collectionHandler.DeleteItem, auth.Restrict(auth.ISLOCAL))
 
 	// misc
 	apiV1.GET("/profile", func(c echo.Context) error {

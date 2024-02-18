@@ -11,10 +11,12 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/redis/go-redis/v9"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 
 	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
@@ -138,8 +140,20 @@ func main() {
 		},
 	}))
 
+	gormLogger := logger.New(
+		log.New(os.Stdout, "\r\n", log.LstdFlags), // io writer
+		logger.Config{
+			SlowThreshold:             300 * time.Millisecond, // Slow SQL threshold
+			LogLevel:                  logger.Warn,            // Log level
+			IgnoreRecordNotFoundError: true,                   // Ignore ErrRecordNotFound error for logger
+			Colorful:                  true,                   // Enable color
+		},
+	)
+
 	// Postrgresqlとの接続
-	db, err := gorm.Open(postgres.Open(config.Server.Dsn), &gorm.Config{})
+	db, err := gorm.Open(postgres.Open(config.Server.Dsn), &gorm.Config{
+		Logger: gormLogger,
+	})
 	if err != nil {
 		panic("failed to connect database")
 	}

@@ -55,6 +55,7 @@ func (s *service) IssuePassport(ctx context.Context, requester, remote string) (
 		IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
 		JWTID:          xid.New().String(),
 		Tag:            ent.Tag,
+		Domain:         s.config.Concurrent.FQDN,
 	}, s.config.Concurrent.PrivateKey)
 
 	if err != nil {

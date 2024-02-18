@@ -17,4 +17,5 @@ type Claims struct {
 	Tag            string `json:"tag,omitempty"` // comma separated list of tags
 	Scope          string `json:"scp,omitempty"` // semicomma separated list of scopes
 	Principal      string `json:"prn,omitempty"` // principal
+	Domain         string `json:"dom,omitempty"` // domain
 }

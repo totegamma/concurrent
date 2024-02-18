@@ -1,26 +1,15 @@
 package domain
 
 import (
-	"bytes"
-	"encoding/json"
 	"errors"
-	"fmt"
-	"io"
-	"log/slog"
 	"net/http"
-	"strconv"
-	"time"
-
-	"github.com/rs/xid"
-	"gorm.io/gorm"
 
 	"github.com/labstack/echo/v4"
-	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/jwt"
-	"github.com/totegamma/concurrent/x/util"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/propagation"
+	"gorm.io/gorm"
+
+	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/util"
 )
 
 var tracer = otel.Tracer("domain")
@@ -74,11 +63,11 @@ func (h handler) Upsert(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	err = h.service.Upsert(ctx, &host)
+	updated, err := h.service.Upsert(ctx, host)
 	if err != nil {
 		return err
 	}
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": host})
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": updated})
 }
 
 // List returns all hosts
@@ -117,67 +106,12 @@ func (h handler) Hello(c echo.Context) error {
 		return err
 	}
 
-	slog.DebugContext(
-		ctx, fmt.Sprintf("hello from %s", newcomer.ID),
-		slog.String("module", "domain"),
-	)
-
-	// challenge
-	req, err := http.NewRequest("GET", "https://"+newcomer.ID+"/api/v1/domain", nil)
+	profile, err := h.service.Hello(ctx, newcomer)
 	if err != nil {
-		span.RecordError(err)
-		return c.String(http.StatusBadRequest, err.Error())
-	}
-	// Inject the current span context into the request
-	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
-
-	client := new(http.Client)
-	resp, err := client.Do(req)
-	if err != nil {
-		span.RecordError(err)
-		return c.String(http.StatusBadRequest, err.Error())
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-
-	var fetchedProf ProfileResponse
-	err = json.Unmarshal(body, &fetchedProf)
-	if err != nil {
-		slog.ErrorContext(
-			ctx, fmt.Sprintf("failed to unmarshal profile: %s", err.Error()),
-			slog.String("module", "domain"),
-		)
-		return c.String(http.StatusBadRequest, err.Error())
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
 	}
 
-	if newcomer.ID != fetchedProf.Content.ID {
-		slog.ErrorContext(
-			ctx, fmt.Sprintf("target does not match fetched profile: %v", fetchedProf.Content.ID),
-			slog.String("module", "domain"),
-		)
-		return c.String(http.StatusBadRequest, "validation failed")
-	}
-
-	h.service.Upsert(ctx, &core.Domain{
-		ID:     newcomer.ID,
-		CCID:   newcomer.CCID,
-		Tag:    "",
-		Pubkey: newcomer.Pubkey,
-	})
-
-	slog.InfoContext(
-		ctx, fmt.Sprint("Successfully added ", newcomer.ID),
-		slog.String("module", "domain"),
-		slog.String("type", "audit"),
-	)
-
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": Profile{
-		ID:     h.config.Concurrent.FQDN,
-		CCID:   h.config.Concurrent.CCID,
-		Pubkey: h.config.Concurrent.PublicKey,
-	},
-	})
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": profile})
 }
 
 // SayHello initiates a challenge to a remote host
@@ -189,90 +123,13 @@ func (h handler) SayHello(c echo.Context) error {
 
 	target := c.Param("id")
 
-	slog.DebugContext(
-		ctx, fmt.Sprintf("saying hello to %s", target),
-		slog.String("module", "domain"),
-	)
+	fetched, err := h.service.SayHello(ctx, target)
 
-	me := Profile{
-		ID:     h.config.Concurrent.FQDN,
-		CCID:   h.config.Concurrent.CCID,
-		Pubkey: h.config.Concurrent.PublicKey,
-	}
-
-	meStr, err := json.Marshal(me)
-
-	// challenge
-	jwt, err := jwt.Create(jwt.Claims{
-		Issuer:         h.config.Concurrent.CCID,
-		Subject:        "CC_API",
-		Audience:       target,
-		ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
-		IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
-		JWTID:          xid.New().String(),
-	}, h.config.Concurrent.PrivateKey)
-
-	req, err := http.NewRequest("POST", "https://"+target+"/api/v1/domains/hello", bytes.NewBuffer(meStr))
 	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return c.String(http.StatusBadRequest, err.Error())
-	}
-	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
-	req.Header.Add("content-type", "application/json")
-	req.Header.Add("authorization", "Bearer "+jwt)
-	client := new(http.Client)
-	resp, err := client.Do(req)
-	if err != nil {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-		return c.String(http.StatusBadRequest, err.Error())
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		slog.ErrorContext(
-			ctx, fmt.Sprintf("failed to read response body"),
-			slog.String("error", err.Error()),
-			slog.String("module", "domain"),
-		)
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
 	}
 
-	var fetchedProf ProfileResponse
-	json.Unmarshal(body, &fetchedProf)
-	if err != nil {
-		slog.ErrorContext(
-			ctx, fmt.Sprintf("failed to unmarshal profile"),
-			slog.String("error", err.Error()),
-			slog.String("module", "domain"),
-		)
-		return c.String(http.StatusBadRequest, err.Error())
-	}
-
-	if target != fetchedProf.Content.ID {
-		slog.ErrorContext(
-			ctx, fmt.Sprintf("target does not match fetched profile: %v", fetchedProf.Content.ID),
-			slog.String("module", "domain"),
-		)
-		span.SetStatus(codes.Error, fmt.Sprintf("target does not match fetched profile: %v", fetchedProf.Content.ID))
-		return c.String(http.StatusBadRequest, "validation failed")
-	}
-
-	h.service.Upsert(ctx, &core.Domain{
-		ID:     fetchedProf.Content.ID,
-		CCID:   fetchedProf.Content.CCID,
-		Tag:    "",
-		Pubkey: fetchedProf.Content.Pubkey,
-	})
-
-	slog.InfoContext(
-		ctx, fmt.Sprint("Successfully added ", fetchedProf.Content.ID),
-		slog.String("module", "domain"),
-		slog.String("type", "audit"),
-	)
-
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": fetchedProf})
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": fetched})
 }
 
 // Delete removes a host from the registry
@@ -298,7 +155,7 @@ func (h handler) Update(c echo.Context) error {
 	if err != nil {
 		return err
 	}
-	err = h.service.Update(ctx, &host)
+	err = h.service.Update(ctx, host)
 	if err != nil {
 		return err
 	}

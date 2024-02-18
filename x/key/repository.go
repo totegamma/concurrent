@@ -77,4 +77,3 @@ func (r *repository) GetAll(ctx context.Context, owner string) ([]core.Key, erro
 
 	return keys, nil
 }
-

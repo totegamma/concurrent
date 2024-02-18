@@ -9,9 +9,9 @@ import (
 	"log/slog"
 
 	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/stream"
-    "github.com/totegamma/concurrent/x/key"
 )
 
 // Service is the interface for association service
@@ -34,7 +34,7 @@ type service struct {
 	repo    Repository
 	stream  stream.Service
 	message message.Service
-    key key.Service
+	key     key.Service
 }
 
 // NewService creates a new association service
@@ -57,27 +57,20 @@ func (s *service) PostAssociation(ctx context.Context, objectStr string, signatu
 	ctx, span := tracer.Start(ctx, "ServicePostAssociation")
 	defer span.End()
 
+	err := s.key.ValidateSignedObject(ctx, objectStr, signature)
+	if err != nil {
+		span.RecordError(err)
+		return core.Association{}, err
+	}
+
 	var object SignedObject
-	err := json.Unmarshal([]byte(objectStr), &object)
+	err = json.Unmarshal([]byte(objectStr), &object)
 	if err != nil {
 		span.RecordError(err)
 		return core.Association{}, err
 	}
 
-	err = s.key.ValidateSignedObject(ctx, objectStr, signature)
-	if err != nil {
-		span.RecordError(err)
-		return core.Association{}, err
-	}
-
-	var content SignedObject
-	err = json.Unmarshal([]byte(objectStr), &content)
-	if err != nil {
-		span.RecordError(err)
-		return core.Association{}, err
-	}
-
-	contentString, err := json.Marshal(content.Body)
+	contentString, err := json.Marshal(object.Body)
 	if err != nil {
 		span.RecordError(err)
 		return core.Association{}, err

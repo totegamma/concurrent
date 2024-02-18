@@ -7,8 +7,8 @@ import (
 	"log/slog"
 
 	"github.com/redis/go-redis/v9"
-	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/stream"
 )
 
@@ -26,7 +26,7 @@ type service struct {
 	rdb    *redis.Client
 	repo   Repository
 	stream stream.Service
-	key key.Service
+	key    key.Service
 }
 
 // NewService creates a new message service

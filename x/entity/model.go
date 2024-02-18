@@ -21,11 +21,6 @@ type registerRequest struct {
 	Captcha      string `json:"captcha"`
 }
 
-type ackRequest struct {
-	SignedObject string `json:"signedObject"`
-	Signature    string `json:"signature"`
-}
-
 type entityResponse struct {
 	Status  string      `json:"status"`
 	Content core.Entity `json:"content"`

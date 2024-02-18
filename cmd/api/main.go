@@ -19,6 +19,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/totegamma/concurrent/x/ack"
 	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/character"
@@ -203,7 +204,7 @@ func main() {
 	domainService := SetupDomainService(db, config)
 	domainHandler := domain.NewHandler(domainService, config)
 
-    userKvService := SetupUserkvService(rdb)
+	userKvService := SetupUserkvService(rdb)
 	userkvHandler := userkv.NewHandler(userKvService)
 
 	messageService := SetupMessageService(db, rdb, mc, socketManager, config)
@@ -212,7 +213,7 @@ func main() {
 	associationService := SetupAssociationService(db, rdb, mc, socketManager, config)
 	associationHandler := association.NewHandler(associationService)
 
-	characterService := SetupCharacterService(db, mc, config)
+	characterService := SetupCharacterService(db, rdb, mc, config)
 	characterHandler := character.NewHandler(characterService)
 
 	streamService := SetupStreamService(db, rdb, mc, socketManager, config)
@@ -224,8 +225,11 @@ func main() {
 	authService := SetupAuthService(db, rdb, mc, config)
 	authHandler := auth.NewHandler(authService)
 
-    keyService := SetupKeyService(db, config)
-    keyHandler := key.NewHandler(keyService)
+	keyService := SetupKeyService(db, rdb, mc, config)
+	keyHandler := key.NewHandler(keyService)
+
+	ackService := SetupAckService(db, rdb, mc, config)
+	ackHandler := ack.NewHandler(ackService)
 
 	apiV1 := e.Group("", auth.ReceiveGatewayAuthPropagation)
 	// domain
@@ -246,11 +250,11 @@ func main() {
 	apiV1.GET("/entity/:id", entityHandler.Get)
 	apiV1.PUT("/entity/:id", entityHandler.Update, auth.Restrict(auth.ISADMIN))
 	apiV1.DELETE("/entity/:id", entityHandler.Delete, auth.Restrict(auth.ISADMIN))
-	apiV1.GET("/entity/:id/acking", entityHandler.GetAcking)
-	apiV1.GET("/entity/:id/acker", entityHandler.GetAcker)
+	apiV1.GET("/entity/:id/acking", ackHandler.GetAcking)
+	apiV1.GET("/entity/:id/acker", ackHandler.GetAcker)
 	apiV1.GET("/entities", entityHandler.List)
-	apiV1.POST("/entities/ack", entityHandler.Ack, auth.Restrict(auth.ISLOCAL))
-	apiV1.POST("/entities/checkpoint/ack", entityHandler.Ack, auth.Restrict(auth.ISUNITED))
+	apiV1.POST("/entities/ack", ackHandler.Ack, auth.Restrict(auth.ISLOCAL))
+	apiV1.POST("/entities/checkpoint/ack", ackHandler.Ack, auth.Restrict(auth.ISUNITED))
 
 	apiV1.PUT("/tmp/entity/:id", entityHandler.UpdateRegistration, auth.Restrict(auth.ISLOCAL)) // NOTE: for migration. Remove later
 
@@ -298,7 +302,7 @@ func main() {
 	// auth
 	apiV1.GET("/auth/passport/:remote", authHandler.GetPassport, auth.Restrict(auth.ISLOCAL))
 
-    // key
+	// key
 	apiV1.GET("/key/:id", keyHandler.GetKeyResolution)
 	apiV1.POST("key", keyHandler.UpdateKey, auth.Restrict(auth.ISLOCAL))
 	apiV1.GET("/keys/mine", keyHandler.GetKeyMine, auth.Restrict(auth.ISLOCAL))

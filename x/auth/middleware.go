@@ -124,14 +124,6 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				}
 
 				ccid := claims.Principal
-				if key.IsCKID(ccid) {
-					ccid, err = s.key.ResolveRemoteSubkey(ctx, claims.Principal, domain.ID)
-					if err != nil {
-						span.RecordError(err)
-						goto skip
-					}
-				}
-
 				// pull entity from remote if not registered
 				_, err = s.entity.GetAddress(ctx, ccid)
 				if err != nil {

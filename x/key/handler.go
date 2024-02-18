@@ -104,5 +104,3 @@ func (h *handler) GetKeyMine(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, echo.Map{"content": response})
 }
-
-

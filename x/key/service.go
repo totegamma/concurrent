@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/propagation"
 
 	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/util"
 )
 
@@ -27,12 +28,13 @@ type Service interface {
 
 type service struct {
 	repository Repository
+	entity     entity.Service
 	config     util.Config
 }
 
 // NewService creates a new auth service
-func NewService(repository Repository, config util.Config) Service {
-	return &service{repository, config}
+func NewService(repository Repository, entity entity.Service, config util.Config) Service {
+	return &service{repository, entity, config}
 }
 
 // EnactKey validates new subkey and save it if valid
@@ -141,11 +143,27 @@ func (s *service) ValidateSignedObject(ctx context.Context, payload, signature s
 			return err
 		}
 	} else { // サブキーの場合: 親キーを取得して検証
-		_, err := s.ResolveSubkey(ctx, object.KeyID)
+
+		domain, err := s.entity.ResolveHost(ctx, object.Signer)
 		if err != nil {
 			span.RecordError(err)
 			return err
 		}
+
+		if domain == s.config.Concurrent.FQDN {
+			_, err := s.ResolveSubkey(ctx, object.KeyID)
+			if err != nil {
+				span.RecordError(err)
+				return err
+			}
+		} else {
+			_, err := s.ResolveRemoteSubkey(ctx, object.KeyID, domain)
+			if err != nil {
+				span.RecordError(err)
+				return err
+			}
+		}
+
 		err = util.VerifySignature(payload, object.KeyID, signature)
 		if err != nil {
 			span.RecordError(err)
@@ -313,4 +331,3 @@ func IsCKID(keyID string) bool {
 func IsCCID(keyID string) bool {
 	return keyID[:2] == "CC"
 }
-

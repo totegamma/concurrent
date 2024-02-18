@@ -194,22 +194,22 @@ type CollectionItem struct {
 }
 
 type Ack struct { // signtype: ackPayload
-	From      string `json:"from" gorm:"primaryKey;type:char(42)"`
-	To        string `json:"to" gorm:"primaryKey;type:char(42)"`
-	Payload   string `json:"payload" gorm:"type:json;default:'{}'"`
-    /*
-    {
-        from: string,
-        to: string,
-    }
-    */
+	From    string `json:"from" gorm:"primaryKey;type:char(42)"`
+	To      string `json:"to" gorm:"primaryKey;type:char(42)"`
+	Payload string `json:"payload" gorm:"type:json;default:'{}'"`
+	/*
+	   {
+	       from: string,
+	       to: string,
+	   }
+	*/
 	Signature string `json:"signature" gorm:"type:char(130)"`
 	Valid     bool   `json:"valid" gorm:"type:boolean;default:false"`
 }
 
 type AckPayload struct {
-    From string `json:"from"`
-    To string `json:"to"`
+	From string `json:"from"`
+	To   string `json:"to"`
 }
 
 // Event is websocket root packet model

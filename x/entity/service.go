@@ -1,7 +1,8 @@
+//go:generate go run go.uber.org/mock/mockgen -source=service.go -destination=mock/service.go
+
 package entity
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -11,13 +12,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/rs/xid"
 	"net/http"
 
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/util"
-	"github.com/totegamma/concurrent/x/key"
 	"golang.org/x/exp/slices"
 
 	"go.opentelemetry.io/otel"
@@ -35,9 +34,6 @@ type Service interface {
 	Update(ctx context.Context, entity *core.Entity) error
 	IsUserExists(ctx context.Context, user string) bool
 	Delete(ctx context.Context, id string) error
-	Ack(ctx context.Context, from, to string) error
-	GetAcker(ctx context.Context, key string) ([]core.Ack, error)
-	GetAcking(ctx context.Context, key string) ([]core.Ack, error)
 	GetAddress(ctx context.Context, ccid string) (core.Address, error)
 	UpdateAddress(ctx context.Context, ccid string, domain string, signedAt time.Time) error
 	UpdateRegistration(ctx context.Context, id string, payload string, signature string) error // NOTE: for migration. Remove later
@@ -49,16 +45,14 @@ type service struct {
 	repository Repository
 	config     util.Config
 	jwtService jwt.Service
-    key      key.Service
 }
 
 // NewService creates a new entity service
-func NewService(repository Repository, config util.Config, jwtService jwt.Service, key key.Service) Service {
+func NewService(repository Repository, config util.Config, jwtService jwt.Service) Service {
 	return &service{
 		repository,
 		config,
 		jwtService,
-        key,
 	}
 }
 
@@ -349,141 +343,6 @@ func (s *service) Delete(ctx context.Context, id string) error {
 	defer span.End()
 
 	return s.repository.Delete(ctx, id)
-}
-
-// Ack creates new Ack
-func (s *service) Ack(ctx context.Context, objectStr string, signature string) error {
-	ctx, span := tracer.Start(ctx, "ServiceAck")
-	defer span.End()
-
-	var object core.SignedObject[core.AckPayload]
-	err := json.Unmarshal([]byte(objectStr), &object)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-
-	err = s.key.ValidateSignedObject(ctx, objectStr, signature)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-
-	switch object.Type {
-	case "ack":
-		address, err := s.repository.GetAddress(ctx, object.Body.To)
-		if err == nil {
-			packet := ackRequest{
-				SignedObject: objectStr,
-				Signature:    signature,
-			}
-			packetStr, err := json.Marshal(packet)
-			if err != nil {
-				span.RecordError(err)
-				return err
-			}
-
-			req, err := http.NewRequest("POST", "https://"+address.Domain+"/api/v1/entities/checkpoint/ack", bytes.NewBuffer([]byte(packetStr)))
-
-			if err != nil {
-				span.RecordError(err)
-				return err
-			}
-
-			otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
-
-			jwt, err := jwt.Create(jwt.Claims{
-				Issuer:         s.config.Concurrent.CCID,
-				Subject:        "CC_API",
-				Audience:       address.Domain,
-				ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
-				IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
-				JWTID:          xid.New().String(),
-			}, s.config.Concurrent.PrivateKey)
-
-			req.Header.Add("content-type", "application/json")
-			req.Header.Add("authorization", "Bearer "+jwt)
-			client := new(http.Client)
-			resp, err := client.Do(req)
-			if err != nil {
-				span.RecordError(err)
-				return err
-			}
-			defer resp.Body.Close()
-		}
-
-		return s.repository.Ack(ctx, &core.Ack{
-			From:      object.Body.From,
-			To:        object.Body.To,
-			Signature: signature,
-			Payload:   objectStr,
-		})
-	case "unack":
-		address, err := s.repository.GetAddress(ctx, object.Body.To)
-		if err == nil {
-			packet := ackRequest{
-				SignedObject: objectStr,
-				Signature:    signature,
-			}
-			packetStr, err := json.Marshal(packet)
-			if err != nil {
-				span.RecordError(err)
-				return err
-			}
-
-			req, err := http.NewRequest("POST", "https://"+address.Domain+"/api/v1/entities/checkpoint/ack", bytes.NewBuffer([]byte(packetStr)))
-
-			if err != nil {
-				span.RecordError(err)
-				return err
-			}
-
-			otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
-
-			jwt, err := jwt.Create(jwt.Claims{
-				Issuer:         s.config.Concurrent.CCID,
-				Subject:        "CC_API",
-				Audience:       address.Domain,
-				ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
-				IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
-				JWTID:          xid.New().String(),
-			}, s.config.Concurrent.PrivateKey)
-
-			req.Header.Add("content-type", "application/json")
-			req.Header.Add("authorization", "Bearer "+jwt)
-			client := new(http.Client)
-			resp, err := client.Do(req)
-			if err != nil {
-				span.RecordError(err)
-				return err
-			}
-			defer resp.Body.Close()
-		}
-		return s.repository.Unack(ctx, &core.Ack{
-			From:      object.Body.From,
-			To:        object.Body.To,
-			Signature: signature,
-			Payload:   objectStr,
-		})
-	default:
-		return fmt.Errorf("invalid object type")
-	}
-}
-
-// GetAcker returns acker
-func (s *service) GetAcker(ctx context.Context, user string) ([]core.Ack, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetAcker")
-	defer span.End()
-
-	return s.repository.GetAcker(ctx, user)
-}
-
-// GetAcking returns acking
-func (s *service) GetAcking(ctx context.Context, user string) ([]core.Ack, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetAcking")
-	defer span.End()
-
-	return s.repository.GetAcking(ctx, user)
 }
 
 // GetAddress returns the address of a entity

@@ -3,9 +3,9 @@ package auth
 
 import (
 	"github.com/labstack/echo/v4"
+	"github.com/totegamma/concurrent/x/core"
 	"go.opentelemetry.io/otel"
 	"net/http"
-	"github.com/totegamma/concurrent/x/core"
 )
 
 var tracer = otel.Tracer("auth")
@@ -44,4 +44,3 @@ func (h *handler) GetPassport(c echo.Context) error {
 
 	return c.JSON(http.StatusOK, echo.Map{"content": response})
 }
-

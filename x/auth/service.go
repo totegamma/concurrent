@@ -11,8 +11,8 @@ import (
 	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/jwt"
-	"github.com/totegamma/concurrent/x/util"
 	"github.com/totegamma/concurrent/x/key"
+	"github.com/totegamma/concurrent/x/util"
 )
 
 // Service is the interface for auth service
@@ -22,10 +22,10 @@ type Service interface {
 }
 
 type service struct {
-	config     util.Config
-	entity     entity.Service
-	domain     domain.Service
-    key       key.Service
+	config util.Config
+	entity entity.Service
+	domain domain.Service
+	key    key.Service
 }
 
 // NewService creates a new auth service
@@ -64,4 +64,3 @@ func (s *service) IssuePassport(ctx context.Context, requester, remote string) (
 
 	return response, nil
 }
-

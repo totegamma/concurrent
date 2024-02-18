@@ -18,7 +18,7 @@ type Handler interface {
 }
 
 type handler struct {
-	service       Service
+	service Service
 }
 
 // NewHandler creates a new handler

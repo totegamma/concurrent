@@ -10,6 +10,7 @@ import (
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/google/wire"
 	"github.com/redis/go-redis/v9"
+	"github.com/totegamma/concurrent/x/ack"
 	"github.com/totegamma/concurrent/x/agent"
 	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/auth"
@@ -35,23 +36,32 @@ func SetupJwtService(rdb *redis.Client) jwt.Service {
 	return service
 }
 
-func SetupKeyService(db *gorm.DB, config util.Config) key.Service {
+func SetupAckService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) ack.Service {
+	repository := ack.NewRepository(db)
+	service := SetupEntityService(db, rdb, mc, config)
+	keyService := SetupKeyService(db, rdb, mc, config)
+	ackService := ack.NewService(repository, service, keyService, config)
+	return ackService
+}
+
+func SetupKeyService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) key.Service {
 	repository := key.NewRepository(db)
-	service := key.NewService(repository, config)
-	return service
+	service := SetupEntityService(db, rdb, mc, config)
+	keyService := key.NewService(repository, service, config)
+	return keyService
 }
 
 func SetupMessageService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) message.Service {
 	repository := message.NewRepository(db, mc)
 	service := SetupStreamService(db, rdb, mc, manager, config)
-	keyService := SetupKeyService(db, config)
+	keyService := SetupKeyService(db, rdb, mc, config)
 	messageService := message.NewService(rdb, repository, service, keyService)
 	return messageService
 }
 
-func SetupCharacterService(db *gorm.DB, mc *memcache.Client, config util.Config) character.Service {
+func SetupCharacterService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) character.Service {
 	repository := character.NewRepository(db, mc)
-	service := SetupKeyService(db, config)
+	service := SetupKeyService(db, rdb, mc, config)
 	characterService := character.NewService(repository, service)
 	return characterService
 }
@@ -60,7 +70,7 @@ func SetupAssociationService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client
 	repository := association.NewRepository(db, mc)
 	service := SetupStreamService(db, rdb, mc, manager, config)
 	messageService := SetupMessageService(db, rdb, mc, manager, config)
-	keyService := SetupKeyService(db, config)
+	keyService := SetupKeyService(db, rdb, mc, config)
 	associationService := association.NewService(repository, service, messageService, keyService)
 	return associationService
 }
@@ -81,8 +91,7 @@ func SetupDomainService(db *gorm.DB, config util.Config) domain.Service {
 func SetupEntityService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) entity.Service {
 	repository := entity.NewRepository(db, mc)
 	service := SetupJwtService(rdb)
-	keyService := SetupKeyService(db, config)
-	entityService := entity.NewService(repository, config, service, keyService)
+	entityService := entity.NewService(repository, config, service)
 	return entityService
 }
 
@@ -102,7 +111,7 @@ func SetupAgent(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util
 func SetupAuthService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) auth.Service {
 	service := SetupEntityService(db, rdb, mc, config)
 	domainService := SetupDomainService(db, config)
-	keyService := SetupKeyService(db, config)
+	keyService := SetupKeyService(db, rdb, mc, config)
 	authService := auth.NewService(config, service, domainService, keyService)
 	return authService
 }
@@ -133,7 +142,7 @@ var jwtServiceProvider = wire.NewSet(jwt.NewService, jwt.NewRepository)
 
 var domainServiceProvider = wire.NewSet(domain.NewService, domain.NewRepository)
 
-var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService, SetupKeyService)
+var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService)
 
 var streamServiceProvider = wire.NewSet(stream.NewService, stream.NewRepository, SetupEntityService)
 
@@ -145,6 +154,8 @@ var authServiceProvider = wire.NewSet(auth.NewService, SetupEntityService, Setup
 
 var messageServiceProvider = wire.NewSet(message.NewService, message.NewRepository, SetupStreamService, SetupKeyService)
 
-var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository)
+var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository, SetupEntityService)
 
 var userKvServiceProvider = wire.NewSet(userkv.NewService, userkv.NewRepository)
+
+var ackServiceProvider = wire.NewSet(ack.NewService, ack.NewRepository, SetupEntityService, SetupKeyService)

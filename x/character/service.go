@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"github.com/totegamma/concurrent/x/core"
-    "github.com/totegamma/concurrent/x/key"
+	"github.com/totegamma/concurrent/x/key"
 )
 
 // Service is the interface for character service
@@ -16,8 +16,7 @@ type Service interface {
 
 type service struct {
 	repo Repository
-	key key.Service
-
+	key  key.Service
 }
 
 // NewService creates a new character service
@@ -80,4 +79,3 @@ func (s *service) PutCharacter(ctx context.Context, objectStr string, signature 
 
 	return character, nil
 }
-

@@ -5,11 +5,13 @@ import (
 	"encoding/json"
 	"testing"
 
-	"github.com/stretchr/testify/assert"
-	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/util"
+	"go.uber.org/mock/gomock"
 
+	"github.com/stretchr/testify/assert"
 	"github.com/totegamma/concurrent/internal/testutil"
+	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/entity/mock"
+	"github.com/totegamma/concurrent/x/util"
 )
 
 const (
@@ -30,8 +32,14 @@ func TestService(t *testing.T) {
 	db, cleanup_db := testutil.CreateDB()
 	defer cleanup_db()
 
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockEntity := mock_entity.NewMockService(ctrl)
+	mockEntity.EXPECT().ResolveHost(gomock.Any(), gomock.Any()).Return("", nil).AnyTimes()
+
 	test_repo := NewRepository(db)
-	test_service := NewService(test_repo, util.Config{})
+	test_service := NewService(test_repo, mockEntity, util.Config{})
 
 	// Test1. 登録してないサブキーで署名されたオブジェクトを検証する
 	payload0 := core.SignedObject[any]{

@@ -256,7 +256,7 @@ func (h handler) Checkpoint(c echo.Context) error {
 		return err
 	}
 
-	err = h.service.PostItem(ctx, packet.Stream, packet.Item, packet.Body)
+	err = h.service.Checkpoint(ctx, packet.Stream, packet.Item, packet.Body, packet.Principal)
 	if err != nil {
 		span.RecordError(err)
 		return nil

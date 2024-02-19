@@ -38,6 +38,16 @@ func (s *service) IssuePassport(ctx context.Context, requester, remote string) (
 	ctx, span := tracer.Start(ctx, "ServiceIssueJWT")
 	defer span.End()
 
+	// check if domain exists
+	domain, err := s.domain.GetByFQDN(ctx, remote)
+	if err != nil {
+		domain, err = s.domain.SayHello(ctx, remote)
+		if err != nil {
+			span.RecordError(err)
+			return "", err
+		}
+	}
+
 	// check if issuer exists in this domain
 	ent, err := s.entity.Get(ctx, requester)
 	if err != nil {
@@ -49,12 +59,13 @@ func (s *service) IssuePassport(ctx context.Context, requester, remote string) (
 	response, err := jwt.Create(jwt.Claims{
 		Issuer:         s.config.Concurrent.CCID,
 		Subject:        "CC_PASSPORT",
-		Audience:       remote,
+		Audience:       domain.ID,
 		Principal:      requester,
 		ExpirationTime: strconv.FormatInt(time.Now().Add(6*time.Hour).Unix(), 10),
 		IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
 		JWTID:          xid.New().String(),
 		Tag:            ent.Tag,
+		Domain:         s.config.Concurrent.FQDN,
 	}, s.config.Concurrent.PrivateKey)
 
 	if err != nil {

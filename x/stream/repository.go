@@ -284,6 +284,12 @@ func (r *repository) GetChunksFromDB(ctx context.Context, streams []string, chun
 			span.RecordError(err)
 			continue
 		}
+
+		// append domain to streamID
+		for i, item := range items {
+			items[i].StreamID = item.StreamID + "@" + r.config.Concurrent.FQDN
+		}
+
 		result[stream] = Chunk{
 			Key:   targetKey,
 			Items: items,

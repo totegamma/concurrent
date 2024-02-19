@@ -30,9 +30,10 @@ type signedObject struct {
 }
 
 type checkpointPacket struct {
-	Stream string          `json:"stream"` // stream full id (ex: <streamID>@<domain>)
-	Item   core.StreamItem `json:"item"`
-	Body   interface{}     `json:"body"`
+	Stream    string          `json:"stream"` // stream full id (ex: <streamID>@<domain>)
+	Item      core.StreamItem `json:"item"`
+	Body      interface{}     `json:"body"`
+	Principal string          `json:"principal"`
 }
 
 type chunkResponse struct {

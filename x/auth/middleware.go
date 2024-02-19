@@ -111,8 +111,16 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 
 				domain, err := s.domain.GetByCCID(ctx, claims.Issuer)
 				if err != nil {
-					span.RecordError(err)
-					goto skip
+					if claims.Domain != "" {
+						domain, err = s.domain.SayHello(ctx, claims.Domain)
+						if err != nil {
+							span.RecordError(err)
+							goto skip
+						}
+					} else {
+						span.RecordError(err)
+						goto skip
+					}
 				}
 
 				tags := core.ParseTags(domain.Tag)
@@ -127,7 +135,7 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				// pull entity from remote if not registered
 				_, err = s.entity.GetAddress(ctx, ccid)
 				if err != nil {
-					err = s.entity.PullEntityFromRemote(ctx, ccid, domain.ID)
+					_, err = s.entity.PullEntityFromRemote(ctx, ccid, domain.ID)
 					if err != nil {
 						span.RecordError(err)
 						goto skip

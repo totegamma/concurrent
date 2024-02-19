@@ -11,11 +11,11 @@ import (
 type Repository interface {
 	GetByFQDN(ctx context.Context, key string) (core.Domain, error)
 	GetByCCID(ctx context.Context, ccid string) (core.Domain, error)
-	Upsert(ctx context.Context, host *core.Domain) error
+	Upsert(ctx context.Context, host core.Domain) (core.Domain, error)
 	GetList(ctx context.Context) ([]core.Domain, error)
 	Delete(ctx context.Context, id string) error
 	UpdateScrapeTime(ctx context.Context, id string, scrapeTime time.Time) error
-	Update(ctx context.Context, host *core.Domain) error
+	Update(ctx context.Context, host core.Domain) error
 }
 
 type repository struct {
@@ -48,11 +48,13 @@ func (r *repository) GetByCCID(ctx context.Context, ccid string) (core.Domain, e
 }
 
 // Upsert creates new host
-func (r *repository) Upsert(ctx context.Context, host *core.Domain) error {
+func (r *repository) Upsert(ctx context.Context, host core.Domain) (core.Domain, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryUpsert")
 	defer span.End()
 
-	return r.db.WithContext(ctx).Save(&host).Error
+	err := r.db.WithContext(ctx).Save(&host).Error
+
+	return host, err
 }
 
 // GetList returns list of schemas by schema
@@ -82,7 +84,7 @@ func (r *repository) UpdateScrapeTime(ctx context.Context, id string, scrapeTime
 }
 
 // Update updates a host
-func (r *repository) Update(ctx context.Context, host *core.Domain) error {
+func (r *repository) Update(ctx context.Context, host core.Domain) error {
 	ctx, span := tracer.Start(ctx, "RepositoryUpdate")
 	defer span.End()
 

@@ -78,13 +78,14 @@ func SetupAssociationService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client
 func SetupStreamService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) stream.Service {
 	repository := stream.NewRepository(db, rdb, mc, manager, config)
 	service := SetupEntityService(db, rdb, mc, config)
-	streamService := stream.NewService(repository, service, config)
+	domainService := SetupDomainService(db, config)
+	streamService := stream.NewService(repository, service, domainService, config)
 	return streamService
 }
 
 func SetupDomainService(db *gorm.DB, config util.Config) domain.Service {
 	repository := domain.NewRepository(db)
-	service := domain.NewService(repository)
+	service := domain.NewService(repository, config)
 	return service
 }
 
@@ -144,7 +145,7 @@ var domainServiceProvider = wire.NewSet(domain.NewService, domain.NewRepository)
 
 var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService)
 
-var streamServiceProvider = wire.NewSet(stream.NewService, stream.NewRepository, SetupEntityService)
+var streamServiceProvider = wire.NewSet(stream.NewService, stream.NewRepository, SetupEntityService, SetupDomainService)
 
 var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupStreamService, SetupMessageService, SetupKeyService)
 

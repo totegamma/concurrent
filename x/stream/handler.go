@@ -256,7 +256,12 @@ func (h handler) Checkpoint(c echo.Context) error {
 		return err
 	}
 
-	err = h.service.Checkpoint(ctx, packet.Stream, packet.Item, packet.Body, packet.Principal)
+	requesterDomain, ok := c.Get(core.RequesterDomainCtxKey).(string)
+	if !ok {
+		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester domain not found"})
+	}
+
+	err = h.service.Checkpoint(ctx, packet.Stream, packet.Item, packet.Body, packet.Principal, requesterDomain)
 	if err != nil {
 		span.RecordError(err)
 		return nil

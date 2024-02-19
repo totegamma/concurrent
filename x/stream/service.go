@@ -49,7 +49,7 @@ type Service interface {
 	GetChunks(ctx context.Context, streams []string, pivot time.Time) (map[string]Chunk, error)
 	GetChunksFromRemote(ctx context.Context, host string, streams []string, pivot time.Time) (map[string]Chunk, error)
 
-	Checkpoint(ctx context.Context, stream string, item core.StreamItem, body interface{}, principal string) error
+	Checkpoint(ctx context.Context, stream string, item core.StreamItem, body interface{}, principal string, requesterDomain string) error
 
 	ListStreamSubscriptions(ctx context.Context) (map[string]int64, error)
 	Count(ctx context.Context) (int64, error)
@@ -67,19 +67,14 @@ func NewService(repository Repository, entity entity.Service, domain domain.Serv
 	return &service{repository, entity, domain, config}
 }
 
-func (s *service) Checkpoint(ctx context.Context, stream string, item core.StreamItem, body interface{}, principal string) error {
+func (s *service) Checkpoint(ctx context.Context, stream string, item core.StreamItem, body interface{}, principal string, requesterDomain string) error {
 	ctx, span := tracer.Start(ctx, "ServiceCheckpoint")
 	defer span.End()
-
-	domain, ok := ctx.Value(core.RequesterDomainCtxKey).(string)
-	if !ok {
-		return fmt.Errorf("domain not found in context")
-	}
 
 	if principal != "" { // TODO: for backward compatibility. Remove this condition after next release
 		_, err := s.entity.GetAddress(ctx, principal)
 		if err != nil {
-			_, err = s.entity.PullEntityFromRemote(ctx, principal, domain)
+			_, err = s.entity.PullEntityFromRemote(ctx, principal, requesterDomain)
 			if err != nil {
 				span.RecordError(err)
 				return err

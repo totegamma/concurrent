@@ -55,6 +55,19 @@ func (s *service) EnactKey(ctx context.Context, payload, signature string) (core
 		return core.Key{}, err
 	}
 
+	signerKey := object.KeyID
+	if signerKey == "" {
+		signerKey = object.Signer
+	}
+
+	if object.Signer != object.Body.Root {
+		return core.Key{}, fmt.Errorf("Root is not matched with the signer")
+	}
+
+	if signerKey != object.Body.Parent {
+		return core.Key{}, fmt.Errorf("Parent is not matched with the signer")
+	}
+
 	key := core.Key{
 		ID:             object.Body.CKID,
 		Root:           object.Body.Root,

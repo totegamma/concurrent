@@ -6,6 +6,7 @@ import (
 	"github.com/totegamma/concurrent/internal/testutil"
 	"github.com/totegamma/concurrent/x/core"
 	"testing"
+	"time"
 )
 
 func TestRepository(t *testing.T) {
@@ -32,7 +33,6 @@ func TestRepository(t *testing.T) {
 		assert.NotZero(t, created.EnactPayload)
 		assert.NotZero(t, created.EnactSignature)
 		assert.NotZero(t, created.ID)
-		assert.NotZero(t, created.CDate)
 	}
 
 	found, err := repo.Get(ctx, created.ID)
@@ -45,6 +45,7 @@ func TestRepository(t *testing.T) {
 		created.ID,
 		"{}",
 		"413d2b0eddf46846a0f5aa16d5cb94644877a4c17ceb76a7639166ea037166ce0fd16b0555ed9c99803a43ac2b8fa21fad5e66968bed9b10a4e709683abfe3c400",
+		time.Now(),
 	)
 
 	if assert.NoError(t, err) {

@@ -2,6 +2,7 @@ package key
 
 import (
 	"context"
+	"time"
 
 	"github.com/totegamma/concurrent/x/core"
 	"gorm.io/gorm"
@@ -9,7 +10,7 @@ import (
 
 type Repository interface {
 	Enact(ctx context.Context, key core.Key) (core.Key, error)
-	Revoke(ctx context.Context, keyID string, payload string, signature string) (core.Key, error)
+	Revoke(ctx context.Context, keyID string, payload string, signature string, signedAt time.Time) (core.Key, error)
 	Get(ctx context.Context, keyID string) (core.Key, error)
 	GetAll(ctx context.Context, owner string) ([]core.Key, error)
 }
@@ -47,11 +48,17 @@ func (r *repository) Enact(ctx context.Context, key core.Key) (core.Key, error) 
 	return key, nil
 }
 
-func (r *repository) Revoke(ctx context.Context, keyID string, payload string, signature string) (core.Key, error) {
+func (r *repository) Revoke(ctx context.Context, keyID string, payload string, signature string, signedAt time.Time) (core.Key, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Revoke")
 	defer span.End()
 
-	err := r.db.Model(&core.Key{}).Where("id = ?", keyID).Updates(core.Key{RevokePayload: payload, RevokeSignature: signature}).Error
+	err := r.db.Model(&core.Key{}).Where("id = ?", keyID).Updates(
+		core.Key{
+			RevokePayload:   payload,
+			RevokeSignature: signature,
+			ValidUntil:      signedAt,
+		},
+	).Error
 	if err != nil {
 		return core.Key{}, err
 	}

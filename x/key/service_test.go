@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"testing"
+	"time"
 
 	"go.uber.org/mock/gomock"
 
@@ -43,21 +44,18 @@ func TestService(t *testing.T) {
 
 	// Test1. 登録してないサブキーで署名されたオブジェクトを検証する
 	payload0 := core.SignedObject[any]{
-		Signer: RootKey,
-		Type:   "dummy",
-		KeyID:  SubKey1,
+		Signer:   RootKey,
+		Type:     "dummy",
+		KeyID:    SubKey1,
+		SignedAt: time.Now(),
 	}
 
 	objb0, err := json.Marshal(payload0)
-	if err != nil {
-		panic(err)
-	}
+	assert.NoError(t, err)
 
 	objStr0 := string(objb0)
 	objSig0, err := util.SignBytes(objb0, SubPriv1)
-	if err != nil {
-		panic(err)
-	}
+	assert.NoError(t, err)
 
 	err = test_service.ValidateSignedObject(ctx, objStr0, objSig0)
 	assert.Error(t, err) // まだKeyChainが存在しないのでエラーになる
@@ -71,22 +69,21 @@ func TestService(t *testing.T) {
 			Root:   RootKey,
 			Parent: RootKey,
 		},
+		SignedAt: time.Now(),
 	}
 
 	objb1, err := json.Marshal(payload1)
-	if err != nil {
-		panic(err)
-	}
+	assert.NoError(t, err)
 
 	objStr1 := string(objb1)
 	objSig1, err := util.SignBytes(objb1, RootPriv)
-	if err != nil {
-		panic(err)
-	}
+	assert.NoError(t, err)
 
 	created, err := test_service.EnactKey(ctx, objStr1, objSig1)
 	if assert.NoError(t, err) {
 		assert.NotNil(t, created)
+		assert.True(t, !created.ValidFrom.IsZero())
+		assert.True(t, created.ValidUntil.IsZero())
 	}
 
 	// Test3. 登録したサブキーで署名されたオブジェクトを検証する
@@ -115,23 +112,22 @@ func TestService(t *testing.T) {
 			Root:   RootKey,
 			Parent: SubKey1,
 		},
-		KeyID: SubKey1,
+		KeyID:    SubKey1,
+		SignedAt: time.Now(),
 	}
 
 	objb2, err := json.Marshal(payload2)
-	if err != nil {
-		panic(err)
-	}
+	assert.NoError(t, err)
 
 	objStr2 := string(objb2)
 	objSig2, err := util.SignBytes(objb2, SubPriv1)
-	if err != nil {
-		panic(err)
-	}
+	assert.NoError(t, err)
 
 	created2, err := test_service.EnactKey(ctx, objStr2, objSig2)
 	if assert.NoError(t, err) {
 		assert.NotNil(t, created2)
+		assert.True(t, !created2.ValidFrom.IsZero())
+		assert.True(t, created2.ValidUntil.IsZero())
 	}
 
 	// test4.1 test GetKeyResolution
@@ -149,21 +145,18 @@ func TestService(t *testing.T) {
 	// Test5. 登録したサブキーのサブキーで署名されたオブジェクトを検証する
 
 	payload3 := core.SignedObject[any]{
-		Signer: RootKey,
-		Type:   "dummy",
-		KeyID:  SubKey2,
+		Signer:   RootKey,
+		Type:     "dummy",
+		KeyID:    SubKey2,
+		SignedAt: time.Now(),
 	}
 
 	objb3, err := json.Marshal(payload3)
-	if err != nil {
-		panic(err)
-	}
+	assert.NoError(t, err)
 
 	objStr3 := string(objb3)
 	objSig3, err := util.SignBytes(objb3, SubPriv2)
-	if err != nil {
-		panic(err)
-	}
+	assert.NoError(t, err)
 
 	err = test_service.ValidateSignedObject(ctx, objStr3, objSig3)
 	assert.NoError(t, err)
@@ -176,19 +169,16 @@ func TestService(t *testing.T) {
 		Body: core.Revoke{
 			CKID: SubKey1,
 		},
-		KeyID: SubKey2,
+		KeyID:    SubKey2,
+		SignedAt: time.Now(),
 	}
 
 	objb4, err := json.Marshal(payload4)
-	if err != nil {
-		panic(err)
-	}
+	assert.NoError(t, err)
 
 	objStr4 := string(objb4)
 	objSig4, err := util.SignBytes(objb4, RootPriv)
-	if err != nil {
-		panic(err)
-	}
+	assert.NoError(t, err)
 
 	_, err = test_service.RevokeKey(ctx, objStr4, objSig4)
 	assert.Error(t, err)
@@ -201,21 +191,21 @@ func TestService(t *testing.T) {
 		Body: core.Revoke{
 			CKID: SubKey1,
 		},
+		SignedAt: time.Now(),
 	}
 
 	objb5, err := json.Marshal(payload5)
-	if err != nil {
-		panic(err)
-	}
+	assert.NoError(t, err)
 
 	objStr5 := string(objb5)
 	objSig5, err := util.SignBytes(objb5, RootPriv)
-	if err != nil {
-		panic(err)
-	}
-
-	_, err = test_service.RevokeKey(ctx, objStr5, objSig5)
 	assert.NoError(t, err)
+
+	revoked, err := test_service.RevokeKey(ctx, objStr5, objSig5)
+	if assert.NoError(t, err) {
+		assert.True(t, !revoked.ValidFrom.IsZero())
+		assert.True(t, !revoked.ValidUntil.IsZero())
+	}
 
 	// Test8. 無効化したサブキーで署名されたオブジェクトを検証する(失敗する)
 

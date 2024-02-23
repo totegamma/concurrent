@@ -74,6 +74,7 @@ func (s *service) EnactKey(ctx context.Context, payload, signature string) (core
 		Parent:         object.Body.Parent,
 		EnactPayload:   payload,
 		EnactSignature: signature,
+		ValidFrom:      object.SignedAt,
 	}
 
 	created, err := s.repository.Enact(ctx, key)
@@ -128,7 +129,7 @@ func (s *service) RevokeKey(ctx context.Context, payload, signature string) (cor
 		return core.Key{}, fmt.Errorf("KeyDepth is not enough. target: %d, performer: %d", len(targetKeyResolution), len(performerKeyResolution))
 	}
 
-	revoked, err := s.repository.Revoke(ctx, object.Body.CKID, payload, signature)
+	revoked, err := s.repository.Revoke(ctx, object.Body.CKID, payload, signature, object.SignedAt)
 	if err != nil {
 		span.RecordError(err)
 		return core.Key{}, err

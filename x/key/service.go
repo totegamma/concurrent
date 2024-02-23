@@ -74,7 +74,7 @@ func (s *service) EnactKey(ctx context.Context, payload, signature string) (core
 		Parent:         object.Body.Parent,
 		EnactPayload:   payload,
 		EnactSignature: signature,
-		ValidFrom:      object.SignedAt,
+		ValidSince:     object.SignedAt,
 	}
 
 	created, err := s.repository.Enact(ctx, key)

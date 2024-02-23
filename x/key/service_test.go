@@ -82,7 +82,7 @@ func TestService(t *testing.T) {
 	created, err := test_service.EnactKey(ctx, objStr1, objSig1)
 	if assert.NoError(t, err) {
 		assert.NotNil(t, created)
-		assert.True(t, !created.ValidFrom.IsZero())
+		assert.True(t, !created.ValidSince.IsZero())
 		assert.True(t, created.ValidUntil.IsZero())
 	}
 
@@ -126,7 +126,7 @@ func TestService(t *testing.T) {
 	created2, err := test_service.EnactKey(ctx, objStr2, objSig2)
 	if assert.NoError(t, err) {
 		assert.NotNil(t, created2)
-		assert.True(t, !created2.ValidFrom.IsZero())
+		assert.True(t, !created2.ValidSince.IsZero())
 		assert.True(t, created2.ValidUntil.IsZero())
 	}
 
@@ -203,7 +203,7 @@ func TestService(t *testing.T) {
 
 	revoked, err := test_service.RevokeKey(ctx, objStr5, objSig5)
 	if assert.NoError(t, err) {
-		assert.True(t, !revoked.ValidFrom.IsZero())
+		assert.True(t, !revoked.ValidSince.IsZero())
 		assert.True(t, !revoked.ValidUntil.IsZero())
 	}
 

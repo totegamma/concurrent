@@ -37,7 +37,7 @@ type Key struct { // signtype: enact | revoke
 	   }
 	*/
 	RevokeSignature string    `json:"revokeSignature" gorm:"type:char(130)"`
-	ValidFrom       time.Time `json:"validFrom" gorm:"type:timestamp with time zone"`
+	ValidSince      time.Time `json:"validSince" gorm:"type:timestamp with time zone"`
 	ValidUntil      time.Time `json:"validUntil" gorm:"type:timestamp with time zone"`
 }
 

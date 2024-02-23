@@ -108,7 +108,7 @@ func TestService(t *testing.T) {
 	// Test4. サブキーのサブキーを新しく登録する
 
 	payload2 := core.SignedObject[core.Enact]{
-		Signer: SubKey2,
+		Signer: RootKey,
 		Type:   "enact",
 		Body: core.Enact{
 			CKID:   SubKey2,

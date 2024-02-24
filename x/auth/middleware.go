@@ -99,6 +99,7 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				}
 
 				c.Set(core.RequesterIdCtxKey, requester.ID)
+				span.SetAttributes(attribute.String("RequesterId", ccid))
 
 				if tags.Has("_block") {
 					return c.JSON(http.StatusForbidden, echo.Map{

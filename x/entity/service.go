@@ -62,13 +62,13 @@ type addressResponse struct {
 }
 
 // PullEntityFromRemote pulls entity from remote
-func (s *service) PullEntityFromRemote(ctx context.Context, id, domain string) (string, error) {
+func (s *service) PullEntityFromRemote(ctx context.Context, id, hintDomain string) (string, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryPullEntityFromRemote")
 	defer span.End()
 
 	client := new(http.Client)
 
-	req, err := http.NewRequest("GET", "https://"+domain+"/api/v1/address/"+id, nil)
+	req, err := http.NewRequest("GET", "https://"+hintDomain+"/api/v1/address/"+id, nil)
 	if err != nil {
 		span.RecordError(err)
 		return "", err
@@ -139,22 +139,32 @@ func (s *service) PullEntityFromRemote(ctx context.Context, id, domain string) (
 		return "", fmt.Errorf("Invalid payload")
 	}
 
+	if signedObj.Body.Domain != targetDomain {
+		err = fmt.Errorf("Remote entity is not for the target domain")
+		span.RecordError(err)
+		return "", err
+	}
+
 	existanceAddr, err := s.GetAddress(ctx, entity.ID)
 	if err == nil {
 		// compare signed date
 		if signedObj.SignedAt.Unix() <= existanceAddr.SignedAt.Unix() {
-			return "", fmt.Errorf("Remote entity is older than local entity")
+			err = fmt.Errorf("Remote entity is older than local entity")
+			span.RecordError(err)
+			return "", err
 		}
 	}
 
 	existanceEntity, err := s.Get(ctx, entity.ID)
 	if err == nil {
 		if signedObj.SignedAt.Unix() <= existanceEntity.CDate.Unix() {
-			return "", fmt.Errorf("Remote entity is older than local entity")
+			err = fmt.Errorf("Remote entity is older than local entity")
+			span.RecordError(err)
+			return "", err
 		}
 	}
 
-	err = s.UpdateAddress(ctx, entity.ID, domain, signedObj.SignedAt)
+	err = s.UpdateAddress(ctx, entity.ID, targetDomain, signedObj.SignedAt)
 
 	if err != nil {
 		span.RecordError(err)

@@ -72,13 +72,10 @@ func (s *service) Checkpoint(ctx context.Context, stream string, item core.Strea
 	defer span.End()
 
 	if principal != "" { // TODO: for backward compatibility. Remove this condition after next release
-		_, err := s.entity.GetAddress(ctx, principal)
+		_, err := s.entity.ResolveHost(ctx, principal, requesterDomain) // 一発resolveして存在確認+なければ取得を走らせておく
 		if err != nil {
-			_, err = s.entity.PullEntityFromRemote(ctx, principal, requesterDomain)
-			if err != nil {
-				span.RecordError(err)
-				return err
-			}
+			span.RecordError(err)
+			return err
 		}
 	}
 

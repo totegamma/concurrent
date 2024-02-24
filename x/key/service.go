@@ -197,7 +197,10 @@ func (s *service) ResolveRemoteSubkey(ctx context.Context, keyID, domain string)
 	ctx, span := tracer.Start(ctx, "ServiceGetRemoteKeyResolution")
 	defer span.End()
 
-	// TODO: search cache
+	resovation, err := s.repository.GetRemoteKeyValidationCache(ctx, keyID)
+	if err == nil {
+		return resovation, nil
+	}
 
 	req, err := http.NewRequest("GET", "https://"+domain+"/api/v1/key/"+keyID, nil)
 	if err != nil {
@@ -278,7 +281,7 @@ func (s *service) ResolveRemoteSubkey(ctx context.Context, keyID, domain string)
 		nextKey = key.Parent
 	}
 
-	//TODO: cache keychain
+	s.repository.SetRemoteKeyValidationCache(ctx, keyID, rootKey)
 
 	return rootKey, nil
 }

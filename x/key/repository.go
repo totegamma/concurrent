@@ -4,8 +4,10 @@ import (
 	"context"
 	"time"
 
-	"github.com/totegamma/concurrent/x/core"
+	"github.com/bradfitz/gomemcache/memcache"
 	"gorm.io/gorm"
+
+	"github.com/totegamma/concurrent/x/core"
 )
 
 type Repository interface {
@@ -13,14 +15,42 @@ type Repository interface {
 	Revoke(ctx context.Context, keyID string, payload string, signature string, signedAt time.Time) (core.Key, error)
 	Get(ctx context.Context, keyID string) (core.Key, error)
 	GetAll(ctx context.Context, owner string) ([]core.Key, error)
+	SetRemoteKeyValidationCache(ctx context.Context, keyID string, resovation string) error
+	GetRemoteKeyValidationCache(ctx context.Context, keyID string) (string, error)
 }
 
 type repository struct {
 	db *gorm.DB
+	mc *memcache.Client
 }
 
-func NewRepository(db *gorm.DB) Repository {
-	return &repository{db}
+func NewRepository(db *gorm.DB, mc *memcache.Client) Repository {
+	return &repository{db, mc}
+}
+
+func (r *repository) SetRemoteKeyValidationCache(ctx context.Context, keyID string, resovation string) error {
+	ctx, span := tracer.Start(ctx, "Repository.SetRemoteKeyValidationCache")
+	defer span.End()
+
+	// TTL 10 minutes
+	err := r.mc.Set(&memcache.Item{Key: keyID, Value: []byte(resovation), Expiration: 600})
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (r *repository) GetRemoteKeyValidationCache(ctx context.Context, keyID string) (string, error) {
+	ctx, span := tracer.Start(ctx, "Repository.GetRemoteKeyValidationCache")
+	defer span.End()
+
+	item, err := r.mc.Get(keyID)
+	if err != nil {
+		return "", err
+	}
+
+	return string(item.Value), nil
 }
 
 func (r *repository) Get(ctx context.Context, keyID string) (core.Key, error) {

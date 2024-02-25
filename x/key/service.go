@@ -164,18 +164,26 @@ func (s *service) ValidateSignedObject(ctx context.Context, payload, signature s
 			return err
 		}
 
+		ccid := ""
+
 		if domain == s.config.Concurrent.FQDN {
-			_, err := s.ResolveSubkey(ctx, object.KeyID)
+			ccid, err = s.ResolveSubkey(ctx, object.KeyID)
 			if err != nil {
 				span.RecordError(err)
 				return err
 			}
 		} else {
-			_, err := s.ResolveRemoteSubkey(ctx, object.KeyID, domain)
+			ccid, err = s.ResolveRemoteSubkey(ctx, object.KeyID, domain)
 			if err != nil {
 				span.RecordError(err)
 				return err
 			}
+		}
+
+		if ccid != object.Signer {
+			err := fmt.Errorf("Signer is not matched with the resolved signer")
+			span.RecordError(err)
+			return err
 		}
 
 		err = util.VerifySignature(payload, object.KeyID, signature)
@@ -267,7 +275,7 @@ func (s *service) ResolveRemoteSubkey(ctx context.Context, keyID, domain string)
 		}
 
 		if rootKey == "" {
-			rootKey = key.ID
+			rootKey = key.Root
 		} else {
 			if rootKey != key.Root {
 				return "", fmt.Errorf("Root is not matched with the previous key")

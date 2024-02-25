@@ -12,7 +12,11 @@ import (
 // Repository is the interface for character repository
 type Repository interface {
 	Upsert(ctx context.Context, character core.Character) error
-	Get(ctx context.Context, owner string, schema string) ([]core.Character, error)
+	Get(ctx context.Context, id string) (core.Character, error)
+	GetByAuthorAndSchema(ctx context.Context, owner string, schema string) ([]core.Character, error)
+	GetByAuthor(ctx context.Context, owner string) ([]core.Character, error)
+	GetBySchema(ctx context.Context, schema string) ([]core.Character, error)
+	Delete(ctx context.Context, id string) (core.Character, error)
 	Count(ctx context.Context) (int64, error)
 }
 
@@ -83,8 +87,8 @@ func (r *repository) Upsert(ctx context.Context, character core.Character) error
 }
 
 // Get returns a character by owner and schema
-func (r *repository) Get(ctx context.Context, owner string, schema string) ([]core.Character, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGet")
+func (r *repository) GetByAuthorAndSchema(ctx context.Context, owner string, schema string) ([]core.Character, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryGetByAuthorAndSchema")
 	defer span.End()
 
 	var characters []core.Character
@@ -95,4 +99,55 @@ func (r *repository) Get(ctx context.Context, owner string, schema string) ([]co
 		return []core.Character{}, nil
 	}
 	return characters, nil
+}
+
+func (r *repository) GetByAuthor(ctx context.Context, owner string) ([]core.Character, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryGetByAuthor")
+	defer span.End()
+
+	var characters []core.Character
+	if err := r.db.WithContext(ctx).Preload("Associations").Where("author = $1", owner).Find(&characters).Error; err != nil {
+		return []core.Character{}, err
+	}
+	if characters == nil {
+		return []core.Character{}, nil
+	}
+	return characters, nil
+}
+
+func (r *repository) GetBySchema(ctx context.Context, schema string) ([]core.Character, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryGetBySchema")
+	defer span.End()
+
+	var characters []core.Character
+	if err := r.db.WithContext(ctx).Preload("Associations").Where("schema = $1", schema).Find(&characters).Error; err != nil {
+		return []core.Character{}, err
+	}
+	if characters == nil {
+		return []core.Character{}, nil
+	}
+	return characters, nil
+}
+
+func (r *repository) Delete(ctx context.Context, id string) (core.Character, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryDelete")
+	defer span.End()
+
+	var character core.Character
+	if err := r.db.WithContext(ctx).Where("id = $1", id).Delete(&character).Error; err != nil {
+		return core.Character{}, err
+	}
+
+	return character, nil
+}
+
+func (r *repository) Get(ctx context.Context, id string) (core.Character, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryGet")
+	defer span.End()
+
+	var character core.Character
+	if err := r.db.WithContext(ctx).Preload("Associations").Where("id = $1", id).First(&character).Error; err != nil {
+		return core.Character{}, err
+	}
+	return character, nil
 }

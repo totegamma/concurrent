@@ -276,6 +276,7 @@ func main() {
 	// character
 	apiV1.PUT("/character", characterHandler.Put, auth.Restrict(auth.ISLOCAL))
 	apiV1.GET("/characters", characterHandler.Get)
+	apiV1.DELETE("/character/:id", characterHandler.Delete, auth.Restrict(auth.ISLOCAL))
 
 	// stream
 	apiV1.POST("/stream", streamHandler.Create, auth.Restrict(auth.ISLOCAL))

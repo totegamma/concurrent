@@ -38,17 +38,17 @@ func (m *MockService) EXPECT() *MockServiceMockRecorder {
 }
 
 // Checkpoint mocks base method.
-func (m *MockService) Checkpoint(ctx context.Context, stream string, item core.StreamItem, body interface{}, principal string) error {
+func (m *MockService) Checkpoint(ctx context.Context, stream string, item core.StreamItem, body interface{}, principal, requesterDomain string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Checkpoint", ctx, stream, item, body, principal)
+	ret := m.ctrl.Call(m, "Checkpoint", ctx, stream, item, body, principal, requesterDomain)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Checkpoint indicates an expected call of Checkpoint.
-func (mr *MockServiceMockRecorder) Checkpoint(ctx, stream, item, body, principal interface{}) *gomock.Call {
+func (mr *MockServiceMockRecorder) Checkpoint(ctx, stream, item, body, principal, requesterDomain interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Checkpoint", reflect.TypeOf((*MockService)(nil).Checkpoint), ctx, stream, item, body, principal)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Checkpoint", reflect.TypeOf((*MockService)(nil).Checkpoint), ctx, stream, item, body, principal, requesterDomain)
 }
 
 // Count mocks base method.

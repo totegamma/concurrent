@@ -323,6 +323,7 @@ func (s *service) GetKeyResolution(ctx context.Context, keyID string) ([]core.Ke
 	defer span.End()
 
 	var keys []core.Key
+	var currentDepth = 0
 	for {
 		if IsCCID(keyID) {
 			return keys, nil
@@ -335,6 +336,11 @@ func (s *service) GetKeyResolution(ctx context.Context, keyID string) ([]core.Ke
 
 		keys = append(keys, key)
 		keyID = key.Parent
+
+		currentDepth++
+		if currentDepth >= 8 {
+			return nil, fmt.Errorf("KeyDepth is too deep")
+		}
 	}
 }
 

@@ -16,7 +16,10 @@ func TestRepository(t *testing.T) {
 	db, cleanup_db := testutil.CreateDB()
 	defer cleanup_db()
 
-	repo := NewRepository(db)
+    mc, cleanup_mc := testutil.CreateMC()
+    defer cleanup_mc()
+
+	repo := NewRepository(db, mc)
 
 	newkey := core.Key{
 		ID:              "CKb72AAc9dcF088F7088b6718BE5a494fBB3861439",

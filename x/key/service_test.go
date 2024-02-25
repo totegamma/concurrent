@@ -33,8 +33,8 @@ func TestService(t *testing.T) {
 	db, cleanup_db := testutil.CreateDB()
 	defer cleanup_db()
 
-    mc, cleanup_mc := testutil.CreateMC()
-    defer cleanup_mc()
+	mc, cleanup_mc := testutil.CreateMC()
+	defer cleanup_mc()
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()

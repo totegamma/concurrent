@@ -17,6 +17,7 @@ var tracer = otel.Tracer("character")
 // Handler is the interface for handling HTTP requests
 type Handler interface {
 	Get(c echo.Context) error
+	Query(c echo.Context) error
 	Put(c echo.Context) error
 	Delete(c echo.Context) error
 }
@@ -30,9 +31,30 @@ func NewHandler(service Service) Handler {
 	return &handler{service: service}
 }
 
-// Get returns a character by ID
+// Get returns a character by id
 func (h handler) Get(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
+	defer span.End()
+
+	id := c.Param("id")
+	if id == "" {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request", "message": "id is required"})
+	}
+
+	character, err := h.service.Get(ctx, id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return c.JSON(http.StatusNotFound, echo.Map{"error": "Character not found"})
+		}
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": character})
+}
+
+// Query returns a character by author and schema
+func (h handler) Query(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerQuery")
 	defer span.End()
 
 	author := c.QueryParam("author")

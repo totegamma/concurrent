@@ -135,13 +135,27 @@ func (s *service) PostMessage(ctx context.Context, objectStr string, signature s
 		return message, err
 	}
 
+	ispublic := false
+	for _, stream := range streams {
+		ok := s.stream.HasReadAccess(ctx, stream, "")
+		if ok {
+			ispublic = true
+			break
+		}
+	}
+
+	var body interface{}
+	if ispublic {
+		body = created
+	}
+
 	for _, stream := range message.Streams {
 		s.stream.PostItem(ctx, stream, core.StreamItem{
 			Type:     "message",
 			ObjectID: created.ID,
 			Owner:    object.Signer,
 			StreamID: stream,
-		}, created)
+		}, body)
 	}
 
 	return created, nil

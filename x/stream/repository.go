@@ -26,6 +26,7 @@ import (
 // Repository is stream repository interface
 type Repository interface {
 	GetStream(ctx context.Context, key string) (core.Stream, error)
+	GetStreamFromRemote(ctx context.Context, host string, key string) (core.Stream, error)
 	CreateStream(ctx context.Context, stream core.Stream) (core.Stream, error)
 	UpdateStream(ctx context.Context, stream core.Stream) (core.Stream, error)
 	DeleteStream(ctx context.Context, key string) error
@@ -36,8 +37,6 @@ type Repository interface {
 
 	ListStreamBySchema(ctx context.Context, schema string) ([]core.Stream, error)
 	ListStreamByAuthor(ctx context.Context, author string) ([]core.Stream, error)
-	HasWriteAccess(ctx context.Context, key string, author string) bool
-	HasReadAccess(ctx context.Context, key string, author string) bool
 
 	GetRecentItems(ctx context.Context, streamID string, until time.Time, limit int) ([]core.StreamItem, error)
 	GetImmediateItems(ctx context.Context, streamID string, since time.Time, limit int) ([]core.StreamItem, error)
@@ -114,6 +113,63 @@ func (r *repository) PublishEvent(ctx context.Context, event core.Event) error {
 	}
 
 	return nil
+}
+
+// GetStreamFromRemote gets a stream from remote
+func (r *repository) GetStreamFromRemote(ctx context.Context, host string, key string) (core.Stream, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryGetStreamFromRemote")
+	defer span.End()
+
+	// check cache
+	cacheKey := "stream:" + key + "@" + host
+	item, err := r.mc.Get(cacheKey)
+	if err == nil {
+		var stream core.Stream
+		err = json.Unmarshal(item.Value, &stream)
+		if err == nil {
+			return stream, nil
+		}
+		span.RecordError(err)
+	}
+
+	req, err := http.NewRequest("GET", "https://"+host+"/api/v1/stream/"+key, nil)
+	if err != nil {
+		span.RecordError(err)
+		return core.Stream{}, err
+	}
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+	client := new(http.Client)
+	resp, err := client.Do(req)
+	if err != nil {
+		span.RecordError(err)
+		return core.Stream{}, err
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		span.RecordError(err)
+		return core.Stream{}, err
+	}
+
+	var streamResp streamResponse
+	err = json.Unmarshal(body, &streamResp)
+	if err != nil {
+		span.RecordError(err)
+		return core.Stream{}, err
+	}
+
+	err = r.mc.Set(&memcache.Item{Key: cacheKey, Value: body, Expiration: 300}) // 5 minutes
+	if err != nil {
+		span.RecordError(err)
+		slog.ErrorContext(
+			ctx, "fail to save cache",
+			slog.String("error", err.Error()),
+			slog.String("module", "stream"),
+		)
+	}
+
+	return streamResp.Content, nil
 }
 
 func (r *repository) GetChunksFromRemote(ctx context.Context, host string, streams []string, queryTime time.Time) (map[string]Chunk, error) {
@@ -505,32 +561,6 @@ func (r *repository) DeleteStream(ctx context.Context, streamID string) error {
 	r.mc.Decrement("stream_count", 1)
 
 	return r.db.WithContext(ctx).Delete(&core.Stream{}, "id = ?", streamID).Error
-}
-
-// HasWriteAccess returns true if the user has write access
-func (r *repository) HasWriteAccess(ctx context.Context, streamID string, userAddress string) bool {
-	ctx, span := tracer.Start(ctx, "RepositoryHasWriteAccess")
-	defer span.End()
-
-	var stream core.Stream
-	r.db.WithContext(ctx).First(&stream, "id = ?", streamID)
-	if len(stream.Writer) == 0 {
-		return true
-	}
-	return slices.Contains(stream.Writer, userAddress)
-}
-
-// HasReadAccess returns true if the user has read access
-func (r *repository) HasReadAccess(ctx context.Context, streamID string, userAddress string) bool {
-	ctx, span := tracer.Start(ctx, "RepositoryHasReadAccess")
-	defer span.End()
-
-	var stream core.Stream
-	r.db.WithContext(ctx).First(&stream, "id = ?", streamID)
-	if len(stream.Reader) == 0 {
-		return true
-	}
-	return slices.Contains(stream.Reader, userAddress)
 }
 
 // List Stream Subscriptions

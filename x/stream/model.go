@@ -41,6 +41,11 @@ type chunkResponse struct {
 	Content map[string]Chunk `json:"content"`
 }
 
+type streamResponse struct {
+	Status  string      `json:"status"`
+	Content core.Stream `json:"content"`
+}
+
 type Chunk struct {
 	Key   string            `json:"key"`
 	Items []core.StreamItem `json:"items"`

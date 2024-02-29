@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -42,6 +43,9 @@ type Service interface {
 	GetStream(ctx context.Context, key string) (core.Stream, error)
 	UpdateStream(ctx context.Context, stream core.Stream) (core.Stream, error)
 	DeleteStream(ctx context.Context, streamID string) error
+
+	HasWriteAccess(ctx context.Context, key string, author string) bool
+	HasReadAccess(ctx context.Context, key string, author string) bool
 
 	ListStreamBySchema(ctx context.Context, schema string) ([]core.Stream, error)
 	ListStreamByAuthor(ctx context.Context, author string) ([]core.Stream, error)
@@ -324,7 +328,7 @@ func (s *service) PostItem(ctx context.Context, stream string, item core.StreamI
 	if streamHost == s.config.Concurrent.FQDN {
 
 		// check if the user has write access to the stream
-		if !s.repository.HasWriteAccess(ctx, streamID, author) {
+		if !s.HasWriteAccess(ctx, streamID, author) {
 			slog.InfoContext(
 				ctx, "failed to post to stream",
 				slog.String("type", "audit"),
@@ -590,4 +594,72 @@ func (s *service) ListStreamSubscriptions(ctx context.Context) (map[string]int64
 	defer span.End()
 
 	return s.repository.ListStreamSubscriptions(ctx)
+}
+
+func (s *service) getStreamAutoDomain(ctx context.Context, streamID string) (core.Stream, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetStreamAutoDomain")
+	defer span.End()
+
+	key := streamID
+	host := s.config.Concurrent.FQDN
+
+	split := strings.Split(streamID, "@")
+	if len(split) > 1 {
+		key = split[0]
+		host = split[1]
+	}
+
+	if host == s.config.Concurrent.FQDN {
+		return s.repository.GetStream(ctx, key)
+	} else {
+		return s.repository.GetStreamFromRemote(ctx, host, key)
+	}
+}
+
+func (s *service) HasWriteAccess(ctx context.Context, streamID string, userAddress string) bool {
+	ctx, span := tracer.Start(ctx, "ServiceHasWriteAccess")
+	defer span.End()
+
+	stream, err := s.getStreamAutoDomain(ctx, streamID)
+	if err != nil {
+		return false
+	}
+
+	if stream.Author == userAddress {
+		return true
+	}
+
+	if len(stream.Writer) == 0 {
+		return true
+	}
+
+	return slices.Contains(stream.Writer, userAddress)
+}
+
+func (s *service) HasReadAccess(ctx context.Context, streamID string, userAddress string) bool {
+	ctx, span := tracer.Start(ctx, "ServiceHasReadAccess")
+	defer span.End()
+
+	span.SetAttributes(attribute.String("stream", streamID))
+	span.SetAttributes(attribute.String("user", userAddress))
+
+	stream, err := s.getStreamAutoDomain(ctx, streamID)
+	if err != nil {
+		span.AddEvent("stream not found")
+		return false
+	}
+
+	span.SetAttributes(attribute.StringSlice("reader", stream.Reader))
+
+	if stream.Author == userAddress {
+		span.AddEvent("author has read access")
+		return true
+	}
+
+	if len(stream.Reader) == 0 {
+		span.AddEvent("no reader")
+		return true
+	}
+
+	return slices.Contains(stream.Reader, userAddress)
 }

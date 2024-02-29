@@ -47,7 +47,27 @@ func (s *service) Get(ctx context.Context, id string) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGet")
 	defer span.End()
 
-	return s.repo.Get(ctx, id)
+	message, err := s.repo.Get(ctx, id)
+	if err != nil {
+		span.RecordError(err)
+		return core.Message{}, err
+	}
+
+	canRead := false
+
+	for _, streamID := range message.Streams {
+		ok := s.stream.HasReadAccess(ctx, streamID, "")
+		if ok {
+			canRead = true
+			break
+		}
+	}
+
+	if !canRead {
+		return core.Message{}, fmt.Errorf("no read access")
+	}
+
+	return message, nil
 }
 
 // GetWithOwnAssociations returns a message by ID with associations
@@ -55,7 +75,27 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 	ctx, span := tracer.Start(ctx, "ServiceGetWithOwnAssociations")
 	defer span.End()
 
-	return s.repo.GetWithOwnAssociations(ctx, id, requester)
+	message, err := s.repo.GetWithOwnAssociations(ctx, id, requester)
+	if err != nil {
+		span.RecordError(err)
+		return core.Message{}, err
+	}
+
+	canRead := false
+
+	for _, streamID := range message.Streams {
+		ok := s.stream.HasReadAccess(ctx, streamID, requester)
+		if ok {
+			canRead = true
+			break
+		}
+	}
+
+	if !canRead {
+		return core.Message{}, fmt.Errorf("no read access")
+	}
+
+	return message, nil
 }
 
 // PostMessage creates a new message

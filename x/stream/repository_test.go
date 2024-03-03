@@ -7,7 +7,6 @@ import (
 	"testing"
 	"time"
 
-	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/stretchr/testify/assert"
 	"github.com/totegamma/concurrent/internal/testutil"
 	"github.com/totegamma/concurrent/x/core"
@@ -16,28 +15,22 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-var ctx = context.Background()
-var mc *memcache.Client
-var repo Repository
-var pivot time.Time
-
 func TestRepository(t *testing.T) {
 
 	log.Println("Test Start")
 
-	var cleanup_db func()
+	var ctx = context.Background()
+
 	db, cleanup_db := testutil.CreateDB()
 	defer cleanup_db()
 
-	var cleanup_rdb func()
 	rdb, cleanup_rdb := testutil.CreateRDB()
 	defer cleanup_rdb()
 
-	var cleanup_mc func()
-	mc, cleanup_mc = testutil.CreateMC()
+	mc, cleanup_mc := testutil.CreateMC()
 	defer cleanup_mc()
 
-	pivot = time.Now()
+	pivot := time.Now()
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -45,7 +38,7 @@ func TestRepository(t *testing.T) {
 	mockManager := mock_socket.NewMockManager(ctrl)
 	mockManager.EXPECT().GetAllRemoteSubs().Return([]string{}).AnyTimes()
 
-	repo = NewRepository(db, rdb, mc, mockManager, util.Config{})
+	repo := NewRepository(db, rdb, mc, mockManager, util.Config{})
 
 	// :: Streamを作成 ::
 	stream := core.Stream{

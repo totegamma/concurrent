@@ -110,48 +110,48 @@ func (mr *MockServiceMockRecorder) DistributeEvent(ctx, stream, event interface{
 }
 
 // GetChunks mocks base method.
-func (m *MockService) GetChunks(ctx context.Context, streams []string, pivot time.Time) (map[string]stream.Chunk, error) {
+func (m *MockService) GetChunks(ctx context.Context, streams []string, schema string, pivot time.Time) (map[string]stream.Chunk, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetChunks", ctx, streams, pivot)
+	ret := m.ctrl.Call(m, "GetChunks", ctx, streams, schema, pivot)
 	ret0, _ := ret[0].(map[string]stream.Chunk)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetChunks indicates an expected call of GetChunks.
-func (mr *MockServiceMockRecorder) GetChunks(ctx, streams, pivot interface{}) *gomock.Call {
+func (mr *MockServiceMockRecorder) GetChunks(ctx, streams, schema, pivot interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChunks", reflect.TypeOf((*MockService)(nil).GetChunks), ctx, streams, pivot)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChunks", reflect.TypeOf((*MockService)(nil).GetChunks), ctx, streams, schema, pivot)
 }
 
 // GetChunksFromRemote mocks base method.
-func (m *MockService) GetChunksFromRemote(ctx context.Context, host string, streams []string, pivot time.Time) (map[string]stream.Chunk, error) {
+func (m *MockService) GetChunksFromRemote(ctx context.Context, host string, streams []string, schema string, pivot time.Time) (map[string]stream.Chunk, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetChunksFromRemote", ctx, host, streams, pivot)
+	ret := m.ctrl.Call(m, "GetChunksFromRemote", ctx, host, streams, schema, pivot)
 	ret0, _ := ret[0].(map[string]stream.Chunk)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetChunksFromRemote indicates an expected call of GetChunksFromRemote.
-func (mr *MockServiceMockRecorder) GetChunksFromRemote(ctx, host, streams, pivot interface{}) *gomock.Call {
+func (mr *MockServiceMockRecorder) GetChunksFromRemote(ctx, host, streams, schema, pivot interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChunksFromRemote", reflect.TypeOf((*MockService)(nil).GetChunksFromRemote), ctx, host, streams, pivot)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChunksFromRemote", reflect.TypeOf((*MockService)(nil).GetChunksFromRemote), ctx, host, streams, schema, pivot)
 }
 
 // GetImmediateItems mocks base method.
-func (m *MockService) GetImmediateItems(ctx context.Context, streams []string, since time.Time, limit int) ([]core.StreamItem, error) {
+func (m *MockService) GetImmediateItems(ctx context.Context, streams []string, schema string, since time.Time, limit int) ([]core.StreamItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetImmediateItems", ctx, streams, since, limit)
+	ret := m.ctrl.Call(m, "GetImmediateItems", ctx, streams, schema, since, limit)
 	ret0, _ := ret[0].([]core.StreamItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetImmediateItems indicates an expected call of GetImmediateItems.
-func (mr *MockServiceMockRecorder) GetImmediateItems(ctx, streams, since, limit interface{}) *gomock.Call {
+func (mr *MockServiceMockRecorder) GetImmediateItems(ctx, streams, schema, since, limit interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetImmediateItems", reflect.TypeOf((*MockService)(nil).GetImmediateItems), ctx, streams, since, limit)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetImmediateItems", reflect.TypeOf((*MockService)(nil).GetImmediateItems), ctx, streams, schema, since, limit)
 }
 
 // GetItem mocks base method.
@@ -170,18 +170,18 @@ func (mr *MockServiceMockRecorder) GetItem(ctx, stream, id interface{}) *gomock.
 }
 
 // GetRecentItems mocks base method.
-func (m *MockService) GetRecentItems(ctx context.Context, streams []string, until time.Time, limit int) ([]core.StreamItem, error) {
+func (m *MockService) GetRecentItems(ctx context.Context, streams []string, schema string, until time.Time, limit int) ([]core.StreamItem, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetRecentItems", ctx, streams, until, limit)
+	ret := m.ctrl.Call(m, "GetRecentItems", ctx, streams, schema, until, limit)
 	ret0, _ := ret[0].([]core.StreamItem)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetRecentItems indicates an expected call of GetRecentItems.
-func (mr *MockServiceMockRecorder) GetRecentItems(ctx, streams, until, limit interface{}) *gomock.Call {
+func (mr *MockServiceMockRecorder) GetRecentItems(ctx, streams, schema, until, limit interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRecentItems", reflect.TypeOf((*MockService)(nil).GetRecentItems), ctx, streams, until, limit)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRecentItems", reflect.TypeOf((*MockService)(nil).GetRecentItems), ctx, streams, schema, until, limit)
 }
 
 // GetStream mocks base method.
@@ -197,6 +197,34 @@ func (m *MockService) GetStream(ctx context.Context, key string) (core.Stream, e
 func (mr *MockServiceMockRecorder) GetStream(ctx, key interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetStream", reflect.TypeOf((*MockService)(nil).GetStream), ctx, key)
+}
+
+// HasReadAccess mocks base method.
+func (m *MockService) HasReadAccess(ctx context.Context, key, author string) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasReadAccess", ctx, key, author)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// HasReadAccess indicates an expected call of HasReadAccess.
+func (mr *MockServiceMockRecorder) HasReadAccess(ctx, key, author interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasReadAccess", reflect.TypeOf((*MockService)(nil).HasReadAccess), ctx, key, author)
+}
+
+// HasWriteAccess mocks base method.
+func (m *MockService) HasWriteAccess(ctx context.Context, key, author string) bool {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasWriteAccess", ctx, key, author)
+	ret0, _ := ret[0].(bool)
+	return ret0
+}
+
+// HasWriteAccess indicates an expected call of HasWriteAccess.
+func (mr *MockServiceMockRecorder) HasWriteAccess(ctx, key, author interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasWriteAccess", reflect.TypeOf((*MockService)(nil).HasWriteAccess), ctx, key, author)
 }
 
 // ListStreamByAuthor mocks base method.

@@ -147,6 +147,7 @@ func TestManager(t *testing.T) {
 		Item: core.StreamItem{
 			Type:     "message",
 			ObjectID: "",
+			Schema:   "",
 			StreamID: remotestream1,
 			Owner:    "",
 			Author:   "",

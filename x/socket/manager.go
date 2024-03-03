@@ -332,13 +332,13 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 						streamID = streamID + "@" + domain
 					}
 
-					// update cache
+					// update cache(all)
 					// first, try to get itr
-					itr := "stream:itr:all:" + streamID + ":" + core.Time2Chunk(event.Item.CDate)
-					itrVal, err := m.mc.Get(itr)
-					var cacheKey string
+					itrAll := "stream:itr:all:" + streamID + ":" + core.Time2Chunk(event.Item.CDate)
+					itrValAll, err := m.mc.Get(itrAll)
+					var cacheKeyAll string
 					if err == nil {
-						cacheKey = string(itrVal.Value)
+						cacheKeyAll = string(itrValAll.Value)
 					} else {
 						// 最新時刻のイテレーターがないということは、キャッシュがないということ
 						// とはいえ今後はいい感じにキャッシュを作れるようにしたい
@@ -346,17 +346,43 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 						// 今までのキャッシュを更新し続けるとか... (TODO)
 						// cacheKey := "stream:body:all:" + event.Item.StreamID + ":" + core.Time2Chunk(event.Item.CDate)
 						slog.Info(
-							fmt.Sprintf("no need to update cache: %s", itr),
+							fmt.Sprintf("no need to update cache: %s", itrAll),
+							slog.String("module", "socket"),
+							slog.String("group", "remote"),
+						)
+						goto SkipCacheAll
+					}
+
+					err = m.mc.Append(&memcache.Item{Key: cacheKeyAll, Value: json})
+					if err != nil {
+						slog.Error(
+							fmt.Sprintf("fail to update cache: %s", itrAll),
+							slog.String("error", err.Error()),
+							slog.String("module", "socket"),
+							slog.String("group", "remote"),
+						)
+					}
+				SkipCacheAll:
+
+					// update cache(schema)
+					itrSchema := "stream:itr:" + event.Item.Schema + ":" + streamID + ":" + core.Time2Chunk(event.Item.CDate)
+					itrValSchema, err := m.mc.Get(itrSchema)
+					var cacheKeySchema string
+					if err == nil {
+						cacheKeySchema = string(itrValSchema.Value)
+					} else {
+						slog.Info(
+							fmt.Sprintf("no need to update cache: %s", itrSchema),
 							slog.String("module", "socket"),
 							slog.String("group", "remote"),
 						)
 						continue
 					}
 
-					err = m.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
+					err = m.mc.Append(&memcache.Item{Key: cacheKeySchema, Value: json})
 					if err != nil {
 						slog.Error(
-							fmt.Sprintf("fail to update cache: %s", itr),
+							fmt.Sprintf("fail to update cache: %s", itrSchema),
 							slog.String("error", err.Error()),
 							slog.String("module", "socket"),
 							slog.String("group", "remote"),

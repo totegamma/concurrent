@@ -167,6 +167,7 @@ type StreamItem struct {
 	ObjectID string    `json:"objectID" gorm:"primaryKey;type:uuid;"`
 	StreamID string    `json:"streamID" gorm:"primaryKey;type:char(20);"`
 	Owner    string    `json:"owner" gorm:"type:char(42);"`
+	Schema   string    `json:"schema" gorm:"type:text;"`
 	Author   string    `json:"author,omitempty" gorm:"type:char(42);"`
 	CDate    time.Time `json:"cdate,omitempty" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 }

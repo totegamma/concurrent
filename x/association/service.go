@@ -110,6 +110,7 @@ func (s *service) PostAssociation(ctx context.Context, objectStr string, signatu
 	item := core.StreamItem{
 		Type:     "association",
 		ObjectID: created.ID,
+		Schema:   created.Schema,
 		Owner:    targetMessage.Author,
 		Author:   created.Author,
 	}

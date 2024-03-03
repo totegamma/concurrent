@@ -41,10 +41,10 @@ type Repository interface {
 	GetRecentItems(ctx context.Context, streamID string, until time.Time, limit int) ([]core.StreamItem, error)
 	GetImmediateItems(ctx context.Context, streamID string, since time.Time, limit int) ([]core.StreamItem, error)
 
-	GetChunksFromCache(ctx context.Context, streams []string, chunk string) (map[string]Chunk, error)
-	GetChunksFromDB(ctx context.Context, streams []string, chunk string) (map[string]Chunk, error)
-	GetChunkIterators(ctx context.Context, streams []string, chunk string) (map[string]string, error)
-	GetChunksFromRemote(ctx context.Context, host string, streams []string, queryTime time.Time) (map[string]Chunk, error)
+	GetChunksFromCache(ctx context.Context, streams []string, schema string, chunk string) (map[string]Chunk, error)
+	GetChunksFromDB(ctx context.Context, streams []string, schema string, chunk string) (map[string]Chunk, error)
+	GetChunkIterators(ctx context.Context, streams []string, schema string, chunk string) (map[string]string, error)
+	GetChunksFromRemote(ctx context.Context, host string, streams []string, schema string, queryTime time.Time) (map[string]Chunk, error)
 	SaveToCache(ctx context.Context, chunks map[string]Chunk, queryTime time.Time) error
 	PublishEvent(ctx context.Context, event core.Event) error
 
@@ -172,13 +172,19 @@ func (r *repository) GetStreamFromRemote(ctx context.Context, host string, key s
 	return streamResp.Content, nil
 }
 
-func (r *repository) GetChunksFromRemote(ctx context.Context, host string, streams []string, queryTime time.Time) (map[string]Chunk, error) {
+func (r *repository) GetChunksFromRemote(ctx context.Context, host string, streams []string, schema string, queryTime time.Time) (map[string]Chunk, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGetRemoteChunks")
 	defer span.End()
 
 	streamsStr := strings.Join(streams, ",")
 	timeStr := fmt.Sprintf("%d", queryTime.Unix())
-	req, err := http.NewRequest("GET", "https://"+host+"/api/v1/streams/chunks?streams="+streamsStr+"&time="+timeStr, nil)
+	var req *http.Request
+	var err error
+	if schema == "" {
+		req, err = http.NewRequest("GET", "https://"+host+"/api/v1/streams/chunks?streams="+streamsStr+"&time="+timeStr, nil)
+	} else {
+		req, err = http.NewRequest("GET", "https://"+host+"/api/v1/streams/chunks?streams="+streamsStr+"&time="+timeStr+"&schema="+schema, nil)
+	}
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -256,11 +262,11 @@ func (r *repository) SaveToCache(ctx context.Context, chunks map[string]Chunk, q
 }
 
 // GetChunksFromCache gets chunks from cache
-func (r *repository) GetChunksFromCache(ctx context.Context, streams []string, chunk string) (map[string]Chunk, error) {
+func (r *repository) GetChunksFromCache(ctx context.Context, streams []string, schema string, chunk string) (map[string]Chunk, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGetChunksFromCache")
 	defer span.End()
 
-	targetKeyMap, err := r.GetChunkIterators(ctx, streams, chunk)
+	targetKeyMap, err := r.GetChunkIterators(ctx, streams, schema, chunk)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -309,11 +315,11 @@ func (r *repository) GetChunksFromCache(ctx context.Context, streams []string, c
 }
 
 // GetChunksFromDB gets chunks from db and cache them
-func (r *repository) GetChunksFromDB(ctx context.Context, streams []string, chunk string) (map[string]Chunk, error) {
+func (r *repository) GetChunksFromDB(ctx context.Context, streams []string, schema string, chunk string) (map[string]Chunk, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGetChunksFromDB")
 	defer span.End()
 
-	targetKeyMap, err := r.GetChunkIterators(ctx, streams, chunk)
+	targetKeyMap, err := r.GetChunkIterators(ctx, streams, schema, chunk)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -335,7 +341,12 @@ func (r *repository) GetChunksFromDB(ctx context.Context, streams []string, chun
 			streamID = strings.Split(streamID, "@")[0]
 		}
 
-		err = r.db.WithContext(ctx).Where("stream_id = ? and c_date <= ?", streamID, chunkDate).Order("c_date desc").Limit(100).Find(&items).Error
+		if schema == "" {
+			err = r.db.WithContext(ctx).Where("stream_id = ? and c_date <= ?", streamID, chunkDate).Order("c_date desc").Limit(100).Find(&items).Error
+		} else {
+			err = r.db.WithContext(ctx).Where("stream_id = ? and c_date <= ? and schema = ?", streamID, chunkDate, schema).Order("c_date desc").Limit(100).Find(&items).Error
+		}
+
 		if err != nil {
 			span.RecordError(err)
 			continue
@@ -373,13 +384,17 @@ func (r *repository) GetChunksFromDB(ctx context.Context, streams []string, chun
 }
 
 // GetChunkIterators returns a list of iterated chunk keys
-func (r *repository) GetChunkIterators(ctx context.Context, streams []string, chunk string) (map[string]string, error) {
+func (r *repository) GetChunkIterators(ctx context.Context, streams []string, schema string, chunk string) (map[string]string, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGetChunkIterators")
 	defer span.End()
 
+	if schema == "" {
+		schema = "all"
+	}
+
 	keys := make([]string, len(streams))
 	for i, stream := range streams {
-		keys[i] = "stream:itr:all:" + stream + ":" + chunk
+		keys[i] = "stream:itr:" + schema + ":" + stream + ":" + chunk
 	}
 
 	cache, err := r.mc.GetMulti(keys)
@@ -399,11 +414,15 @@ func (r *repository) GetChunkIterators(ctx context.Context, streams []string, ch
 			if strings.Contains(dbid, "@") {
 				dbid = strings.Split(stream, "@")[0]
 			}
-			err := r.db.WithContext(ctx).Where("stream_id = ? and c_date <= ?", dbid, chunkTime).Order("c_date desc").First(&item).Error
+			if schema == "all" {
+				err = r.db.WithContext(ctx).Where("stream_id = ? and c_date <= ?", dbid, chunkTime).Order("c_date desc").First(&item).Error
+			} else {
+				err = r.db.WithContext(ctx).Where("stream_id = ? and c_date <= ? and schema = ?", dbid, chunkTime, schema).Order("c_date desc").First(&item).Error
+			}
 			if err != nil {
 				continue
 			}
-			key := "stream:body:all:" + stream + ":" + core.Time2Chunk(item.CDate)
+			key := "stream:body:" + schema + ":" + stream + ":" + core.Time2Chunk(item.CDate)
 			r.mc.Set(&memcache.Item{Key: keys[i], Value: []byte(key)})
 			result[stream] = key
 		}
@@ -440,28 +459,29 @@ func (r *repository) CreateItem(ctx context.Context, item core.StreamItem) (core
 	json = append(json, ',')
 
 	itemChunk := core.Time2Chunk(item.CDate)
-	cacheKey := "stream:body:all:" + streamID + ":" + itemChunk
+	cacheKeyAll := "stream:body:all:" + streamID + ":" + itemChunk
 
-	err = r.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
+	err = r.mc.Append(&memcache.Item{Key: cacheKeyAll, Value: json})
 	if err != nil {
 		// キャッシュに保存できなかった場合、新しいチャンクをDBから作成する必要がある
-		_, err = r.GetChunksFromDB(ctx, []string{streamID}, itemChunk)
-
-		// 再実行 (誤り: これをするとデータが重複するでしょ)
-		/*
-			err = r.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
-			if err != nil {
-				// これは致命的にプログラムがおかしい
-				log.Printf("failed to append cache: %v", err)
-				span.RecordError(err)
-				return item, err
-			}
-		*/
+		_, err = r.GetChunksFromDB(ctx, []string{streamID}, "", itemChunk)
 
 		if itemChunk != core.Time2Chunk(time.Now()) {
 			// イテレータを更新する
 			key := "stream:itr:all:" + streamID + ":" + itemChunk
 			dest := "stream:body:all:" + streamID + ":" + itemChunk
+			r.mc.Set(&memcache.Item{Key: key, Value: []byte(dest)})
+		}
+	}
+
+	cacheKeySchema := "stream:body:" + item.Schema + ":" + streamID + ":" + itemChunk
+	err = r.mc.Append(&memcache.Item{Key: cacheKeySchema, Value: json})
+	if err != nil {
+		_, err = r.GetChunksFromDB(ctx, []string{streamID}, item.Schema, itemChunk)
+
+		if itemChunk != core.Time2Chunk(time.Now()) {
+			key := "stream:itr:" + item.Schema + ":" + streamID + ":" + itemChunk
+			dest := "stream:body:" + item.Schema + ":" + streamID + ":" + itemChunk
 			r.mc.Set(&memcache.Item{Key: key, Value: []byte(dest)})
 		}
 	}

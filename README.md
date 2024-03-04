@@ -1,11 +1,12 @@
 ![wordmark](https://github.com/totegamma/concurrent/assets/7270849/44864682-ca2d-427a-b1fb-552ca50bcfce)
+### Makes social media accounts your internet identities.
+
+[日本語](README-ja.md)
 
 ## What is Concurrent:
 Concurrent is a distributed microblogging platform.
 
 ## Why Concurrent:
-Concurrent makes social media accounts user identities.
-
 Using a social media account as a user identity, it's untenable to rely on centralized social media platforms that are prone to third-party censorship and irreversible account suspension. It's unacceptable for a carefully nurtured account to be suddenly frozen and rendered irrecoverable.
 
 However, as long as servers physically exist, their operators must abide by the laws of the countries they are located in. Since operators are human, it's unrealistic to expect that accounts can never be frozen.

@@ -101,7 +101,7 @@ func (s *service) PostAssociation(ctx context.Context, objectStr string, signatu
 		return created, nil
 	}
 
-	targetMessage, err := s.message.Get(ctx, created.TargetID)
+	targetMessage, err := s.message.Get(ctx, created.TargetID, object.Signer)
 	if err != nil {
 		span.RecordError(err)
 		return created, err
@@ -168,7 +168,7 @@ func (s *service) Delete(ctx context.Context, id, requester string) (core.Associ
 		return core.Association{}, err
 	}
 
-	targetMessage, err := s.message.Get(ctx, targetAssociation.TargetID)
+	targetMessage, err := s.message.Get(ctx, targetAssociation.TargetID, requester)
 	if err != nil {
 		span.RecordError(err)
 		return core.Association{}, err

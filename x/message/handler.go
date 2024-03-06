@@ -48,7 +48,7 @@ func (h handler) Get(c echo.Context) error {
 			return err
 		}
 	} else {
-		message, err = h.service.Get(ctx, id)
+		message, err = h.service.Get(ctx, id, "")
 		if err != nil {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return c.JSON(http.StatusNotFound, echo.Map{"error": "Message not found"})
@@ -88,15 +88,16 @@ func (h handler) Delete(c echo.Context) error {
 
 	messageID := c.Param("id")
 
-	target, err := h.service.Get(ctx, messageID)
-	if err != nil {
-		return c.JSON(http.StatusNotFound, echo.Map{"error": "target message not found"})
-	}
-
 	requester, ok := c.Get(core.RequesterIdCtxKey).(string)
 	if !ok {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}
+
+	target, err := h.service.Get(ctx, messageID, requester)
+	if err != nil {
+		return c.JSON(http.StatusNotFound, echo.Map{"error": "target message not found"})
+	}
+
 	if target.Author != requester {
 		return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action"})
 	}

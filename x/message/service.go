@@ -53,12 +53,12 @@ func (s *service) Get(ctx context.Context, id string, requester string) (core.Me
 		return core.Message{}, err
 	}
 
-	canRead := false
+	canRead := true
 
 	for _, streamID := range message.Streams {
 		ok := s.stream.HasReadAccess(ctx, streamID, requester)
-		if ok {
-			canRead = true
+		if !ok {
+			canRead = false
 			break
 		}
 	}
@@ -81,12 +81,12 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 		return core.Message{}, err
 	}
 
-	canRead := false
+	canRead := true
 
 	for _, streamID := range message.Streams {
 		ok := s.stream.HasReadAccess(ctx, streamID, requester)
-		if ok {
-			canRead = true
+		if !ok {
+			canRead = false
 			break
 		}
 	}

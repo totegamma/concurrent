@@ -66,6 +66,9 @@ func TestService(t *testing.T) {
 		assert.NotNil(t, created)
 	}
 
+	const schema1 = "https://schema.concurrent.world/message1.json"
+	const schema2 = "https://schema.concurrent.world/message2.json"
+
 	var body interface{}
 
 	streamID := created.ID
@@ -73,7 +76,7 @@ func TestService(t *testing.T) {
 	err = service.PostItem(ctx, streamID, core.StreamItem{
 		Type:     "message",
 		ObjectID: "af7bcaa8-820a-4ce2-ab17-1b3f6bf14d9b",
-		Schema:   "https://schema.concurrent.world/message.json",
+		Schema:   schema1,
 		StreamID: streamID,
 		Owner:    "CC62b953CCCE898b955f256976d61BdEE04353C042",
 		Author:   "CC62b953CCCE898b955f256976d61BdEE04353C042",
@@ -81,5 +84,34 @@ func TestService(t *testing.T) {
 	}, body)
 
 	assert.NoError(t, err)
+
+	err = service.PostItem(ctx, streamID, core.StreamItem{
+		Type:     "message",
+		ObjectID: "dd9b1f04-fb48-4f7e-a799-cb77cf557375",
+		Schema:   schema2,
+		StreamID: streamID,
+		Owner:    "CC62b953CCCE898b955f256976d61BdEE04353C042",
+		Author:   "CC62b953CCCE898b955f256976d61BdEE04353C042",
+		CDate:    pivot.Add(-time.Minute * 0),
+	}, body)
+
+	assert.NoError(t, err)
+
+	items, err := service.GetRecentItems(ctx, []string{streamID}, "", pivot, 16)
+	if assert.NoError(t, err) {
+		assert.Equal(t, 2, len(items))
+	}
+
+	items1, err := service.GetRecentItems(ctx, []string{streamID}, schema1, pivot, 16)
+	if assert.NoError(t, err) {
+		assert.Equal(t, 1, len(items1))
+		assert.Equal(t, "af7bcaa8-820a-4ce2-ab17-1b3f6bf14d9b", items1[0].ObjectID)
+	}
+
+	items2, err := service.GetRecentItems(ctx, []string{streamID}, schema2, pivot, 16)
+	if assert.NoError(t, err) {
+		assert.Equal(t, 1, len(items2))
+		assert.Equal(t, "dd9b1f04-fb48-4f7e-a799-cb77cf557375", items2[0].ObjectID)
+	}
 
 }

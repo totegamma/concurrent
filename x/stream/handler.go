@@ -11,6 +11,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/x/core"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"gorm.io/gorm"
 )
 
@@ -108,8 +109,11 @@ func (h handler) Recent(c echo.Context) error {
 	defer span.End()
 
 	streamsStr := c.QueryParam("streams")
-	schema := c.QueryParam("schema")
 	streams := strings.Split(streamsStr, ",")
+	span.SetAttributes(attribute.StringSlice("streams", streams))
+	schema := c.QueryParam("schema")
+	span.SetAttributes(attribute.String("schema", schema))
+
 	messages, _ := h.service.GetRecentItems(ctx, streams, schema, time.Now(), 16)
 
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": messages})
@@ -122,9 +126,13 @@ func (h handler) Range(c echo.Context) error {
 
 	queryStreams := c.QueryParam("streams")
 	streams := strings.Split(queryStreams, ",")
+	span.SetAttributes(attribute.StringSlice("streams", streams))
 	schema := c.QueryParam("schema")
+	span.SetAttributes(attribute.String("schema", schema))
 	querySince := c.QueryParam("since")
+	span.SetAttributes(attribute.String("since", querySince))
 	queryUntil := c.QueryParam("until")
+	span.SetAttributes(attribute.String("until", queryUntil))
 
 	if querySince != "" {
 		sinceEpoch, err := strconv.ParseInt(querySince, 10, 64)
@@ -299,7 +307,9 @@ func (h handler) GetChunks(c echo.Context) error {
 
 	streamsStr := c.QueryParam("streams")
 	streams := strings.Split(streamsStr, ",")
+	span.SetAttributes(attribute.StringSlice("streams", streams))
 	schema := c.QueryParam("schema")
+	span.SetAttributes(attribute.String("schema", schema))
 
 	timeStr := c.QueryParam("time")
 	timeInt, err := strconv.ParseInt(timeStr, 10, 64)

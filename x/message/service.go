@@ -135,11 +135,11 @@ func (s *service) PostMessage(ctx context.Context, objectStr string, signature s
 		return message, err
 	}
 
-	ispublic := false
+	ispublic := true
 	for _, stream := range streams {
 		ok := s.stream.HasReadAccess(ctx, stream, "")
-		if ok {
-			ispublic = true
+		if !ok {
+			ispublic = false
 			break
 		}
 	}

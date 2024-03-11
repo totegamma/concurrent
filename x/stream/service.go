@@ -30,8 +30,8 @@ import (
 
 // Service is the interface for stream service
 type Service interface {
-	GetRecentItems(ctx context.Context, streams []string, until time.Time, limit int) ([]core.StreamItem, error)
-	GetImmediateItems(ctx context.Context, streams []string, since time.Time, limit int) ([]core.StreamItem, error)
+	GetRecentItems(ctx context.Context, streams []string, schema string, until time.Time, limit int) ([]core.StreamItem, error)
+	GetImmediateItems(ctx context.Context, streams []string, schema string, since time.Time, limit int) ([]core.StreamItem, error)
 	GetItem(ctx context.Context, stream string, id string) (core.StreamItem, error)
 	PostItem(ctx context.Context, stream string, item core.StreamItem, body interface{}) error
 	RemoveItem(ctx context.Context, stream string, id string)
@@ -50,8 +50,8 @@ type Service interface {
 	ListStreamBySchema(ctx context.Context, schema string) ([]core.Stream, error)
 	ListStreamByAuthor(ctx context.Context, author string) ([]core.Stream, error)
 
-	GetChunks(ctx context.Context, streams []string, pivot time.Time) (map[string]Chunk, error)
-	GetChunksFromRemote(ctx context.Context, host string, streams []string, pivot time.Time) (map[string]Chunk, error)
+	GetChunks(ctx context.Context, streams []string, schema string, pivot time.Time) (map[string]Chunk, error)
+	GetChunksFromRemote(ctx context.Context, host string, streams []string, schema string, pivot time.Time) (map[string]Chunk, error)
 
 	Checkpoint(ctx context.Context, stream string, item core.StreamItem, body interface{}, principal string, requesterDomain string) error
 
@@ -102,12 +102,12 @@ func min(a, b int) int {
 	return b
 }
 
-func (s *service) GetChunksFromRemote(ctx context.Context, host string, streams []string, pivot time.Time) (map[string]Chunk, error) {
-	return s.repository.GetChunksFromRemote(ctx, host, streams, pivot)
+func (s *service) GetChunksFromRemote(ctx context.Context, host string, streams []string, schema string, pivot time.Time) (map[string]Chunk, error) {
+	return s.repository.GetChunksFromRemote(ctx, host, streams, schema, pivot)
 }
 
 // GetChunks returns chunks by streamID and time
-func (s *service) GetChunks(ctx context.Context, streams []string, until time.Time) (map[string]Chunk, error) {
+func (s *service) GetChunks(ctx context.Context, streams []string, schema string, until time.Time) (map[string]Chunk, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGetChunks")
 	defer span.End()
 
@@ -128,7 +128,7 @@ func (s *service) GetChunks(ctx context.Context, streams []string, until time.Ti
 
 	// first, try to get from cache
 	untilChunk := core.Time2Chunk(until)
-	items, err := s.repository.GetChunksFromCache(ctx, streams, untilChunk)
+	items, err := s.repository.GetChunksFromCache(ctx, streams, schema, untilChunk)
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to get chunks from cache", slog.String("error", err.Error()), slog.String("module", "stream"))
 		span.RecordError(err)
@@ -145,7 +145,7 @@ func (s *service) GetChunks(ctx context.Context, streams []string, until time.Ti
 
 	if len(missingStreams) > 0 {
 		// get from db
-		dbItems, err := s.repository.GetChunksFromDB(ctx, missingStreams, untilChunk)
+		dbItems, err := s.repository.GetChunksFromDB(ctx, missingStreams, schema, untilChunk)
 		if err != nil {
 			slog.ErrorContext(ctx, "failed to get chunks from db", slog.String("error", err.Error()), slog.String("module", "stream"))
 			span.RecordError(err)
@@ -161,7 +161,7 @@ func (s *service) GetChunks(ctx context.Context, streams []string, until time.Ti
 }
 
 // GetRecentItems returns recent message from streams
-func (s *service) GetRecentItems(ctx context.Context, streams []string, until time.Time, limit int) ([]core.StreamItem, error) {
+func (s *service) GetRecentItems(ctx context.Context, streams []string, schema string, until time.Time, limit int) ([]core.StreamItem, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGetRecentItems")
 	defer span.End()
 
@@ -179,7 +179,7 @@ func (s *service) GetRecentItems(ctx context.Context, streams []string, until ti
 
 	// first, try to get from cache regardless of local or remote
 	untilChunk := core.Time2Chunk(until)
-	items, err := s.repository.GetChunksFromCache(ctx, streams, untilChunk)
+	items, err := s.repository.GetChunksFromCache(ctx, streams, schema, untilChunk)
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to get chunks from cache", slog.String("error", err.Error()), slog.String("module", "stream"))
 		span.RecordError(err)
@@ -200,7 +200,7 @@ func (s *service) GetRecentItems(ctx context.Context, streams []string, until ti
 
 	for host, streams := range buckets {
 		if host == s.config.Concurrent.FQDN {
-			chunks, err := s.repository.GetChunksFromDB(ctx, streams, untilChunk)
+			chunks, err := s.repository.GetChunksFromDB(ctx, streams, schema, untilChunk)
 			if err != nil {
 				slog.ErrorContext(ctx, "failed to get chunks from db", slog.String("error", err.Error()), slog.String("module", "stream"))
 				span.RecordError(err)
@@ -210,7 +210,7 @@ func (s *service) GetRecentItems(ctx context.Context, streams []string, until ti
 				items[stream] = chunk
 			}
 		} else {
-			chunks, err := s.repository.GetChunksFromRemote(ctx, host, streams, until)
+			chunks, err := s.repository.GetChunksFromRemote(ctx, host, streams, schema, until)
 			if err != nil {
 				slog.ErrorContext(ctx, "failed to get chunks from remote", slog.String("error", err.Error()), slog.String("module", "stream"))
 				span.RecordError(err)
@@ -252,7 +252,7 @@ func (s *service) GetRecentItems(ctx context.Context, streams []string, until ti
 }
 
 // GetImmediateItems returns immediate message from streams
-func (s *service) GetImmediateItems(ctx context.Context, streams []string, since time.Time, limit int) ([]core.StreamItem, error) {
+func (s *service) GetImmediateItems(ctx context.Context, streams []string, schema string, since time.Time, limit int) ([]core.StreamItem, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGetImmediateItems")
 	defer span.End()
 

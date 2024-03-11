@@ -97,7 +97,6 @@ services:
       - "POSTGRES_DB=concurrent"
     networks:
       - internal
-      - external
     logging:
       driver: loki
       options: 
@@ -130,7 +129,6 @@ services:
       - "6379:6379"
     networks:
       - internal
-      - external
     logging:
       driver: loki
       options: 
@@ -156,7 +154,6 @@ services:
       - "11211:11211"
     networks:
       - internal
-      - external
     logging:
       driver: loki
       options: 
@@ -199,7 +196,6 @@ services:
     ports:
       - "9090:9090"
     networks:
-      - external
       - internal
 
   loki:
@@ -211,7 +207,6 @@ services:
       - ./_composeData/loki:/data/loki
     networks:
       - internal
-      - external
 
   tempo:
     image: grafana/tempo:latest

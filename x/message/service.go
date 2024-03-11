@@ -153,6 +153,7 @@ func (s *service) PostMessage(ctx context.Context, objectStr string, signature s
 		s.stream.PostItem(ctx, stream, core.StreamItem{
 			Type:     "message",
 			ObjectID: created.ID,
+			Schema:   created.Schema,
 			Owner:    object.Signer,
 			StreamID: stream,
 		}, body)

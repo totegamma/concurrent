@@ -11,6 +11,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/x/core"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"gorm.io/gorm"
 )
 
@@ -109,7 +110,11 @@ func (h handler) Recent(c echo.Context) error {
 
 	streamsStr := c.QueryParam("streams")
 	streams := strings.Split(streamsStr, ",")
-	messages, _ := h.service.GetRecentItems(ctx, streams, time.Now(), 16)
+	span.SetAttributes(attribute.StringSlice("streams", streams))
+	schema := c.QueryParam("schema")
+	span.SetAttributes(attribute.String("schema", schema))
+
+	messages, _ := h.service.GetRecentItems(ctx, streams, schema, time.Now(), 16)
 
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": messages})
 }
@@ -121,8 +126,13 @@ func (h handler) Range(c echo.Context) error {
 
 	queryStreams := c.QueryParam("streams")
 	streams := strings.Split(queryStreams, ",")
+	span.SetAttributes(attribute.StringSlice("streams", streams))
+	schema := c.QueryParam("schema")
+	span.SetAttributes(attribute.String("schema", schema))
 	querySince := c.QueryParam("since")
+	span.SetAttributes(attribute.String("since", querySince))
 	queryUntil := c.QueryParam("until")
+	span.SetAttributes(attribute.String("until", queryUntil))
 
 	if querySince != "" {
 		sinceEpoch, err := strconv.ParseInt(querySince, 10, 64)
@@ -130,7 +140,7 @@ func (h handler) Range(c echo.Context) error {
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
 		}
 		since := time.Unix(sinceEpoch, 0)
-		messages, _ := h.service.GetImmediateItems(ctx, streams, since, 16)
+		messages, _ := h.service.GetImmediateItems(ctx, streams, schema, since, 16)
 		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": messages})
 	} else if queryUntil != "" {
 		untilEpoch, err := strconv.ParseInt(queryUntil, 10, 64)
@@ -138,7 +148,7 @@ func (h handler) Range(c echo.Context) error {
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
 		}
 		until := time.Unix(untilEpoch, 0)
-		messages, _ := h.service.GetRecentItems(ctx, streams, until, 16)
+		messages, _ := h.service.GetRecentItems(ctx, streams, schema, until, 16)
 		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": messages})
 	} else {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
@@ -297,6 +307,9 @@ func (h handler) GetChunks(c echo.Context) error {
 
 	streamsStr := c.QueryParam("streams")
 	streams := strings.Split(streamsStr, ",")
+	span.SetAttributes(attribute.StringSlice("streams", streams))
+	schema := c.QueryParam("schema")
+	span.SetAttributes(attribute.String("schema", schema))
 
 	timeStr := c.QueryParam("time")
 	timeInt, err := strconv.ParseInt(timeStr, 10, 64)
@@ -306,7 +319,7 @@ func (h handler) GetChunks(c echo.Context) error {
 	}
 	time := time.Unix(timeInt, 0)
 
-	chunks, err := h.service.GetChunks(ctx, streams, time)
+	chunks, err := h.service.GetChunks(ctx, streams, schema, time)
 	if err != nil {
 		span.RecordError(err)
 		return err

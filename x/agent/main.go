@@ -98,6 +98,7 @@ func (a *agent) pullRemoteEntities(ctx context.Context, remote core.Domain) erro
 	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
 
 	client := new(http.Client)
+	client.Timeout = 3 * time.Second
 	resp, err := client.Do(req)
 	if err != nil {
 		span.RecordError(err)

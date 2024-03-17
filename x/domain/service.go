@@ -119,6 +119,7 @@ func (s *service) Hello(ctx context.Context, newcomer Profile) (Profile, error) 
 	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
 
 	client := new(http.Client)
+	client.Timeout = 3 * time.Second
 	resp, err := client.Do(req)
 	if err != nil {
 		span.RecordError(err)
@@ -203,6 +204,7 @@ func (s *service) SayHello(ctx context.Context, target string) (core.Domain, err
 	req.Header.Add("content-type", "application/json")
 	req.Header.Add("authorization", "Bearer "+jwt)
 	client := new(http.Client)
+	client.Timeout = 10 * time.Second
 	resp, err := client.Do(req)
 	if err != nil {
 		span.RecordError(err)

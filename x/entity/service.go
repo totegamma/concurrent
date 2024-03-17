@@ -67,7 +67,7 @@ func (s *service) PullEntityFromRemote(ctx context.Context, id, hintDomain strin
 	defer span.End()
 
 	client := new(http.Client)
-
+	client.Timeout = 3 * time.Second
 	req, err := http.NewRequest("GET", "https://"+hintDomain+"/api/v1/address/"+id, nil)
 	if err != nil {
 		span.RecordError(err)

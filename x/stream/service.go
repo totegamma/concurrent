@@ -417,6 +417,7 @@ func (s *service) PostItem(ctx context.Context, stream string, item core.StreamI
 		req.Header.Add("content-type", "application/json")
 		req.Header.Add("authorization", "Bearer "+jwt)
 		client := new(http.Client)
+		client.Timeout = 10 * time.Second
 		resp, err := client.Do(req)
 		if err != nil {
 			span.RecordError(err)
@@ -483,6 +484,7 @@ func (s *service) DistributeEvent(ctx context.Context, stream string, event core
 		req.Header.Add("content-type", "application/json")
 		req.Header.Add("authorization", "Bearer "+jwt)
 		client := new(http.Client)
+		client.Timeout = 10 * time.Second
 		resp, err := client.Do(req)
 		if err != nil {
 			span.RecordError(err)

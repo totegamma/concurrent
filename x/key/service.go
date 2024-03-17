@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"time"
 
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
@@ -219,6 +220,7 @@ func (s *service) ResolveRemoteSubkey(ctx context.Context, keyID, domain string)
 	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
 
 	client := new(http.Client)
+	client.Timeout = 3 * time.Second
 	resp, err := client.Do(req)
 	if err != nil {
 		span.RecordError(err)

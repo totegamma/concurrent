@@ -139,6 +139,7 @@ func (r *repository) GetStreamFromRemote(ctx context.Context, host string, key s
 	}
 	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
 	client := new(http.Client)
+	client.Timeout = 3 * time.Second
 	resp, err := client.Do(req)
 	if err != nil {
 		span.RecordError(err)
@@ -185,6 +186,7 @@ func (r *repository) GetChunksFromRemote(ctx context.Context, host string, strea
 	}
 	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
 	client := new(http.Client)
+	client.Timeout = 3 * time.Second
 	resp, err := client.Do(req)
 	if err != nil {
 		span.RecordError(err)

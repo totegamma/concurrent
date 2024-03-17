@@ -98,6 +98,7 @@ func (s *service) Ack(ctx context.Context, objectStr string, signature string) e
 			req.Header.Add("content-type", "application/json")
 			req.Header.Add("authorization", "Bearer "+jwt)
 			client := new(http.Client)
+			client.Timeout = 10 * time.Second
 			resp, err := client.Do(req)
 			if err != nil {
 				span.RecordError(err)
@@ -146,6 +147,7 @@ func (s *service) Ack(ctx context.Context, objectStr string, signature string) e
 			req.Header.Add("content-type", "application/json")
 			req.Header.Add("authorization", "Bearer "+jwt)
 			client := new(http.Client)
+			client.Timeout = 10 * time.Second
 			resp, err := client.Do(req)
 			if err != nil {
 				span.RecordError(err)

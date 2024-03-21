@@ -2,87 +2,49 @@ package util
 
 import (
 	"encoding/hex"
-	"github.com/ethereum/go-ethereum/crypto"
+
+	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	"github.com/pkg/errors"
-	"golang.org/x/crypto/sha3"
 )
-
-// VerifySignature verifies a keccak256 signature
-func VerifySignature(message string, address string, signature string) error {
-
-	// R値とS値をbig.Intに変換
-	sigBytes, err := hex.DecodeString(signature)
-	if err != nil {
-		return err
-	}
-
-	// メッセージをKeccak256でハッシュ化
-	hash := sha3.NewLegacyKeccak256()
-	hash.Write([]byte(message))
-	hashedMessage := hash.Sum(nil)
-
-	recoveredPub, err := crypto.Ecrecover(hashedMessage, sigBytes)
-	if err != nil {
-		return err
-	}
-
-	pubkey, err := crypto.UnmarshalPubkey(recoveredPub)
-	if err != nil {
-		return err
-	}
-	sigaddr := crypto.PubkeyToAddress(*pubkey)
-
-	verified := address[2:] == sigaddr.Hex()[2:]
-	if verified {
-		return nil
-	}
-
-	return errors.New("signature validation failed")
-}
-
-// VerifySignatureFromBytes verifies a keccak256 signature
-func VerifySignatureFromBytes(message []byte, signature []byte, address string) error {
-
-	// メッセージをKeccak256でハッシュ化
-	hash := sha3.NewLegacyKeccak256()
-	hash.Write(message)
-	hashedMessage := hash.Sum(nil)
-
-	recoveredPub, err := crypto.Ecrecover(hashedMessage, signature)
-	if err != nil {
-		return err
-	}
-
-	pubkey, err := crypto.UnmarshalPubkey(recoveredPub)
-	if err != nil {
-		return err
-	}
-	sigaddr := crypto.PubkeyToAddress(*pubkey)
-
-	verified := address[2:] == sigaddr.Hex()[2:]
-	if verified {
-		return nil
-	}
-
-	return errors.New("signature validation failed")
-}
 
 func SignBytes(bytes []byte, privatekey string) (string, error) {
 
-	hash := sha3.NewLegacyKeccak256()
-	hash.Write(bytes)
-	hashedMessage := hash.Sum(nil)
+	privateKeyBytes, err := hex.DecodeString(privatekey)
+	if err != nil {
+		return "", errors.Wrap(err, "failed to decode private key")
+	}
 
-	serverkey, err := crypto.HexToECDSA(privatekey)
+	privKey := secp256k1.PrivKey{
+		Key: privateKeyBytes,
+	}
+
+	// sign
+	signature, err := privKey.Sign(bytes)
 	if err != nil {
 		return "", err
 	}
-	signatureBytes, err := crypto.Sign([]byte(hashedMessage), serverkey)
-	if err != nil {
-		return "", err
-	}
 
-	encoded := hex.EncodeToString(signatureBytes)
-
+	// encode
+	encoded := hex.EncodeToString(signature)
 	return encoded, nil
+}
+
+func VerifySignature(message []byte, signature []byte, pubkey string) error {
+
+	// decode pubkey
+	pubKeyBytes, err := hex.DecodeString(pubkey)
+	if err != nil {
+		return errors.Wrap(err, "failed to decode public key")
+	}
+
+	pubKey := secp256k1.PubKey{
+		Key: pubKeyBytes,
+	}
+
+	// verify
+	if !pubKey.VerifySignature(message, signature) {
+		return errors.New("signature validation failed")
+	}
+
+	return nil
 }

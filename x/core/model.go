@@ -7,16 +7,6 @@ import (
 	"time"
 )
 
-type SignedObject[T any] struct {
-	Signer   string    `json:"signer"`
-	Type     string    `json:"type"`
-	Schema   string    `json:"schema,omitempty"`
-	KeyID    string    `json:"keyID,omitempty"`
-	Body     T         `json:"body"`
-	Meta     any       `json:"meta,omitempty"`
-	SignedAt time.Time `json:"signedAt"`
-}
-
 type Key struct { // signtype: enact | revoke
 	ID           string `json:"id" gorm:"primaryKey;type:char(42)"` // e.g. CK...
 	Root         string `json:"root" gorm:"type:char(42)"`
@@ -39,16 +29,6 @@ type Key struct { // signtype: enact | revoke
 	RevokeSignature string    `json:"revokeSignature" gorm:"type:char(130)"`
 	ValidSince      time.Time `json:"validSince" gorm:"type:timestamp with time zone"`
 	ValidUntil      time.Time `json:"validUntil" gorm:"type:timestamp with time zone"`
-}
-
-type Enact struct {
-	CKID   string `json:"ckid"`
-	Root   string `json:"root"`
-	Parent string `json:"parent"`
-}
-
-type Revoke struct {
-	CKID string `json:"ckid"`
 }
 
 // Association is one of a concurrent base object
@@ -206,11 +186,6 @@ type Ack struct { // signtype: ackPayload
 	*/
 	Signature string `json:"signature" gorm:"type:char(130)"`
 	Valid     bool   `json:"valid" gorm:"type:boolean;default:false"`
-}
-
-type AckPayload struct {
-	From string `json:"from"`
-	To   string `json:"to"`
 }
 
 // Event is websocket root packet model

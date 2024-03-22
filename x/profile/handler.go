@@ -1,5 +1,5 @@
-// Package character is handling concurrent Character object
-package character
+// Package profile is handling concurrent Profile object
+package profile
 
 import (
 	"errors"
@@ -12,7 +12,7 @@ import (
 	"github.com/totegamma/concurrent/x/core"
 )
 
-var tracer = otel.Tracer("character")
+var tracer = otel.Tracer("profile")
 
 // Handler is the interface for handling HTTP requests
 type Handler interface {
@@ -31,7 +31,7 @@ func NewHandler(service Service) Handler {
 	return &handler{service: service}
 }
 
-// Get returns a character by id
+// Get returns a profile by id
 func (h handler) Get(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
 	defer span.End()
@@ -41,18 +41,18 @@ func (h handler) Get(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request", "message": "id is required"})
 	}
 
-	character, err := h.service.Get(ctx, id)
+	profile, err := h.service.Get(ctx, id)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return c.JSON(http.StatusNotFound, echo.Map{"error": "Character not found"})
+			return c.JSON(http.StatusNotFound, echo.Map{"error": "Profile not found"})
 		}
 		return err
 	}
 
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": character})
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": profile})
 }
 
-// Query returns a character by author and schema
+// Query returns a profile by author and schema
 func (h handler) Query(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerQuery")
 	defer span.End()
@@ -61,29 +61,29 @@ func (h handler) Query(c echo.Context) error {
 	schema := c.QueryParam("schema")
 
 	var err error
-	var characters []core.Character
+	var profiles []core.Profile
 
 	if author != "" && schema != "" {
-		characters, err = h.service.GetByAuthorAndSchema(ctx, author, schema)
+		profiles, err = h.service.GetByAuthorAndSchema(ctx, author, schema)
 	} else if author != "" {
-		characters, err = h.service.GetByAuthor(ctx, author)
+		profiles, err = h.service.GetByAuthor(ctx, author)
 	} else if schema != "" {
-		characters, err = h.service.GetBySchema(ctx, schema)
+		profiles, err = h.service.GetBySchema(ctx, schema)
 	} else {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request", "message": "author or schema is required"})
 	}
 
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return c.JSON(http.StatusNotFound, echo.Map{"error": "Character not found"})
+			return c.JSON(http.StatusNotFound, echo.Map{"error": "Profile not found"})
 		}
 		return err
 	}
 
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": characters})
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": profiles})
 }
 
-// Put updates a character
+// Put updates a profile
 func (h handler) Put(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerPut")
 	defer span.End()
@@ -117,7 +117,7 @@ func (h handler) Delete(c echo.Context) error {
 
 	target, err := h.service.Get(ctx, id)
 	if err != nil {
-		return c.JSON(http.StatusNotFound, echo.Map{"error": "Character not found"})
+		return c.JSON(http.StatusNotFound, echo.Map{"error": "Profile not found"})
 	}
 
 	if target.Author != requester {

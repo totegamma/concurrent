@@ -7,7 +7,7 @@ import (
 
 type postQuery struct {
 	Timeline string `json:"timeline"`
-	ID     string `json:"id"`
+	ID       string `json:"id"`
 }
 
 type postRequest struct {
@@ -30,10 +30,10 @@ type signedObject struct {
 }
 
 type checkpointPacket struct {
-	Timeline    string          `json:"timeline"` // timeline full id (ex: <timelineID>@<domain>)
+	Timeline  string            `json:"timeline"` // timeline full id (ex: <timelineID>@<domain>)
 	Item      core.TimelineItem `json:"item"`
-	Body      interface{}     `json:"body"`
-	Principal string          `json:"principal"`
+	Body      interface{}       `json:"body"`
+	Principal string            `json:"principal"`
 }
 
 type chunkResponse struct {
@@ -42,11 +42,11 @@ type chunkResponse struct {
 }
 
 type timelineResponse struct {
-	Status  string      `json:"status"`
+	Status  string        `json:"status"`
 	Content core.Timeline `json:"content"`
 }
 
 type Chunk struct {
-	Key   string            `json:"key"`
+	Key   string              `json:"key"`
 	Items []core.TimelineItem `json:"items"`
 }

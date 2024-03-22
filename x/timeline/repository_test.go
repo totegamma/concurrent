@@ -75,11 +75,11 @@ func TestRepository(t *testing.T) {
 
 	// :: Itemを作成 ::
 	item := core.TimelineItem{
-		Type:     "message",
-		ObjectID: "af7bcaa8-820a-4ce2-ab17-1b3f6bf14d9b",
+		Type:       "message",
+		ObjectID:   "af7bcaa8-820a-4ce2-ab17-1b3f6bf14d9b",
 		TimelineID: "00000000000000000000",
-		Owner:    "CC62b953CCCE898b955f256976d61BdEE04353C042",
-		CDate:    pivot.Add(-time.Minute * 0),
+		Owner:      "CC62b953CCCE898b955f256976d61BdEE04353C042",
+		CDate:      pivot.Add(-time.Minute * 0),
 	}
 
 	createdItem, err := repo.CreateItem(ctx, item)
@@ -95,11 +95,11 @@ func TestRepository(t *testing.T) {
 	pivotChunk := core.Time2Chunk(pivot)
 
 	_, err = repo.CreateItem(ctx, core.TimelineItem{
-		Type:     "message",
-		ObjectID: "3c850e58-efca-4656-bbe4-2e5642dbbbe8",
+		Type:       "message",
+		ObjectID:   "3c850e58-efca-4656-bbe4-2e5642dbbbe8",
 		TimelineID: "00000000000000000000",
-		Owner:    "CC62b953CCCE898b955f256976d61BdEE04353C042",
-		CDate:    pivot.Add(-time.Minute * 10),
+		Owner:      "CC62b953CCCE898b955f256976d61BdEE04353C042",
+		CDate:      pivot.Add(-time.Minute * 10),
 	})
 	assert.NoError(t, err)
 
@@ -133,20 +133,20 @@ func TestRepository(t *testing.T) {
 	assert.NoError(t, err)
 
 	_, err = repo.CreateItem(ctx, core.TimelineItem{
-		Type:     "message",
-		ObjectID: "50797d45-23d2-471e-9e48-b4b8a6cdc840",
+		Type:       "message",
+		ObjectID:   "50797d45-23d2-471e-9e48-b4b8a6cdc840",
 		TimelineID: "11111111111111111111",
-		Owner:    "CC62b953CCCE898b955f256976d61BdEE04353C042",
-		CDate:    pivot.Add(-time.Minute * 0),
+		Owner:      "CC62b953CCCE898b955f256976d61BdEE04353C042",
+		CDate:      pivot.Add(-time.Minute * 0),
 	})
 	assert.NoError(t, err)
 
 	_, err = repo.CreateItem(ctx, core.TimelineItem{
-		Type:     "message",
-		ObjectID: "9aad0952-7a50-419c-96c1-565a1da95c47",
+		Type:       "message",
+		ObjectID:   "9aad0952-7a50-419c-96c1-565a1da95c47",
 		TimelineID: "11111111111111111111",
-		Owner:    "CC62b953CCCE898b955f256976d61BdEE04353C042",
-		CDate:    pivot.Add(-time.Minute * 10),
+		Owner:      "CC62b953CCCE898b955f256976d61BdEE04353C042",
+		CDate:      pivot.Add(-time.Minute * 10),
 	})
 	assert.NoError(t, err)
 
@@ -189,20 +189,20 @@ func TestRepository(t *testing.T) {
 	assert.NoError(t, err)
 
 	_, err = repo.CreateItem(ctx, core.TimelineItem{
-		Type:     "message",
-		ObjectID: "d6087868-c30b-439d-9c2c-646fdd48ecc4",
+		Type:       "message",
+		ObjectID:   "d6087868-c30b-439d-9c2c-646fdd48ecc4",
 		TimelineID: "22222222222222222222",
-		Owner:    "CC62b953CCCE898b955f256976d61BdEE04353C042",
-		CDate:    pivot.Add(-time.Minute * 10),
+		Owner:      "CC62b953CCCE898b955f256976d61BdEE04353C042",
+		CDate:      pivot.Add(-time.Minute * 10),
 	})
 	assert.NoError(t, err)
 
 	_, err = repo.CreateItem(ctx, core.TimelineItem{
-		Type:     "message",
-		ObjectID: "797e1f95-542e-485b-8051-a87c1ad1fe06",
+		Type:       "message",
+		ObjectID:   "797e1f95-542e-485b-8051-a87c1ad1fe06",
 		TimelineID: "22222222222222222222",
-		Owner:    "CC62b953CCCE898b955f256976d61BdEE04353C042",
-		CDate:    pivot.Add(-time.Minute * 5),
+		Owner:      "CC62b953CCCE898b955f256976d61BdEE04353C042",
+		CDate:      pivot.Add(-time.Minute * 5),
 	})
 	assert.NoError(t, err)
 
@@ -217,11 +217,11 @@ func TestRepository(t *testing.T) {
 	}
 
 	_, err = repo.CreateItem(ctx, core.TimelineItem{
-		Type:     "message",
-		ObjectID: "01eb39b4-0a5b-4461-a091-df9a97c7b2fd",
+		Type:       "message",
+		ObjectID:   "01eb39b4-0a5b-4461-a091-df9a97c7b2fd",
 		TimelineID: "22222222222222222222",
-		Owner:    "CC62b953CCCE898b955f256976d61BdEE04353C042",
-		CDate:    pivot.Add(-time.Minute * 1),
+		Owner:      "CC62b953CCCE898b955f256976d61BdEE04353C042",
+		CDate:      pivot.Add(-time.Minute * 1),
 	})
 	assert.NoError(t, err)
 
@@ -243,11 +243,11 @@ func TestRepository(t *testing.T) {
 		Key: remoteKey0,
 		Items: []core.TimelineItem{
 			{
-				Type:     "message",
-				ObjectID: "00000000000000000000",
+				Type:       "message",
+				ObjectID:   "00000000000000000000",
 				TimelineID: "00000000000000000000@remote.com",
-				Owner:    "CC62b953CCCE898b955f256976d61BdEE04353C042",
-				CDate:    pivot.Add(-time.Minute * 10),
+				Owner:      "CC62b953CCCE898b955f256976d61BdEE04353C042",
+				CDate:      pivot.Add(-time.Minute * 10),
 			},
 		},
 	}
@@ -257,11 +257,11 @@ func TestRepository(t *testing.T) {
 		Key: remoteKey1,
 		Items: []core.TimelineItem{
 			{
-				Type:     "message",
-				ObjectID: "22222222222222222222",
+				Type:       "message",
+				ObjectID:   "22222222222222222222",
 				TimelineID: "11111111111111111111@remote.com",
-				Owner:    "CC62b953CCCE898b955f256976d61BdEE04353C042",
-				CDate:    pivot.Add(-time.Minute * 30),
+				Owner:      "CC62b953CCCE898b955f256976d61BdEE04353C042",
+				CDate:      pivot.Add(-time.Minute * 30),
 			},
 		},
 	}

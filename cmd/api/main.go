@@ -22,13 +22,13 @@ import (
 	"github.com/totegamma/concurrent/x/ack"
 	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/auth"
-	"github.com/totegamma/concurrent/x/character"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/message"
-	"github.com/totegamma/concurrent/x/stream"
+	"github.com/totegamma/concurrent/x/profile"
+	"github.com/totegamma/concurrent/x/timeline"
 	"github.com/totegamma/concurrent/x/userkv"
 	"github.com/totegamma/concurrent/x/util"
 
@@ -159,10 +159,10 @@ func main() {
 	slog.Info("start migrate")
 	db.AutoMigrate(
 		&core.Message{},
-		&core.Character{},
+		&core.Profile{},
 		&core.Association{},
-		&core.Stream{},
-		&core.StreamItem{},
+		&core.Timeline{},
+		&core.TimelineItem{},
 		&core.Domain{},
 		&core.Entity{},
 		&core.EntityMeta{},
@@ -213,11 +213,11 @@ func main() {
 	associationService := SetupAssociationService(db, rdb, mc, socketManager, config)
 	associationHandler := association.NewHandler(associationService)
 
-	characterService := SetupCharacterService(db, rdb, mc, config)
-	characterHandler := character.NewHandler(characterService)
+	profileService := SetupProfileService(db, rdb, mc, config)
+	profileHandler := profile.NewHandler(profileService)
 
-	streamService := SetupStreamService(db, rdb, mc, socketManager, config)
-	streamHandler := stream.NewHandler(streamService)
+	timelineService := SetupTimelineService(db, rdb, mc, socketManager, config)
+	timelineHandler := timeline.NewHandler(timelineService)
 
 	entityService := SetupEntityService(db, rdb, mc, config)
 	entityHandler := entity.NewHandler(entityService, config)
@@ -273,26 +273,26 @@ func main() {
 	apiV1.GET("/association/:id", associationHandler.Get)
 	apiV1.DELETE("/association/:id", associationHandler.Delete, auth.Restrict(auth.ISKNOWN))
 
-	// character
-	apiV1.PUT("/character", characterHandler.Put, auth.Restrict(auth.ISLOCAL))
-	apiV1.GET("/character/:id", characterHandler.Get)
-	apiV1.GET("/characters", characterHandler.Query)
-	apiV1.DELETE("/character/:id", characterHandler.Delete, auth.Restrict(auth.ISLOCAL))
+	// profile
+	apiV1.PUT("/profile", profileHandler.Put, auth.Restrict(auth.ISLOCAL))
+	apiV1.GET("/profile/:id", profileHandler.Get)
+	apiV1.GET("/profiles", profileHandler.Query)
+	apiV1.DELETE("/profile/:id", profileHandler.Delete, auth.Restrict(auth.ISLOCAL))
 
-	// stream
-	apiV1.POST("/stream", streamHandler.Create, auth.Restrict(auth.ISLOCAL))
-	apiV1.GET("/stream/:id", streamHandler.Get)
-	apiV1.PUT("/stream/:id", streamHandler.Update, auth.Restrict(auth.ISLOCAL))
-	apiV1.DELETE("/stream/:id", streamHandler.Delete, auth.Restrict(auth.ISLOCAL))
-	apiV1.DELETE("/stream/:stream/:object", streamHandler.Remove, auth.Restrict(auth.ISLOCAL))
-	apiV1.GET("/streams", streamHandler.List)
-	apiV1.GET("/streams/mine", streamHandler.ListMine)
-	apiV1.GET("/streams/recent", streamHandler.Recent)
-	apiV1.GET("/streams/range", streamHandler.Range)
-	apiV1.GET("/streams/chunks", streamHandler.GetChunks)
-	apiV1.POST("/streams/checkpoint", streamHandler.Checkpoint, auth.Restrict(auth.ISUNITED))      // OLD API Remove for next release
-	apiV1.POST("/streams/checkpoint/item", streamHandler.Checkpoint, auth.Restrict(auth.ISUNITED)) // NEW API will be used for next release
-	apiV1.POST("/streams/checkpoint/event", streamHandler.EventCheckpoint, auth.Restrict(auth.ISUNITED))
+	// timeline
+	apiV1.POST("/timeline", timelineHandler.Create, auth.Restrict(auth.ISLOCAL))
+	apiV1.GET("/timeline/:id", timelineHandler.Get)
+	apiV1.PUT("/timeline/:id", timelineHandler.Update, auth.Restrict(auth.ISLOCAL))
+	apiV1.DELETE("/timeline/:id", timelineHandler.Delete, auth.Restrict(auth.ISLOCAL))
+	apiV1.DELETE("/timeline/:timeline/:object", timelineHandler.Remove, auth.Restrict(auth.ISLOCAL))
+	apiV1.GET("/timelines", timelineHandler.List)
+	apiV1.GET("/timelines/mine", timelineHandler.ListMine)
+	apiV1.GET("/timelines/recent", timelineHandler.Recent)
+	apiV1.GET("/timelines/range", timelineHandler.Range)
+	apiV1.GET("/timelines/chunks", timelineHandler.GetChunks)
+	apiV1.POST("/timelines/checkpoint", timelineHandler.Checkpoint, auth.Restrict(auth.ISUNITED))      // OLD API Remove for next release
+	apiV1.POST("/timelines/checkpoint/item", timelineHandler.Checkpoint, auth.Restrict(auth.ISUNITED)) // NEW API will be used for next release
+	apiV1.POST("/timelines/checkpoint/event", timelineHandler.EventCheckpoint, auth.Restrict(auth.ISUNITED))
 
 	// userkv
 	apiV1.GET("/kv/:key", userkvHandler.Get, auth.Restrict(auth.ISLOCAL))
@@ -349,14 +349,14 @@ func main() {
 		return c.String(http.StatusOK, "ok")
 	})
 
-	var streamSubscriptionMetrics = prometheus.NewGaugeVec(
+	var timelineSubscriptionMetrics = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cc_stream_subscriptions",
-			Help: "stream subscriptions",
+			Name: "cc_timeline_subscriptions",
+			Help: "timeline subscriptions",
 		},
-		[]string{"stream"},
+		[]string{"timeline"},
 	)
-	prometheus.MustRegister(streamSubscriptionMetrics)
+	prometheus.MustRegister(timelineSubscriptionMetrics)
 
 	var resourceCountMetrics = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -380,13 +380,13 @@ func main() {
 			time.Sleep(15 * time.Second)
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			subscriptions, err := streamService.ListStreamSubscriptions(ctx)
+			subscriptions, err := timelineService.ListTimelineSubscriptions(ctx)
 			if err != nil {
-				slog.Error(fmt.Sprintf("failed to list stream subscriptions: %v", err))
+				slog.Error(fmt.Sprintf("failed to list timeline subscriptions: %v", err))
 				continue
 			}
-			for stream, count := range subscriptions {
-				streamSubscriptionMetrics.WithLabelValues(stream).Set(float64(count))
+			for timeline, count := range subscriptions {
+				timelineSubscriptionMetrics.WithLabelValues(timeline).Set(float64(count))
 			}
 
 			count, err := messageService.Count(ctx)
@@ -403,12 +403,12 @@ func main() {
 			}
 			resourceCountMetrics.WithLabelValues("entity").Set(float64(count))
 
-			count, err = characterService.Count(ctx)
+			count, err = profileService.Count(ctx)
 			if err != nil {
-				slog.Error(fmt.Sprintf("failed to count characters: %v", err))
+				slog.Error(fmt.Sprintf("failed to count profiles: %v", err))
 				continue
 			}
-			resourceCountMetrics.WithLabelValues("character").Set(float64(count))
+			resourceCountMetrics.WithLabelValues("profile").Set(float64(count))
 
 			count, err = associationService.Count(ctx)
 			if err != nil {
@@ -417,12 +417,12 @@ func main() {
 			}
 			resourceCountMetrics.WithLabelValues("association").Set(float64(count))
 
-			count, err = streamService.Count(ctx)
+			count, err = timelineService.Count(ctx)
 			if err != nil {
-				slog.Error(fmt.Sprintf("failed to count streams: %v", err))
+				slog.Error(fmt.Sprintf("failed to count timelines: %v", err))
 				continue
 			}
-			resourceCountMetrics.WithLabelValues("stream").Set(float64(count))
+			resourceCountMetrics.WithLabelValues("timeline").Set(float64(count))
 
 			count = socketHandler.CurrentConnectionCount()
 			socketConnectionMetrics.Set(float64(count))

@@ -7,8 +7,14 @@ import (
 	"time"
 )
 
-type Key struct { // signtype: enact | revoke
+type Schema struct {
+	ID  string `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	URL string `json:"url" gorm:"type:text"`
+}
+
+type Key struct {
 	ID           string `json:"id" gorm:"primaryKey;type:char(42)"` // e.g. CK...
+	Pubkey       string `json:"pubkey" gorm:"type:char(66)"`
 	Root         string `json:"root" gorm:"type:char(42)"`
 	Parent       string `json:"parent" gorm:"type:char(42)"`
 	EnactPayload string `json:"enactPayload" gorm:"type:json"`
@@ -33,10 +39,11 @@ type Key struct { // signtype: enact | revoke
 
 // Association is one of a concurrent base object
 // immutable
-type Association struct { // signtype: association
-	ID          string         `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
-	Author      string         `json:"author" gorm:"type:char(42);uniqueIndex:uniq_association"`
-	Schema      string         `json:"schema"  gorm:"type:text;uniqueIndex:uniq_association"`
+type Association struct {
+	ID     string `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	Author string `json:"author" gorm:"type:char(42);uniqueIndex:uniq_association"`
+	//Schema      string         `json:"schema"  gorm:"type:text;uniqueIndex:uniq_association"`
+	Schema      Schema         `json:"schema" gorm:"foreignKey:SchemaID"`
 	TargetID    string         `json:"targetID" gorm:"type:uuid;uniqueIndex:uniq_association"`
 	TargetType  string         `json:"targetType" gorm:"type:string;uniqueIndex:uniq_association"`
 	ContentHash string         `json:"contentHash" gorm:"type:char(64);uniqueIndex:uniq_association"`
@@ -47,12 +54,12 @@ type Association struct { // signtype: association
 	Streams     pq.StringArray `json:"streams" gorm:"type:text[]"`
 }
 
-// Character is one of  a Concurrent base object
+// Profile is one of a Concurrent base object
 // mutable
-type Character struct { // signtype: character
+type Profile struct {
 	ID           string        `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
 	Author       string        `json:"author" gorm:"type:char(42)"`
-	Schema       string        `json:"schema" gorm:"type:text"`
+	Schema       Schema        `json:"schema" gorm:"foreignKey:SchemaID"`
 	Payload      string        `json:"payload" gorm:"type:json"`
 	Signature    string        `json:"signature" gorm:"type:char(130)"`
 	Associations []Association `json:"associations,omitempty" gorm:"polymorphic:Target"`
@@ -62,25 +69,24 @@ type Character struct { // signtype: character
 
 // Entity is one of a concurrent base object
 // mutable
-type Entity struct { // signtype: affiliation
-	ID           string `json:"ccid" gorm:"type:char(42)"`
-	Tag          string `json:"tag" gorm:"type:text;"`
-	Score        int    `json:"score" gorm:"type:integer;default:0"`
-	IsScoreFixed bool   `json:"isScoreFixed" gorm:"type:boolean;default:false"`
-	Payload      string `json:"payload" gorm:"type:json;default:'{}'"`
+type Entity struct {
+	ID                 string `json:"ccid" gorm:"type:char(42)"`
+	Pubkey             string `json:"pubkey" gorm:"type:char(66)"`
+	Tag                string `json:"tag" gorm:"type:text;"`
+	Score              int    `json:"score" gorm:"type:integer;default:0"`
+	IsScoreFixed       bool   `json:"isScoreFixed" gorm:"type:boolean;default:false"`
+	AffiliationPayload string `json:"affiliationPayload" gorm:"type:json;default:'{}'"`
 	/* Domain Affiliation
 	   {
 	       type: affiliation,
 	       domain: string,
 	   }
 	*/
-	Signature string    `json:"signature" gorm:"type:char(130)"`
-	CDate     time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
-	MDate     time.Time `json:"mdate" gorm:"autoUpdateTime"`
-}
-
-type Affiliation struct {
-	Domain string `json:"domain"`
+	AffiliationSignature string    `json:"affiliationSignature" gorm:"type:char(130)"`
+	TombstonePayload     string    `json:"tombstonePayload" gorm:"type:json;default:'{}'"`
+	TombstoneSignature   string    `json:"tombstoneSignature" gorm:"type:char(130)"`
+	CDate                time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
+	MDate                time.Time `json:"mdate" gorm:"autoUpdateTime"`
 }
 
 type EntityMeta struct {
@@ -93,6 +99,8 @@ type EntityMeta struct {
 type Address struct {
 	ID       string    `json:"ccid" gorm:"type:char(42)"`
 	Domain   string    `json:"domain" gorm:"type:text"`
+	Score    int       `json:"score" gorm:"type:integer;default:0"`
+	Payload  string    `json:"payload" gorm:"type:json;default:'{}'"`
 	SignedAt time.Time `json:"validFrom" gorm:"type:timestamp with time zone"`
 	CDate    time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 }
@@ -105,7 +113,7 @@ type Domain struct {
 	Tag          string    `json:"tag" gorm:"type:text;default:default"`
 	Score        int       `json:"score" gorm:"type:integer;default:0"`
 	IsScoreFixed bool      `json:"isScoreFixed" gorm:"type:boolean;default:false"`
-	Pubkey       string    `json:"pubkey" gorm:"type:text"`
+	Pubkey       string    `json:"pubkey" gorm:"type:char(66)"`
 	CDate        time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 	MDate        time.Time `json:"mdate" gorm:"autoUpdateTime"`
 	LastScraped  time.Time `json:"lastScraped" gorm:"type:timestamp with time zone"`
@@ -113,54 +121,54 @@ type Domain struct {
 
 // Message is one of a concurrent base object
 // immutable
-type Message struct { // signtype: message
+type Message struct {
 	ID              string         `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
 	Author          string         `json:"author" gorm:"type:char(42)"`
-	Schema          string         `json:"schema" gorm:"type:text"`
+	Schema          Schema         `json:"schema" gorm:"foreignKey:SchemaID"`
 	Payload         string         `json:"payload" gorm:"type:json"`
 	Signature       string         `json:"signature" gorm:"type:char(130)"`
 	CDate           time.Time      `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 	Associations    []Association  `json:"associations,omitempty" gorm:"polymorphic:Target"`
 	OwnAssociations []Association  `json:"ownAssociations,omitempty" gorm:"-"`
-	Streams         pq.StringArray `json:"streams" gorm:"type:text[]"`
+	Timelines       pq.StringArray `json:"timelines" gorm:"type:text[]"`
 }
 
-// Stream is one of a base object of concurrent
+// Timeline is one of a base object of concurrent
 // mutable
-type Stream struct { // non-signed object
+type Timeline struct {
 	ID         string         `json:"id" gorm:"primaryKey;type:char(20);"`
 	Visible    bool           `json:"visible" gorm:"type:boolean;default:false"`
 	Author     string         `json:"author" gorm:"type:char(42)"`
 	Maintainer pq.StringArray `json:"maintainer" gorm:"type:char(42)[];default:'{}'"`
 	Writer     pq.StringArray `json:"writer" gorm:"type:char(42)[];default:'{}'"`
 	Reader     pq.StringArray `json:"reader" gorm:"type:char(42)[];default:'{}'"`
-	Schema     string         `json:"schema" gorm:"type:text"`
+	Schema     Schema         `json:"schema" gorm:"foreignKey:SchemaID"`
 	Payload    string         `json:"payload" gorm:"type:json"`
 	CDate      time.Time      `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 	MDate      time.Time      `json:"mdate" gorm:"autoUpdateTime"`
 }
 
-// StreamItem is one of a base object of concurrent
+// TimelineItem is one of a base object of concurrent
 // immutable
-type StreamItem struct {
-	Type     string    `json:"type" gorm:"type:text;"`
-	ObjectID string    `json:"objectID" gorm:"primaryKey;type:uuid;"`
-	StreamID string    `json:"streamID" gorm:"primaryKey;type:char(20);"`
-	Owner    string    `json:"owner" gorm:"type:char(42);"`
-	Author   string    `json:"author,omitempty" gorm:"type:char(42);"`
-	CDate    time.Time `json:"cdate,omitempty" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
+type TimelineItem struct {
+	Type       string    `json:"type" gorm:"type:text;"`
+	ObjectID   string    `json:"objectID" gorm:"primaryKey;type:uuid;"`
+	TimelineID string    `json:"TimelineID" gorm:"primaryKey;type:char(20);"`
+	Owner      string    `json:"owner" gorm:"type:char(42);"`
+	Author     string    `json:"author,omitempty" gorm:"type:char(42);"`
+	CDate      time.Time `json:"cdate,omitempty" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 }
 
 // Collection is one of a base object of concurrent
 // mutable
-type Collection struct { // non-signed object
+type Collection struct {
 	ID         string           `json:"id" gorm:"primaryKey;type:char(20);"`
 	Visible    bool             `json:"visible" gorm:"type:boolean;default:false"`
 	Author     string           `json:"author" gorm:"type:char(42)"`
 	Maintainer pq.StringArray   `json:"maintainer" gorm:"type:char(42)[];default:'{}'"`
 	Writer     pq.StringArray   `json:"writer" gorm:"type:char(42)[];default:'{}'"`
 	Reader     pq.StringArray   `json:"reader" gorm:"type:char(42)[];default:'{}'"`
-	Schema     string           `json:"schema" gorm:"type:text"`
+	Schema     Schema           `json:"schema" gorm:"foreignKey:SchemaID"`
 	CDate      time.Time        `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 	MDate      time.Time        `json:"mdate" gorm:"autoUpdateTime"`
 	Items      []CollectionItem `json:"items" gorm:"foreignKey:Collection"`
@@ -174,7 +182,7 @@ type CollectionItem struct {
 	Payload    string `json:"payload" gorm:"type:json;default:'{}'"`
 }
 
-type Ack struct { // signtype: ackPayload
+type Ack struct {
 	From    string `json:"from" gorm:"primaryKey;type:char(42)"`
 	To      string `json:"to" gorm:"primaryKey;type:char(42)"`
 	Payload string `json:"payload" gorm:"type:json;default:'{}'"`
@@ -190,11 +198,11 @@ type Ack struct { // signtype: ackPayload
 
 // Event is websocket root packet model
 type Event struct {
-	Stream string      `json:"stream"` // stream full id (ex: <streamID>@<domain>)
-	Type   string      `json:"type"`
-	Action string      `json:"action"`
-	Item   StreamItem  `json:"item"`
-	Body   interface{} `json:"body"`
+	TimelineID string       `json:"timelineID"` // stream full id (ex: <streamID>@<domain>)
+	Type       string       `json:"type"`
+	Action     string       `json:"action"`
+	Item       TimelineItem `json:"item"`
+	Body       interface{}  `json:"body"`
 }
 
 func Time2Chunk(t time.Time) string {

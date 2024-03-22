@@ -1,5 +1,5 @@
-// Package stream is for handling concurrent stream object
-package stream
+// Package timeline is for handling concurrent timeline object
+package timeline
 
 import (
 	"errors"
@@ -14,7 +14,7 @@ import (
 	"gorm.io/gorm"
 )
 
-var tracer = otel.Tracer("stream")
+var tracer = otel.Tracer("timeline")
 
 // Handler is the interface for handling HTTP requests
 type Handler interface {
@@ -41,34 +41,34 @@ func NewHandler(service Service) Handler {
 	return &handler{service: service}
 }
 
-// Get returns a stream by ID
+// Get returns a timeline by ID
 func (h handler) Get(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
 	defer span.End()
 
-	streamID := c.Param("id")
-	stream, err := h.service.GetStream(ctx, streamID)
+	timelineID := c.Param("id")
+	timeline, err := h.service.GetTimeline(ctx, timelineID)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return c.JSON(http.StatusNotFound, echo.Map{"error": "User not found"})
 		}
 		return err
 	}
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": stream})
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": timeline})
 }
 
-// Create creates a new stream
+// Create creates a new timeline
 func (h handler) Create(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerCreate")
 	defer span.End()
 
-	var data core.Stream
+	var data core.Timeline
 	err := c.Bind(&data)
 	if err != nil {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
 	}
 
-	created, err := h.service.CreateStream(ctx, data)
+	created, err := h.service.CreateTimeline(ctx, data)
 	if err != nil {
 		span.RecordError(err)
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
@@ -77,14 +77,14 @@ func (h handler) Create(c echo.Context) error {
 	return c.JSON(http.StatusCreated, echo.Map{"status": "ok", "content": created})
 }
 
-// Update updates a stream
+// Update updates a timeline
 func (h handler) Update(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerUpdate")
 	defer span.End()
 
 	id := c.Param("id")
 
-	var data core.Stream
+	var data core.Timeline
 	err := c.Bind(&data)
 	if err != nil {
 		span.RecordError(err)
@@ -93,7 +93,7 @@ func (h handler) Update(c echo.Context) error {
 
 	data.ID = id
 
-	updated, err := h.service.UpdateStream(ctx, data)
+	updated, err := h.service.UpdateTimeline(ctx, data)
 	if err != nil {
 		span.RecordError(err)
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
@@ -102,25 +102,25 @@ func (h handler) Update(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": updated})
 }
 
-// Recent returns recent messages in some streams
+// Recent returns recent messages in some timelines
 func (h handler) Recent(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerRecent")
 	defer span.End()
 
-	streamsStr := c.QueryParam("streams")
-	streams := strings.Split(streamsStr, ",")
-	messages, _ := h.service.GetRecentItems(ctx, streams, time.Now(), 16)
+	timelinesStr := c.QueryParam("timelines")
+	timelines := strings.Split(timelinesStr, ",")
+	messages, _ := h.service.GetRecentItems(ctx, timelines, time.Now(), 16)
 
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": messages})
 }
 
-// Range returns messages since to until in specified streams
+// Range returns messages since to until in specified timelines
 func (h handler) Range(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerRange")
 	defer span.End()
 
-	queryStreams := c.QueryParam("streams")
-	streams := strings.Split(queryStreams, ",")
+	queryTimelines := c.QueryParam("timelines")
+	timelines := strings.Split(queryTimelines, ",")
 	querySince := c.QueryParam("since")
 	queryUntil := c.QueryParam("until")
 
@@ -130,7 +130,7 @@ func (h handler) Range(c echo.Context) error {
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
 		}
 		since := time.Unix(sinceEpoch, 0)
-		messages, _ := h.service.GetImmediateItems(ctx, streams, since, 16)
+		messages, _ := h.service.GetImmediateItems(ctx, timelines, since, 16)
 		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": messages})
 	} else if queryUntil != "" {
 		untilEpoch, err := strconv.ParseInt(queryUntil, 10, 64)
@@ -138,20 +138,20 @@ func (h handler) Range(c echo.Context) error {
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
 		}
 		until := time.Unix(untilEpoch, 0)
-		messages, _ := h.service.GetRecentItems(ctx, streams, until, 16)
+		messages, _ := h.service.GetRecentItems(ctx, timelines, until, 16)
 		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": messages})
 	} else {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
 	}
 }
 
-// List returns stream ids which filtered by specific schema
+// List returns timeline ids which filtered by specific schema
 func (h handler) List(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerList")
 	defer span.End()
 
 	schema := c.QueryParam("schema")
-	list, err := h.service.ListStreamBySchema(ctx, schema)
+	list, err := h.service.ListTimelineBySchema(ctx, schema)
 	if err != nil {
 		span.RecordError(err)
 		return err
@@ -159,7 +159,7 @@ func (h handler) List(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": list})
 }
 
-// ListMine returns stream ids which filtered by specific schema
+// ListMine returns timeline ids which filtered by specific schema
 func (h handler) ListMine(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerListMine")
 	defer span.End()
@@ -169,7 +169,7 @@ func (h handler) ListMine(c echo.Context) error {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}
 
-	list, err := h.service.ListStreamByAuthor(ctx, requester)
+	list, err := h.service.ListTimelineByAuthor(ctx, requester)
 	if err != nil {
 		span.RecordError(err)
 		return err
@@ -182,13 +182,13 @@ func (h handler) Delete(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerDelete")
 	defer span.End()
 
-	streamID := c.Param("id")
-	split := strings.Split(streamID, "@")
+	timelineID := c.Param("id")
+	split := strings.Split(timelineID, "@")
 	if len(split) == 2 {
-		streamID = split[0]
+		timelineID = split[0]
 	}
 
-	target, err := h.service.GetStream(ctx, streamID)
+	target, err := h.service.GetTimeline(ctx, timelineID)
 	if err != nil {
 		span.RecordError(err)
 		return err
@@ -200,10 +200,10 @@ func (h handler) Delete(c echo.Context) error {
 	}
 
 	if target.Author != requester {
-		return c.JSON(http.StatusForbidden, echo.Map{"error": "You are not owner of this stream"})
+		return c.JSON(http.StatusForbidden, echo.Map{"error": "You are not owner of this timeline"})
 	}
 
-	err = h.service.DeleteStream(ctx, streamID)
+	err = h.service.DeleteTimeline(ctx, timelineID)
 	if err != nil {
 		span.RecordError(err)
 		return err
@@ -211,20 +211,20 @@ func (h handler) Delete(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
 }
 
-// Remove is remove stream element from stream
+// Remove is remove timeline element from timeline
 func (h handler) Remove(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerRemove")
 	defer span.End()
 
-	streamID := c.Param("stream")
-	split := strings.Split(streamID, "@")
+	timelineID := c.Param("timeline")
+	split := strings.Split(timelineID, "@")
 	if len(split) == 2 {
-		streamID = split[0]
+		timelineID = split[0]
 	}
 
 	objectID := c.Param("object")
 
-	target, err := h.service.GetItem(ctx, streamID, objectID)
+	target, err := h.service.GetItem(ctx, timelineID, objectID)
 	if err != nil {
 		span.RecordError(err)
 		return err
@@ -236,10 +236,10 @@ func (h handler) Remove(c echo.Context) error {
 	}
 
 	if target.Author != requester && target.Owner != requester {
-		return c.JSON(http.StatusForbidden, echo.Map{"error": "You are not owner of this stream element"})
+		return c.JSON(http.StatusForbidden, echo.Map{"error": "You are not owner of this timeline element"})
 	}
 
-	h.service.RemoveItem(ctx, streamID, objectID)
+	h.service.RemoveItem(ctx, timelineID, objectID)
 
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
 }
@@ -261,7 +261,7 @@ func (h handler) Checkpoint(c echo.Context) error {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester domain not found"})
 	}
 
-	err = h.service.Checkpoint(ctx, packet.Stream, packet.Item, packet.Body, packet.Principal, requesterDomain)
+	err = h.service.Checkpoint(ctx, packet.Timeline, packet.Item, packet.Body, packet.Principal, requesterDomain)
 	if err != nil {
 		span.RecordError(err)
 		return nil
@@ -295,8 +295,8 @@ func (h handler) GetChunks(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetChunks")
 	defer span.End()
 
-	streamsStr := c.QueryParam("streams")
-	streams := strings.Split(streamsStr, ",")
+	timelinesStr := c.QueryParam("timelines")
+	timelines := strings.Split(timelinesStr, ",")
 
 	timeStr := c.QueryParam("time")
 	timeInt, err := strconv.ParseInt(timeStr, 10, 64)
@@ -306,7 +306,7 @@ func (h handler) GetChunks(c echo.Context) error {
 	}
 	time := time.Unix(timeInt, 0)
 
-	chunks, err := h.service.GetChunks(ctx, streams, time)
+	chunks, err := h.service.GetChunks(ctx, timelines, time)
 	if err != nil {
 		span.RecordError(err)
 		return err

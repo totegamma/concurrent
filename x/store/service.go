@@ -41,6 +41,8 @@ func (s *service) Commit(ctx context.Context, document string, signature string)
 	switch base.Type {
 	case "message.create":
 		return s.message.Create(ctx, document, signature)
+	case "message.delete":
+		return s.message.Delete(ctx, document)
 	}
 
 	return nil, nil

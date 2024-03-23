@@ -116,9 +116,9 @@ func TestManager(t *testing.T) {
 	domain := strings.Replace(server.URL, "wss://", "", 1)
 
 	// リモートのサブスクリプションでリモートsubが作成されることを確認
-	remotestream0 := "remote0@" + domain
+	remotetimeline0 := "remote0@" + domain
 	conn1 := websocket.Conn{}
-	m.Subscribe(&conn1, []string{remotestream0})
+	m.Subscribe(&conn1, []string{remotetimeline0})
 	time.Sleep(1 * time.Second)
 	assert.Len(t, m.clientSubs, 2) // 2つ目のサブスクリプション
 	assert.Len(t, m.clientSubs[&conn1], 1)
@@ -126,8 +126,8 @@ func TestManager(t *testing.T) {
 	assert.Len(t, m.remoteSubs[domain], 1)
 
 	// リモートサブスクリプションを更新するが、減らないことを確認
-	remotestream1 := "remote1@" + domain
-	m.Subscribe(&conn1, []string{remotestream1})
+	remotetimeline1 := "remote1@" + domain
+	m.Subscribe(&conn1, []string{remotetimeline1})
 	time.Sleep(1 * time.Second)
 	assert.Len(t, m.clientSubs, 2)
 	assert.Len(t, m.clientSubs[&conn1], 1)
@@ -136,18 +136,18 @@ func TestManager(t *testing.T) {
 
 	// 外からメッセージを流して、キャッシュが更新されることを確認
 
-	itrkey := "stream:itr:all:" + remotestream1 + ":" + core.Time2Chunk(pivot)
-	bodykey := "stream:body:all:" + remotestream1 + ":" + core.Time2Chunk(pivot)
+	itrkey := "timeline:itr:all:" + remotetimeline1 + ":" + core.Time2Chunk(pivot)
+	bodykey := "timeline:body:all:" + remotetimeline1 + ":" + core.Time2Chunk(pivot)
 
 	// - キャッシュが存在しないとき
 	testEvent := core.Event{
-		TimelineID: remotestream1,
+		TimelineID: remotetimeline1,
 		Action:     "create",
 		Type:       "message",
 		Item: core.TimelineItem{
 			Type:       "message",
 			ObjectID:   "",
-			TimelineID: remotestream1,
+			TimelineID: remotetimeline1,
 			Owner:      "",
 			Author:     "",
 			CDate:      pivot,

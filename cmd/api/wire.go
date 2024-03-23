@@ -21,6 +21,7 @@ import (
 	"github.com/totegamma/concurrent/x/profile"
 	"github.com/totegamma/concurrent/x/schema"
 	"github.com/totegamma/concurrent/x/socket"
+	"github.com/totegamma/concurrent/x/store"
 	"github.com/totegamma/concurrent/x/timeline"
 	"github.com/totegamma/concurrent/x/userkv"
 	"github.com/totegamma/concurrent/x/util"
@@ -51,6 +52,9 @@ var messageServiceProvider = wire.NewSet(message.NewService, message.NewReposito
 
 // Lv5
 var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupTimelineService, SetupMessageService, SetupKeyService, SetupSchemaService)
+
+// Lv6
+var storeServiceProvider = wire.NewSet(store.NewService, SetupKeyService, SetupMessageService)
 
 func SetupJwtService(rdb *redis.Client) jwt.Service {
 	wire.Build(jwtServiceProvider)
@@ -129,5 +133,10 @@ func SetupSocketManager(mc *memcache.Client, db *gorm.DB, rdb *redis.Client, con
 
 func SetupSchemaService(db *gorm.DB) schema.Service {
 	wire.Build(schemaServiceProvider)
+	return nil
+}
+
+func SetupStoreService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) store.Service {
+	wire.Build(storeServiceProvider)
 	return nil
 }

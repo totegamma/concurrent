@@ -17,7 +17,7 @@ import (
 type Service interface {
 	Get(ctx context.Context, id string, requester string) (core.Message, error)
 	GetWithOwnAssociations(ctx context.Context, id string, requester string) (core.Message, error)
-	PostMessage(ctx context.Context, objectStr string, signature string, timelines []string) (core.Message, error)
+	Create(ctx context.Context, objectStr string, signature string) (core.Message, error)
 	Delete(ctx context.Context, id string) (core.Message, error)
 	Count(ctx context.Context) (int64, error)
 }
@@ -98,9 +98,9 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 	return message, nil
 }
 
-// PostMessage creates a new message
+// Create creates a new message
 // It also posts the message to the timelines
-func (s *service) PostMessage(ctx context.Context, objectStr string, signature string, timelines []string) (core.Message, error) {
+func (s *service) Create(ctx context.Context, objectStr string, signature string) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "ServicePostMessage")
 	defer span.End()
 
@@ -111,18 +111,12 @@ func (s *service) PostMessage(ctx context.Context, objectStr string, signature s
 		return core.Message{}, err
 	}
 
-	err = s.key.ValidateSignedObject(ctx, objectStr, signature)
-	if err != nil {
-		span.RecordError(err)
-		return core.Message{}, err
-	}
-
 	message := core.Message{
 		Author:    object.Signer,
 		Schema:    object.Schema,
 		Payload:   objectStr,
 		Signature: signature,
-		Timelines: timelines,
+		Timelines: object.Timelines,
 	}
 
 	if !object.SignedAt.IsZero() {
@@ -136,7 +130,7 @@ func (s *service) PostMessage(ctx context.Context, objectStr string, signature s
 	}
 
 	ispublic := true
-	for _, timeline := range timelines {
+	for _, timeline := range object.Timelines {
 		ok := s.timeline.HasReadAccess(ctx, timeline, "")
 		if !ok {
 			ispublic = false

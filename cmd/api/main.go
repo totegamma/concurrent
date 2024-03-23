@@ -28,6 +28,7 @@ import (
 	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/profile"
+	"github.com/totegamma/concurrent/x/store"
 	"github.com/totegamma/concurrent/x/timeline"
 	"github.com/totegamma/concurrent/x/userkv"
 	"github.com/totegamma/concurrent/x/util"
@@ -232,7 +233,13 @@ func main() {
 	ackService := SetupAckService(db, rdb, mc, config)
 	ackHandler := ack.NewHandler(ackService)
 
+	storeService := SetupStoreService(db, rdb, mc, socketManager, config)
+	storeHandler := store.NewHandler(storeService)
+
 	apiV1 := e.Group("", auth.ReceiveGatewayAuthPropagation)
+	// store
+	apiV1.POST("/commit", storeHandler.Commit)
+
 	// domain
 	apiV1.GET("/domain", domainHandler.Profile)
 	apiV1.GET("/domain/:id", domainHandler.Get)
@@ -257,7 +264,6 @@ func main() {
 	apiV1.POST("/admin/entity", entityHandler.Create, auth.Restrict(auth.ISADMIN))
 
 	// message
-	apiV1.POST("/message", messageHandler.Post, auth.Restrict(auth.ISLOCAL))
 	apiV1.GET("/message/:id", messageHandler.Get)
 	apiV1.DELETE("/message/:id", messageHandler.Delete, auth.Restrict(auth.ISLOCAL))
 	apiV1.GET("/message/:id/associations", associationHandler.GetFiltered)

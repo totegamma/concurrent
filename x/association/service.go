@@ -11,12 +11,12 @@ import (
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/message"
-	"github.com/totegamma/concurrent/x/stream"
+	"github.com/totegamma/concurrent/x/timeline"
 )
 
 // Service is the interface for association service
 type Service interface {
-	PostAssociation(ctx context.Context, objectStr string, signature string, streams []string, targetType string) (core.Association, error)
+	PostAssociation(ctx context.Context, objectStr string, signature string, timelines []string, targetType string) (core.Association, error)
 	Get(ctx context.Context, id string) (core.Association, error)
 	GetOwn(ctx context.Context, author string) ([]core.Association, error)
 	Delete(ctx context.Context, id, requester string) (core.Association, error)
@@ -31,15 +31,15 @@ type Service interface {
 }
 
 type service struct {
-	repo    Repository
-	stream  stream.Service
-	message message.Service
-	key     key.Service
+	repo     Repository
+	timeline timeline.Service
+	message  message.Service
+	key      key.Service
 }
 
 // NewService creates a new association service
-func NewService(repo Repository, stream stream.Service, message message.Service, key key.Service) Service {
-	return &service{repo, stream, message, key}
+func NewService(repo Repository, timeline timeline.Service, message message.Service, key key.Service) Service {
+	return &service{repo, timeline, message, key}
 }
 
 // Count returns the count number of messages
@@ -51,9 +51,9 @@ func (s *service) Count(ctx context.Context) (int64, error) {
 }
 
 // PostAssociation creates a new association
-// If targetType is messages, it also posts the association to the target message's streams
+// If targetType is messages, it also posts the association to the target message's timelines
 // returns the created association
-func (s *service) PostAssociation(ctx context.Context, objectStr string, signature string, streams []string, targetType string) (core.Association, error) {
+func (s *service) PostAssociation(ctx context.Context, objectStr string, signature string, timelines []string, targetType string) (core.Association, error) {
 	ctx, span := tracer.Start(ctx, "ServicePostAssociation")
 	defer span.End()
 
@@ -86,7 +86,7 @@ func (s *service) PostAssociation(ctx context.Context, objectStr string, signatu
 		TargetType:  targetType,
 		Payload:     objectStr,
 		Signature:   signature,
-		Streams:     streams,
+		Timelines:   timelines,
 		ContentHash: contentHash,
 		Variant:     object.Variant,
 	}
@@ -107,30 +107,30 @@ func (s *service) PostAssociation(ctx context.Context, objectStr string, signatu
 		return created, err
 	}
 
-	item := core.StreamItem{
+	item := core.TimelineItem{
 		Type:     "association",
 		ObjectID: created.ID,
 		Owner:    targetMessage.Author,
 		Author:   created.Author,
 	}
 
-	for _, stream := range association.Streams {
-		err = s.stream.PostItem(ctx, stream, item, created)
+	for _, timeline := range association.Timelines {
+		err = s.timeline.PostItem(ctx, timeline, item, created)
 		if err != nil {
-			slog.ErrorContext(ctx, "failed to post stream", slog.String("error", err.Error()), slog.String("module", "association"))
+			slog.ErrorContext(ctx, "failed to post timeline", slog.String("error", err.Error()), slog.String("module", "association"))
 			span.RecordError(err)
 		}
 	}
 
-	for _, postto := range targetMessage.Streams {
+	for _, postto := range targetMessage.Timelines {
 		event := core.Event{
-			Stream: postto,
-			Action: "create",
-			Type:   "association",
-			Item:   item,
-			Body:   created,
+			Timeline: postto,
+			Action:   "create",
+			Type:     "association",
+			Item:     item,
+			Body:     created,
 		}
-		err = s.stream.DistributeEvent(ctx, postto, event)
+		err = s.timeline.DistributeEvent(ctx, postto, event)
 
 		if err != nil {
 			slog.ErrorContext(ctx, "failed to publish message to Redis", slog.String("error", err.Error()), slog.String("module", "association"))
@@ -188,14 +188,14 @@ func (s *service) Delete(ctx context.Context, id, requester string) (core.Associ
 		return deleted, nil
 	}
 
-	for _, posted := range targetMessage.Streams {
+	for _, posted := range targetMessage.Timelines {
 		event := core.Event{
-			Stream: posted,
-			Type:   "association",
-			Action: "delete",
-			Body:   deleted,
+			TimelineID: posted,
+			Type:       "association",
+			Action:     "delete",
+			Body:       deleted,
 		}
-		err := s.stream.DistributeEvent(ctx, posted, event)
+		err := s.timeline.DistributeEvent(ctx, posted, event)
 		if err != nil {
 			slog.ErrorContext(ctx, "failed to publish message to Redis", slog.String("error", err.Error()), slog.String("module", "association"))
 			span.RecordError(err)

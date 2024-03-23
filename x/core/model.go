@@ -51,7 +51,7 @@ type Association struct {
 	Payload     string         `json:"payload" gorm:"type:json"`
 	Signature   string         `json:"signature" gorm:"type:char(130)"`
 	CDate       time.Time      `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
-	Streams     pq.StringArray `json:"streams" gorm:"type:text[]"`
+	Timelines   pq.StringArray `json:"timelines" gorm:"type:text[]"`
 }
 
 // Profile is one of a Concurrent base object

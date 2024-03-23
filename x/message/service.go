@@ -9,7 +9,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/key"
-	"github.com/totegamma/concurrent/x/stream"
+	"github.com/totegamma/concurrent/x/timeline"
 )
 
 // Service is the interface for message service
@@ -17,21 +17,21 @@ import (
 type Service interface {
 	Get(ctx context.Context, id string, requester string) (core.Message, error)
 	GetWithOwnAssociations(ctx context.Context, id string, requester string) (core.Message, error)
-	PostMessage(ctx context.Context, objectStr string, signature string, streams []string) (core.Message, error)
+	PostMessage(ctx context.Context, objectStr string, signature string, timelines []string) (core.Message, error)
 	Delete(ctx context.Context, id string) (core.Message, error)
 	Count(ctx context.Context) (int64, error)
 }
 
 type service struct {
-	rdb    *redis.Client
-	repo   Repository
-	stream stream.Service
-	key    key.Service
+	rdb      *redis.Client
+	repo     Repository
+	timeline timeline.Service
+	key      key.Service
 }
 
 // NewService creates a new message service
-func NewService(rdb *redis.Client, repo Repository, stream stream.Service, key key.Service) Service {
-	return &service{rdb, repo, stream, key}
+func NewService(rdb *redis.Client, repo Repository, timeline timeline.Service, key key.Service) Service {
+	return &service{rdb, repo, timeline, key}
 }
 
 // Count returns the count number of messages
@@ -55,8 +55,8 @@ func (s *service) Get(ctx context.Context, id string, requester string) (core.Me
 
 	canRead := true
 
-	for _, streamID := range message.Streams {
-		ok := s.stream.HasReadAccess(ctx, streamID, requester)
+	for _, timelineID := range message.Timelines {
+		ok := s.timeline.HasReadAccess(ctx, timelineID, requester)
 		if !ok {
 			canRead = false
 			break
@@ -83,8 +83,8 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 
 	canRead := true
 
-	for _, streamID := range message.Streams {
-		ok := s.stream.HasReadAccess(ctx, streamID, requester)
+	for _, timelineID := range message.Timelines {
+		ok := s.timeline.HasReadAccess(ctx, timelineID, requester)
 		if !ok {
 			canRead = false
 			break
@@ -99,12 +99,12 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 }
 
 // PostMessage creates a new message
-// It also posts the message to the streams
-func (s *service) PostMessage(ctx context.Context, objectStr string, signature string, streams []string) (core.Message, error) {
+// It also posts the message to the timelines
+func (s *service) PostMessage(ctx context.Context, objectStr string, signature string, timelines []string) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "ServicePostMessage")
 	defer span.End()
 
-	var object SignedObject
+	var object core.CreateMessage[any]
 	err := json.Unmarshal([]byte(objectStr), &object)
 	if err != nil {
 		span.RecordError(err)
@@ -122,7 +122,7 @@ func (s *service) PostMessage(ctx context.Context, objectStr string, signature s
 		Schema:    object.Schema,
 		Payload:   objectStr,
 		Signature: signature,
-		Streams:   streams,
+		Timelines: timelines,
 	}
 
 	if !object.SignedAt.IsZero() {
@@ -136,8 +136,8 @@ func (s *service) PostMessage(ctx context.Context, objectStr string, signature s
 	}
 
 	ispublic := true
-	for _, stream := range streams {
-		ok := s.stream.HasReadAccess(ctx, stream, "")
+	for _, timeline := range timelines {
+		ok := s.timeline.HasReadAccess(ctx, timeline, "")
 		if !ok {
 			ispublic = false
 			break
@@ -149,12 +149,12 @@ func (s *service) PostMessage(ctx context.Context, objectStr string, signature s
 		body = created
 	}
 
-	for _, stream := range message.Streams {
-		s.stream.PostItem(ctx, stream, core.StreamItem{
-			Type:     "message",
-			ObjectID: created.ID,
-			Owner:    object.Signer,
-			StreamID: stream,
+	for _, timeline := range message.Timelines {
+		s.timeline.PostItem(ctx, timeline, core.TimelineItem{
+			Type:       "message",
+			ObjectID:   created.ID,
+			Owner:      object.Signer,
+			TimelineID: timeline,
 		}, body)
 	}
 
@@ -175,14 +175,14 @@ func (s *service) Delete(ctx context.Context, id string) (core.Message, error) {
 		return core.Message{}, err
 	}
 
-	for _, deststream := range deleted.Streams {
+	for _, desttimeline := range deleted.Timelines {
 		jsonstr, _ := json.Marshal(core.Event{
-			Stream: deststream,
-			Type:   "message",
-			Action: "delete",
-			Body:   deleted,
+			TimelineID: desttimeline,
+			Type:       "message",
+			Action:     "delete",
+			Body:       deleted,
 		})
-		err := s.rdb.Publish(context.Background(), deststream, jsonstr).Err()
+		err := s.rdb.Publish(context.Background(), desttimeline, jsonstr).Err()
 		if err != nil {
 			span.RecordError(err)
 			return deleted, err

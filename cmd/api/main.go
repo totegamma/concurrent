@@ -158,6 +158,7 @@ func main() {
 	// Migrate the schema
 	slog.Info("start migrate")
 	db.AutoMigrate(
+		&core.Schema{},
 		&core.Message{},
 		&core.Profile{},
 		&core.Association{},

@@ -69,11 +69,12 @@ func SetupProfileService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, co
 }
 
 func SetupAssociationService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) association.Service {
-	repository := association.NewRepository(db, mc)
-	service := SetupTimelineService(db, rdb, mc, manager, config)
+	service := SetupSchemaService(db)
+	repository := association.NewRepository(db, mc, service)
+	timelineService := SetupTimelineService(db, rdb, mc, manager, config)
 	messageService := SetupMessageService(db, rdb, mc, manager, config)
 	keyService := SetupKeyService(db, rdb, mc, config)
-	associationService := association.NewService(repository, service, messageService, keyService)
+	associationService := association.NewService(repository, timelineService, messageService, keyService)
 	return associationService
 }
 
@@ -147,26 +148,32 @@ func SetupSchemaService(db *gorm.DB) schema.Service {
 
 var collectionHandlerProvider = wire.NewSet(collection.NewHandler, collection.NewService, collection.NewRepository)
 
+// Lv0
 var jwtServiceProvider = wire.NewSet(jwt.NewService, jwt.NewRepository)
 
 var schemaServiceProvider = wire.NewSet(schema.NewService, schema.NewRepository)
 
 var domainServiceProvider = wire.NewSet(domain.NewService, domain.NewRepository)
 
+var userKvServiceProvider = wire.NewSet(userkv.NewService, userkv.NewRepository)
+
 var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService)
 
+// Lv1
 var timelineServiceProvider = wire.NewSet(timeline.NewService, timeline.NewRepository, SetupEntityService, SetupDomainService)
 
-var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupTimelineService, SetupMessageService, SetupKeyService)
+// Lv2
+var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository, SetupEntityService)
 
+// Lv3
 var profileServiceProvider = wire.NewSet(profile.NewService, profile.NewRepository, SetupKeyService)
 
 var authServiceProvider = wire.NewSet(auth.NewService, SetupEntityService, SetupDomainService, SetupKeyService)
 
+var ackServiceProvider = wire.NewSet(ack.NewService, ack.NewRepository, SetupEntityService, SetupKeyService)
+
+// Lv4
 var messageServiceProvider = wire.NewSet(message.NewService, message.NewRepository, SetupTimelineService, SetupKeyService, SetupSchemaService)
 
-var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository, SetupEntityService)
-
-var userKvServiceProvider = wire.NewSet(userkv.NewService, userkv.NewRepository)
-
-var ackServiceProvider = wire.NewSet(ack.NewService, ack.NewRepository, SetupEntityService, SetupKeyService)
+// Lv5
+var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupTimelineService, SetupMessageService, SetupKeyService, SetupSchemaService)

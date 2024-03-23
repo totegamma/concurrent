@@ -9,7 +9,7 @@ import (
 )
 
 var (
-	cdc = address.NewBech32Codec("cc")
+	cdc = address.NewBech32Codec("con")
 )
 
 func SignBytes(bytes []byte, privatekey string) ([]byte, error) {

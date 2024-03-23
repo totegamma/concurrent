@@ -70,6 +70,7 @@ func CreateDB() (*gorm.DB, func()) {
 	}
 
 	db.AutoMigrate(
+		&core.Schema{},
 		&core.Message{},
 		&core.Profile{},
 		&core.Association{},

@@ -27,7 +27,6 @@ type Handler interface {
 	Update(c echo.Context) error
 	Delete(c echo.Context) error
 	Resolve(c echo.Context) error
-	UpdateRegistration(c echo.Context) error // NOTE: for migration. Remove later
 }
 
 type handler struct {
@@ -86,7 +85,7 @@ func (h handler) Register(c echo.Context) error {
 		}
 	}
 
-	err = h.service.Register(ctx, request.CCID, request.Registration, request.Signature, request.Info, request.Invitation)
+	err = h.service.Register(ctx, request.CCID, request.Pubkey, request.Registration, request.Signature, request.Info, request.Invitation)
 	if err != nil {
 		span.RecordError(err)
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
@@ -106,7 +105,7 @@ func (h handler) Create(c echo.Context) error {
 		span.RecordError(err)
 		return err
 	}
-	err = h.service.Create(ctx, request.CCID, request.Registration, request.Signature, request.Info)
+	err = h.service.Create(ctx, request.CCID, request.Pubkey, request.Registration, request.Signature, request.Info)
 	if err != nil {
 		span.RecordError(err)
 		return err
@@ -183,23 +182,4 @@ func (h handler) Resolve(c echo.Context) error {
 		return err
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": fqdn})
-}
-
-// UpdateRegistration updates an entity registration
-func (h handler) UpdateRegistration(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerUpdateRegistration")
-	defer span.End()
-
-	var request createRequest
-	err := c.Bind(&request)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-	err = h.service.UpdateRegistration(ctx, request.CCID, request.Registration, request.Signature)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
 }

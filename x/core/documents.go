@@ -30,7 +30,7 @@ type AffiliationBody struct {
 type TombstoneBody struct {
 }
 
-type EntityAffilication struct { // type: affiliation
+type EntityAffiliation struct { // type: affiliation
 	DocumentBase[AffiliationBody]
 }
 

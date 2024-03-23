@@ -270,15 +270,11 @@ func main() {
 	apiV1.GET("/message/:id/associations/mine", associationHandler.GetOwnByTarget, auth.Restrict(auth.ISKNOWN))
 
 	// association
-	apiV1.POST("/association", associationHandler.Post, auth.Restrict(auth.ISKNOWN))
 	apiV1.GET("/association/:id", associationHandler.Get)
-	apiV1.DELETE("/association/:id", associationHandler.Delete, auth.Restrict(auth.ISKNOWN))
 
 	// profile
-	apiV1.PUT("/profile", profileHandler.Put, auth.Restrict(auth.ISLOCAL))
 	apiV1.GET("/profile/:id", profileHandler.Get)
 	apiV1.GET("/profiles", profileHandler.Query)
-	apiV1.DELETE("/profile/:id", profileHandler.Delete, auth.Restrict(auth.ISLOCAL))
 
 	// timeline
 	apiV1.POST("/timeline", timelineHandler.Create, auth.Restrict(auth.ISLOCAL))

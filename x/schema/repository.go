@@ -11,6 +11,7 @@ var tracer = otel.Tracer("schema")
 
 type Repository interface {
 	Upsert(ctx context.Context, schema string) (core.Schema, error)
+	Get(ctx context.Context, id uint) (core.Schema, error)
 }
 
 type repository struct {
@@ -41,4 +42,13 @@ func (r *repository) Upsert(ctx context.Context, schema string) (core.Schema, er
 		}
 	}
 	return s, nil
+}
+
+func (r *repository) Get(ctx context.Context, id uint) (core.Schema, error) {
+	ctx, span := tracer.Start(ctx, "Schema.Repository.Get")
+	defer span.End()
+
+	var s core.Schema
+	err := r.db.WithContext(ctx).Where("id = ?", id).First(&s).Error
+	return s, err
 }

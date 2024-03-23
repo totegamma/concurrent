@@ -4,6 +4,7 @@ import (
 	"context"
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/schema"
 	"gorm.io/gorm"
 	"log/slog"
 	"strconv"
@@ -20,12 +21,13 @@ type Repository interface {
 }
 
 type repository struct {
-	db *gorm.DB
-	mc *memcache.Client
+	db     *gorm.DB
+	mc     *memcache.Client
+	schema schema.Service
 }
 
 // NewRepository creates a new message repository
-func NewRepository(db *gorm.DB, mc *memcache.Client) Repository {
+func NewRepository(db *gorm.DB, mc *memcache.Client, schema schema.Service) Repository {
 
 	var count int64
 	err := db.Model(&core.Message{}).Count(&count).Error
@@ -38,7 +40,7 @@ func NewRepository(db *gorm.DB, mc *memcache.Client) Repository {
 
 	mc.Set(&memcache.Item{Key: "message_count", Value: []byte(strconv.FormatInt(count, 10))})
 
-	return &repository{db, mc}
+	return &repository{db, mc, schema}
 }
 
 // Total returns the total number of messages
@@ -65,7 +67,13 @@ func (r *repository) Create(ctx context.Context, message core.Message) (core.Mes
 	ctx, span := tracer.Start(ctx, "RepositoryCreate")
 	defer span.End()
 
-	err := r.db.WithContext(ctx).Create(&message).Error
+	schemaID, err := r.schema.UrlToID(ctx, message.Schema)
+	if err != nil {
+		return message, err
+	}
+	message.SchemaID = schemaID
+
+	err = r.db.WithContext(ctx).Create(&message).Error
 
 	r.mc.Increment("message_count", 1)
 
@@ -78,7 +86,17 @@ func (r *repository) Get(ctx context.Context, key string) (core.Message, error) 
 	defer span.End()
 
 	var message core.Message
-	err := r.db.WithContext(ctx).First(&message, "id = ?", key).Error
+	err := r.db.WithContext(ctx).Preload("SchemaBody").First(&message, "id = ?", key).Error
+	if err != nil {
+		return message, err
+	}
+
+	schemaUrl, err := r.schema.IDToUrl(ctx, message.SchemaID)
+	if err != nil {
+		return message, err
+	}
+	message.Schema = schemaUrl
+
 	return message, err
 }
 

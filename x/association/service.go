@@ -124,11 +124,11 @@ func (s *service) PostAssociation(ctx context.Context, objectStr string, signatu
 
 	for _, postto := range targetMessage.Timelines {
 		event := core.Event{
-			Timeline: postto,
-			Action:   "create",
-			Type:     "association",
-			Item:     item,
-			Body:     created,
+			TimelineID: postto,
+			Action:     "create",
+			Type:       "association",
+			Item:       item,
+			Body:       created,
 		}
 		err = s.timeline.DistributeEvent(ctx, postto, event)
 

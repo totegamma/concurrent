@@ -376,13 +376,9 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 
 		// check if domain exists
 		_, err := s.domain.GetByFQDN(ctx, timelineHost)
-		if err != nil {
-			// Hook to say hello to the remote domain
-			_, err = s.domain.SayHello(ctx, timelineHost)
-			if err != nil {
-				span.RecordError(err)
-				return err
-			}
+		if err != nil { // TODO
+			span.RecordError(err)
+			return err
 		}
 
 		packet := checkpointPacket{

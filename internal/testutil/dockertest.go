@@ -71,10 +71,10 @@ func CreateDB() (*gorm.DB, func()) {
 
 	db.AutoMigrate(
 		&core.Message{},
-		&core.Character{},
+		&core.Profile{},
 		&core.Association{},
-		&core.Stream{},
-		&core.StreamItem{},
+		&core.Timeline{},
+		&core.TimelineItem{},
 		&core.Domain{},
 		&core.Entity{},
 		&core.EntityMeta{},

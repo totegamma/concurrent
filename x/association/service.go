@@ -14,11 +14,11 @@ import (
 
 // Service is the interface for association service
 type Service interface {
-	PostAssociation(ctx context.Context, objectStr string, signature string, timelines []string, targetType string) (core.Association, error)
+	Create(ctx context.Context, documentStr string, signature string) (core.Association, error)
+	Delete(ctx context.Context, documentStr string) (core.Association, error)
+
 	Get(ctx context.Context, id string) (core.Association, error)
 	GetOwn(ctx context.Context, author string) ([]core.Association, error)
-	Delete(ctx context.Context, id, requester string) (core.Association, error)
-
 	GetByTarget(ctx context.Context, targetID string) ([]core.Association, error)
 	GetCountsBySchema(ctx context.Context, messageID string) (map[string]int64, error)
 	GetBySchema(ctx context.Context, messageID string, schema string) ([]core.Association, error)
@@ -51,31 +51,25 @@ func (s *service) Count(ctx context.Context) (int64, error) {
 // PostAssociation creates a new association
 // If targetType is messages, it also posts the association to the target message's timelines
 // returns the created association
-func (s *service) PostAssociation(ctx context.Context, objectStr string, signature string, timelines []string, targetType string) (core.Association, error) {
+func (s *service) Create(ctx context.Context, documentStr string, signature string) (core.Association, error) {
 	ctx, span := tracer.Start(ctx, "ServicePostAssociation")
 	defer span.End()
 
-	err := s.key.ValidateSignedObject(ctx, objectStr, signature)
-	if err != nil {
-		span.RecordError(err)
-		return core.Association{}, err
-	}
-
-	var object SignedObject
-	err = json.Unmarshal([]byte(objectStr), &object)
+	var document core.CreateAssociation[any]
+	err := json.Unmarshal([]byte(documentStr), &document)
 	if err != nil {
 		span.RecordError(err)
 		return core.Association{}, err
 	}
 
 	association := core.Association{
-		Author:    object.Signer,
-		Schema:    object.Schema,
-		TargetTID: object.Target,
-		Payload:   objectStr,
+		Author:    document.Signer,
+		Schema:    document.Schema,
+		TargetTID: document.Target,
+		Payload:   documentStr,
 		Signature: signature,
-		Timelines: timelines,
-		Variant:   object.Variant,
+		Timelines: document.Timelines,
+		Variant:   document.Variant,
 	}
 
 	created, err := s.repo.Create(ctx, association)
@@ -84,11 +78,11 @@ func (s *service) PostAssociation(ctx context.Context, objectStr string, signatu
 		return created, err // TODO: if err is duplicate key error, server should return 409
 	}
 
-	if targetType != "messages" { // distribute is needed only when targetType is messages
+	if document.Target[0] != 'm' {
 		return created, nil
 	}
 
-	targetMessage, err := s.message.Get(ctx, created.TargetTID, object.Signer)
+	targetMessage, err := s.message.Get(ctx, created.TargetTID, document.Signer)
 	if err != nil {
 		span.RecordError(err)
 		return created, err
@@ -145,15 +139,24 @@ func (s *service) GetOwn(ctx context.Context, author string) ([]core.Association
 }
 
 // Delete deletes an association by ID
-func (s *service) Delete(ctx context.Context, id, requester string) (core.Association, error) {
+func (s *service) Delete(ctx context.Context, documentStr string) (core.Association, error) {
 	ctx, span := tracer.Start(ctx, "ServiceDelete")
 	defer span.End()
 
-	targetAssociation, err := s.repo.Get(ctx, id)
+	var document core.DeleteAssociation
+	err := json.Unmarshal([]byte(documentStr), &document)
 	if err != nil {
 		span.RecordError(err)
 		return core.Association{}, err
 	}
+
+	targetAssociation, err := s.repo.Get(ctx, document.Body.TargetID)
+	if err != nil {
+		span.RecordError(err)
+		return core.Association{}, err
+	}
+
+	requester := document.Signer
 
 	targetMessage, err := s.message.Get(ctx, targetAssociation.TargetTID, requester)
 	if err != nil {
@@ -165,7 +168,7 @@ func (s *service) Delete(ctx context.Context, id, requester string) (core.Associ
 		return core.Association{}, fmt.Errorf("you are not authorized to perform this action")
 	}
 
-	deleted, err := s.repo.Delete(ctx, id)
+	deleted, err := s.repo.Delete(ctx, document.Body.TargetID)
 	if err != nil {
 		span.RecordError(err)
 		return core.Association{}, err

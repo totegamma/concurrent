@@ -16,8 +16,6 @@ var tracer = otel.Tracer("association")
 // Handler is the interface for handling HTTP requests
 type Handler interface {
 	Get(c echo.Context) error
-	Post(c echo.Context) error
-	Delete(c echo.Context) error
 	GetFiltered(c echo.Context) error
 	GetCounts(c echo.Context) error
 	GetOwnByTarget(c echo.Context) error
@@ -111,38 +109,4 @@ func (h handler) GetFiltered(c echo.Context) error {
 		}
 		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": associations})
 	}
-}
-
-// Post creates a new association
-// returns the created association
-func (h handler) Post(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerPost")
-	defer span.End()
-
-	var request postRequest
-	err := c.Bind(&request)
-	if err != nil {
-		return err
-	}
-	created, err := h.service.PostAssociation(ctx, request.SignedObject, request.Signature, request.Streams, request.TargetType)
-	if err != nil {
-		return err
-	}
-	return c.JSON(http.StatusCreated, echo.Map{"status": "ok", "content": created})
-}
-
-// Delete deletes an association by ID
-// returns the deleted association
-func (h handler) Delete(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerDelete")
-	defer span.End()
-
-	associationID := c.Param("id")
-	requester, _ := c.Get(core.RequesterIdCtxKey).(string)
-
-	deleted, err := h.service.Delete(ctx, associationID, requester)
-	if err != nil {
-		return err
-	}
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": deleted})
 }

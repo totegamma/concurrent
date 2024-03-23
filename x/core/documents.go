@@ -90,6 +90,7 @@ type DeleteProfile struct { // type: d.profile
 // key
 type EnactBody struct {
 	CKID   string `json:"ckid"`
+	Pubkey string `json:"pubkey"`
 	Root   string `json:"root"`
 	Parent string `json:"parent"`
 }

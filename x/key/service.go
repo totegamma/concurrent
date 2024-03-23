@@ -2,6 +2,7 @@ package key
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -11,6 +12,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 
+	"github.com/pkg/errors"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/util"
@@ -71,6 +73,7 @@ func (s *service) EnactKey(ctx context.Context, payload, signature string) (core
 
 	key := core.Key{
 		ID:             object.Body.CKID,
+		Pubkey:         object.Body.Pubkey,
 		Root:           object.Body.Root,
 		Parent:         object.Body.Parent,
 		EnactPayload:   payload,
@@ -147,28 +150,33 @@ func (s *service) ValidateSignedObject(ctx context.Context, payload, signature s
 	err := json.Unmarshal([]byte(payload), &object)
 	if err != nil {
 		span.RecordError(err)
-		return err
-	}
-
-	entity, err := s.entity.Get(ctx, object.ID)
-	if err != nil {
-		span.RecordError(err)
-		return err
+		return errors.Wrap(err, "failed to unmarshal payload")
 	}
 
 	// マスターキーの場合: そのまま検証して終了
 	if object.KeyID == "" {
-		err := util.VerifySignature([]byte(payload), []byte(signature), entity.Pubkey)
+		entity, err := s.entity.Get(ctx, object.Signer)
 		if err != nil {
 			span.RecordError(err)
-			return err
+			return errors.Wrap(err, "[master] failed to get entity")
+		}
+
+		signatureBytes, err := hex.DecodeString(signature)
+		if err != nil {
+			span.RecordError(err)
+			return errors.Wrap(err, "[master] failed to decode signature")
+		}
+		err = util.VerifySignature([]byte(payload), signatureBytes, entity.Pubkey)
+		if err != nil {
+			span.RecordError(err)
+			return errors.Wrap(err, "[master] failed to verify signature")
 		}
 	} else { // サブキーの場合: 親キーを取得して検証
 
 		domain, err := s.entity.ResolveHost(ctx, object.Signer, "")
 		if err != nil {
 			span.RecordError(err)
-			return err
+			return errors.Wrap(err, "[sub] failed to resolve host")
 		}
 
 		ccid := ""
@@ -177,13 +185,13 @@ func (s *service) ValidateSignedObject(ctx context.Context, payload, signature s
 			ccid, err = s.ResolveSubkey(ctx, object.KeyID)
 			if err != nil {
 				span.RecordError(err)
-				return err
+				return errors.Wrap(err, "[sub] failed to resolve subkey")
 			}
 		} else {
 			ccid, err = s.ResolveRemoteSubkey(ctx, object.KeyID, domain)
 			if err != nil {
 				span.RecordError(err)
-				return err
+				return errors.Wrap(err, "[sub] failed to resolve remote subkey")
 			}
 		}
 
@@ -196,13 +204,18 @@ func (s *service) ValidateSignedObject(ctx context.Context, payload, signature s
 		subkey, err := s.repository.Get(ctx, object.KeyID)
 		if err != nil {
 			span.RecordError(err)
-			return err
+			return errors.Wrap(err, "[sub] failed to get subkey")
 		}
 
-		err = util.VerifySignature([]byte(payload), []byte(signature), subkey.Pubkey)
+		signatureBytes, err := hex.DecodeString(signature)
 		if err != nil {
 			span.RecordError(err)
-			return err
+			return errors.Wrap(err, "[sub] failed to decode signature")
+		}
+		err = util.VerifySignature([]byte(payload), signatureBytes, subkey.Pubkey)
+		if err != nil {
+			span.RecordError(err)
+			return errors.Wrap(err, "[sub] failed to verify signature")
 		}
 	}
 
@@ -370,9 +383,9 @@ func IsKeyValid(ctx context.Context, key core.Key) bool {
 }
 
 func IsCKID(keyID string) bool {
-	return keyID[:2] == "CK"
+	return keyID[:3] == "cck"
 }
 
 func IsCCID(keyID string) bool {
-	return keyID[:2] == "CC"
+	return keyID[:3] == "con"
 }

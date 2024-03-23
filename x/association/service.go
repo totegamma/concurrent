@@ -2,8 +2,6 @@ package association
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -70,25 +68,14 @@ func (s *service) PostAssociation(ctx context.Context, objectStr string, signatu
 		return core.Association{}, err
 	}
 
-	contentString, err := json.Marshal(object.Body)
-	if err != nil {
-		span.RecordError(err)
-		return core.Association{}, err
-	}
-
-	hash := sha256.Sum256(contentString)
-	contentHash := hex.EncodeToString(hash[:])
-
 	association := core.Association{
-		Author:      object.Signer,
-		Schema:      object.Schema,
-		TargetID:    object.Target,
-		TargetType:  targetType,
-		Payload:     objectStr,
-		Signature:   signature,
-		Timelines:   timelines,
-		ContentHash: contentHash,
-		Variant:     object.Variant,
+		Author:    object.Signer,
+		Schema:    object.Schema,
+		TargetTID: object.Target,
+		Payload:   objectStr,
+		Signature: signature,
+		Timelines: timelines,
+		Variant:   object.Variant,
 	}
 
 	created, err := s.repo.Create(ctx, association)
@@ -101,7 +88,7 @@ func (s *service) PostAssociation(ctx context.Context, objectStr string, signatu
 		return created, nil
 	}
 
-	targetMessage, err := s.message.Get(ctx, created.TargetID, object.Signer)
+	targetMessage, err := s.message.Get(ctx, created.TargetTID, object.Signer)
 	if err != nil {
 		span.RecordError(err)
 		return created, err
@@ -168,7 +155,7 @@ func (s *service) Delete(ctx context.Context, id, requester string) (core.Associ
 		return core.Association{}, err
 	}
 
-	targetMessage, err := s.message.Get(ctx, targetAssociation.TargetID, requester)
+	targetMessage, err := s.message.Get(ctx, targetAssociation.TargetTID, requester)
 	if err != nil {
 		span.RecordError(err)
 		return core.Association{}, err
@@ -184,7 +171,7 @@ func (s *service) Delete(ctx context.Context, id, requester string) (core.Associ
 		return core.Association{}, err
 	}
 
-	if deleted.TargetType != "messages" { // distribute is needed only when targetType is messages
+	if deleted.TargetTID[0] != 'm' { // distribute is needed only when targetType is messages
 		return deleted, nil
 	}
 

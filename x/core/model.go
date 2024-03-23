@@ -40,18 +40,16 @@ type Key struct {
 // Association is one of a concurrent base object
 // immutable
 type Association struct {
-	ID          string         `json:"id" gorm:"primaryKey;type:char(26)"`
-	Author      string         `json:"author" gorm:"type:char(42);uniqueIndex:uniq_association"`
-	SchemaID    uint           `json:"-" gorm:"uniqueIndex:uniq_association"`
-	Schema      string         `json:"schema" gorm:"-"`
-	TargetID    string         `json:"targetID" gorm:"type:char(26);uniqueIndex:uniq_association"`
-	TargetType  string         `json:"targetType" gorm:"type:string;uniqueIndex:uniq_association"`
-	ContentHash string         `json:"contentHash" gorm:"type:char(64);uniqueIndex:uniq_association"`
-	Variant     string         `json:"variant" gorm:"type:text"`
-	Payload     string         `json:"payload" gorm:"type:json"`
-	Signature   string         `json:"signature" gorm:"type:char(130)"`
-	CDate       time.Time      `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
-	Timelines   pq.StringArray `json:"timelines" gorm:"type:text[]"`
+	ID        string         `json:"id" gorm:"primaryKey;type:char(26)"`
+	Author    string         `json:"author" gorm:"type:char(42);uniqueIndex:uniq_association"`
+	SchemaID  uint           `json:"-" gorm:"uniqueIndex:uniq_association"`
+	Schema    string         `json:"schema" gorm:"-"`
+	TargetTID string         `json:"targetTID" gorm:"type:char(27);uniqueIndex:uniq_association"`
+	Variant   string         `json:"variant" gorm:"type:text;uniqueIndex:uniq_association"`
+	Payload   string         `json:"payload" gorm:"type:json"`
+	Signature string         `json:"signature" gorm:"type:char(130)"`
+	CDate     time.Time      `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
+	Timelines pq.StringArray `json:"timelines" gorm:"type:text[]"`
 }
 
 // Profile is one of a Concurrent base object
@@ -63,7 +61,7 @@ type Profile struct {
 	Schema       string        `json:"schema" gorm:"-"`
 	Payload      string        `json:"payload" gorm:"type:json"`
 	Signature    string        `json:"signature" gorm:"type:char(130)"`
-	Associations []Association `json:"associations,omitempty" gorm:"polymorphic:Target"`
+	Associations []Association `json:"associations,omitempty" gorm:"-"`
 	CDate        time.Time     `json:"cdate" gorm:"->;<-:create;autoCreateTime"`
 	MDate        time.Time     `json:"mdate" gorm:"autoUpdateTime"`
 }
@@ -131,7 +129,7 @@ type Message struct {
 	Payload         string         `json:"payload" gorm:"type:json"`
 	Signature       string         `json:"signature" gorm:"type:char(130)"`
 	CDate           time.Time      `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
-	Associations    []Association  `json:"associations,omitempty" gorm:"polymorphic:Target"`
+	Associations    []Association  `json:"associations,omitempty" gorm:"-"`
 	OwnAssociations []Association  `json:"ownAssociations,omitempty" gorm:"-"`
 	Timelines       pq.StringArray `json:"timelines" gorm:"type:text[]"`
 }

@@ -20,7 +20,7 @@ import (
 type Service interface {
 	EnactKey(ctx context.Context, payload, signature string) (core.Key, error)
 	RevokeKey(ctx context.Context, payload, signature string) (core.Key, error)
-	ValidateSignedObject(ctx context.Context, payload, signature string) error
+	ValidateSignedObject(ctx context.Context, payload, signature []byte) error
 	ResolveSubkey(ctx context.Context, keyID string) (string, error)
 	ResolveRemoteSubkey(ctx context.Context, keyID, domain string) (string, error)
 	GetKeyResolution(ctx context.Context, keyID string) ([]core.Key, error)
@@ -49,7 +49,7 @@ func (s *service) EnactKey(ctx context.Context, payload, signature string) (core
 		return core.Key{}, err
 	}
 
-	object := core.SignedObject[core.Enact]{}
+	object := core.EnactKey{}
 	err = json.Unmarshal([]byte(payload), &object)
 	if err != nil {
 		span.RecordError(err)
@@ -98,7 +98,7 @@ func (s *service) RevokeKey(ctx context.Context, payload, signature string) (cor
 		return core.Key{}, err
 	}
 
-	object := core.SignedObject[core.Revoke]{}
+	object := core.RevokeKey{}
 	err = json.Unmarshal([]byte(payload), &object)
 	if err != nil {
 		span.RecordError(err)
@@ -139,11 +139,11 @@ func (s *service) RevokeKey(ctx context.Context, payload, signature string) (cor
 	return revoked, nil
 }
 
-func (s *service) ValidateSignedObject(ctx context.Context, payload, signature string) error {
+func (s *service) ValidateSignedObject(ctx context.Context, payload, signature []byte) error {
 	ctx, span := tracer.Start(ctx, "ServiceValidate")
 	defer span.End()
 
-	object := core.SignedObject[any]{}
+	object := core.DocumentBase[any]{}
 	err := json.Unmarshal([]byte(payload), &object)
 	if err != nil {
 		span.RecordError(err)

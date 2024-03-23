@@ -25,8 +25,8 @@ import (
 
 // Service is the interface for entity service
 type Service interface {
-	Create(ctx context.Context, ccid string, payload string, signature string, info string) error
-	Register(ctx context.Context, ccid, payload, signature, info, invitation string) error
+	Create(ctx context.Context, ccid, pubkey, payload, signature, info string) error
+	Register(ctx context.Context, ccid, pubkey, payload, signature, info, invitation string) error
 	Get(ctx context.Context, ccid string) (core.Entity, error)
 	List(ctx context.Context) ([]core.Entity, error)
 	ListModified(ctx context.Context, modified time.Time) ([]core.Entity, error)
@@ -36,7 +36,6 @@ type Service interface {
 	Delete(ctx context.Context, id string) error
 	GetAddress(ctx context.Context, ccid string) (core.Address, error)
 	UpdateAddress(ctx context.Context, ccid string, domain string, signedAt time.Time) error
-	UpdateRegistration(ctx context.Context, id string, payload string, signature string) error // NOTE: for migration. Remove later
 	Count(ctx context.Context) (int64, error)
 	PullEntityFromRemote(ctx context.Context, id, domain string) (string, error)
 }
@@ -116,7 +115,18 @@ func (s *service) PullEntityFromRemote(ctx context.Context, id, hintDomain strin
 
 	entity := remoteEntity.Content
 
-	err = util.VerifySignature(entity.Payload, entity.ID, entity.Signature)
+	err = util.VerifyPubkey(entity.Pubkey, entity.ID)
+	if err != nil {
+		span.RecordError(err)
+		slog.Error(
+			"Invalid pubkey",
+			slog.String("error", err.Error()),
+			slog.String("module", "agent"),
+		)
+		return "", fmt.Errorf("Invalid pubkey")
+	}
+
+	err = util.VerifySignature([]byte(entity.AffiliationPayload), []byte(entity.AffiliationSignature), entity.Pubkey)
 	if err != nil {
 		span.RecordError(err)
 		slog.Error(
@@ -127,8 +137,8 @@ func (s *service) PullEntityFromRemote(ctx context.Context, id, hintDomain strin
 		return "", fmt.Errorf("Invalid signature")
 	}
 
-	var signedObj core.SignedObject[core.Affiliation]
-	err = json.Unmarshal([]byte(entity.Payload), &signedObj)
+	var signedObj core.EntityAffiliation
+	err = json.Unmarshal([]byte(entity.AffiliationPayload), &signedObj)
 	if err != nil {
 		span.RecordError(err)
 		slog.Error(
@@ -188,21 +198,22 @@ func (s *service) Count(ctx context.Context) (int64, error) {
 }
 
 // Create creates new entity
-func (s *service) Create(ctx context.Context, ccid, payload, signature, info string) error {
+func (s *service) Create(ctx context.Context, ccid, pubkey, payload, signature, info string) error {
 	ctx, span := tracer.Start(ctx, "ServiceCreate")
 	defer span.End()
 
-	err := checkRegistration(ccid, payload, signature, s.config.Concurrent.FQDN)
+	err := checkRegistration(ccid, pubkey, payload, signature, s.config.Concurrent.FQDN)
 	if err != nil {
 		span.RecordError(err)
 		return err
 	}
 
 	return s.repository.CreateEntity(ctx, &core.Entity{
-		ID:        ccid,
-		Tag:       "",
-		Payload:   payload,
-		Signature: signature,
+		ID:                   ccid,
+		Pubkey:               pubkey,
+		Tag:                  "",
+		AffiliationPayload:   payload,
+		AffiliationSignature: signature,
 	}, &core.EntityMeta{
 		ID:   ccid,
 		Info: info,
@@ -211,11 +222,11 @@ func (s *service) Create(ctx context.Context, ccid, payload, signature, info str
 
 // Register creates new entity
 // check if registration is open
-func (s *service) Register(ctx context.Context, ccid, payload, signature, info, invitation string) error {
+func (s *service) Register(ctx context.Context, ccid, pubkey, payload, signature, info, invitation string) error {
 	ctx, span := tracer.Start(ctx, "ServiceCreate")
 	defer span.End()
 
-	err := checkRegistration(ccid, payload, signature, s.config.Concurrent.FQDN)
+	err := checkRegistration(ccid, pubkey, payload, signature, s.config.Concurrent.FQDN)
 	if err != nil {
 		span.RecordError(err)
 		return err
@@ -224,10 +235,11 @@ func (s *service) Register(ctx context.Context, ccid, payload, signature, info, 
 	if s.config.Concurrent.Registration == "open" {
 		return s.repository.CreateEntity(ctx,
 			&core.Entity{
-				ID:        ccid,
-				Tag:       "",
-				Payload:   payload,
-				Signature: signature,
+				ID:                   ccid,
+				Pubkey:               pubkey,
+				Tag:                  "",
+				AffiliationPayload:   payload,
+				AffiliationSignature: signature,
 			},
 			&core.EntityMeta{
 				ID:      ccid,
@@ -271,10 +283,11 @@ func (s *service) Register(ctx context.Context, ccid, payload, signature, info, 
 
 		err = s.repository.CreateEntity(ctx,
 			&core.Entity{
-				ID:        ccid,
-				Payload:   payload,
-				Signature: signature,
-				Tag:       "",
+				ID:                   ccid,
+				Pubkey:               pubkey,
+				AffiliationPayload:   payload,
+				AffiliationSignature: signature,
+				Tag:                  "",
 			},
 			&core.EntityMeta{
 				ID:      ccid,
@@ -408,29 +421,21 @@ func (s *service) UpdateAddress(ctx context.Context, ccid string, domain string,
 	return s.repository.UpdateAddress(ctx, ccid, domain, signedAt)
 }
 
-// UpdateRegistration updates the registration of a entity
-func (s *service) UpdateRegistration(ctx context.Context, id string, payload string, signature string) error {
-	ctx, span := tracer.Start(ctx, "ServiceUpdateRegistration")
-	defer span.End()
-
-	err := checkRegistration(id, payload, signature, s.config.Concurrent.FQDN)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-
-	return s.repository.UpdateRegistration(ctx, id, payload, signature)
-}
-
 // ---
 
-func checkRegistration(ccid, payload, signature, mydomain string) error {
-	err := util.VerifySignature(payload, ccid, signature)
+func checkRegistration(ccid, pubkey, payload, signature, mydomain string) error {
+
+	err := util.VerifyPubkey(pubkey, ccid)
 	if err != nil {
 		return err
 	}
 
-	var signedObject core.SignedObject[any] //TODO
+	err = util.VerifySignature([]byte(payload), []byte(ccid), pubkey)
+	if err != nil {
+		return err
+	}
+
+	var signedObject core.DocumentBase[any] //TODO
 	err = json.Unmarshal([]byte(payload), &signedObject)
 	if err != nil {
 		return err

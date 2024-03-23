@@ -1,23 +1,23 @@
 package domain
 
 import (
-	"bytes"
+	// "bytes"
 	"context"
-	"encoding/json"
-	"fmt"
-	"io"
-	"log/slog"
-	"net/http"
-	"strconv"
+	// "encoding/json"
+	// "fmt"
+	// "io"
+	// "log/slog"
+	// "net/http"
+	// "strconv"
 	"time"
 
-	"github.com/rs/xid"
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/codes"
-	"go.opentelemetry.io/otel/propagation"
+	// "github.com/rs/xid"
+	// "go.opentelemetry.io/otel"
+	// "go.opentelemetry.io/otel/codes"
+	// "go.opentelemetry.io/otel/propagation"
 
 	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/jwt"
+	// "github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/util"
 )
 
@@ -30,8 +30,8 @@ type Service interface {
 	Delete(ctx context.Context, id string) error
 	Update(ctx context.Context, host core.Domain) error
 	UpdateScrapeTime(ctx context.Context, id string, scrapeTime time.Time) error
-	SayHello(ctx context.Context, target string) (core.Domain, error)
-	Hello(ctx context.Context, newcomer Profile) (Profile, error)
+	// SayHello(ctx context.Context, target string) (core.Domain, error)
+	// Hello(ctx context.Context, newcomer Profile) (Profile, error)
 }
 
 type service struct {
@@ -100,6 +100,7 @@ func (s *service) UpdateScrapeTime(ctx context.Context, id string, scrapeTime ti
 	return s.repository.UpdateScrapeTime(ctx, id, scrapeTime)
 }
 
+/*
 func (s *service) Hello(ctx context.Context, newcomer Profile) (Profile, error) {
 	ctx, span := tracer.Start(ctx, "ServiceHello")
 	defer span.End()
@@ -262,3 +263,4 @@ func (s *service) SayHello(ctx context.Context, target string) (core.Domain, err
 
 	return created, nil
 }
+*/

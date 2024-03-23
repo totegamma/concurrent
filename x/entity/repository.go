@@ -22,7 +22,6 @@ type Repository interface {
 	Count(ctx context.Context) (int64, error)
 	GetAddress(ctx context.Context, ccid string) (core.Address, error)
 	UpdateAddress(ctx context.Context, ccid string, domain string, signedAt time.Time) error
-	UpdateRegistration(ctx context.Context, id string, payload string, signature string) error // NOTE: for migration. Remove later
 }
 
 type repository struct {
@@ -178,14 +177,4 @@ func (r *repository) UpdateEntity(ctx context.Context, entity *core.Entity) erro
 	defer span.End()
 
 	return r.db.WithContext(ctx).Where("id = ?", entity.ID).Updates(&entity).Error
-}
-
-func (r *repository) UpdateRegistration(ctx context.Context, id string, payload string, signature string) error {
-	ctx, span := tracer.Start(ctx, "RepositoryUpdateRegistration")
-	defer span.End()
-
-	return r.db.WithContext(ctx).Model(&core.Entity{}).Where("id = ?", id).Updates(map[string]interface{}{
-		"payload":   payload,
-		"signature": signature,
-	}).Error
 }

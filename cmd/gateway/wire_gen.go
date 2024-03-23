@@ -53,10 +53,11 @@ func SetupKeyService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config
 }
 
 func SetupMessageService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) message.Service {
-	repository := message.NewRepository(db, mc)
-	service := SetupTimelineService(db, rdb, mc, manager, config)
+	service := SetupSchemaService(db)
+	repository := message.NewRepository(db, mc, service)
+	timelineService := SetupTimelineService(db, rdb, mc, manager, config)
 	keyService := SetupKeyService(db, rdb, mc, config)
-	messageService := message.NewService(rdb, repository, service, keyService)
+	messageService := message.NewService(rdb, repository, timelineService, keyService)
 	return messageService
 }
 
@@ -162,7 +163,7 @@ var profileServiceProvider = wire.NewSet(profile.NewService, profile.NewReposito
 
 var authServiceProvider = wire.NewSet(auth.NewService, SetupEntityService, SetupDomainService, SetupKeyService)
 
-var messageServiceProvider = wire.NewSet(message.NewService, message.NewRepository, SetupTimelineService, SetupKeyService)
+var messageServiceProvider = wire.NewSet(message.NewService, message.NewRepository, SetupTimelineService, SetupKeyService, SetupSchemaService)
 
 var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository, SetupEntityService)
 

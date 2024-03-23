@@ -102,7 +102,7 @@ func (r *repository) PublishEvent(ctx context.Context, event core.Event) error {
 
 	jsonstr, _ := json.Marshal(event)
 
-	err := r.rdb.Publish(context.Background(), event.Timeline, jsonstr).Err()
+	err := r.rdb.Publish(context.Background(), event.TimelineID, jsonstr).Err()
 	if err != nil {
 		span.RecordError(err)
 		slog.ErrorContext(

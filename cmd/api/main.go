@@ -235,12 +235,9 @@ func main() {
 	// domain
 	apiV1.GET("/domain", domainHandler.Profile)
 	apiV1.GET("/domain/:id", domainHandler.Get)
-	apiV1.POST("/domain/:id", domainHandler.SayHello, auth.Restrict(auth.ISADMIN))
 	apiV1.PUT("/domain/:id", domainHandler.Upsert, auth.Restrict(auth.ISADMIN))
 	apiV1.DELETE("/domain/:id", domainHandler.Delete, auth.Restrict(auth.ISADMIN))
 	apiV1.GET("/domains", domainHandler.List)
-
-	apiV1.POST("/domains/hello", domainHandler.Hello)
 
 	// address
 	apiV1.GET("/address/:id", entityHandler.Resolve)
@@ -255,8 +252,6 @@ func main() {
 	apiV1.GET("/entities", entityHandler.List)
 	apiV1.POST("/entities/ack", ackHandler.Ack, auth.Restrict(auth.ISLOCAL))
 	apiV1.POST("/entities/checkpoint/ack", ackHandler.Ack, auth.Restrict(auth.ISUNITED))
-
-	apiV1.PUT("/tmp/entity/:id", entityHandler.UpdateRegistration, auth.Restrict(auth.ISLOCAL)) // NOTE: for migration. Remove later
 
 	apiV1.POST("/admin/entity", entityHandler.Create, auth.Restrict(auth.ISADMIN))
 

@@ -113,11 +113,12 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				domain, err := s.domain.GetByCCID(ctx, claims.Issuer)
 				if err != nil {
 					if claims.Domain != "" {
-						domain, err = s.domain.SayHello(ctx, claims.Domain)
-						if err != nil {
-							span.RecordError(err)
-							goto skip
-						}
+						// TODO:
+						// domain, err = s.domain.SayHello(ctx, claims.Domain)
+						// if err != nil {
+						// 	span.RecordError(err)
+						// 	goto skip
+						// }
 					} else {
 						span.RecordError(err)
 						goto skip

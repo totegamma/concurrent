@@ -50,7 +50,7 @@ func (s *service) Ack(ctx context.Context, objectStr string, signature string) e
 	ctx, span := tracer.Start(ctx, "ServiceAck")
 	defer span.End()
 
-	var object core.SignedObject[core.AckPayload]
+	var object core.AckDocument
 	err := json.Unmarshal([]byte(objectStr), &object)
 	if err != nil {
 		span.RecordError(err)

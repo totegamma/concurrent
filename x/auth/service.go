@@ -41,11 +41,12 @@ func (s *service) IssuePassport(ctx context.Context, requester, remote string) (
 	// check if domain exists
 	domain, err := s.domain.GetByFQDN(ctx, remote)
 	if err != nil {
-		domain, err = s.domain.SayHello(ctx, remote)
-		if err != nil {
-			span.RecordError(err)
-			return "", err
-		}
+		// TODO:
+		// domain, err = s.domain.SayHello(ctx, remote)
+		// if err != nil {
+		// 	span.RecordError(err)
+		// 	return "", err
+		// }
 	}
 
 	// check if issuer exists in this domain

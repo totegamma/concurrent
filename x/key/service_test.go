@@ -2,6 +2,7 @@ package key
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"testing"
 	"time"
@@ -16,14 +17,17 @@ import (
 )
 
 const (
-	RootKey  = "CCEb2a97367206f47407f5954Ced776633e394473F"
-	RootPriv = "a46bbb4efd7ddb1d8a7a1a7a04b235452894e2b62d83a154fb5f61a991152fe0"
+	RootKey  = "cc1fk8zlkrfmens3sgj7dzcu3gsw8v9kkysrf8dt5"
+	RootPriv = "1236fa65392e99067750aaed5fd4d9ff93f51fd088e94963e51669396cdd597c"
+	RootPub  = "020bb249a8bb7a10defe954abba5a4320cabb6c49513bfaf6b204ca8c4e4248c01"
 
-	SubKey1  = "CK0CC7d69558e666DA7ce6e5A7462acac9b47899a1"
-	SubPriv1 = "5ad3b4247bf566c6faff61ea7340b2e967f05247147da8b3c3fdb108289ea01b"
+	SubKey1  = "ck1v26je8uyhc9x6xgcw26d3cne20s44atr7a94em"
+	SubPriv1 = "958ca19f7b011dd101f698c87906750dc2bc20c99943de55c49ebdae668ca244"
+	SubPub1  = "0258abc2cbd73a85c70e9fa4a9e66661e5fee20e3c29c8dd575d8dccc12ed958da"
 
-	SubKey2  = "CK0174801A6a54A6f5631F48D707fb415Cdd120F4A"
-	SubPriv2 = "a775d9a239d4b783153c89fec00d9c05010465b29bb5aee586209a72b3b5aee0"
+	SubKey2  = "ck18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe"
+	SubPriv2 = "f48627a9728c589263bba24c5feb72e5b0ebc8b342d5e75e055a17cc93115678"
+	SubPub2  = "02dd4b17bf8738a597d01a86a45af704881493de8357aea775c9b605de6aed8493"
 )
 
 func TestService(t *testing.T) {
@@ -46,7 +50,7 @@ func TestService(t *testing.T) {
 	test_service := NewService(test_repo, mockEntity, util.Config{})
 
 	// Test1. 登録してないサブキーで署名されたオブジェクトを検証する
-	payload0 := core.SignedObject[any]{
+	payload0 := core.DocumentBase[any]{
 		Signer:   RootKey,
 		Type:     "dummy",
 		KeyID:    SubKey1,
@@ -60,19 +64,23 @@ func TestService(t *testing.T) {
 	objSig0, err := util.SignBytes(objb0, SubPriv1)
 	assert.NoError(t, err)
 
-	err = test_service.ValidateSignedObject(ctx, objStr0, objSig0)
+	objSig0Hex := hex.EncodeToString(objSig0)
+
+	err = test_service.ValidateSignedObject(ctx, objStr0, objSig0Hex)
 	assert.Error(t, err) // まだKeyChainが存在しないのでエラーになる
 
 	// Test2. サブキーを新しく登録する
-	payload1 := core.SignedObject[core.Enact]{
-		Signer: RootKey,
-		Type:   "enact",
-		Body: core.Enact{
-			CKID:   SubKey1,
-			Root:   RootKey,
-			Parent: RootKey,
+	payload1 := core.EnactKey{
+		DocumentBase: core.DocumentBase[core.EnactBody]{
+			Signer: RootKey,
+			Type:   "enact",
+			Body: core.EnactBody{
+				CKID:   SubKey1,
+				Root:   RootKey,
+				Parent: RootKey,
+			},
+			SignedAt: time.Now(),
 		},
-		SignedAt: time.Now(),
 	}
 
 	objb1, err := json.Marshal(payload1)
@@ -81,8 +89,9 @@ func TestService(t *testing.T) {
 	objStr1 := string(objb1)
 	objSig1, err := util.SignBytes(objb1, RootPriv)
 	assert.NoError(t, err)
+	objSig1Hex := hex.EncodeToString(objSig1)
 
-	created, err := test_service.EnactKey(ctx, objStr1, objSig1)
+	created, err := test_service.EnactKey(ctx, objStr1, objSig1Hex)
 	if assert.NoError(t, err) {
 		assert.NotNil(t, created)
 		assert.True(t, !created.ValidSince.IsZero())
@@ -90,7 +99,7 @@ func TestService(t *testing.T) {
 	}
 
 	// Test3. 登録したサブキーで署名されたオブジェクトを検証する
-	err = test_service.ValidateSignedObject(ctx, objStr0, objSig0)
+	err = test_service.ValidateSignedObject(ctx, objStr0, objSig0Hex)
 	assert.NoError(t, err)
 
 	// test3.1 test GetKeyResolution
@@ -107,16 +116,18 @@ func TestService(t *testing.T) {
 
 	// Test4. サブキーのサブキーを新しく登録する
 
-	payload2 := core.SignedObject[core.Enact]{
-		Signer: RootKey,
-		Type:   "enact",
-		Body: core.Enact{
-			CKID:   SubKey2,
-			Root:   RootKey,
-			Parent: SubKey1,
+	payload2 := core.EnactKey{
+		DocumentBase: core.DocumentBase[core.EnactBody]{
+			Signer: RootKey,
+			Type:   "enact",
+			Body: core.EnactBody{
+				CKID:   SubKey2,
+				Root:   RootKey,
+				Parent: SubKey1,
+			},
+			KeyID:    SubKey1,
+			SignedAt: time.Now(),
 		},
-		KeyID:    SubKey1,
-		SignedAt: time.Now(),
 	}
 
 	objb2, err := json.Marshal(payload2)
@@ -125,8 +136,9 @@ func TestService(t *testing.T) {
 	objStr2 := string(objb2)
 	objSig2, err := util.SignBytes(objb2, SubPriv1)
 	assert.NoError(t, err)
+	objSig2Hex := hex.EncodeToString(objSig2)
 
-	created2, err := test_service.EnactKey(ctx, objStr2, objSig2)
+	created2, err := test_service.EnactKey(ctx, objStr2, objSig2Hex)
 	if assert.NoError(t, err) {
 		assert.NotNil(t, created2)
 		assert.True(t, !created2.ValidSince.IsZero())
@@ -147,7 +159,7 @@ func TestService(t *testing.T) {
 
 	// Test5. 登録したサブキーのサブキーで署名されたオブジェクトを検証する
 
-	payload3 := core.SignedObject[any]{
+	payload3 := core.DocumentBase[any]{
 		Signer:   RootKey,
 		Type:     "dummy",
 		KeyID:    SubKey2,
@@ -160,20 +172,23 @@ func TestService(t *testing.T) {
 	objStr3 := string(objb3)
 	objSig3, err := util.SignBytes(objb3, SubPriv2)
 	assert.NoError(t, err)
+	objSig3Hex := hex.EncodeToString(objSig3)
 
-	err = test_service.ValidateSignedObject(ctx, objStr3, objSig3)
+	err = test_service.ValidateSignedObject(ctx, objStr3, objSig3Hex)
 	assert.NoError(t, err)
 
 	// Test6. 中間のサブキーをその子キーから無効化してみようとする(失敗する)
 
-	payload4 := core.SignedObject[core.Revoke]{
-		Signer: RootKey,
-		Type:   "revoke",
-		Body: core.Revoke{
-			CKID: SubKey1,
+	payload4 := core.RevokeKey{
+		DocumentBase: core.DocumentBase[core.RevokeBody]{
+			Signer: RootKey,
+			Type:   "revoke",
+			Body: core.RevokeBody{
+				CKID: SubKey1,
+			},
+			KeyID:    SubKey2,
+			SignedAt: time.Now(),
 		},
-		KeyID:    SubKey2,
-		SignedAt: time.Now(),
 	}
 
 	objb4, err := json.Marshal(payload4)
@@ -182,19 +197,22 @@ func TestService(t *testing.T) {
 	objStr4 := string(objb4)
 	objSig4, err := util.SignBytes(objb4, RootPriv)
 	assert.NoError(t, err)
+	objSig4Hex := hex.EncodeToString(objSig4)
 
-	_, err = test_service.RevokeKey(ctx, objStr4, objSig4)
+	_, err = test_service.RevokeKey(ctx, objStr4, objSig4Hex)
 	assert.Error(t, err)
 
 	// Test7. 中間にあるサブキーをルートキーから無効化する
 
-	payload5 := core.SignedObject[core.Revoke]{
-		Signer: RootKey,
-		Type:   "revoke",
-		Body: core.Revoke{
-			CKID: SubKey1,
+	payload5 := core.RevokeKey{
+		DocumentBase: core.DocumentBase[core.RevokeBody]{
+			Signer: RootKey,
+			Type:   "revoke",
+			Body: core.RevokeBody{
+				CKID: SubKey1,
+			},
+			SignedAt: time.Now(),
 		},
-		SignedAt: time.Now(),
 	}
 
 	objb5, err := json.Marshal(payload5)
@@ -202,9 +220,10 @@ func TestService(t *testing.T) {
 
 	objStr5 := string(objb5)
 	objSig5, err := util.SignBytes(objb5, RootPriv)
+	objSig5Hex := hex.EncodeToString(objSig5)
 	assert.NoError(t, err)
 
-	revoked, err := test_service.RevokeKey(ctx, objStr5, objSig5)
+	revoked, err := test_service.RevokeKey(ctx, objStr5, objSig5Hex)
 	if assert.NoError(t, err) {
 		assert.True(t, !revoked.ValidSince.IsZero())
 		assert.True(t, !revoked.ValidUntil.IsZero())
@@ -212,12 +231,12 @@ func TestService(t *testing.T) {
 
 	// Test8. 無効化したサブキーで署名されたオブジェクトを検証する(失敗する)
 
-	err = test_service.ValidateSignedObject(ctx, objStr0, objSig0)
+	err = test_service.ValidateSignedObject(ctx, objStr0, objSig0Hex)
 	assert.Error(t, err)
 
 	// Test9. 無効化したサブキーのサブキーで署名されたオブジェクトを検証する(失敗する)
 
-	err = test_service.ValidateSignedObject(ctx, objStr3, objSig3)
+	err = test_service.ValidateSignedObject(ctx, objStr3, objSig3Hex)
 	assert.Error(t, err)
 
 	_, err = test_service.ResolveSubkey(ctx, SubKey2)

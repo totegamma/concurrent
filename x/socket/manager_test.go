@@ -141,16 +141,16 @@ func TestManager(t *testing.T) {
 
 	// - キャッシュが存在しないとき
 	testEvent := core.Event{
-		Stream: remotestream1,
-		Action: "create",
-		Type:   "message",
-		Item: core.StreamItem{
-			Type:     "message",
-			ObjectID: "",
-			StreamID: remotestream1,
-			Owner:    "",
-			Author:   "",
-			CDate:    pivot,
+		TimelineID: remotestream1,
+		Action:     "create",
+		Type:       "message",
+		Item: core.TimelineItem{
+			Type:       "message",
+			ObjectID:   "",
+			TimelineID: remotestream1,
+			Owner:      "",
+			Author:     "",
+			CDate:      pivot,
 		},
 		Body: []byte(`{"foo":"bar"}`),
 	}

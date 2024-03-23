@@ -20,7 +20,7 @@ import (
 type Service interface {
 	EnactKey(ctx context.Context, payload, signature string) (core.Key, error)
 	RevokeKey(ctx context.Context, payload, signature string) (core.Key, error)
-	ValidateSignedObject(ctx context.Context, payload, signature []byte) error
+	ValidateSignedObject(ctx context.Context, payload, signature string) error
 	ResolveSubkey(ctx context.Context, keyID string) (string, error)
 	ResolveRemoteSubkey(ctx context.Context, keyID, domain string) (string, error)
 	GetKeyResolution(ctx context.Context, keyID string) ([]core.Key, error)
@@ -139,7 +139,7 @@ func (s *service) RevokeKey(ctx context.Context, payload, signature string) (cor
 	return revoked, nil
 }
 
-func (s *service) ValidateSignedObject(ctx context.Context, payload, signature []byte) error {
+func (s *service) ValidateSignedObject(ctx context.Context, payload, signature string) error {
 	ctx, span := tracer.Start(ctx, "ServiceValidate")
 	defer span.End()
 
@@ -150,9 +150,15 @@ func (s *service) ValidateSignedObject(ctx context.Context, payload, signature [
 		return err
 	}
 
+	entity, err := s.entity.Get(ctx, object.ID)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
 	// マスターキーの場合: そのまま検証して終了
 	if object.KeyID == "" {
-		err := util.VerifySignature(payload, object.Signer, signature)
+		err := util.VerifySignature([]byte(payload), []byte(signature), entity.Pubkey)
 		if err != nil {
 			span.RecordError(err)
 			return err
@@ -187,7 +193,13 @@ func (s *service) ValidateSignedObject(ctx context.Context, payload, signature [
 			return err
 		}
 
-		err = util.VerifySignature(payload, object.KeyID, signature)
+		subkey, err := s.repository.Get(ctx, object.KeyID)
+		if err != nil {
+			span.RecordError(err)
+			return err
+		}
+
+		err = util.VerifySignature([]byte(payload), []byte(signature), subkey.Pubkey)
 		if err != nil {
 			span.RecordError(err)
 			return err
@@ -258,7 +270,7 @@ func (s *service) ResolveRemoteSubkey(ctx context.Context, keyID, domain string)
 		}
 
 		// 署名の内容が正しいか検証
-		var enact core.SignedObject[core.Enact]
+		var enact core.EnactKey
 		err = json.Unmarshal([]byte(key.EnactPayload), &enact)
 		if err != nil {
 			return "", err

@@ -20,8 +20,6 @@ type Handler interface {
 	Upsert(c echo.Context) error
 	List(c echo.Context) error
 	Profile(c echo.Context) error
-	Hello(c echo.Context) error
-	SayHello(c echo.Context) error
 	Delete(c echo.Context) error
 	Update(c echo.Context) error
 }
@@ -92,44 +90,6 @@ func (h handler) Profile(c echo.Context) error {
 		CCID:   h.config.Concurrent.CCID,
 		Pubkey: h.config.Concurrent.PublicKey,
 	}})
-}
-
-// Hello creates a challenge response for another host
-// If the challenge is accepted, the host will be added to the database
-func (h handler) Hello(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerHello")
-	defer span.End()
-
-	var newcomer Profile
-	err := c.Bind(&newcomer)
-	if err != nil {
-		return err
-	}
-
-	profile, err := h.service.Hello(ctx, newcomer)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
-	}
-
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": profile})
-}
-
-// SayHello initiates a challenge to a remote host
-// The remote host will respond with a signed JWT
-// If the JWT is valid, the remote host will be added to the database
-func (h handler) SayHello(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerSayHello")
-	defer span.End()
-
-	target := c.Param("id")
-
-	fetched, err := h.service.SayHello(ctx, target)
-
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
-	}
-
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": fetched})
 }
 
 // Delete removes a host from the registry

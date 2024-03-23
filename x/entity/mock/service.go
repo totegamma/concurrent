@@ -52,17 +52,17 @@ func (mr *MockServiceMockRecorder) Count(ctx interface{}) *gomock.Call {
 }
 
 // Create mocks base method.
-func (m *MockService) Create(ctx context.Context, ccid, payload, signature, info string) error {
+func (m *MockService) Create(ctx context.Context, ccid, pubkey, payload, signature, info string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Create", ctx, ccid, payload, signature, info)
+	ret := m.ctrl.Call(m, "Create", ctx, ccid, pubkey, payload, signature, info)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Create indicates an expected call of Create.
-func (mr *MockServiceMockRecorder) Create(ctx, ccid, payload, signature, info interface{}) *gomock.Call {
+func (mr *MockServiceMockRecorder) Create(ctx, ccid, pubkey, payload, signature, info interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockService)(nil).Create), ctx, ccid, payload, signature, info)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockService)(nil).Create), ctx, ccid, pubkey, payload, signature, info)
 }
 
 // Delete mocks base method.
@@ -169,17 +169,17 @@ func (mr *MockServiceMockRecorder) PullEntityFromRemote(ctx, id, domain interfac
 }
 
 // Register mocks base method.
-func (m *MockService) Register(ctx context.Context, ccid, payload, signature, info, invitation string) error {
+func (m *MockService) Register(ctx context.Context, ccid, pubkey, payload, signature, info, invitation string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Register", ctx, ccid, payload, signature, info, invitation)
+	ret := m.ctrl.Call(m, "Register", ctx, ccid, pubkey, payload, signature, info, invitation)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Register indicates an expected call of Register.
-func (mr *MockServiceMockRecorder) Register(ctx, ccid, payload, signature, info, invitation interface{}) *gomock.Call {
+func (mr *MockServiceMockRecorder) Register(ctx, ccid, pubkey, payload, signature, info, invitation interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Register", reflect.TypeOf((*MockService)(nil).Register), ctx, ccid, payload, signature, info, invitation)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Register", reflect.TypeOf((*MockService)(nil).Register), ctx, ccid, pubkey, payload, signature, info, invitation)
 }
 
 // ResolveHost mocks base method.
@@ -223,18 +223,4 @@ func (m *MockService) UpdateAddress(ctx context.Context, ccid, domain string, si
 func (mr *MockServiceMockRecorder) UpdateAddress(ctx, ccid, domain, signedAt interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateAddress", reflect.TypeOf((*MockService)(nil).UpdateAddress), ctx, ccid, domain, signedAt)
-}
-
-// UpdateRegistration mocks base method.
-func (m *MockService) UpdateRegistration(ctx context.Context, id, payload, signature string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateRegistration", ctx, id, payload, signature)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// UpdateRegistration indicates an expected call of UpdateRegistration.
-func (mr *MockServiceMockRecorder) UpdateRegistration(ctx, id, payload, signature interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateRegistration", reflect.TypeOf((*MockService)(nil).UpdateRegistration), ctx, id, payload, signature)
 }

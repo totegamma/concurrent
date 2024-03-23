@@ -157,11 +157,28 @@ func (s *service) Create(ctx context.Context, objectStr string, signature string
 
 // Delete deletes a message by ID
 // It also emits a delete event to the sockets
-func (s *service) Delete(ctx context.Context, id string) (core.Message, error) {
+func (s *service) Delete(ctx context.Context, documentStr string) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "ServiceDelete")
 	defer span.End()
 
-	deleted, err := s.repo.Delete(ctx, id)
+	var document core.DeleteMessage
+	err := json.Unmarshal([]byte(documentStr), &document)
+	if err != nil {
+		span.RecordError(err)
+		return core.Message{}, err
+	}
+
+	deleteTarget, err := s.repo.Get(ctx, document.Body.TargetID)
+	if err != nil {
+		span.RecordError(err)
+		return core.Message{}, err
+	}
+
+	if deleteTarget.Author != document.Signer {
+		return core.Message{}, fmt.Errorf("you are not authorized to perform this action")
+	}
+
+	deleted, err := s.repo.Delete(ctx, document.Body.TargetID)
 	slog.DebugContext(ctx, fmt.Sprintf("deleted: %v", deleted), slog.String("module", "message"))
 
 	if err != nil {

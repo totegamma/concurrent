@@ -265,7 +265,6 @@ func main() {
 
 	// message
 	apiV1.GET("/message/:id", messageHandler.Get)
-	apiV1.DELETE("/message/:id", messageHandler.Delete, auth.Restrict(auth.ISLOCAL))
 	apiV1.GET("/message/:id/associations", associationHandler.GetFiltered)
 	apiV1.GET("/message/:id/associationcounts", associationHandler.GetCounts)
 	apiV1.GET("/message/:id/associations/mine", associationHandler.GetOwnByTarget, auth.Restrict(auth.ISKNOWN))

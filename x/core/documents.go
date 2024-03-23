@@ -55,7 +55,7 @@ type UnackDocument struct { // type: unack
 // message
 type CreateMessage[T any] struct { // type: c.message
 	DocumentBase[T]
-	Streams []string `json:"streams"`
+	Timelines []string `json:"streams"`
 }
 
 type DeleteMessage struct { // type: d.message

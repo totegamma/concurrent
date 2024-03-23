@@ -16,7 +16,6 @@ var tracer = otel.Tracer("message")
 // Handler is the interface for handling HTTP requests
 type Handler interface {
 	Get(c echo.Context) error
-	Post(c echo.Context) error
 	Delete(c echo.Context) error
 }
 
@@ -60,24 +59,6 @@ func (h handler) Get(c echo.Context) error {
 		"status":  "ok",
 		"content": message,
 	})
-}
-
-// Post creates a new message
-// returns the created message
-func (h handler) Post(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerPost")
-	defer span.End()
-
-	var request postRequest
-	err := c.Bind(&request)
-	if err != nil {
-		return err
-	}
-	message, err := h.service.PostMessage(ctx, request.SignedObject, request.Signature, request.Streams)
-	if err != nil {
-		return err
-	}
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": message})
 }
 
 // Delete deletes a message

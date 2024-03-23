@@ -3,19 +3,22 @@ package profile
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/key"
 )
 
 // Service is the interface for profile service
 type Service interface {
-	Put(ctx context.Context, objectStr string, signature string, id string) (core.Profile, error)
+	Create(ctx context.Context, objectStr string, signature string) (core.Profile, error)
+	Update(ctx context.Context, objectStr string, signature string) (core.Profile, error)
+	Delete(ctx context.Context, document string) (core.Profile, error)
+
 	Count(ctx context.Context) (int64, error)
 	Get(ctx context.Context, id string) (core.Profile, error)
 	GetByAuthorAndSchema(ctx context.Context, owner string, schema string) ([]core.Profile, error)
 	GetByAuthor(ctx context.Context, owner string) ([]core.Profile, error)
 	GetBySchema(ctx context.Context, schema string) ([]core.Profile, error)
-	Delete(ctx context.Context, id string) (core.Profile, error)
 }
 
 type service struct {
@@ -61,11 +64,11 @@ func (s *service) GetBySchema(ctx context.Context, schema string) ([]core.Profil
 }
 
 // PutProfile creates new profile if the signature is valid
-func (s *service) Put(ctx context.Context, objectStr string, signature string, id string) (core.Profile, error) {
+func (s *service) Create(ctx context.Context, objectStr string, signature string) (core.Profile, error) {
 	ctx, span := tracer.Start(ctx, "ServicePutProfile")
 	defer span.End()
 
-	var object signedObject
+	var object core.CreateProfile[any]
 	err := json.Unmarshal([]byte(objectStr), &object)
 	if err != nil {
 		span.RecordError(err)
@@ -79,7 +82,42 @@ func (s *service) Put(ctx context.Context, objectStr string, signature string, i
 	}
 
 	profile := core.Profile{
-		ID:        id,
+		ID:        object.ID,
+		Author:    object.Signer,
+		Schema:    object.Schema,
+		Payload:   objectStr,
+		Signature: signature,
+	}
+
+	err = s.repo.Upsert(ctx, profile)
+	if err != nil {
+		span.RecordError(err)
+		return core.Profile{}, err
+	}
+
+	return profile, nil
+}
+
+// PutProfile creates new profile if the signature is valid
+func (s *service) Update(ctx context.Context, objectStr string, signature string) (core.Profile, error) {
+	ctx, span := tracer.Start(ctx, "ServicePutProfile")
+	defer span.End()
+
+	var object core.UpdateProfile[any]
+	err := json.Unmarshal([]byte(objectStr), &object)
+	if err != nil {
+		span.RecordError(err)
+		return core.Profile{}, err
+	}
+
+	err = s.key.ValidateSignedObject(ctx, objectStr, signature)
+	if err != nil {
+		span.RecordError(err)
+		return core.Profile{}, err
+	}
+
+	profile := core.Profile{
+		ID:        object.ID,
 		Author:    object.Signer,
 		Schema:    object.Schema,
 		Payload:   objectStr,
@@ -96,11 +134,30 @@ func (s *service) Put(ctx context.Context, objectStr string, signature string, i
 }
 
 // Delete deletes profile
-func (s *service) Delete(ctx context.Context, id string) (core.Profile, error) {
+func (s *service) Delete(ctx context.Context, documentStr string) (core.Profile, error) {
 	ctx, span := tracer.Start(ctx, "ServiceDelete")
 	defer span.End()
 
-	return s.repo.Delete(ctx, id)
+	var document core.DeleteProfile
+	err := json.Unmarshal([]byte(documentStr), &document)
+	if err != nil {
+		span.RecordError(err)
+		return core.Profile{}, err
+	}
+
+	deleteTarget, err := s.Get(ctx, document.Body.TargetID)
+	if err != nil {
+		span.RecordError(err)
+		return core.Profile{}, err
+	}
+
+	if deleteTarget.Author != document.Signer {
+		err = errors.New("unauthorized")
+		span.RecordError(err)
+		return core.Profile{}, err
+	}
+
+	return s.repo.Delete(ctx, document.Body.TargetID)
 }
 
 func (s *service) Get(ctx context.Context, id string) (core.Profile, error) {

@@ -8,7 +8,7 @@ import (
 )
 
 type Schema struct {
-	ID  string `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	ID  uint   `json:"id" gorm:"primaryKey;auto_increment"`
 	URL string `json:"url" gorm:"type:text"`
 }
 
@@ -40,11 +40,11 @@ type Key struct {
 // Association is one of a concurrent base object
 // immutable
 type Association struct {
-	ID     string `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
-	Author string `json:"author" gorm:"type:char(42);uniqueIndex:uniq_association"`
-	//Schema      string         `json:"schema"  gorm:"type:text;uniqueIndex:uniq_association"`
-	Schema      Schema         `json:"schema" gorm:"foreignKey:SchemaID"`
-	TargetID    string         `json:"targetID" gorm:"type:uuid;uniqueIndex:uniq_association"`
+	ID          string         `json:"id" gorm:"primaryKey;type:char(26)"`
+	Author      string         `json:"author" gorm:"type:char(42);uniqueIndex:uniq_association"`
+	SchemaID    uint           `json:"-" gorm:"uniqueIndex:uniq_association"`
+	Schema      string         `json:"schema" gorm:"-"`
+	TargetID    string         `json:"targetID" gorm:"type:char(26);uniqueIndex:uniq_association"`
 	TargetType  string         `json:"targetType" gorm:"type:string;uniqueIndex:uniq_association"`
 	ContentHash string         `json:"contentHash" gorm:"type:char(64);uniqueIndex:uniq_association"`
 	Variant     string         `json:"variant" gorm:"type:text"`
@@ -57,9 +57,10 @@ type Association struct {
 // Profile is one of a Concurrent base object
 // mutable
 type Profile struct {
-	ID           string        `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	ID           string        `json:"id" gorm:"primaryKey;type:char(26)"`
 	Author       string        `json:"author" gorm:"type:char(42)"`
-	Schema       Schema        `json:"schema" gorm:"foreignKey:SchemaID"`
+	SchemaID     uint          `json:"-"`
+	Schema       string        `json:"schema" gorm:"-"`
 	Payload      string        `json:"payload" gorm:"type:json"`
 	Signature    string        `json:"signature" gorm:"type:char(130)"`
 	Associations []Association `json:"associations,omitempty" gorm:"polymorphic:Target"`
@@ -122,9 +123,10 @@ type Domain struct {
 // Message is one of a concurrent base object
 // immutable
 type Message struct {
-	ID              string         `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	ID              string         `json:"id" gorm:"primaryKey;type:char(26)"`
 	Author          string         `json:"author" gorm:"type:char(42)"`
-	Schema          Schema         `json:"schema" gorm:"foreignKey:SchemaID"`
+	SchemaID        uint           `json:"-"`
+	Schema          string         `json:"schema" gorm:"-"`
 	Payload         string         `json:"payload" gorm:"type:json"`
 	Signature       string         `json:"signature" gorm:"type:char(130)"`
 	CDate           time.Time      `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
@@ -142,7 +144,8 @@ type Timeline struct {
 	Maintainer pq.StringArray `json:"maintainer" gorm:"type:char(42)[];default:'{}'"`
 	Writer     pq.StringArray `json:"writer" gorm:"type:char(42)[];default:'{}'"`
 	Reader     pq.StringArray `json:"reader" gorm:"type:char(42)[];default:'{}'"`
-	Schema     Schema         `json:"schema" gorm:"foreignKey:SchemaID"`
+	SchemaID   uint           `json:"-"`
+	Schema     string         `json:"schema" gorm:"-"`
 	Payload    string         `json:"payload" gorm:"type:json"`
 	CDate      time.Time      `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 	MDate      time.Time      `json:"mdate" gorm:"autoUpdateTime"`
@@ -152,7 +155,7 @@ type Timeline struct {
 // immutable
 type TimelineItem struct {
 	Type       string    `json:"type" gorm:"type:text;"`
-	ObjectID   string    `json:"objectID" gorm:"primaryKey;type:uuid;"`
+	ObjectID   string    `json:"objectID" gorm:"primaryKey;type:char(26);"`
 	TimelineID string    `json:"TimelineID" gorm:"primaryKey;type:char(20);"`
 	Owner      string    `json:"owner" gorm:"type:char(42);"`
 	Author     string    `json:"author,omitempty" gorm:"type:char(42);"`
@@ -168,7 +171,8 @@ type Collection struct {
 	Maintainer pq.StringArray   `json:"maintainer" gorm:"type:char(42)[];default:'{}'"`
 	Writer     pq.StringArray   `json:"writer" gorm:"type:char(42)[];default:'{}'"`
 	Reader     pq.StringArray   `json:"reader" gorm:"type:char(42)[];default:'{}'"`
-	Schema     Schema           `json:"schema" gorm:"foreignKey:SchemaID"`
+	SchemaID   uint             `json:"-"`
+	Schema     string           `json:"schema" gorm:"-"`
 	CDate      time.Time        `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 	MDate      time.Time        `json:"mdate" gorm:"autoUpdateTime"`
 	Items      []CollectionItem `json:"items" gorm:"foreignKey:Collection"`

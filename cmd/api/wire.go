@@ -19,6 +19,7 @@ import (
 	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/profile"
+	"github.com/totegamma/concurrent/x/schema"
 	"github.com/totegamma/concurrent/x/socket"
 	"github.com/totegamma/concurrent/x/timeline"
 	"github.com/totegamma/concurrent/x/userkv"
@@ -28,6 +29,7 @@ import (
 var collectionHandlerProvider = wire.NewSet(collection.NewHandler, collection.NewService, collection.NewRepository)
 
 var jwtServiceProvider = wire.NewSet(jwt.NewService, jwt.NewRepository)
+var schemaServiceProvider = wire.NewSet(schema.NewService, schema.NewRepository)
 var domainServiceProvider = wire.NewSet(domain.NewService, domain.NewRepository)
 var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService)
 var timelineServiceProvider = wire.NewSet(timeline.NewService, timeline.NewRepository, SetupEntityService, SetupDomainService)
@@ -111,5 +113,10 @@ func SetupCollectionHandler(db *gorm.DB, rdb *redis.Client, config util.Config) 
 
 func SetupSocketManager(mc *memcache.Client, db *gorm.DB, rdb *redis.Client, config util.Config) socket.Manager {
 	wire.Build(socket.NewManager)
+	return nil
+}
+
+func SetupSchemaService(db *gorm.DB) schema.Service {
+	wire.Build(schemaServiceProvider)
 	return nil
 }

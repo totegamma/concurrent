@@ -14,15 +14,16 @@ import (
 	"github.com/totegamma/concurrent/x/agent"
 	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/auth"
-	"github.com/totegamma/concurrent/x/character"
 	"github.com/totegamma/concurrent/x/collection"
 	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/message"
+	"github.com/totegamma/concurrent/x/profile"
+	"github.com/totegamma/concurrent/x/schema"
 	"github.com/totegamma/concurrent/x/socket"
-	"github.com/totegamma/concurrent/x/stream"
+	"github.com/totegamma/concurrent/x/timeline"
 	"github.com/totegamma/concurrent/x/userkv"
 	"github.com/totegamma/concurrent/x/util"
 	"gorm.io/gorm"
@@ -53,34 +54,34 @@ func SetupKeyService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config
 
 func SetupMessageService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) message.Service {
 	repository := message.NewRepository(db, mc)
-	service := SetupStreamService(db, rdb, mc, manager, config)
+	service := SetupTimelineService(db, rdb, mc, manager, config)
 	keyService := SetupKeyService(db, rdb, mc, config)
 	messageService := message.NewService(rdb, repository, service, keyService)
 	return messageService
 }
 
-func SetupCharacterService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) character.Service {
-	repository := character.NewRepository(db, mc)
+func SetupProfileService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) profile.Service {
+	repository := profile.NewRepository(db, mc)
 	service := SetupKeyService(db, rdb, mc, config)
-	characterService := character.NewService(repository, service)
-	return characterService
+	profileService := profile.NewService(repository, service)
+	return profileService
 }
 
 func SetupAssociationService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) association.Service {
 	repository := association.NewRepository(db, mc)
-	service := SetupStreamService(db, rdb, mc, manager, config)
+	service := SetupTimelineService(db, rdb, mc, manager, config)
 	messageService := SetupMessageService(db, rdb, mc, manager, config)
 	keyService := SetupKeyService(db, rdb, mc, config)
 	associationService := association.NewService(repository, service, messageService, keyService)
 	return associationService
 }
 
-func SetupStreamService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) stream.Service {
-	repository := stream.NewRepository(db, rdb, mc, manager, config)
+func SetupTimelineService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) timeline.Service {
+	repository := timeline.NewRepository(db, rdb, mc, manager, config)
 	service := SetupEntityService(db, rdb, mc, config)
 	domainService := SetupDomainService(db, config)
-	streamService := stream.NewService(repository, service, domainService, config)
-	return streamService
+	timelineService := timeline.NewService(repository, service, domainService, config)
+	return timelineService
 }
 
 func SetupDomainService(db *gorm.DB, config util.Config) domain.Service {
@@ -135,25 +136,33 @@ func SetupSocketManager(mc *memcache.Client, db *gorm.DB, rdb *redis.Client, con
 	return manager
 }
 
+func SetupSchemaService(db *gorm.DB) schema.Service {
+	repository := schema.NewRepository(db)
+	service := schema.NewService(repository)
+	return service
+}
+
 // wire.go:
 
 var collectionHandlerProvider = wire.NewSet(collection.NewHandler, collection.NewService, collection.NewRepository)
 
 var jwtServiceProvider = wire.NewSet(jwt.NewService, jwt.NewRepository)
 
+var schemaServiceProvider = wire.NewSet(schema.NewService, schema.NewRepository)
+
 var domainServiceProvider = wire.NewSet(domain.NewService, domain.NewRepository)
 
 var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService)
 
-var streamServiceProvider = wire.NewSet(stream.NewService, stream.NewRepository, SetupEntityService, SetupDomainService)
+var timelineServiceProvider = wire.NewSet(timeline.NewService, timeline.NewRepository, SetupEntityService, SetupDomainService)
 
-var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupStreamService, SetupMessageService, SetupKeyService)
+var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupTimelineService, SetupMessageService, SetupKeyService)
 
-var characterServiceProvider = wire.NewSet(character.NewService, character.NewRepository, SetupKeyService)
+var profileServiceProvider = wire.NewSet(profile.NewService, profile.NewRepository, SetupKeyService)
 
 var authServiceProvider = wire.NewSet(auth.NewService, SetupEntityService, SetupDomainService, SetupKeyService)
 
-var messageServiceProvider = wire.NewSet(message.NewService, message.NewRepository, SetupStreamService, SetupKeyService)
+var messageServiceProvider = wire.NewSet(message.NewService, message.NewRepository, SetupTimelineService, SetupKeyService)
 
 var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository, SetupEntityService)
 

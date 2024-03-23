@@ -354,11 +354,11 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 
 		// publish event to pubsub
 		event := core.Event{
-			Timeline: timeline,
-			Action:   "create",
-			Type:     item.Type,
-			Item:     created,
-			Body:     body,
+			TimelineID: timeline,
+			Action:     "create",
+			Type:       item.Type,
+			Item:       created,
+			Body:       body,
 		}
 
 		err = s.repository.PublishEvent(ctx, event)

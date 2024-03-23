@@ -18,8 +18,6 @@ var tracer = otel.Tracer("profile")
 type Handler interface {
 	Get(c echo.Context) error
 	Query(c echo.Context) error
-	Put(c echo.Context) error
-	Delete(c echo.Context) error
 }
 
 type handler struct {
@@ -81,53 +79,4 @@ func (h handler) Query(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": profiles})
-}
-
-// Put updates a profile
-func (h handler) Put(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerPut")
-	defer span.End()
-
-	var request postRequest
-	err := c.Bind(&request)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request", "message": err.Error()})
-	}
-
-	updated, err := h.service.Put(ctx, request.SignedObject, request.Signature, request.ID)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request", "message": err.Error()})
-	}
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": updated})
-}
-
-func (h handler) Delete(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerDelete")
-	defer span.End()
-
-	id := c.Param("id")
-	if id == "" {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request", "message": "id is required"})
-	}
-
-	requester, ok := c.Get(core.RequesterIdCtxKey).(string)
-	if !ok {
-		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
-	}
-
-	target, err := h.service.Get(ctx, id)
-	if err != nil {
-		return c.JSON(http.StatusNotFound, echo.Map{"error": "Profile not found"})
-	}
-
-	if target.Author != requester {
-		return c.JSON(http.StatusForbidden, echo.Map{"error": "you are not authorized to perform this action"})
-	}
-
-	deleted, err := h.service.Delete(ctx, id)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request", "message": err.Error()})
-	}
-
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": deleted})
 }

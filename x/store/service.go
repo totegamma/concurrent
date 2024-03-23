@@ -9,6 +9,7 @@ import (
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/message"
+	"github.com/totegamma/concurrent/x/profile"
 )
 
 type Service interface {
@@ -19,17 +20,20 @@ type service struct {
 	key         key.Service
 	message     message.Service
 	association association.Service
+	profile     profile.Service
 }
 
 func NewService(
 	key key.Service,
 	message message.Service,
 	association association.Service,
+	profile profile.Service,
 ) Service {
 	return &service{
 		key:         key,
 		message:     message,
 		association: association,
+		profile:     profile,
 	}
 }
 
@@ -58,6 +62,12 @@ func (s *service) Commit(ctx context.Context, document string, signature string)
 		return s.association.Create(ctx, document, signature)
 	case "association.delete":
 		return s.association.Delete(ctx, document)
+	case "profile.create":
+		return s.profile.Create(ctx, document, signature)
+	case "profile.update":
+		return s.profile.Update(ctx, document, signature)
+	case "profile.delete":
+		return s.profile.Delete(ctx, document)
 	}
 
 	return nil, fmt.Errorf("unknown document type: %s", base.Type)

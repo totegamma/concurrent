@@ -65,9 +65,9 @@ type DeleteMessage struct { // type: d.message
 // association
 type CreateAssociation[T any] struct { // type: c.association
 	DocumentBase[T]
-	Streams []string `json:"streams"`
-	Variant string   `json:"variant"`
-	Target  string   `json:"target"`
+	Timelines []string `json:"timelines"`
+	Variant   string   `json:"variant"`
+	Target    string   `json:"target"`
 }
 
 type DeleteAssociation struct { // type: d.association

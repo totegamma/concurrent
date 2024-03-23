@@ -3,7 +3,9 @@ package store
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 
+	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/message"
@@ -14,12 +16,21 @@ type Service interface {
 }
 
 type service struct {
-	key     key.Service
-	message message.Service
+	key         key.Service
+	message     message.Service
+	association association.Service
 }
 
-func NewService() Service {
-	return &service{}
+func NewService(
+	key key.Service,
+	message message.Service,
+	association association.Service,
+) Service {
+	return &service{
+		key:         key,
+		message:     message,
+		association: association,
+	}
 }
 
 func (s *service) Commit(ctx context.Context, document string, signature string) (any, error) {
@@ -43,7 +54,11 @@ func (s *service) Commit(ctx context.Context, document string, signature string)
 		return s.message.Create(ctx, document, signature)
 	case "message.delete":
 		return s.message.Delete(ctx, document)
+	case "association.create":
+		return s.association.Create(ctx, document, signature)
+	case "association.delete":
+		return s.association.Delete(ctx, document)
 	}
 
-	return nil, nil
+	return nil, fmt.Errorf("unknown document type: %s", base.Type)
 }

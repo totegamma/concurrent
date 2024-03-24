@@ -14,7 +14,6 @@ type Schema struct {
 
 type Key struct {
 	ID           string `json:"id" gorm:"primaryKey;type:char(42)"` // e.g. CK...
-	Pubkey       string `json:"pubkey" gorm:"type:char(66)"`
 	Root         string `json:"root" gorm:"type:char(42)"`
 	Parent       string `json:"parent" gorm:"type:char(42)"`
 	EnactPayload string `json:"enactPayload" gorm:"type:json"`
@@ -70,7 +69,6 @@ type Profile struct {
 // mutable
 type Entity struct {
 	ID                 string `json:"ccid" gorm:"type:char(42)"`
-	Pubkey             string `json:"pubkey" gorm:"type:char(66)"`
 	Tag                string `json:"tag" gorm:"type:text;"`
 	Score              int    `json:"score" gorm:"type:integer;default:0"`
 	IsScoreFixed       bool   `json:"isScoreFixed" gorm:"type:boolean;default:false"`
@@ -112,7 +110,6 @@ type Domain struct {
 	Tag          string    `json:"tag" gorm:"type:text;default:default"`
 	Score        int       `json:"score" gorm:"type:integer;default:0"`
 	IsScoreFixed bool      `json:"isScoreFixed" gorm:"type:boolean;default:false"`
-	Pubkey       string    `json:"pubkey" gorm:"type:char(66)"`
 	DimensionID  string    `json:"dimensionID" gorm:"type:text"`
 	CDate        time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 	MDate        time.Time `json:"mdate" gorm:"autoUpdateTime"`

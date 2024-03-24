@@ -25,8 +25,8 @@ import (
 
 // Service is the interface for entity service
 type Service interface {
-	Create(ctx context.Context, ccid, pubkey, payload, signature, info string) error
-	Register(ctx context.Context, ccid, pubkey, payload, signature, info, invitation string) error
+	Create(ctx context.Context, ccid, payload, signature, info string) error
+	Register(ctx context.Context, ccid, payload, signature, info, invitation string) error
 	Get(ctx context.Context, ccid string) (core.Entity, error)
 	List(ctx context.Context) ([]core.Entity, error)
 	ListModified(ctx context.Context, modified time.Time) ([]core.Entity, error)
@@ -115,18 +115,7 @@ func (s *service) PullEntityFromRemote(ctx context.Context, id, hintDomain strin
 
 	entity := remoteEntity.Content
 
-	err = util.VerifyPubkey(entity.Pubkey, entity.ID)
-	if err != nil {
-		span.RecordError(err)
-		slog.Error(
-			"Invalid pubkey",
-			slog.String("error", err.Error()),
-			slog.String("module", "agent"),
-		)
-		return "", fmt.Errorf("Invalid pubkey")
-	}
-
-	err = util.VerifySignature([]byte(entity.AffiliationPayload), []byte(entity.AffiliationSignature), entity.Pubkey)
+	err = util.VerifySignature([]byte(entity.AffiliationPayload), []byte(entity.AffiliationSignature), entity.ID)
 	if err != nil {
 		span.RecordError(err)
 		slog.Error(
@@ -198,11 +187,11 @@ func (s *service) Count(ctx context.Context) (int64, error) {
 }
 
 // Create creates new entity
-func (s *service) Create(ctx context.Context, ccid, pubkey, payload, signature, info string) error {
+func (s *service) Create(ctx context.Context, ccid, payload, signature, info string) error {
 	ctx, span := tracer.Start(ctx, "ServiceCreate")
 	defer span.End()
 
-	err := checkRegistration(ccid, pubkey, payload, signature, s.config.Concurrent.FQDN)
+	err := checkRegistration(ccid, payload, signature, s.config.Concurrent.FQDN)
 	if err != nil {
 		span.RecordError(err)
 		return err
@@ -210,7 +199,6 @@ func (s *service) Create(ctx context.Context, ccid, pubkey, payload, signature, 
 
 	return s.repository.CreateEntity(ctx, &core.Entity{
 		ID:                   ccid,
-		Pubkey:               pubkey,
 		Tag:                  "",
 		AffiliationPayload:   payload,
 		AffiliationSignature: signature,
@@ -222,11 +210,11 @@ func (s *service) Create(ctx context.Context, ccid, pubkey, payload, signature, 
 
 // Register creates new entity
 // check if registration is open
-func (s *service) Register(ctx context.Context, ccid, pubkey, payload, signature, info, invitation string) error {
+func (s *service) Register(ctx context.Context, ccid, payload, signature, info, invitation string) error {
 	ctx, span := tracer.Start(ctx, "ServiceCreate")
 	defer span.End()
 
-	err := checkRegistration(ccid, pubkey, payload, signature, s.config.Concurrent.FQDN)
+	err := checkRegistration(ccid, payload, signature, s.config.Concurrent.FQDN)
 	if err != nil {
 		span.RecordError(err)
 		return err
@@ -236,7 +224,6 @@ func (s *service) Register(ctx context.Context, ccid, pubkey, payload, signature
 		return s.repository.CreateEntity(ctx,
 			&core.Entity{
 				ID:                   ccid,
-				Pubkey:               pubkey,
 				Tag:                  "",
 				AffiliationPayload:   payload,
 				AffiliationSignature: signature,
@@ -284,7 +271,6 @@ func (s *service) Register(ctx context.Context, ccid, pubkey, payload, signature
 		err = s.repository.CreateEntity(ctx,
 			&core.Entity{
 				ID:                   ccid,
-				Pubkey:               pubkey,
 				AffiliationPayload:   payload,
 				AffiliationSignature: signature,
 				Tag:                  "",
@@ -423,14 +409,9 @@ func (s *service) UpdateAddress(ctx context.Context, ccid string, domain string,
 
 // ---
 
-func checkRegistration(ccid, pubkey, payload, signature, mydomain string) error {
+func checkRegistration(ccid, payload, signature, mydomain string) error {
 
-	err := util.VerifyPubkey(pubkey, ccid)
-	if err != nil {
-		return err
-	}
-
-	err = util.VerifySignature([]byte(payload), []byte(ccid), pubkey)
+	err := util.VerifySignature([]byte(payload), []byte(ccid), ccid)
 	if err != nil {
 		return err
 	}

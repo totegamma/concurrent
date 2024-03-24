@@ -7,7 +7,6 @@ import (
 
 type createRequest struct {
 	CCID         string `json:"ccid"`
-	Pubkey       string `json:"pubkey"`
 	Registration string `json:"registration"`
 	Signature    string `json:"signature"`
 	Info         string `json:"info"`
@@ -15,7 +14,6 @@ type createRequest struct {
 
 type registerRequest struct {
 	CCID         string `json:"ccid"`
-	Pubkey       string `json:"pubkey"`
 	Registration string `json:"registration"`
 	Signature    string `json:"signature"`
 	Info         string `json:"info"`

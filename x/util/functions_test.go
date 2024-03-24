@@ -6,17 +6,25 @@ import (
 )
 
 const (
-	RootKey  = "con1fk8zlkrfmens3sgj7dzcu3gsw8v9kkysrf8dt5"
-	RootPriv = "1236fa65392e99067750aaed5fd4d9ff93f51fd088e94963e51669396cdd597c"
-	RootPub  = "020bb249a8bb7a10defe954abba5a4320cabb6c49513bfaf6b204ca8c4e4248c01"
+	RootAddr    = "con1dxp8n8ctve3wq9gws3a92exj9p4nld2h6r838v"
+	RootPrivKey = "f1229da9dbb71bbd6aaf3adef77f6463d5beb1f4c9d697e9d430ddd621597a6f"
+
+	SubKey1  = "cck1ydda2qj3nr32hulm65vj2g746f06hy36wzh9ke"
+	SubPriv1 = "1ca30329e8d35217b2328bacfc21c5e3d762713edab0252eead1f4c1ac0b4d81"
 )
 
 func TestSignature(t *testing.T) {
 	message := "hello"
 
-	signature, err := SignBytes([]byte(message), RootPriv)
+	signature, err := SignBytes([]byte(message), RootPrivKey)
 	assert.NoError(t, err)
 
-	err = VerifySignature([]byte(message), signature, RootPub)
+	err = VerifySignature([]byte(message), signature, RootAddr)
+	assert.NoError(t, err)
+
+	signature1, err := SignBytes([]byte(message), SubPriv1)
+	assert.NoError(t, err)
+
+	err = VerifySignature([]byte(message), signature1, SubKey1)
 	assert.NoError(t, err)
 }

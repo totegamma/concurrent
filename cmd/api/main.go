@@ -261,8 +261,6 @@ func main() {
 	apiV1.POST("/entities/ack", ackHandler.Ack, auth.Restrict(auth.ISLOCAL))
 	apiV1.POST("/entities/checkpoint/ack", ackHandler.Ack, auth.Restrict(auth.ISUNITED))
 
-	apiV1.POST("/admin/entity", entityHandler.Create, auth.Restrict(auth.ISADMIN))
-
 	// message
 	apiV1.GET("/message/:id", messageHandler.Get)
 	apiV1.GET("/message/:id/associations", associationHandler.GetFiltered)

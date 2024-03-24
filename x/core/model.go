@@ -75,21 +75,21 @@ type Entity struct {
 	AffiliationPayload string `json:"affiliationPayload" gorm:"type:json;default:'{}'"`
 	/* Domain Affiliation
 	   {
-	       type: affiliation,
 	       domain: string,
 	   }
 	*/
 	AffiliationSignature string    `json:"affiliationSignature" gorm:"type:char(130)"`
-	TombstonePayload     string    `json:"tombstonePayload" gorm:"type:json;default:'{}'"`
-	TombstoneSignature   string    `json:"tombstoneSignature" gorm:"type:char(130)"`
+	TombstonePayload     *string   `json:"tombstonePayload" gorm:"type:json;default:'{}'"`
+	TombstoneSignature   *string   `json:"tombstoneSignature" gorm:"type:char(130)"`
 	CDate                time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 	MDate                time.Time `json:"mdate" gorm:"autoUpdateTime"`
 }
 
 type EntityMeta struct {
-	ID      string `json:"ccid" gorm:"type:char(42)"`
-	Inviter string `json:"inviter" gorm:"type:char(42)"`
-	Info    string `json:"info" gorm:"type:json;default:'null'"`
+	ID        string  `json:"ccid" gorm:"type:char(42)"`
+	Inviter   *string `json:"inviter" gorm:"type:char(42)"`
+	Info      string  `json:"info" gorm:"type:json;default:'null'"`
+	Signature string  `json:"signature" gorm:"type:char(130)"`
 }
 
 // Address

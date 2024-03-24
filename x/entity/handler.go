@@ -22,7 +22,6 @@ var tracer = otel.Tracer("entity")
 type Handler interface {
 	Get(c echo.Context) error
 	Register(c echo.Context) error
-	Create(c echo.Context) error
 	List(c echo.Context) error
 	Update(c echo.Context) error
 	Delete(c echo.Context) error
@@ -85,32 +84,13 @@ func (h handler) Register(c echo.Context) error {
 		}
 	}
 
-	err = h.service.Register(ctx, request.CCID, request.Registration, request.Signature, request.Info, request.Invitation)
+	created, err := h.service.Register(ctx, request.CCID, request.Info, request.Signature, request.Invitation)
 	if err != nil {
 		span.RecordError(err)
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusCreated, echo.Map{"status": "ok"})
-}
-
-// Create creates a new entity
-func (h handler) Create(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerCreate")
-	defer span.End()
-
-	var request createRequest
-	err := c.Bind(&request)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-	err = h.service.Create(ctx, request.CCID, request.Registration, request.Signature, request.Info)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-	return c.JSON(http.StatusCreated, echo.Map{"status": "ok"})
+	return c.JSON(http.StatusCreated, echo.Map{"status": "ok", "content": created})
 }
 
 // List returns a list of entities

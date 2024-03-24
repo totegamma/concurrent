@@ -6,6 +6,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/pkg/errors"
 	"io"
 	"log/slog"
 	"strconv"
@@ -25,8 +26,8 @@ import (
 
 // Service is the interface for entity service
 type Service interface {
-	Create(ctx context.Context, ccid, payload, signature, info string) error
-	Register(ctx context.Context, ccid, payload, signature, info, invitation string) error
+	Register(ctx context.Context, ccid, info, signature, invitation string) (core.EntityMeta, error)
+	Affiliation(ctx context.Context, document, signature string) (core.Entity, error)
 	Get(ctx context.Context, ccid string) (core.Entity, error)
 	List(ctx context.Context) ([]core.Entity, error)
 	ListModified(ctx context.Context, modified time.Time) ([]core.Entity, error)
@@ -186,123 +187,123 @@ func (s *service) Count(ctx context.Context) (int64, error) {
 	return s.repository.Count(ctx)
 }
 
-// Create creates new entity
-func (s *service) Create(ctx context.Context, ccid, payload, signature, info string) error {
-	ctx, span := tracer.Start(ctx, "ServiceCreate")
+func (s *service) Affiliation(ctx context.Context, document, signature string) (core.Entity, error) {
+	ctx, span := tracer.Start(ctx, "ServiceAffiliation")
 	defer span.End()
 
-	err := checkRegistration(ccid, payload, signature, s.config.Concurrent.FQDN)
+	var doc core.EntityAffiliation
+	err := json.Unmarshal([]byte(document), &doc)
 	if err != nil {
 		span.RecordError(err)
-		return err
+		return core.Entity{}, errors.Wrap(err, "Failed to unmarshal document")
 	}
 
-	return s.repository.CreateEntity(ctx, &core.Entity{
-		ID:                   ccid,
-		Tag:                  "",
-		AffiliationPayload:   payload,
+	if doc.Body.Domain != s.config.Concurrent.FQDN {
+		// TODO: ほかのドメインだった場合、タグ等の一部の情報を保持しつつ、ドキュメントと現在の住所を更新してもよい
+		return core.Entity{}, errors.New("Domain is not match")
+	}
+
+	_, err = s.repository.GetEntityMeta(ctx, doc.Signer)
+	if err != nil {
+		return core.Entity{}, errors.Wrap(err, "Failed to get entity meta")
+	}
+
+	created, err := s.repository.CreateEntity(ctx, core.Entity{
+		ID:                   doc.Signer,
+		AffiliationPayload:   document,
 		AffiliationSignature: signature,
-	}, &core.EntityMeta{
-		ID:   ccid,
-		Info: info,
 	})
+
+	if err != nil {
+		return core.Entity{}, errors.Wrap(err, "Failed to create entity")
+	}
+
+	return created, nil
 }
 
 // Register creates new entity
 // check if registration is open
-func (s *service) Register(ctx context.Context, ccid, payload, signature, info, invitation string) error {
+func (s *service) Register(ctx context.Context, ccid, info, signature, invitation string) (core.EntityMeta, error) {
 	ctx, span := tracer.Start(ctx, "ServiceCreate")
 	defer span.End()
 
-	err := checkRegistration(ccid, payload, signature, s.config.Concurrent.FQDN)
+	err := util.VerifySignature([]byte(info), []byte(signature), ccid)
 	if err != nil {
 		span.RecordError(err)
-		return err
+		return core.EntityMeta{}, errors.Wrap(err, "Failed to verify signature of info")
 	}
 
 	if s.config.Concurrent.Registration == "open" {
-		return s.repository.CreateEntity(ctx,
-			&core.Entity{
-				ID:                   ccid,
-				Tag:                  "",
-				AffiliationPayload:   payload,
-				AffiliationSignature: signature,
-			},
-			&core.EntityMeta{
+		return s.repository.CreateEntityMeta(ctx,
+			core.EntityMeta{
 				ID:      ccid,
 				Info:    info,
-				Inviter: "",
+				Inviter: nil,
 			},
 		)
 	} else if s.config.Concurrent.Registration == "invite" {
 		if invitation == "" {
-			return fmt.Errorf("invitation code is required")
+			return core.EntityMeta{}, fmt.Errorf("invitation code is required")
 		}
 
 		claims, err := jwt.Validate(invitation)
 		if err != nil {
 			span.RecordError(err)
-			return err
+			return core.EntityMeta{}, err
 		}
 		if claims.Subject != "CONCURRENT_INVITE" {
-			return fmt.Errorf("invalid invitation code")
+			return core.EntityMeta{}, fmt.Errorf("invalid invitation code")
 		}
 
 		ok, err := s.jwtService.CheckJTI(ctx, claims.JWTID)
 		if err != nil {
 			span.RecordError(err)
-			return err
+			return core.EntityMeta{}, err
 		}
 		if !ok {
-			return fmt.Errorf("token is already used")
+			return core.EntityMeta{}, fmt.Errorf("token is already used")
 		}
 
 		inviter, err := s.repository.GetEntity(ctx, claims.Issuer)
 		if err != nil {
 			span.RecordError(err)
-			return err
+			return core.EntityMeta{}, err
 		}
 
 		inviterTags := strings.Split(inviter.Tag, ",")
 		if !slices.Contains(inviterTags, "_invite") {
-			return fmt.Errorf("inviter is not allowed to invite")
+			return core.EntityMeta{}, fmt.Errorf("inviter is not allowed to invite")
 		}
 
-		err = s.repository.CreateEntity(ctx,
-			&core.Entity{
-				ID:                   ccid,
-				AffiliationPayload:   payload,
-				AffiliationSignature: signature,
-				Tag:                  "",
-			},
-			&core.EntityMeta{
+		registered, err := s.repository.CreateEntityMeta(ctx,
+			core.EntityMeta{
 				ID:      ccid,
 				Info:    info,
-				Inviter: claims.Issuer,
+				Inviter: &claims.Issuer,
 			},
 		)
 
 		if err != nil {
 			span.RecordError(err)
-			return err
+			return core.EntityMeta{}, err
 		}
 
 		expireAt, err := strconv.ParseInt(claims.ExpirationTime, 10, 64)
 		if err != nil {
 			span.RecordError(err)
-			return err
+			return registered, err
 		}
 		err = s.jwtService.InvalidateJTI(ctx, claims.JWTID, time.Unix(expireAt, 0))
 
 		if err != nil {
 			span.RecordError(err)
-			return err
+			return core.EntityMeta{}, err
 		}
 
-		return nil
+		return registered, nil
 
 	} else {
-		return fmt.Errorf("registration is not open")
+		return core.EntityMeta{}, fmt.Errorf("registration is not open")
 	}
 }
 

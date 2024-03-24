@@ -5,11 +5,6 @@ import (
 	"github.com/totegamma/concurrent/x/core"
 )
 
-type createRequest struct {
-	CCID string `json:"ccid"`
-	Info string `json:"info"`
-}
-
 type registerRequest struct {
 	CCID       string `json:"ccid"`
 	Info       string `json:"info"`

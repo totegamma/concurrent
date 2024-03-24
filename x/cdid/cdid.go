@@ -17,6 +17,18 @@ type CDID struct {
 	time [6]byte
 }
 
+func New(data [10]byte, t time.Time) CDID {
+	c := CDID{data: data}
+	c.SetTime(t)
+	return c
+}
+
+func NewFromBytes(b []byte) CDID {
+	data := [10]byte{}
+	copy(data[:], b[:10])
+	return NewWithAutoTime(data)
+}
+
 func NewWithAutoTime(data [10]byte) CDID {
 	c := CDID{data: data}
 	c.SetTime(time.Now())

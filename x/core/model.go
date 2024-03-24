@@ -79,7 +79,7 @@ type Entity struct {
 	   }
 	*/
 	AffiliationSignature string    `json:"affiliationSignature" gorm:"type:char(130)"`
-	TombstonePayload     *string   `json:"tombstonePayload" gorm:"type:json;default:'{}'"`
+	TombstonePayload     *string   `json:"tombstonePayload" gorm:"type:json;default:'null'"`
 	TombstoneSignature   *string   `json:"tombstoneSignature" gorm:"type:char(130)"`
 	CDate                time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 	MDate                time.Time `json:"mdate" gorm:"autoUpdateTime"`

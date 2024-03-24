@@ -27,12 +27,14 @@ type service struct {
 
 func NewService(
 	key key.Service,
+	entity entity.Service,
 	message message.Service,
 	association association.Service,
 	profile profile.Service,
 ) Service {
 	return &service{
 		key:         key,
+		entity:      entity,
 		message:     message,
 		association: association,
 		profile:     profile,

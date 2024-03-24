@@ -7,9 +7,11 @@ import (
 	"log/slog"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/totegamma/concurrent/x/cdid"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/timeline"
+	"github.com/totegamma/concurrent/x/util"
 )
 
 // Service is the interface for message service
@@ -111,7 +113,14 @@ func (s *service) Create(ctx context.Context, objectStr string, signature string
 		return core.Message{}, err
 	}
 
+	hash := util.GetHash([]byte(objectStr))
+	hash10 := [10]byte{}
+	copy(hash10[:], hash[:10])
+	signedAt := object.SignedAt
+	id := cdid.New(hash10, signedAt).String()
+
 	message := core.Message{
+		ID:        id,
 		Author:    object.Signer,
 		Schema:    object.Schema,
 		Payload:   objectStr,

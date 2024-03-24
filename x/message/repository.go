@@ -2,6 +2,7 @@ package message
 
 import (
 	"context"
+	"errors"
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/schema"
@@ -67,6 +68,21 @@ func (r *repository) Create(ctx context.Context, message core.Message) (core.Mes
 	ctx, span := tracer.Start(ctx, "RepositoryCreate")
 	defer span.End()
 
+	if message.ID == "" {
+		return message, errors.New("message id is required")
+	}
+
+	if len(message.ID) == 27 {
+		if message.ID[0] != 'm' {
+			return message, errors.New("message id must start with 'm'")
+		}
+		message.ID = message.ID[1:]
+	}
+
+	if len(message.ID) != 26 {
+		return message, errors.New("message id must be 26 characters long")
+	}
+
 	schemaID, err := r.schema.UrlToID(ctx, message.Schema)
 	if err != nil {
 		return message, err
@@ -77,6 +93,8 @@ func (r *repository) Create(ctx context.Context, message core.Message) (core.Mes
 
 	r.mc.Increment("message_count", 1)
 
+	message.ID = "m" + message.ID
+
 	return message, err
 }
 
@@ -84,6 +102,13 @@ func (r *repository) Create(ctx context.Context, message core.Message) (core.Mes
 func (r *repository) Get(ctx context.Context, key string) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGet")
 	defer span.End()
+
+	if len(key) == 27 {
+		if key[0] != 'm' {
+			return core.Message{}, errors.New("message typed-id must start with 'm'")
+		}
+		key = key[1:]
+	}
 
 	var message core.Message
 	err := r.db.WithContext(ctx).Preload("SchemaBody").First(&message, "id = ?", key).Error
@@ -97,6 +122,8 @@ func (r *repository) Get(ctx context.Context, key string) (core.Message, error) 
 	}
 	message.Schema = schemaUrl
 
+	message.ID = "m" + message.ID
+
 	return message, err
 }
 
@@ -104,6 +131,13 @@ func (r *repository) Get(ctx context.Context, key string) (core.Message, error) 
 func (r *repository) GetWithOwnAssociations(ctx context.Context, key string, ccid string) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGet")
 	defer span.End()
+
+	if len(key) == 27 {
+		if key[0] != 'm' {
+			return core.Message{}, errors.New("message typed-id must start with 'm'")
+		}
+		key = key[1:]
+	}
 
 	var message core.Message
 	err := r.db.WithContext(ctx).First(&message, "id = ?", key).Error
@@ -113,6 +147,8 @@ func (r *repository) GetWithOwnAssociations(ctx context.Context, key string, cci
 
 	r.db.WithContext(ctx).Where("target_id = ? AND author = ?", key, ccid).Find(&message.OwnAssociations)
 
+	message.ID = "m" + message.ID
+
 	return message, err
 }
 
@@ -121,8 +157,18 @@ func (r *repository) GetWithAssociations(ctx context.Context, key string) (core.
 	ctx, span := tracer.Start(ctx, "RepositoryGetWithAssociations")
 	defer span.End()
 
+	if len(key) == 27 {
+		if key[0] != 'm' {
+			return core.Message{}, errors.New("message typed-id must start with 'm'")
+		}
+		key = key[1:]
+	}
+
 	var message core.Message
 	err := r.db.WithContext(ctx).Preload("Associations").First(&message, "id = ?", key).Error
+
+	message.ID = "m" + message.ID
+
 	return message, err
 }
 
@@ -130,6 +176,13 @@ func (r *repository) GetWithAssociations(ctx context.Context, key string) (core.
 func (r *repository) Delete(ctx context.Context, id string) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryDelete")
 	defer span.End()
+
+	if len(id) == 27 {
+		if id[0] != 'm' {
+			return core.Message{}, errors.New("message typed-id must start with 'm'")
+		}
+		id = id[1:]
+	}
 
 	var deleted core.Message
 	if err := r.db.WithContext(ctx).First(&deleted, "id = ?", id).Error; err != nil {
@@ -141,6 +194,8 @@ func (r *repository) Delete(ctx context.Context, id string) (core.Message, error
 	}
 
 	r.mc.Decrement("message_count", 1)
+
+	deleted.ID = "m" + deleted.ID
 
 	return deleted, nil
 }

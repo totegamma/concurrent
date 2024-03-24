@@ -147,10 +147,11 @@ func SetupSchemaService(db *gorm.DB) schema.Service {
 
 func SetupStoreService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) store.Service {
 	service := SetupKeyService(db, rdb, mc, config)
+	entityService := SetupEntityService(db, rdb, mc, config)
 	messageService := SetupMessageService(db, rdb, mc, manager, config)
 	associationService := SetupAssociationService(db, rdb, mc, manager, config)
 	profileService := SetupProfileService(db, rdb, mc, config)
-	storeService := store.NewService(service, messageService, associationService, profileService)
+	storeService := store.NewService(service, entityService, messageService, associationService, profileService)
 	return storeService
 }
 
@@ -189,4 +190,4 @@ var messageServiceProvider = wire.NewSet(message.NewService, message.NewReposito
 var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupTimelineService, SetupMessageService, SetupKeyService, SetupSchemaService)
 
 // Lv6
-var storeServiceProvider = wire.NewSet(store.NewService, SetupKeyService, SetupMessageService, SetupAssociationService, SetupProfileService)
+var storeServiceProvider = wire.NewSet(store.NewService, SetupKeyService, SetupMessageService, SetupAssociationService, SetupProfileService, SetupEntityService)

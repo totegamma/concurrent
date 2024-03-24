@@ -11,6 +11,12 @@ import (
 	"golang.org/x/crypto/sha3"
 )
 
+func GetHash(bytes []byte) []byte {
+	hash := sha3.NewLegacyKeccak256()
+	hash.Write(bytes)
+	return hash.Sum(nil)
+}
+
 func SignBytes(bytes []byte, privatekey string) ([]byte, error) {
 
 	hash := sha3.NewLegacyKeccak256()

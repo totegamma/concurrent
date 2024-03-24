@@ -4,6 +4,7 @@ package entity
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/pkg/errors"
@@ -227,7 +228,13 @@ func (s *service) Register(ctx context.Context, ccid, info, signature, invitatio
 	ctx, span := tracer.Start(ctx, "ServiceCreate")
 	defer span.End()
 
-	err := util.VerifySignature([]byte(info), []byte(signature), ccid)
+	signatureBytes, err := hex.DecodeString(signature)
+	if err != nil {
+		span.RecordError(err)
+		return core.EntityMeta{}, errors.Wrap(err, "failed to decode signature")
+	}
+
+	err = util.VerifySignature([]byte(info), signatureBytes, ccid)
 	if err != nil {
 		span.RecordError(err)
 		return core.EntityMeta{}, errors.Wrap(err, "Failed to verify signature of info")

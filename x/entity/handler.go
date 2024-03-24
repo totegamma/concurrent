@@ -85,7 +85,7 @@ func (h handler) Register(c echo.Context) error {
 		}
 	}
 
-	err = h.service.Register(ctx, request.CCID, request.Pubkey, request.Registration, request.Signature, request.Info, request.Invitation)
+	err = h.service.Register(ctx, request.CCID, request.Registration, request.Signature, request.Info, request.Invitation)
 	if err != nil {
 		span.RecordError(err)
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
@@ -105,7 +105,7 @@ func (h handler) Create(c echo.Context) error {
 		span.RecordError(err)
 		return err
 	}
-	err = h.service.Create(ctx, request.CCID, request.Pubkey, request.Registration, request.Signature, request.Info)
+	err = h.service.Create(ctx, request.CCID, request.Registration, request.Signature, request.Info)
 	if err != nil {
 		span.RecordError(err)
 		return err

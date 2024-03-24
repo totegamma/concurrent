@@ -17,17 +17,14 @@ import (
 )
 
 const (
-	RootKey  = "con1fk8zlkrfmens3sgj7dzcu3gsw8v9kkysrf8dt5"
-	RootPriv = "1236fa65392e99067750aaed5fd4d9ff93f51fd088e94963e51669396cdd597c"
-	RootPub  = "020bb249a8bb7a10defe954abba5a4320cabb6c49513bfaf6b204ca8c4e4248c01"
+	RootKey  = "con1mu9xruulec4y6hd0d369sdf325l94z4770m33d"
+	RootPriv = "3fcfac6c211b743975de2d7b3f622c12694b8125daf4013562c5a1aefa3253a5"
 
-	SubKey1  = "cck1v26je8uyhc9x6xgcw26d3cne20s44atr7a94em"
-	SubPriv1 = "958ca19f7b011dd101f698c87906750dc2bc20c99943de55c49ebdae668ca244"
-	SubPub1  = "0258abc2cbd73a85c70e9fa4a9e66661e5fee20e3c29c8dd575d8dccc12ed958da"
+	SubKey1  = "cck1ydda2qj3nr32hulm65vj2g746f06hy36wzh9ke"
+	SubPriv1 = "1ca30329e8d35217b2328bacfc21c5e3d762713edab0252eead1f4c1ac0b4d81"
 
-	SubKey2  = "cck18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe"
-	SubPriv2 = "f48627a9728c589263bba24c5feb72e5b0ebc8b342d5e75e055a17cc93115678"
-	SubPub2  = "02dd4b17bf8738a597d01a86a45af704881493de8357aea775c9b605de6aed8493"
+	SubKey2  = "cck1evfmmesj9tn7ma8pvdufy4jhms66yk3xtg3hlz"
+	SubPriv2 = "356fa07cf047fd7bc7f2c6e3869c024b7c4dd3378f708115a39b071189b8ccf9"
 )
 
 func TestService(t *testing.T) {
@@ -45,15 +42,6 @@ func TestService(t *testing.T) {
 
 	mockEntity := mock_entity.NewMockService(ctrl)
 	mockEntity.EXPECT().ResolveHost(gomock.Any(), gomock.Any(), gomock.Any()).Return("", nil).AnyTimes()
-	mockEntity.EXPECT().Get(gomock.Any(), RootKey).Return(core.Entity{
-		Pubkey: RootPub,
-	}, nil).AnyTimes()
-	mockEntity.EXPECT().Get(gomock.Any(), SubKey1).Return(core.Entity{
-		Pubkey: SubPub1,
-	}, nil).AnyTimes()
-	mockEntity.EXPECT().Get(gomock.Any(), SubKey2).Return(core.Entity{
-		Pubkey: SubPub2,
-	}, nil).AnyTimes()
 
 	test_repo := NewRepository(db, mc)
 	test_service := NewService(test_repo, mockEntity, util.Config{})
@@ -85,7 +73,6 @@ func TestService(t *testing.T) {
 			Type:   "enact",
 			Body: core.EnactBody{
 				CKID:   SubKey1,
-				Pubkey: SubPub1,
 				Root:   RootKey,
 				Parent: RootKey,
 			},
@@ -132,7 +119,6 @@ func TestService(t *testing.T) {
 			Type:   "enact",
 			Body: core.EnactBody{
 				CKID:   SubKey2,
-				Pubkey: SubPub2,
 				Root:   RootKey,
 				Parent: SubKey1,
 			},

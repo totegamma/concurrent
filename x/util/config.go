@@ -87,9 +87,8 @@ func (c *Config) Load(path string) error {
 	}
 
 	pubkey := privKey.PubKey()
-	c.Concurrent.PublicKey = hex.EncodeToString(pubkey.Bytes())
 
-	addr, err := PubkeyToAddr(c.Concurrent.PublicKey)
+	addr, err := PubkeyBytesToAddr(pubkey.Bytes(), "ccd")
 	if err != nil {
 		log.Fatal("failed to convert pubkey to address:", err)
 		return err

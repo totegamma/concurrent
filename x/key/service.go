@@ -73,7 +73,6 @@ func (s *service) EnactKey(ctx context.Context, payload, signature string) (core
 
 	key := core.Key{
 		ID:             object.Body.CKID,
-		Pubkey:         object.Body.Pubkey,
 		Root:           object.Body.Root,
 		Parent:         object.Body.Parent,
 		EnactPayload:   payload,
@@ -155,18 +154,12 @@ func (s *service) ValidateSignedObject(ctx context.Context, payload, signature s
 
 	// マスターキーの場合: そのまま検証して終了
 	if object.KeyID == "" {
-		entity, err := s.entity.Get(ctx, object.Signer)
-		if err != nil {
-			span.RecordError(err)
-			return errors.Wrap(err, "[master] failed to get entity")
-		}
-
 		signatureBytes, err := hex.DecodeString(signature)
 		if err != nil {
 			span.RecordError(err)
 			return errors.Wrap(err, "[master] failed to decode signature")
 		}
-		err = util.VerifySignature([]byte(payload), signatureBytes, entity.Pubkey)
+		err = util.VerifySignature([]byte(payload), signatureBytes, object.Signer)
 		if err != nil {
 			span.RecordError(err)
 			return errors.Wrap(err, "[master] failed to verify signature")
@@ -201,18 +194,12 @@ func (s *service) ValidateSignedObject(ctx context.Context, payload, signature s
 			return err
 		}
 
-		subkey, err := s.repository.Get(ctx, object.KeyID)
-		if err != nil {
-			span.RecordError(err)
-			return errors.Wrap(err, "[sub] failed to get subkey")
-		}
-
 		signatureBytes, err := hex.DecodeString(signature)
 		if err != nil {
 			span.RecordError(err)
 			return errors.Wrap(err, "[sub] failed to decode signature")
 		}
-		err = util.VerifySignature([]byte(payload), signatureBytes, subkey.Pubkey)
+		err = util.VerifySignature([]byte(payload), signatureBytes, object.KeyID)
 		if err != nil {
 			span.RecordError(err)
 			return errors.Wrap(err, "[sub] failed to verify signature")

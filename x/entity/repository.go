@@ -14,7 +14,9 @@ import (
 // Repository is the interface for host repository
 type Repository interface {
 	GetEntity(ctx context.Context, key string) (core.Entity, error)
-	CreateEntity(ctx context.Context, entity *core.Entity, meta *core.EntityMeta) error
+	GetEntityMeta(ctx context.Context, key string) (core.EntityMeta, error)
+	CreateEntity(ctx context.Context, entity core.Entity) (core.Entity, error)
+	CreateEntityMeta(ctx context.Context, meta core.EntityMeta) (core.EntityMeta, error)
 	UpdateEntity(ctx context.Context, entity *core.Entity) error
 	GetList(ctx context.Context) ([]core.Entity, error)
 	ListModified(ctx context.Context, modified time.Time) ([]core.Entity, error)
@@ -112,29 +114,37 @@ func (r *repository) GetEntity(ctx context.Context, key string) (core.Entity, er
 	return entity, err
 }
 
+func (r *repository) GetEntityMeta(ctx context.Context, key string) (core.EntityMeta, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryGetMeta")
+	defer span.End()
+
+	var meta core.EntityMeta
+	err := r.db.WithContext(ctx).First(&meta, "id = ?", key).Error
+	return meta, err
+}
+
 // Create creates new entity
-func (r *repository) CreateEntity(ctx context.Context, entity *core.Entity, meta *core.EntityMeta) error {
+func (r *repository) CreateEntity(ctx context.Context, entity core.Entity) (core.Entity, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryCreate")
 	defer span.End()
 
-	err := r.db.Transaction(func(tx *gorm.DB) error {
-
-		if err := tx.WithContext(ctx).Create(&entity).Error; err != nil {
-			return err
-		}
-
-		if err := tx.WithContext(ctx).Create(&meta).Error; err != nil {
-			return err
-		}
-
-		return nil
-	})
-
-	if err == nil {
-		r.mc.Increment("entity_count", 1)
+	if err := r.db.WithContext(ctx).Create(&entity).Error; err != nil {
+		return core.Entity{}, err
 	}
 
-	return err
+	r.mc.Increment("entity_count", 1)
+
+	return entity, nil
+}
+
+// CreateEntityMeta creates new entity meta
+func (r *repository) CreateEntityMeta(ctx context.Context, meta core.EntityMeta) (core.EntityMeta, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryCreateMeta")
+	defer span.End()
+
+	err := r.db.WithContext(ctx).Create(meta).Error
+
+	return meta, err
 }
 
 // GetList returns all entities

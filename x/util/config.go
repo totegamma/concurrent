@@ -2,10 +2,11 @@ package util
 
 import (
 	"encoding/hex"
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/go-yaml/yaml"
 	"log"
 	"os"
+
+	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
+	"github.com/go-yaml/yaml"
 )
 
 // Config is Concurrent base configuration
@@ -75,17 +76,26 @@ func (c *Config) Load(path string) error {
 		return err
 	}
 
-	// generate worker public key
-	proxyPrivateKey, err := crypto.HexToECDSA(c.Concurrent.PrivateKey)
+	privKeyBytes, err := hex.DecodeString(c.Concurrent.PrivateKey)
 	if err != nil {
-		log.Fatal("failed to parse worker private key:", err)
+		log.Fatal("failed to decode private key:", err)
 		return err
 	}
-	c.Concurrent.PublicKey = hex.EncodeToString(crypto.FromECDSAPub(&proxyPrivateKey.PublicKey))
 
-	// generate worker WorkerCCID
-	addr := crypto.PubkeyToAddress(proxyPrivateKey.PublicKey)
-	c.Concurrent.CCID = "CC" + addr.Hex()[2:]
+	privKey := secp256k1.PrivKey{
+		Key: privKeyBytes,
+	}
+
+	pubkey := privKey.PubKey()
+	c.Concurrent.PublicKey = hex.EncodeToString(pubkey.Bytes())
+
+	addr, err := PubkeyToAddr(c.Concurrent.PublicKey)
+	if err != nil {
+		log.Fatal("failed to convert pubkey to address:", err)
+		return err
+	}
+
+	c.Concurrent.CCID = addr
 
 	return nil
 }

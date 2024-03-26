@@ -85,6 +85,14 @@ type Entity struct {
 	MDate                time.Time `json:"mdate" gorm:"autoUpdateTime"`
 }
 
+type EntityExtension struct {
+	ID        string `json:"ccid" gorm:"type:char(42)"`
+	SchemaID  uint   `json:"-"`
+	Schema    string `json:"schema" gorm:"-"`
+	Document  string `json:"document" gorm:"type:json"`
+	Signature string `json:"signature" gorm:"type:char(130)"`
+}
+
 type EntityMeta struct {
 	ID        string  `json:"ccid" gorm:"type:char(42)"`
 	Inviter   *string `json:"inviter" gorm:"type:char(42)"`

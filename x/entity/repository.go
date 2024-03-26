@@ -8,6 +8,7 @@ import (
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/schema"
 	"gorm.io/gorm"
 )
 
@@ -18,7 +19,9 @@ type Repository interface {
 	CreateEntity(ctx context.Context, entity core.Entity) (core.Entity, error)
 	CreateEntityMeta(ctx context.Context, meta core.EntityMeta) (core.EntityMeta, error)
 	CreateEntityWithMeta(ctx context.Context, entity core.Entity, meta core.EntityMeta) (core.Entity, core.EntityMeta, error)
+	UpsertEntityExtension(ctx context.Context, extension core.EntityExtension) (core.EntityExtension, error)
 	UpdateEntity(ctx context.Context, entity *core.Entity) error
+	SetTombstone(ctx context.Context, id, document, signature string) error
 	GetList(ctx context.Context) ([]core.Entity, error)
 	ListModified(ctx context.Context, modified time.Time) ([]core.Entity, error)
 	Delete(ctx context.Context, key string) error
@@ -28,12 +31,13 @@ type Repository interface {
 }
 
 type repository struct {
-	db *gorm.DB
-	mc *memcache.Client
+	db     *gorm.DB
+	mc     *memcache.Client
+	schema schema.Service
 }
 
 // NewRepository creates a new host repository
-func NewRepository(db *gorm.DB, mc *memcache.Client) Repository {
+func NewRepository(db *gorm.DB, mc *memcache.Client, schema schema.Service) Repository {
 
 	var count int64
 	err := db.Model(&core.Entity{}).Count(&count).Error
@@ -46,7 +50,7 @@ func NewRepository(db *gorm.DB, mc *memcache.Client) Repository {
 
 	mc.Set(&memcache.Item{Key: "entity_count", Value: []byte(strconv.FormatInt(count, 10))})
 
-	return &repository{db, mc}
+	return &repository{db, mc, schema}
 }
 
 // Count returns the total number of entities
@@ -103,6 +107,34 @@ func (r *repository) UpdateAddress(ctx context.Context, ccid string, domain stri
 	}
 
 	return r.db.WithContext(ctx).Model(&core.Address{}).Where("id = ?", ccid).Update("domain", domain).Error
+}
+
+// UpsertEntityExtension creates or updates a entity extension
+func (r *repository) UpsertEntityExtension(ctx context.Context, extension core.EntityExtension) (core.EntityExtension, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryUpsertExtension")
+	defer span.End()
+
+	schemaID, err := r.schema.UrlToID(ctx, extension.Schema)
+	if err != nil {
+		return extension, err
+	}
+	extension.SchemaID = schemaID
+
+	err = r.db.WithContext(ctx).Save(&extension).Error
+	return extension, err
+}
+
+// SetTombstone sets the tombstone of a entity
+func (r *repository) SetTombstone(ctx context.Context, id, document, signature string) error {
+	ctx, span := tracer.Start(ctx, "RepositorySetThumbstone")
+	defer span.End()
+
+	err := r.db.Model(&core.Entity{}).Where("id = ?", id).Updates(map[string]interface{}{
+		"tombstone_payload":   document,
+		"tombstone_signature": signature,
+	}).Error
+
+	return err
 }
 
 // Get returns a entity by key

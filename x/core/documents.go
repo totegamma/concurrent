@@ -38,6 +38,10 @@ type EntityTombstone struct { // type: tombstone
 	DocumentBase[TombstoneBody]
 }
 
+type ExtensionDocument[T any] struct { // type: extension
+	DocumentBase[T]
+}
+
 // ack
 type AckPayload struct {
 	From string `json:"from"`

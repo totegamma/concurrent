@@ -150,9 +150,9 @@ type Timeline struct {
 // TimelineItem is one of a base object of concurrent
 // immutable
 type TimelineItem struct {
-	Type       string    `json:"type" gorm:"type:text;"`
 	ObjectID   string    `json:"objectID" gorm:"primaryKey;type:char(26);"`
 	TimelineID string    `json:"TimelineID" gorm:"primaryKey;type:char(20);"`
+	Type       string    `json:"type" gorm:"type:text;"`
 	Owner      string    `json:"owner" gorm:"type:char(42);"`
 	Author     string    `json:"author,omitempty" gorm:"type:char(42);"`
 	CDate      time.Time `json:"cdate,omitempty" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
@@ -203,6 +203,12 @@ type Event struct {
 	Action     string       `json:"action"`
 	Item       TimelineItem `json:"item"`
 	Body       interface{}  `json:"body"`
+}
+
+type UserKV struct {
+	Owner string `json:"owner" gorm:"primaryKey;type:char(42)"`
+	Key   string `json:"key" gorm:"primaryKey;type:text"`
+	Value string `json:"value" gorm:"type:text"`
 }
 
 func Time2Chunk(t time.Time) string {

@@ -12,7 +12,7 @@ func TestServiceGet(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRepo := mock_userkv.NewMockRepository(ctrl)
-	mockRepo.EXPECT().Get(gomock.Any(), "myuser:mykey").Return("myvalue", nil)
+	mockRepo.EXPECT().Get(gomock.Any(), "myuser", "mykey").Return("myvalue", nil)
 
 	s := NewService(mockRepo)
 	result, err := s.Get(context.Background(), "myuser", "mykey")
@@ -30,7 +30,7 @@ func TestServiceUpsert(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockRepo := mock_userkv.NewMockRepository(ctrl)
-	mockRepo.EXPECT().Upsert(gomock.Any(), "myuser:mykey", "myvalue").Return(nil)
+	mockRepo.EXPECT().Upsert(gomock.Any(), "myuser", "mykey", "myvalue").Return(nil)
 
 	s := NewService(mockRepo)
 	err := s.Upsert(context.Background(), "myuser", "mykey", "myvalue")

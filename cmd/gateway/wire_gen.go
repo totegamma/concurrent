@@ -23,6 +23,7 @@ import (
 	"github.com/totegamma/concurrent/x/profile"
 	"github.com/totegamma/concurrent/x/schema"
 	"github.com/totegamma/concurrent/x/socket"
+	"github.com/totegamma/concurrent/x/store"
 	"github.com/totegamma/concurrent/x/timeline"
 	"github.com/totegamma/concurrent/x/userkv"
 	"github.com/totegamma/concurrent/x/util"
@@ -120,8 +121,8 @@ func SetupAuthService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, confi
 	return authService
 }
 
-func SetupUserkvService(rdb *redis.Client) userkv.Service {
-	repository := userkv.NewRepository(rdb)
+func SetupUserkvService(db *gorm.DB) userkv.Service {
+	repository := userkv.NewRepository(db)
 	service := userkv.NewService(repository)
 	return service
 }
@@ -142,6 +143,16 @@ func SetupSchemaService(db *gorm.DB) schema.Service {
 	repository := schema.NewRepository(db)
 	service := schema.NewService(repository)
 	return service
+}
+
+func SetupStoreService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) store.Service {
+	service := SetupKeyService(db, rdb, mc, config)
+	entityService := SetupEntityService(db, rdb, mc, config)
+	messageService := SetupMessageService(db, rdb, mc, manager, config)
+	associationService := SetupAssociationService(db, rdb, mc, manager, config)
+	profileService := SetupProfileService(db, rdb, mc, config)
+	storeService := store.NewService(service, entityService, messageService, associationService, profileService)
+	return storeService
 }
 
 // wire.go:
@@ -177,3 +188,6 @@ var messageServiceProvider = wire.NewSet(message.NewService, message.NewReposito
 
 // Lv5
 var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupTimelineService, SetupMessageService, SetupKeyService, SetupSchemaService)
+
+// Lv6
+var storeServiceProvider = wire.NewSet(store.NewService, SetupKeyService, SetupMessageService, SetupAssociationService, SetupProfileService, SetupEntityService)

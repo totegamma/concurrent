@@ -53,38 +53,26 @@ type UnackDocument struct { // type: unack
 }
 
 // message
-type CreateMessage[T any] struct { // type: c.message
+type CreateMessage[T any] struct { // type: message
 	DocumentBase[T]
 	Timelines []string `json:"streams"`
 }
 
-type DeleteMessage struct { // type: d.message
+type DeleteDocument struct { // type: delete
 	DocumentBase[DeleteBody]
 }
 
 // association
-type CreateAssociation[T any] struct { // type: c.association
+type CreateAssociation[T any] struct { // type: association
 	DocumentBase[T]
 	Timelines []string `json:"timelines"`
 	Variant   string   `json:"variant"`
 	Target    string   `json:"target"`
 }
 
-type DeleteAssociation struct { // type: d.association
-	DocumentBase[DeleteBody]
-}
-
 // profile
-type CreateProfile[T any] struct { // type: c.profile
+type UpsertProfile[T any] struct { // type: profile
 	DocumentBase[T]
-}
-
-type UpdateProfile[T any] struct { // type: u.profile
-	DocumentBase[T]
-}
-
-type DeleteProfile struct { // type: d.profile
-	DocumentBase[DeleteBody]
 }
 
 // key

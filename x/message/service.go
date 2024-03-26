@@ -172,7 +172,7 @@ func (s *service) Delete(ctx context.Context, documentStr string) (core.Message,
 	ctx, span := tracer.Start(ctx, "ServiceDelete")
 	defer span.End()
 
-	var document core.DeleteMessage
+	var document core.DeleteDocument
 	err := json.Unmarshal([]byte(documentStr), &document)
 	if err != nil {
 		span.RecordError(err)

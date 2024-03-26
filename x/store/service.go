@@ -58,22 +58,31 @@ func (s *service) Commit(ctx context.Context, document string, signature string,
 	}
 
 	switch base.Type {
-	case "message.create":
+	case "message":
 		return s.message.Create(ctx, document, signature)
-	case "message.delete":
-		return s.message.Delete(ctx, document)
-	case "association.create":
+	case "association":
 		return s.association.Create(ctx, document, signature)
-	case "association.delete":
-		return s.association.Delete(ctx, document)
-	case "profile.create":
+	case "profile":
 		return s.profile.Create(ctx, document, signature)
-	case "profile.update":
-		return s.profile.Update(ctx, document, signature)
-	case "profile.delete":
-		return s.profile.Delete(ctx, document)
-	case "entity.affiliation":
+	case "affiliation":
 		return s.entity.Affiliation(ctx, document, signature, option)
+    case "delete":
+        var doc core.DeleteDocument
+        err := json.Unmarshal([]byte(document), &doc)
+        if err != nil {
+            return nil, err
+        }
+        typ := doc.Body.TargetID[0]
+        switch typ {
+        case 'm':
+            return s.message.Delete(ctx, document)
+        case 'a':
+            return s.association.Delete(ctx, document)
+        case 'p':
+            return s.profile.Delete(ctx, document)
+        default:
+            return nil, fmt.Errorf("unknown document type: %s", string(typ))
+        }
 	}
 	return nil, fmt.Errorf("unknown document type: %s", base.Type)
 }

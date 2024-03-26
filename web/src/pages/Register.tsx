@@ -48,7 +48,7 @@ export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Elemen
         if (!registration || !signature) return
         setLoading(true)
 
-        api.register(ccaddr, meta, registration, signature, inviteCode, captcha)
+        api.register(registration, signature, meta, inviteCode, captcha)
         .then(async (res) => await res.json())
         .then((data) => {
             console.log(data)

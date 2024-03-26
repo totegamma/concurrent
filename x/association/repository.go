@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/schema"
 	"gorm.io/gorm"
 	"log/slog"
 	"strconv"
@@ -26,12 +27,13 @@ type Repository interface {
 }
 
 type repository struct {
-	db *gorm.DB
-	mc *memcache.Client
+	db     *gorm.DB
+	mc     *memcache.Client
+	schema schema.Service
 }
 
 // NewRepository creates a new association repository
-func NewRepository(db *gorm.DB, mc *memcache.Client) Repository {
+func NewRepository(db *gorm.DB, mc *memcache.Client, schema schema.Service) Repository {
 
 	var count int64
 	err := db.Model(&core.Association{}).Count(&count).Error
@@ -44,7 +46,7 @@ func NewRepository(db *gorm.DB, mc *memcache.Client) Repository {
 
 	mc.Set(&memcache.Item{Key: "association_count", Value: []byte(strconv.FormatInt(count, 10))})
 
-	return &repository{db, mc}
+	return &repository{db, mc, schema}
 }
 
 // Total returns the total number of associations
@@ -71,7 +73,13 @@ func (r *repository) Create(ctx context.Context, association core.Association) (
 	ctx, span := tracer.Start(ctx, "RepositoryCreate")
 	defer span.End()
 
-	err := r.db.WithContext(ctx).Create(&association).Error
+	schemaID, err := r.schema.UrlToID(ctx, association.Schema)
+	if err != nil {
+		return association, err
+	}
+	association.SchemaID = schemaID
+
+	err = r.db.WithContext(ctx).Create(&association).Error
 
 	r.mc.Increment("association_count", 1)
 
@@ -85,6 +93,13 @@ func (r *repository) Get(ctx context.Context, id string) (core.Association, erro
 
 	var association core.Association
 	err := r.db.WithContext(ctx).Where("id = $1", id).First(&association).Error
+
+	schemaUrl, err := r.schema.IDToUrl(ctx, association.SchemaID)
+	if err != nil {
+		return association, err
+	}
+	association.Schema = schemaUrl
+
 	return association, err
 }
 
@@ -95,6 +110,15 @@ func (r *repository) GetOwn(ctx context.Context, author string) ([]core.Associat
 
 	var associations []core.Association
 	err := r.db.WithContext(ctx).Where("author = $1", author).Error
+
+	for i := range associations {
+		schemaUrl, err := r.schema.IDToUrl(ctx, associations[i].SchemaID)
+		if err != nil {
+			continue
+		}
+		associations[i].Schema = schemaUrl
+	}
+
 	return associations, err
 }
 
@@ -125,7 +149,16 @@ func (r *repository) GetByTarget(ctx context.Context, targetID string) ([]core.A
 	defer span.End()
 
 	var associations []core.Association
-	err := r.db.WithContext(ctx).Where("target_id = ?", targetID).Find(&associations).Error
+	err := r.db.WithContext(ctx).Where("target_t_id = ?", targetID).Find(&associations).Error
+
+	for i := range associations {
+		schemaUrl, err := r.schema.IDToUrl(ctx, associations[i].SchemaID)
+		if err != nil {
+			continue
+		}
+		associations[i].Schema = schemaUrl
+	}
+
 	return associations, err
 }
 
@@ -135,18 +168,22 @@ func (r *repository) GetCountsBySchema(ctx context.Context, messageID string) (m
 	defer span.End()
 
 	var counts []struct {
-		Schema string
-		Count  int64
+		SchemaID uint
+		Count    int64
 	}
 
-	err := r.db.WithContext(ctx).Model(&core.Association{}).Select("schema, count(*) as count").Where("target_id = ?", messageID).Group("schema").Scan(&counts).Error
+	err := r.db.WithContext(ctx).Model(&core.Association{}).Select("schema_id, count(*) as count").Where("target_t_id = ?", messageID).Group("schema_id").Scan(&counts).Error
 	if err != nil {
 		return nil, err
 	}
 
 	result := make(map[string]int64)
 	for _, count := range counts {
-		result[count.Schema] = count.Count
+		schemaUrl, err := r.schema.IDToUrl(ctx, count.SchemaID)
+		if err != nil {
+			continue
+		}
+		result[schemaUrl] = count.Count
 	}
 
 	return result, nil
@@ -158,7 +195,16 @@ func (r *repository) GetOwnByTarget(ctx context.Context, targetID, author string
 	defer span.End()
 
 	var associations []core.Association
-	err := r.db.WithContext(ctx).Where("target_id = ? AND author = ?", targetID, author).Find(&associations).Error
+	err := r.db.WithContext(ctx).Where("target_t_id = ? AND author = ?", targetID, author).Find(&associations).Error
+
+	for i := range associations {
+		schemaUrl, err := r.schema.IDToUrl(ctx, associations[i].SchemaID)
+		if err != nil {
+			continue
+		}
+		associations[i].Schema = schemaUrl
+	}
+
 	return associations, err
 }
 
@@ -167,8 +213,22 @@ func (r *repository) GetBySchema(ctx context.Context, messageID, schema string) 
 	ctx, span := tracer.Start(ctx, "RepositoryGetBySchema")
 	defer span.End()
 
+	schemaID, err := r.schema.UrlToID(ctx, schema)
+	if err != nil {
+		return []core.Association{}, err
+	}
+
 	var associations []core.Association
-	err := r.db.WithContext(ctx).Where("target_id = ? AND schema = ?", messageID, schema).Find(&associations).Error
+	err = r.db.WithContext(ctx).Where("target_t_id = ? AND schema_id = ?", messageID, schemaID).Find(&associations).Error
+
+	for i := range associations {
+		schemaUrl, err := r.schema.IDToUrl(ctx, associations[i].SchemaID)
+		if err != nil {
+			continue
+		}
+		associations[i].Schema = schemaUrl
+	}
+
 	return associations, err
 }
 
@@ -182,7 +242,12 @@ func (r *repository) GetCountsBySchemaAndVariant(ctx context.Context, messageID,
 		Count   int64
 	}
 
-	err := r.db.WithContext(ctx).Model(&core.Association{}).Select("variant, count(*) as count").Where("target_id = ? AND schema = ?", messageID, schema).Group("variant").Scan(&counts).Error
+	schemaID, err := r.schema.UrlToID(ctx, schema)
+	if err != nil {
+		return nil, err
+	}
+
+	err = r.db.WithContext(ctx).Model(&core.Association{}).Select("variant, count(*) as count").Where("target_t_id = ? AND schema_id = ?", messageID, schemaID).Group("variant").Scan(&counts).Error
 	if err != nil {
 		return nil, err
 	}
@@ -200,11 +265,24 @@ func (r *repository) GetBySchemaAndVariant(ctx context.Context, messageID, schem
 	ctx, span := tracer.Start(ctx, "RepositoryGetBySchemaAndVariant")
 	defer span.End()
 
-	var associations []core.Association
-
-	err := r.db.WithContext(ctx).Where("target_id = ? AND schema = ? AND variant = ?", messageID, schema, variant).Find(&associations).Error
+	schemaID, err := r.schema.UrlToID(ctx, schema)
 	if err != nil {
 		return nil, err
+	}
+
+	var associations []core.Association
+
+	err = r.db.WithContext(ctx).Where("target_t_id = ? AND schema_id = ? AND variant = ?", messageID, schemaID, variant).Find(&associations).Error
+	if err != nil {
+		return nil, err
+	}
+
+	for i := range associations {
+		schemaUrl, err := r.schema.IDToUrl(ctx, associations[i].SchemaID)
+		if err != nil {
+			continue
+		}
+		associations[i].Schema = schemaUrl
 	}
 
 	return associations, nil

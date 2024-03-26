@@ -60,7 +60,7 @@ func (h *handler) UpdateKey(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
 	}
 
-	var object core.SignedObject[any]
+	var object core.DocumentBase[any]
 	err = json.Unmarshal([]byte(request.SignedObject), &object)
 	if err != nil {
 		span.RecordError(err)

@@ -2,22 +2,13 @@
 package agent
 
 import (
-	"context"
-	"encoding/json"
-	"fmt"
 	"github.com/gorilla/websocket"
 	"github.com/redis/go-redis/v9"
-	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/util"
 	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/propagation"
-	"io"
 	"log/slog"
-	"math/rand"
-	"net/http"
-	"strconv"
 	"sync"
 	"time"
 )
@@ -52,6 +43,7 @@ func NewAgent(rdb *redis.Client, config util.Config, domain domain.Service, enti
 	}
 }
 
+/*
 func (a *agent) collectUsers(ctx context.Context) {
 	hosts, err := a.domain.List(ctx)
 	if err != nil || len(hosts) == 0 {
@@ -60,6 +52,7 @@ func (a *agent) collectUsers(ctx context.Context) {
 	host := hosts[rand.Intn(len(hosts))]
 	a.pullRemoteEntities(ctx, host)
 }
+*/
 
 // Boot starts agent
 func (a *agent) Boot() {
@@ -69,14 +62,14 @@ func (a *agent) Boot() {
 		for {
 			select {
 			case <-ticker60.C:
-				ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
-				defer cancel()
-				a.collectUsers(ctx)
+				// a.collectUsers(ctx)
 				break
 			}
 		}
 	}()
 }
+
+/*
 
 type entitiesResponse struct {
 	Status  string        `json:"status"`
@@ -180,3 +173,4 @@ func (a *agent) pullRemoteEntities(ctx context.Context, remote core.Domain) erro
 
 	return nil
 }
+*/

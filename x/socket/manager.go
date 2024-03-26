@@ -33,7 +33,7 @@ var (
 )
 
 type Manager interface {
-	Subscribe(conn *websocket.Conn, streams []string)
+	Subscribe(conn *websocket.Conn, timelines []string)
 	Unsubscribe(conn *websocket.Conn)
 	GetAllRemoteSubs() []string
 }
@@ -73,13 +73,13 @@ func NewSubscriptionManagerForTest(mc *memcache.Client, rdb *redis.Client) *mana
 	return manager
 }
 
-// Subscribe subscribes a client to a stream
-func (m *manager) Subscribe(conn *websocket.Conn, streams []string) {
-	m.clientSubs[conn] = streams
+// Subscribe subscribes a client to a timeline
+func (m *manager) Subscribe(conn *websocket.Conn, timelines []string) {
+	m.clientSubs[conn] = timelines
 	m.createInsufficientSubs() // TODO: this should be done in a goroutine
 }
 
-// Unsubscribe unsubscribes a client from a stream
+// Unsubscribe unsubscribes a client from a timeline
 func (m *manager) Unsubscribe(conn *websocket.Conn) {
 	if _, ok := m.clientSubs[conn]; ok {
 		delete(m.clientSubs, conn)
@@ -108,9 +108,9 @@ func (m *manager) GetAllRemoteSubs() []string {
 // also update remoteConns if needed
 func (m *manager) createInsufficientSubs() {
 	currentSubs := make(map[string]bool)
-	for _, streams := range m.clientSubs {
-		for _, stream := range streams {
-			currentSubs[stream] = true
+	for _, timelines := range m.clientSubs {
+		for _, timeline := range timelines {
+			currentSubs[timeline] = true
 		}
 	}
 
@@ -118,8 +118,8 @@ func (m *manager) createInsufficientSubs() {
 	// only add new subscriptions
 	// also detect remote subscription changes
 	changedRemotes := make([]string, 0)
-	for stream := range currentSubs {
-		split := strings.Split(stream, "@")
+	for timeline := range currentSubs {
+		split := strings.Split(timeline, "@")
 		if len(split) != 2 {
 			continue
 		}
@@ -130,13 +130,13 @@ func (m *manager) createInsufficientSubs() {
 		}
 
 		if _, ok := m.remoteSubs[domain]; !ok {
-			m.remoteSubs[domain] = []string{stream}
+			m.remoteSubs[domain] = []string{timeline}
 			if !slices.Contains(changedRemotes, domain) {
 				changedRemotes = append(changedRemotes, domain)
 			}
 		} else {
-			if !slices.Contains(m.remoteSubs[domain], stream) {
-				m.remoteSubs[domain] = append(m.remoteSubs[domain], stream)
+			if !slices.Contains(m.remoteSubs[domain], timeline) {
+				m.remoteSubs[domain] = append(m.remoteSubs[domain], timeline)
 				if !slices.Contains(changedRemotes, domain) {
 					changedRemotes = append(changedRemotes, domain)
 				}
@@ -152,21 +152,21 @@ func (m *manager) createInsufficientSubs() {
 // DeleteExcessiveSubs deletes subscriptions that are not needed anymore
 func (m *manager) deleteExcessiveSubs() {
 	var currentSubs []string
-	for _, streams := range m.clientSubs {
-		for _, stream := range streams {
-			if !slices.Contains(currentSubs, stream) {
-				currentSubs = append(currentSubs, stream)
+	for _, timelines := range m.clientSubs {
+		for _, timeline := range timelines {
+			if !slices.Contains(currentSubs, timeline) {
+				currentSubs = append(currentSubs, timeline)
 			}
 		}
 	}
 
 	var closeList []string
 
-	for domain, streams := range m.remoteSubs {
-		for _, stream := range streams {
+	for domain, timelines := range m.remoteSubs {
+		for _, timeline := range timelines {
 			var newSubs []string
 			for _, currentSub := range currentSubs {
-				if currentSub == stream {
+				if currentSub == timeline {
 					newSubs = append(newSubs, currentSub)
 				}
 			}
@@ -197,7 +197,7 @@ func (m *manager) deleteExcessiveSubs() {
 }
 
 // RemoteSubRoutine subscribes to a remote server
-func (m *manager) RemoteSubRoutine(domain string, streams []string) {
+func (m *manager) RemoteSubRoutine(domain string, timelines []string) {
 	if _, ok := m.remoteConns[domain]; !ok {
 		// new server, create new connection
 		u := url.URL{Scheme: "wss", Host: domain, Path: "/api/v1/socket"}
@@ -303,7 +303,7 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 					}
 
 					// publish message to Redis
-					err = m.rdb.Publish(ctx, event.Stream, string(message)).Err()
+					err = m.rdb.Publish(ctx, event.TimelineID, string(message)).Err()
 					if err != nil {
 						slog.Error(
 							fmt.Sprintf("fail to publish message to Redis"),
@@ -327,14 +327,14 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 					}
 					json = append(json, ',')
 
-					streamID := event.Item.StreamID
-					if !strings.Contains(streamID, "@") {
-						streamID = streamID + "@" + domain
+					timelineID := event.Item.TimelineID
+					if !strings.Contains(timelineID, "@") {
+						timelineID = timelineID + "@" + domain
 					}
 
 					// update cache
 					// first, try to get itr
-					itr := "stream:itr:all:" + streamID + ":" + core.Time2Chunk(event.Item.CDate)
+					itr := "timeline:itr:all:" + timelineID + ":" + core.Time2Chunk(event.Item.CDate)
 					itrVal, err := m.mc.Get(itr)
 					var cacheKey string
 					if err == nil {
@@ -344,7 +344,7 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 						// とはいえ今後はいい感じにキャッシュを作れるようにしたい
 						// 例えば、今までのキャッシュを(現時点では取得不能)最新のitrが指すようにして
 						// 今までのキャッシュを更新し続けるとか... (TODO)
-						// cacheKey := "stream:body:all:" + event.Item.StreamID + ":" + core.Time2Chunk(event.Item.CDate)
+						// cacheKey := "timeline:body:all:" + event.Item.TimelienID + ":" + core.Time2Chunk(event.Item.CDate)
 						slog.Info(
 							fmt.Sprintf("no need to update cache: %s", itr),
 							slog.String("module", "socket"),
@@ -385,7 +385,7 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 		}(c, messageChan)
 	}
 	request := channelRequest{
-		Channels: streams,
+		Channels: timelines,
 	}
 	err := m.remoteConns[domain].WriteJSON(request)
 	if err != nil {
@@ -400,7 +400,7 @@ func (m *manager) RemoteSubRoutine(domain string, streams []string) {
 		return
 	}
 	slog.Info(
-		fmt.Sprintf("remote connection updated: %s > %s", domain, streams),
+		fmt.Sprintf("remote connection updated: %s > %s", domain, timelines),
 		slog.String("module", "socket"),
 		slog.String("group", "remote"),
 	)

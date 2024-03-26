@@ -1,4 +1,4 @@
-package stream
+package timeline
 
 import (
 	"context"
@@ -47,46 +47,46 @@ func TestRepository(t *testing.T) {
 
 	repo = NewRepository(db, rdb, mc, mockManager, util.Config{})
 
-	// :: Streamを作成 ::
-	stream := core.Stream{
+	// :: Timelineを作成 ::
+	timeline := core.Timeline{
 		ID:         "00000000000000000000",
 		Visible:    true,
-		Author:     "CC62b953CCCE898b955f256976d61BdEE04353C042",
-		Maintainer: []string{"CC62b953CCCE898b955f256976d61BdEE04353C042"},
-		Writer:     []string{"CC62b953CCCE898b955f256976d61BdEE04353C042"},
-		Reader:     []string{"CC62b953CCCE898b955f256976d61BdEE04353C042"},
+		Author:     "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
+		Maintainer: []string{"con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe"},
+		Writer:     []string{"con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe"},
+		Reader:     []string{"con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe"},
 		Schema:     "https://example.com/testschema.json",
 		Payload:    "{}",
 	}
 
-	created, err := repo.CreateStream(ctx, stream)
+	created, err := repo.CreateTimeline(ctx, timeline)
 	if assert.NoError(t, err) {
-		assert.Equal(t, created.ID, stream.ID)
-		assert.Equal(t, created.Visible, stream.Visible)
-		assert.Equal(t, created.Author, stream.Author)
-		assert.Contains(t, created.Maintainer, stream.Author)
-		assert.Contains(t, created.Writer, stream.Author)
-		assert.Contains(t, created.Reader, stream.Author)
-		assert.Equal(t, created.Schema, stream.Schema)
-		assert.Equal(t, created.Payload, stream.Payload)
+		assert.Equal(t, created.ID, timeline.ID)
+		assert.Equal(t, created.Visible, timeline.Visible)
+		assert.Equal(t, created.Author, timeline.Author)
+		assert.Contains(t, created.Maintainer, timeline.Author)
+		assert.Contains(t, created.Writer, timeline.Author)
+		assert.Contains(t, created.Reader, timeline.Author)
+		assert.Equal(t, created.Schema, timeline.Schema)
+		assert.Equal(t, created.Payload, timeline.Payload)
 		assert.NotZero(t, created.CDate)
 		assert.NotZero(t, created.MDate)
 	}
 
 	// :: Itemを作成 ::
-	item := core.StreamItem{
-		Type:     "message",
-		ObjectID: "af7bcaa8-820a-4ce2-ab17-1b3f6bf14d9b",
-		StreamID: "00000000000000000000",
-		Owner:    "CC62b953CCCE898b955f256976d61BdEE04353C042",
-		CDate:    pivot.Add(-time.Minute * 0),
+	item := core.TimelineItem{
+		Type:       "message",
+		ObjectID:   "RGZKRZ5YTMTNDE9J0676P1TQAW",
+		TimelineID: "00000000000000000000",
+		Owner:      "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
+		CDate:      pivot.Add(-time.Minute * 0),
 	}
 
 	createdItem, err := repo.CreateItem(ctx, item)
 	if assert.NoError(t, err) {
 		assert.Equal(t, createdItem.Type, item.Type)
 		assert.Equal(t, createdItem.ObjectID, item.ObjectID)
-		assert.Equal(t, createdItem.StreamID, item.StreamID)
+		assert.Equal(t, createdItem.TimelineID, item.TimelineID)
 		assert.Equal(t, createdItem.Owner, item.Owner)
 		assert.NotZero(t, createdItem.CDate)
 	}
@@ -94,12 +94,12 @@ func TestRepository(t *testing.T) {
 	// :: ChunkIteratorが取得できることを確認 ::
 	pivotChunk := core.Time2Chunk(pivot)
 
-	_, err = repo.CreateItem(ctx, core.StreamItem{
-		Type:     "message",
-		ObjectID: "3c850e58-efca-4656-bbe4-2e5642dbbbe8",
-		StreamID: "00000000000000000000",
-		Owner:    "CC62b953CCCE898b955f256976d61BdEE04353C042",
-		CDate:    pivot.Add(-time.Minute * 10),
+	_, err = repo.CreateItem(ctx, core.TimelineItem{
+		Type:       "message",
+		ObjectID:   "RV75ZS5R588QDNQ00676P1X440",
+		TimelineID: "00000000000000000000",
+		Owner:      "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
+		CDate:      pivot.Add(-time.Minute * 10),
 	})
 	assert.NoError(t, err)
 
@@ -109,7 +109,7 @@ func TestRepository(t *testing.T) {
 		assert.Len(t, result, 1)
 	}
 
-	itemKey := "stream:body:all:00000000000000000000:" + core.Time2Chunk(createdItem.CDate)
+	itemKey := "timeline:body:all:00000000000000000000:" + core.Time2Chunk(createdItem.CDate)
 	assert.Equal(t, result["00000000000000000000"], itemKey)
 
 	// trial2: cache hit test
@@ -119,34 +119,34 @@ func TestRepository(t *testing.T) {
 		assert.Equal(t, result2["00000000000000000000"], itemKey)
 	}
 
-	// :: Stream1を作成してItemを追加 ::
-	_, err = repo.CreateStream(ctx, core.Stream{
+	// :: Timeline1を作成してItemを追加 ::
+	_, err = repo.CreateTimeline(ctx, core.Timeline{
 		ID:         "11111111111111111111",
 		Visible:    true,
-		Author:     "CC62b953CCCE898b955f256976d61BdEE04353C042",
-		Maintainer: []string{"CC62b953CCCE898b955f256976d61BdEE04353C042"},
-		Writer:     []string{"CC62b953CCCE898b955f256976d61BdEE04353C042"},
-		Reader:     []string{"CC62b953CCCE898b955f256976d61BdEE04353C042"},
+		Author:     "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
+		Maintainer: []string{"con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe"},
+		Writer:     []string{"con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe"},
+		Reader:     []string{"con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe"},
 		Schema:     "https://example.com/testschema.json",
 		Payload:    "{}",
 	})
 	assert.NoError(t, err)
 
-	_, err = repo.CreateItem(ctx, core.StreamItem{
-		Type:     "message",
-		ObjectID: "50797d45-23d2-471e-9e48-b4b8a6cdc840",
-		StreamID: "11111111111111111111",
-		Owner:    "CC62b953CCCE898b955f256976d61BdEE04353C042",
-		CDate:    pivot.Add(-time.Minute * 0),
+	_, err = repo.CreateItem(ctx, core.TimelineItem{
+		Type:       "message",
+		ObjectID:   "5JY6724DKGDBCMP60676P2055M",
+		TimelineID: "11111111111111111111",
+		Owner:      "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
+		CDate:      pivot.Add(-time.Minute * 0),
 	})
 	assert.NoError(t, err)
 
-	_, err = repo.CreateItem(ctx, core.StreamItem{
-		Type:     "message",
-		ObjectID: "9aad0952-7a50-419c-96c1-565a1da95c47",
-		StreamID: "11111111111111111111",
-		Owner:    "CC62b953CCCE898b955f256976d61BdEE04353C042",
-		CDate:    pivot.Add(-time.Minute * 10),
+	_, err = repo.CreateItem(ctx, core.TimelineItem{
+		Type:       "message",
+		ObjectID:   "5KV37HA63HVE7KNP0676P228RM",
+		TimelineID: "11111111111111111111",
+		Owner:      "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
+		CDate:      pivot.Add(-time.Minute * 10),
 	})
 	assert.NoError(t, err)
 
@@ -174,35 +174,35 @@ func TestRepository(t *testing.T) {
 		assert.Len(t, chunks["11111111111111111111"].Items, 2)
 	}
 
-	// StreamItemの順番のテスト
+	// TimelineItemの順番のテスト
 
-	_, err = repo.CreateStream(ctx, core.Stream{
+	_, err = repo.CreateTimeline(ctx, core.Timeline{
 		ID:         "22222222222222222222",
 		Visible:    true,
-		Author:     "CC62b953CCCE898b955f256976d61BdEE04353C042",
-		Maintainer: []string{"CC62b953CCCE898b955f256976d61BdEE04353C042"},
-		Writer:     []string{"CC62b953CCCE898b955f256976d61BdEE04353C042"},
-		Reader:     []string{"CC62b953CCCE898b955f256976d61BdEE04353C042"},
+		Author:     "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
+		Maintainer: []string{"con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe"},
+		Writer:     []string{"con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe"},
+		Reader:     []string{"con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe"},
 		Schema:     "https://example.com/testschema.json",
 		Payload:    "{}",
 	})
 	assert.NoError(t, err)
 
-	_, err = repo.CreateItem(ctx, core.StreamItem{
-		Type:     "message",
-		ObjectID: "d6087868-c30b-439d-9c2c-646fdd48ecc4",
-		StreamID: "22222222222222222222",
-		Owner:    "CC62b953CCCE898b955f256976d61BdEE04353C042",
-		CDate:    pivot.Add(-time.Minute * 10),
+	_, err = repo.CreateItem(ctx, core.TimelineItem{
+		Type:       "message",
+		ObjectID:   "A1HJCH9NK9MPMV7D0676P25PSR",
+		TimelineID: "22222222222222222222",
+		Owner:      "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
+		CDate:      pivot.Add(-time.Minute * 10),
 	})
 	assert.NoError(t, err)
 
-	_, err = repo.CreateItem(ctx, core.StreamItem{
-		Type:     "message",
-		ObjectID: "797e1f95-542e-485b-8051-a87c1ad1fe06",
-		StreamID: "22222222222222222222",
-		Owner:    "CC62b953CCCE898b955f256976d61BdEE04353C042",
-		CDate:    pivot.Add(-time.Minute * 5),
+	_, err = repo.CreateItem(ctx, core.TimelineItem{
+		Type:       "message",
+		ObjectID:   "W4H1PZZ223D1B6ED0676P27J50",
+		TimelineID: "22222222222222222222",
+		Owner:      "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
+		CDate:      pivot.Add(-time.Minute * 5),
 	})
 	assert.NoError(t, err)
 
@@ -212,16 +212,16 @@ func TestRepository(t *testing.T) {
 	if assert.NoError(t, err) {
 		assert.Len(t, chunks, 1)
 		assert.Len(t, chunks["22222222222222222222"].Items, 2)
-		assert.Equal(t, "797e1f95-542e-485b-8051-a87c1ad1fe06", chunks["22222222222222222222"].Items[0].ObjectID)
-		assert.Equal(t, "d6087868-c30b-439d-9c2c-646fdd48ecc4", chunks["22222222222222222222"].Items[1].ObjectID)
+		assert.Equal(t, "W4H1PZZ223D1B6ED0676P27J50", chunks["22222222222222222222"].Items[0].ObjectID)
+		assert.Equal(t, "A1HJCH9NK9MPMV7D0676P25PSR", chunks["22222222222222222222"].Items[1].ObjectID)
 	}
 
-	_, err = repo.CreateItem(ctx, core.StreamItem{
-		Type:     "message",
-		ObjectID: "01eb39b4-0a5b-4461-a091-df9a97c7b2fd",
-		StreamID: "22222222222222222222",
-		Owner:    "CC62b953CCCE898b955f256976d61BdEE04353C042",
-		CDate:    pivot.Add(-time.Minute * 1),
+	_, err = repo.CreateItem(ctx, core.TimelineItem{
+		Type:       "message",
+		ObjectID:   "T46G7BT5TJQQS4WY0676P2A9ZM",
+		TimelineID: "22222222222222222222",
+		Owner:      "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
+		CDate:      pivot.Add(-time.Minute * 1),
 	})
 	assert.NoError(t, err)
 
@@ -229,25 +229,25 @@ func TestRepository(t *testing.T) {
 	if assert.NoError(t, err) {
 		assert.Len(t, chunks, 1)
 		assert.Len(t, chunks["22222222222222222222"].Items, 3)
-		assert.Equal(t, "01eb39b4-0a5b-4461-a091-df9a97c7b2fd", chunks["22222222222222222222"].Items[0].ObjectID)
-		assert.Equal(t, "797e1f95-542e-485b-8051-a87c1ad1fe06", chunks["22222222222222222222"].Items[1].ObjectID)
-		assert.Equal(t, "d6087868-c30b-439d-9c2c-646fdd48ecc4", chunks["22222222222222222222"].Items[2].ObjectID)
+		assert.Equal(t, "T46G7BT5TJQQS4WY0676P2A9ZM", chunks["22222222222222222222"].Items[0].ObjectID)
+		assert.Equal(t, "W4H1PZZ223D1B6ED0676P27J50", chunks["22222222222222222222"].Items[1].ObjectID)
+		assert.Equal(t, "A1HJCH9NK9MPMV7D0676P25PSR", chunks["22222222222222222222"].Items[2].ObjectID)
 	}
 
-	remoteKey0 := "stream:body:all:00000000000000000000@remote.com:" + core.Time2Chunk(pivot.Add(-time.Minute*10))
-	remoteKey1 := "stream:body:all:11111111111111111111@remote.com:" + core.Time2Chunk(pivot.Add(-time.Minute*30))
+	remoteKey0 := "timeline:body:all:00000000000000000000@remote.com:" + core.Time2Chunk(pivot.Add(-time.Minute*10))
+	remoteKey1 := "timeline:body:all:11111111111111111111@remote.com:" + core.Time2Chunk(pivot.Add(-time.Minute*30))
 
 	// test SaveToCache
 	testchunks := make(map[string]Chunk)
 	testchunks["00000000000000000000@remote.com"] = Chunk{
 		Key: remoteKey0,
-		Items: []core.StreamItem{
+		Items: []core.TimelineItem{
 			{
-				Type:     "message",
-				ObjectID: "00000000000000000000",
-				StreamID: "00000000000000000000@remote.com",
-				Owner:    "CC62b953CCCE898b955f256976d61BdEE04353C042",
-				CDate:    pivot.Add(-time.Minute * 10),
+				Type:       "message",
+				ObjectID:   "DMZMRRS7N16E1PDN0676P2QH6C",
+				TimelineID: "00000000000000000000@remote.com",
+				Owner:      "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
+				CDate:      pivot.Add(-time.Minute * 10),
 			},
 		},
 	}
@@ -255,13 +255,13 @@ func TestRepository(t *testing.T) {
 	testJson0 = append(testJson0, ',')
 	testchunks["11111111111111111111@remote.com"] = Chunk{
 		Key: remoteKey1,
-		Items: []core.StreamItem{
+		Items: []core.TimelineItem{
 			{
-				Type:     "message",
-				ObjectID: "22222222222222222222",
-				StreamID: "11111111111111111111@remote.com",
-				Owner:    "CC62b953CCCE898b955f256976d61BdEE04353C042",
-				CDate:    pivot.Add(-time.Minute * 30),
+				Type:       "message",
+				ObjectID:   "D895NMA837R0C6B90676P2S1J4",
+				TimelineID: "11111111111111111111@remote.com",
+				Owner:      "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
+				CDate:      pivot.Add(-time.Minute * 30),
 			},
 		},
 	}
@@ -270,13 +270,13 @@ func TestRepository(t *testing.T) {
 
 	err = repo.SaveToCache(ctx, testchunks, pivot)
 	if assert.NoError(t, err) {
-		itrkey0 := "stream:itr:all:00000000000000000000@remote.com:" + pivotChunk
+		itrkey0 := "timeline:itr:all:00000000000000000000@remote.com:" + pivotChunk
 		remoteCache0, err := mc.Get(itrkey0)
 		if assert.NoError(t, err) {
 			assert.Equal(t, remoteKey0, string(remoteCache0.Value))
 		}
 
-		itrKey1 := "stream:itr:all:11111111111111111111@remote.com:" + pivotChunk
+		itrKey1 := "timeline:itr:all:11111111111111111111@remote.com:" + pivotChunk
 		remoteCache1, err := mc.Get(itrKey1)
 		if assert.NoError(t, err) {
 			assert.Equal(t, remoteKey1, string(remoteCache1.Value))

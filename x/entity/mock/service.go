@@ -36,6 +36,21 @@ func (m *MockService) EXPECT() *MockServiceMockRecorder {
 	return m.recorder
 }
 
+// Affiliation mocks base method.
+func (m *MockService) Affiliation(ctx context.Context, document, signature, meta string) (core.Entity, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Affiliation", ctx, document, signature, meta)
+	ret0, _ := ret[0].(core.Entity)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Affiliation indicates an expected call of Affiliation.
+func (mr *MockServiceMockRecorder) Affiliation(ctx, document, signature, meta interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Affiliation", reflect.TypeOf((*MockService)(nil).Affiliation), ctx, document, signature, meta)
+}
+
 // Count mocks base method.
 func (m *MockService) Count(ctx context.Context) (int64, error) {
 	m.ctrl.T.Helper()
@@ -51,20 +66,6 @@ func (mr *MockServiceMockRecorder) Count(ctx interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Count", reflect.TypeOf((*MockService)(nil).Count), ctx)
 }
 
-// Create mocks base method.
-func (m *MockService) Create(ctx context.Context, ccid, payload, signature, info string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Create", ctx, ccid, payload, signature, info)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Create indicates an expected call of Create.
-func (mr *MockServiceMockRecorder) Create(ctx, ccid, payload, signature, info interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockService)(nil).Create), ctx, ccid, payload, signature, info)
-}
-
 // Delete mocks base method.
 func (m *MockService) Delete(ctx context.Context, id string) error {
 	m.ctrl.T.Helper()
@@ -77,6 +78,21 @@ func (m *MockService) Delete(ctx context.Context, id string) error {
 func (mr *MockServiceMockRecorder) Delete(ctx, id interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockService)(nil).Delete), ctx, id)
+}
+
+// Extension mocks base method.
+func (m *MockService) Extension(ctx context.Context, document, signature string) (core.EntityExtension, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Extension", ctx, document, signature)
+	ret0, _ := ret[0].(core.EntityExtension)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Extension indicates an expected call of Extension.
+func (mr *MockServiceMockRecorder) Extension(ctx, document, signature interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Extension", reflect.TypeOf((*MockService)(nil).Extension), ctx, document, signature)
 }
 
 // Get mocks base method.
@@ -168,20 +184,6 @@ func (mr *MockServiceMockRecorder) PullEntityFromRemote(ctx, id, domain interfac
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PullEntityFromRemote", reflect.TypeOf((*MockService)(nil).PullEntityFromRemote), ctx, id, domain)
 }
 
-// Register mocks base method.
-func (m *MockService) Register(ctx context.Context, ccid, payload, signature, info, invitation string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Register", ctx, ccid, payload, signature, info, invitation)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Register indicates an expected call of Register.
-func (mr *MockServiceMockRecorder) Register(ctx, ccid, payload, signature, info, invitation interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Register", reflect.TypeOf((*MockService)(nil).Register), ctx, ccid, payload, signature, info, invitation)
-}
-
 // ResolveHost mocks base method.
 func (m *MockService) ResolveHost(ctx context.Context, user, hint string) (string, error) {
 	m.ctrl.T.Helper()
@@ -195,6 +197,21 @@ func (m *MockService) ResolveHost(ctx context.Context, user, hint string) (strin
 func (mr *MockServiceMockRecorder) ResolveHost(ctx, user, hint interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveHost", reflect.TypeOf((*MockService)(nil).ResolveHost), ctx, user, hint)
+}
+
+// Tombstone mocks base method.
+func (m *MockService) Tombstone(ctx context.Context, document, signature string) (core.Entity, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Tombstone", ctx, document, signature)
+	ret0, _ := ret[0].(core.Entity)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Tombstone indicates an expected call of Tombstone.
+func (mr *MockServiceMockRecorder) Tombstone(ctx, document, signature interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Tombstone", reflect.TypeOf((*MockService)(nil).Tombstone), ctx, document, signature)
 }
 
 // Update mocks base method.
@@ -223,18 +240,4 @@ func (m *MockService) UpdateAddress(ctx context.Context, ccid, domain string, si
 func (mr *MockServiceMockRecorder) UpdateAddress(ctx, ccid, domain, signedAt interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateAddress", reflect.TypeOf((*MockService)(nil).UpdateAddress), ctx, ccid, domain, signedAt)
-}
-
-// UpdateRegistration mocks base method.
-func (m *MockService) UpdateRegistration(ctx context.Context, id, payload, signature string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateRegistration", ctx, id, payload, signature)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// UpdateRegistration indicates an expected call of UpdateRegistration.
-func (mr *MockServiceMockRecorder) UpdateRegistration(ctx, id, payload, signature interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateRegistration", reflect.TypeOf((*MockService)(nil).UpdateRegistration), ctx, id, payload, signature)
 }

@@ -14,15 +14,17 @@ import (
 	"github.com/totegamma/concurrent/x/agent"
 	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/auth"
-	"github.com/totegamma/concurrent/x/character"
 	"github.com/totegamma/concurrent/x/collection"
 	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/message"
+	"github.com/totegamma/concurrent/x/profile"
+	"github.com/totegamma/concurrent/x/schema"
 	"github.com/totegamma/concurrent/x/socket"
-	"github.com/totegamma/concurrent/x/stream"
+	"github.com/totegamma/concurrent/x/store"
+	"github.com/totegamma/concurrent/x/timeline"
 	"github.com/totegamma/concurrent/x/userkv"
 	"github.com/totegamma/concurrent/x/util"
 	"gorm.io/gorm"
@@ -52,35 +54,37 @@ func SetupKeyService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config
 }
 
 func SetupMessageService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) message.Service {
-	repository := message.NewRepository(db, mc)
-	service := SetupStreamService(db, rdb, mc, manager, config)
+	service := SetupSchemaService(db)
+	repository := message.NewRepository(db, mc, service)
+	timelineService := SetupTimelineService(db, rdb, mc, manager, config)
 	keyService := SetupKeyService(db, rdb, mc, config)
-	messageService := message.NewService(rdb, repository, service, keyService)
+	messageService := message.NewService(rdb, repository, timelineService, keyService)
 	return messageService
 }
 
-func SetupCharacterService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) character.Service {
-	repository := character.NewRepository(db, mc)
+func SetupProfileService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) profile.Service {
+	repository := profile.NewRepository(db, mc)
 	service := SetupKeyService(db, rdb, mc, config)
-	characterService := character.NewService(repository, service)
-	return characterService
+	profileService := profile.NewService(repository, service)
+	return profileService
 }
 
 func SetupAssociationService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) association.Service {
-	repository := association.NewRepository(db, mc)
-	service := SetupStreamService(db, rdb, mc, manager, config)
+	service := SetupSchemaService(db)
+	repository := association.NewRepository(db, mc, service)
+	timelineService := SetupTimelineService(db, rdb, mc, manager, config)
 	messageService := SetupMessageService(db, rdb, mc, manager, config)
 	keyService := SetupKeyService(db, rdb, mc, config)
-	associationService := association.NewService(repository, service, messageService, keyService)
+	associationService := association.NewService(repository, timelineService, messageService, keyService)
 	return associationService
 }
 
-func SetupStreamService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) stream.Service {
-	repository := stream.NewRepository(db, rdb, mc, manager, config)
+func SetupTimelineService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) timeline.Service {
+	repository := timeline.NewRepository(db, rdb, mc, manager, config)
 	service := SetupEntityService(db, rdb, mc, config)
 	domainService := SetupDomainService(db, config)
-	streamService := stream.NewService(repository, service, domainService, config)
-	return streamService
+	timelineService := timeline.NewService(repository, service, domainService, config)
+	return timelineService
 }
 
 func SetupDomainService(db *gorm.DB, config util.Config) domain.Service {
@@ -90,9 +94,10 @@ func SetupDomainService(db *gorm.DB, config util.Config) domain.Service {
 }
 
 func SetupEntityService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) entity.Service {
-	repository := entity.NewRepository(db, mc)
-	service := SetupJwtService(rdb)
-	entityService := entity.NewService(repository, config, service)
+	service := SetupSchemaService(db)
+	repository := entity.NewRepository(db, mc, service)
+	jwtService := SetupJwtService(rdb)
+	entityService := entity.NewService(repository, config, jwtService)
 	return entityService
 }
 
@@ -117,8 +122,8 @@ func SetupAuthService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, confi
 	return authService
 }
 
-func SetupUserkvService(rdb *redis.Client) userkv.Service {
-	repository := userkv.NewRepository(rdb)
+func SetupUserkvService(db *gorm.DB) userkv.Service {
+	repository := userkv.NewRepository(db)
 	service := userkv.NewService(repository)
 	return service
 }
@@ -135,28 +140,56 @@ func SetupSocketManager(mc *memcache.Client, db *gorm.DB, rdb *redis.Client, con
 	return manager
 }
 
+func SetupSchemaService(db *gorm.DB) schema.Service {
+	repository := schema.NewRepository(db)
+	service := schema.NewService(repository)
+	return service
+}
+
+func SetupStoreService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) store.Service {
+	service := SetupKeyService(db, rdb, mc, config)
+	entityService := SetupEntityService(db, rdb, mc, config)
+	messageService := SetupMessageService(db, rdb, mc, manager, config)
+	associationService := SetupAssociationService(db, rdb, mc, manager, config)
+	profileService := SetupProfileService(db, rdb, mc, config)
+	storeService := store.NewService(service, entityService, messageService, associationService, profileService)
+	return storeService
+}
+
 // wire.go:
 
-var collectionHandlerProvider = wire.NewSet(collection.NewHandler, collection.NewService, collection.NewRepository)
-
+// Lv0
 var jwtServiceProvider = wire.NewSet(jwt.NewService, jwt.NewRepository)
+
+var schemaServiceProvider = wire.NewSet(schema.NewService, schema.NewRepository)
 
 var domainServiceProvider = wire.NewSet(domain.NewService, domain.NewRepository)
 
-var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService)
+var userKvServiceProvider = wire.NewSet(userkv.NewService, userkv.NewRepository)
 
-var streamServiceProvider = wire.NewSet(stream.NewService, stream.NewRepository, SetupEntityService, SetupDomainService)
+// Lv1
+var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService, SetupSchemaService)
 
-var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupStreamService, SetupMessageService, SetupKeyService)
+// Lv2
+var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository, SetupEntityService)
 
-var characterServiceProvider = wire.NewSet(character.NewService, character.NewRepository, SetupKeyService)
+var timelineServiceProvider = wire.NewSet(timeline.NewService, timeline.NewRepository, SetupEntityService, SetupDomainService)
+
+// Lv3
+var profileServiceProvider = wire.NewSet(profile.NewService, profile.NewRepository, SetupKeyService)
 
 var authServiceProvider = wire.NewSet(auth.NewService, SetupEntityService, SetupDomainService, SetupKeyService)
 
-var messageServiceProvider = wire.NewSet(message.NewService, message.NewRepository, SetupStreamService, SetupKeyService)
-
-var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository, SetupEntityService)
-
-var userKvServiceProvider = wire.NewSet(userkv.NewService, userkv.NewRepository)
-
 var ackServiceProvider = wire.NewSet(ack.NewService, ack.NewRepository, SetupEntityService, SetupKeyService)
+
+// Lv4
+var messageServiceProvider = wire.NewSet(message.NewService, message.NewRepository, SetupTimelineService, SetupKeyService, SetupSchemaService)
+
+// Lv5
+var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupTimelineService, SetupMessageService, SetupKeyService, SetupSchemaService)
+
+// Lv6
+var storeServiceProvider = wire.NewSet(store.NewService, SetupKeyService, SetupMessageService, SetupAssociationService, SetupProfileService, SetupEntityService)
+
+// not implemented
+var collectionHandlerProvider = wire.NewSet(collection.NewHandler, collection.NewService, collection.NewRepository)

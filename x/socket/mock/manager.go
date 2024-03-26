@@ -49,15 +49,15 @@ func (mr *MockManagerMockRecorder) GetAllRemoteSubs() *gomock.Call {
 }
 
 // Subscribe mocks base method.
-func (m *MockManager) Subscribe(conn *websocket.Conn, streams []string) {
+func (m *MockManager) Subscribe(conn *websocket.Conn, timelines []string) {
 	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "Subscribe", conn, streams)
+	m.ctrl.Call(m, "Subscribe", conn, timelines)
 }
 
 // Subscribe indicates an expected call of Subscribe.
-func (mr *MockManagerMockRecorder) Subscribe(conn, streams interface{}) *gomock.Call {
+func (mr *MockManagerMockRecorder) Subscribe(conn, timelines interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Subscribe", reflect.TypeOf((*MockManager)(nil).Subscribe), conn, streams)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Subscribe", reflect.TypeOf((*MockManager)(nil).Subscribe), conn, timelines)
 }
 
 // Unsubscribe mocks base method.

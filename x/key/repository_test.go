@@ -22,9 +22,9 @@ func TestRepository(t *testing.T) {
 	repo := NewRepository(db, mc)
 
 	newkey := core.Key{
-		ID:              "CKb72AAc9dcF088F7088b6718BE5a494fBB3861439",
-		Root:            "CCb72AAc9dcF088F7088b6718BE5a494fBB3861439",
-		Parent:          "CCb72AAc9dcF088F7088b6718BE5a494fBB3861439",
+		ID:              "cck1v26je8uyhc9x6xgcw26d3cne20s44atr7a94em",
+		Root:            "con1fk8zlkrfmens3sgj7dzcu3gsw8v9kkysrf8dt5",
+		Parent:          "con1fk8zlkrfmens3sgj7dzcu3gsw8v9kkysrf8dt5",
 		EnactPayload:    "{}",                                                                                                                                 //TODO: change to real payload
 		EnactSignature:  "8c3e365f8b085d4823eb6c824d0eceeb5a2fc194b4055052260042a3a2d40f88002eb2ccbeac62169f4c579ae1831075e887d6e7a4ac9f0ce6a91306de54ba3301", //TODO: change to real signature
 		RevokePayload:   "null",

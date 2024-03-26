@@ -12,32 +12,52 @@ import (
 	"github.com/totegamma/concurrent/x/agent"
 	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/auth"
-	"github.com/totegamma/concurrent/x/character"
 	"github.com/totegamma/concurrent/x/collection"
 	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/message"
+	"github.com/totegamma/concurrent/x/profile"
+	"github.com/totegamma/concurrent/x/schema"
 	"github.com/totegamma/concurrent/x/socket"
-	"github.com/totegamma/concurrent/x/stream"
+	"github.com/totegamma/concurrent/x/store"
+	"github.com/totegamma/concurrent/x/timeline"
 	"github.com/totegamma/concurrent/x/userkv"
 	"github.com/totegamma/concurrent/x/util"
 )
 
+// Lv0
+var jwtServiceProvider = wire.NewSet(jwt.NewService, jwt.NewRepository)
+var schemaServiceProvider = wire.NewSet(schema.NewService, schema.NewRepository)
+var domainServiceProvider = wire.NewSet(domain.NewService, domain.NewRepository)
+var userKvServiceProvider = wire.NewSet(userkv.NewService, userkv.NewRepository)
+
+// Lv1
+var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService, SetupSchemaService)
+
+// Lv2
+var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository, SetupEntityService)
+var timelineServiceProvider = wire.NewSet(timeline.NewService, timeline.NewRepository, SetupEntityService, SetupDomainService)
+
+// Lv3
+var profileServiceProvider = wire.NewSet(profile.NewService, profile.NewRepository, SetupKeyService)
+var authServiceProvider = wire.NewSet(auth.NewService, SetupEntityService, SetupDomainService, SetupKeyService)
+var ackServiceProvider = wire.NewSet(ack.NewService, ack.NewRepository, SetupEntityService, SetupKeyService)
+
+// Lv4
+var messageServiceProvider = wire.NewSet(message.NewService, message.NewRepository, SetupTimelineService, SetupKeyService, SetupSchemaService)
+
+// Lv5
+var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupTimelineService, SetupMessageService, SetupKeyService, SetupSchemaService)
+
+// Lv6
+var storeServiceProvider = wire.NewSet(store.NewService, SetupKeyService, SetupMessageService, SetupAssociationService, SetupProfileService, SetupEntityService)
+
+// not implemented
 var collectionHandlerProvider = wire.NewSet(collection.NewHandler, collection.NewService, collection.NewRepository)
 
-var jwtServiceProvider = wire.NewSet(jwt.NewService, jwt.NewRepository)
-var domainServiceProvider = wire.NewSet(domain.NewService, domain.NewRepository)
-var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService)
-var streamServiceProvider = wire.NewSet(stream.NewService, stream.NewRepository, SetupEntityService, SetupDomainService)
-var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupStreamService, SetupMessageService, SetupKeyService)
-var characterServiceProvider = wire.NewSet(character.NewService, character.NewRepository, SetupKeyService)
-var authServiceProvider = wire.NewSet(auth.NewService, SetupEntityService, SetupDomainService, SetupKeyService)
-var messageServiceProvider = wire.NewSet(message.NewService, message.NewRepository, SetupStreamService, SetupKeyService)
-var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository, SetupEntityService)
-var userKvServiceProvider = wire.NewSet(userkv.NewService, userkv.NewRepository)
-var ackServiceProvider = wire.NewSet(ack.NewService, ack.NewRepository, SetupEntityService, SetupKeyService)
+// -----------
 
 func SetupJwtService(rdb *redis.Client) jwt.Service {
 	wire.Build(jwtServiceProvider)
@@ -59,8 +79,8 @@ func SetupMessageService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, ma
 	return nil
 }
 
-func SetupCharacterService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) character.Service {
-	wire.Build(characterServiceProvider)
+func SetupProfileService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) profile.Service {
+	wire.Build(profileServiceProvider)
 	return nil
 }
 
@@ -69,8 +89,8 @@ func SetupAssociationService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client
 	return nil
 }
 
-func SetupStreamService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) stream.Service {
-	wire.Build(streamServiceProvider)
+func SetupTimelineService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) timeline.Service {
+	wire.Build(timelineServiceProvider)
 	return nil
 }
 
@@ -99,7 +119,7 @@ func SetupAuthService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, confi
 	return nil
 }
 
-func SetupUserkvService(rdb *redis.Client) userkv.Service {
+func SetupUserkvService(db *gorm.DB) userkv.Service {
 	wire.Build(userKvServiceProvider)
 	return nil
 }
@@ -111,5 +131,15 @@ func SetupCollectionHandler(db *gorm.DB, rdb *redis.Client, config util.Config) 
 
 func SetupSocketManager(mc *memcache.Client, db *gorm.DB, rdb *redis.Client, config util.Config) socket.Manager {
 	wire.Build(socket.NewManager)
+	return nil
+}
+
+func SetupSchemaService(db *gorm.DB) schema.Service {
+	wire.Build(schemaServiceProvider)
+	return nil
+}
+
+func SetupStoreService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) store.Service {
+	wire.Build(storeServiceProvider)
 	return nil
 }

@@ -1,4 +1,4 @@
-package stream
+package timeline
 
 import (
 	"github.com/totegamma/concurrent/x/core"
@@ -6,8 +6,8 @@ import (
 )
 
 type postQuery struct {
-	Stream string `json:"stream"`
-	ID     string `json:"id"`
+	Timeline string `json:"timeline"`
+	ID       string `json:"id"`
 }
 
 type postRequest struct {
@@ -30,10 +30,10 @@ type signedObject struct {
 }
 
 type checkpointPacket struct {
-	Stream    string          `json:"stream"` // stream full id (ex: <streamID>@<domain>)
-	Item      core.StreamItem `json:"item"`
-	Body      interface{}     `json:"body"`
-	Principal string          `json:"principal"`
+	Timeline  string            `json:"timeline"` // timeline full id (ex: <timelineID>@<domain>)
+	Item      core.TimelineItem `json:"item"`
+	Body      interface{}       `json:"body"`
+	Principal string            `json:"principal"`
 }
 
 type chunkResponse struct {
@@ -41,12 +41,12 @@ type chunkResponse struct {
 	Content map[string]Chunk `json:"content"`
 }
 
-type streamResponse struct {
-	Status  string      `json:"status"`
-	Content core.Stream `json:"content"`
+type timelineResponse struct {
+	Status  string        `json:"status"`
+	Content core.Timeline `json:"content"`
 }
 
 type Chunk struct {
-	Key   string            `json:"key"`
-	Items []core.StreamItem `json:"items"`
+	Key   string              `json:"key"`
+	Items []core.TimelineItem `json:"items"`
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/key"
+	"github.com/xinguang/go-recaptcha"
 	"go.opentelemetry.io/otel/attribute"
 )
 
@@ -113,11 +114,12 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				domain, err := s.domain.GetByCCID(ctx, claims.Issuer)
 				if err != nil {
 					if claims.Domain != "" {
-						domain, err = s.domain.SayHello(ctx, claims.Domain)
-						if err != nil {
-							span.RecordError(err)
-							goto skip
-						}
+						// TODO:
+						// domain, err = s.domain.SayHello(ctx, claims.Domain)
+						// if err != nil {
+						// 	span.RecordError(err)
+						// 	goto skip
+						// }
 					} else {
 						span.RecordError(err)
 						goto skip
@@ -169,6 +171,7 @@ func ReceiveGatewayAuthPropagation(next echo.HandlerFunc) echo.HandlerFunc {
 		reqKeyDepathHeader := c.Request().Header.Get(core.RequesterKeyDepathHeader)
 		reqDomainTagsHeader := c.Request().Header.Get(core.RequesterDomainTagsHeader)
 		reqRemoteTagsHeader := c.Request().Header.Get(core.RequesterRemoteTagsHeader)
+		reqCaptchaVerifiedHeader := c.Request().Header.Get(core.CaptchaVerifiedHeader)
 
 		if reqTypeHeader != "" {
 			reqType, err := strconv.Atoi(reqTypeHeader)
@@ -206,6 +209,11 @@ func ReceiveGatewayAuthPropagation(next echo.HandlerFunc) echo.HandlerFunc {
 		if reqRemoteTagsHeader != "" {
 			c.Set(core.RequesterRemoteTagsKey, core.ParseTags(reqRemoteTagsHeader))
 			span.SetAttributes(attribute.String("RequesterRemoteTags", reqRemoteTagsHeader))
+		}
+
+		if reqCaptchaVerifiedHeader != "" {
+			c.Set(core.CaptchaVerifiedKey, true)
+			span.SetAttributes(attribute.String("CaptchaVerified", reqCaptchaVerifiedHeader))
 		}
 
 		c.SetRequest(c.Request().WithContext(ctx))
@@ -254,6 +262,31 @@ func Restrict(principal Principal) echo.MiddlewareFunc {
 						"detail": "you are not united",
 					})
 				}
+			}
+
+			c.SetRequest(c.Request().WithContext(ctx))
+			return next(c)
+		}
+	}
+}
+
+func Recaptcha(validator *recaptcha.ReCAPTCHA) echo.MiddlewareFunc {
+	return func(next echo.HandlerFunc) echo.HandlerFunc {
+		return func(c echo.Context) error {
+			ctx, span := tracer.Start(c.Request().Context(), "middleware.Recaptcha")
+			defer span.End()
+
+			challenge := c.Request().Header.Get("captcha")
+			if challenge != "" {
+				err := validator.Verify(challenge)
+				if err == nil {
+					span.AddEvent("captcha verified")
+					c.Set(core.CaptchaVerifiedKey, true)
+				} else {
+					span.AddEvent("captcha verification failed")
+				}
+			} else {
+				span.AddEvent("captcha challenge not found")
 			}
 
 			c.SetRequest(c.Request().WithContext(ctx))

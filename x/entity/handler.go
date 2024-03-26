@@ -3,7 +3,6 @@ package entity
 
 import (
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"time"
@@ -11,7 +10,6 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
-	"github.com/xinguang/go-recaptcha"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
 )
@@ -21,7 +19,6 @@ var tracer = otel.Tracer("entity")
 // Handler is the interface for handling HTTP requests
 type Handler interface {
 	Get(c echo.Context) error
-	Register(c echo.Context) error
 	List(c echo.Context) error
 	Update(c echo.Context) error
 	Delete(c echo.Context) error
@@ -54,43 +51,6 @@ func (h handler) Get(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": entity})
-}
-
-// Register creates a new entity
-// only accepts when the server registration is open
-// validate captcha if captcha secret is set
-// returns the created entity
-func (h handler) Register(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerRegister")
-	defer span.End()
-
-	var request registerRequest
-	err := c.Bind(&request)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-
-	if h.config.Server.CaptchaSecret != "" {
-		validator, err := recaptcha.NewWithSecert(h.config.Server.CaptchaSecret)
-		if err != nil {
-			span.RecordError(err)
-			return fmt.Errorf("failed to create recaptcha validator")
-		}
-		err = validator.Verify(request.Captcha)
-		if err != nil {
-			span.RecordError(err)
-			return fmt.Errorf("invalid captcha")
-		}
-	}
-
-	created, err := h.service.Register(ctx, request.CCID, request.Info, request.Signature, request.Invitation)
-	if err != nil {
-		span.RecordError(err)
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
-	}
-
-	return c.JSON(http.StatusCreated, echo.Map{"status": "ok", "content": created})
 }
 
 // List returns a list of entities

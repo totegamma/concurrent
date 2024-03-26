@@ -22,12 +22,14 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
+	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
 
 	"github.com/bradfitz/gomemcache/memcache"
 
 	"github.com/redis/go-redis/extra/redisotel/v9"
+	"github.com/xinguang/go-recaptcha"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
@@ -103,6 +105,14 @@ func main() {
 				return next(c)
 			}
 		})
+	}
+
+	if config.Server.CaptchaSecret != "" {
+		validator, err := recaptcha.NewWithSecert(config.Server.CaptchaSecret)
+		if err != nil {
+			panic(err)
+		}
+		e.Use(auth.Recaptcha(validator))
 	}
 
 	e.Use(middleware.LoggerWithConfig(middleware.LoggerConfig{
@@ -265,6 +275,11 @@ func main() {
 			requesterRemoteTags, ok := c.Get(core.RequesterRemoteTagsKey).(core.Tags)
 			if ok {
 				c.Request().Header.Set(core.RequesterRemoteTagsHeader, requesterRemoteTags.ToString())
+			}
+
+			captchaVerified, ok := c.Get(core.CaptchaVerifiedKey).(bool)
+			if ok && captchaVerified {
+				c.Request().Header.Set(core.CaptchaVerifiedHeader, strconv.FormatBool(captchaVerified))
 			}
 
 			proxy.ServeHTTP(c.Response(), c.Request())

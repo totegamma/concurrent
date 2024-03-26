@@ -8,6 +8,7 @@ const (
 	RequesterKeyDepathKey  = "cc-requesterKeyDepath"
 	RequesterDomainTagsKey = "cc-requesterDomainTags"
 	RequesterRemoteTagsKey = "cc-requesterRemoteTags"
+	CaptchaVerifiedKey     = "cc-captchaVerified"
 )
 
 const (
@@ -18,6 +19,7 @@ const (
 	RequesterKeyDepathHeader  = "cc-requester-key-depath"
 	RequesterDomainTagsHeader = "cc-requester-domain-tags"
 	RequesterRemoteTagsHeader = "cc-requester-remote-tags"
+	CaptchaVerifiedHeader     = "cc-captcha-verified"
 )
 
 const (

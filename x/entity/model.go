@@ -5,12 +5,9 @@ import (
 	"github.com/totegamma/concurrent/x/core"
 )
 
-type registerRequest struct {
-	CCID       string `json:"ccid"`
+type affiliationOption struct {
 	Info       string `json:"info"`
-	Signature  string `json:"signature"`
 	Invitation string `json:"invitation"`
-	Captcha    string `json:"captcha"`
 }
 
 type entityResponse struct {

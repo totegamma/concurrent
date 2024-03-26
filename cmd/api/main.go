@@ -251,8 +251,6 @@ func main() {
 	apiV1.GET("/address/:id", entityHandler.Resolve)
 
 	// entity
-	apiV1.POST("/registration", entityHandler.Register)
-
 	apiV1.GET("/entity/:id", entityHandler.Get)
 	apiV1.PUT("/entity/:id", entityHandler.Update, auth.Restrict(auth.ISADMIN))
 	apiV1.DELETE("/entity/:id", entityHandler.Delete, auth.Restrict(auth.ISADMIN))

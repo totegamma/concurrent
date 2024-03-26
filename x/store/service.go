@@ -14,7 +14,7 @@ import (
 )
 
 type Service interface {
-	Commit(ctx context.Context, document string, signature string) (any, error)
+	Commit(ctx context.Context, document, signature, option string) (any, error)
 }
 
 type service struct {
@@ -41,7 +41,7 @@ func NewService(
 	}
 }
 
-func (s *service) Commit(ctx context.Context, document string, signature string) (any, error) {
+func (s *service) Commit(ctx context.Context, document string, signature string, option string) (any, error) {
 	ctx, span := tracer.Start(ctx, "store.service.Commit")
 	defer span.End()
 
@@ -73,8 +73,7 @@ func (s *service) Commit(ctx context.Context, document string, signature string)
 	case "profile.delete":
 		return s.profile.Delete(ctx, document)
 	case "entity.affiliation":
-		return s.entity.Affiliation(ctx, document, signature)
+		return s.entity.Affiliation(ctx, document, signature, option)
 	}
-
 	return nil, fmt.Errorf("unknown document type: %s", base.Type)
 }

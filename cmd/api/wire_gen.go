@@ -121,8 +121,8 @@ func SetupAuthService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, confi
 	return authService
 }
 
-func SetupUserkvService(rdb *redis.Client) userkv.Service {
-	repository := userkv.NewRepository(rdb)
+func SetupUserkvService(db *gorm.DB) userkv.Service {
+	repository := userkv.NewRepository(db)
 	service := userkv.NewService(repository)
 	return service
 }

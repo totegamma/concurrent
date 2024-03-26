@@ -116,7 +116,7 @@ func SetupAuthService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, confi
 	return nil
 }
 
-func SetupUserkvService(rdb *redis.Client) userkv.Service {
+func SetupUserkvService(db *gorm.DB) userkv.Service {
 	wire.Build(userKvServiceProvider)
 	return nil
 }

@@ -173,6 +173,7 @@ func main() {
 		&core.CollectionItem{},
 		&core.Ack{},
 		&core.Key{},
+		&core.UserKV{},
 	)
 
 	rdb := redis.NewClient(&redis.Options{
@@ -206,7 +207,7 @@ func main() {
 	domainService := SetupDomainService(db, config)
 	domainHandler := domain.NewHandler(domainService, config)
 
-	userKvService := SetupUserkvService(rdb)
+	userKvService := SetupUserkvService(db)
 	userkvHandler := userkv.NewHandler(userKvService)
 
 	messageService := SetupMessageService(db, rdb, mc, socketManager, config)
@@ -284,8 +285,7 @@ func main() {
 	apiV1.GET("/timelines/recent", timelineHandler.Recent)
 	apiV1.GET("/timelines/range", timelineHandler.Range)
 	apiV1.GET("/timelines/chunks", timelineHandler.GetChunks)
-	apiV1.POST("/timelines/checkpoint", timelineHandler.Checkpoint, auth.Restrict(auth.ISUNITED))      // OLD API Remove for next release
-	apiV1.POST("/timelines/checkpoint/item", timelineHandler.Checkpoint, auth.Restrict(auth.ISUNITED)) // NEW API will be used for next release
+	apiV1.POST("/timelines/checkpoint/item", timelineHandler.Checkpoint, auth.Restrict(auth.ISUNITED))
 	apiV1.POST("/timelines/checkpoint/event", timelineHandler.EventCheckpoint, auth.Restrict(auth.ISUNITED))
 
 	// userkv

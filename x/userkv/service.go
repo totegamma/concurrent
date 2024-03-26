@@ -24,7 +24,7 @@ func (s *service) Get(ctx context.Context, userID string, key string) (string, e
 	ctx, span := tracer.Start(ctx, "ServiceGet")
 	defer span.End()
 
-	return s.repository.Get(ctx, userID+":"+key)
+	return s.repository.Get(ctx, userID, key)
 }
 
 // Upsert updates a userkv
@@ -32,5 +32,5 @@ func (s *service) Upsert(ctx context.Context, userID string, key string, value s
 	ctx, span := tracer.Start(ctx, "ServiceUpsert")
 	defer span.End()
 
-	return s.repository.Upsert(ctx, userID+":"+key, value)
+	return s.repository.Upsert(ctx, userID, key, value)
 }

@@ -4,7 +4,6 @@ package entity
 
 import (
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/pkg/errors"
@@ -27,8 +26,8 @@ import (
 
 // Service is the interface for entity service
 type Service interface {
-	Register(ctx context.Context, ccid, info, signature, invitation string) (core.EntityMeta, error)
-	Affiliation(ctx context.Context, document, signature string) (core.Entity, error)
+	Affiliation(ctx context.Context, document, signature, meta string) (core.Entity, error)
+
 	Get(ctx context.Context, ccid string) (core.Entity, error)
 	List(ctx context.Context) ([]core.Entity, error)
 	ListModified(ctx context.Context, modified time.Time) ([]core.Entity, error)
@@ -188,9 +187,16 @@ func (s *service) Count(ctx context.Context) (int64, error) {
 	return s.repository.Count(ctx)
 }
 
-func (s *service) Affiliation(ctx context.Context, document, signature string) (core.Entity, error) {
+func (s *service) Affiliation(ctx context.Context, document, signature, option string) (core.Entity, error) {
 	ctx, span := tracer.Start(ctx, "ServiceAffiliation")
 	defer span.End()
+
+	if s.config.Profile.SiteKey != "" {
+		captchaVerified, ok := ctx.Value(core.CaptchaVerifiedKey).(bool)
+		if !ok || !captchaVerified {
+			return core.Entity{}, errors.New("Captcha verification failed")
+		}
+	}
 
 	var doc core.EntityAffiliation
 	err := json.Unmarshal([]byte(document), &doc)
@@ -199,100 +205,91 @@ func (s *service) Affiliation(ctx context.Context, document, signature string) (
 		return core.Entity{}, errors.Wrap(err, "Failed to unmarshal document")
 	}
 
+	var opts affiliationOption
+	err = json.Unmarshal([]byte(option), &opts)
+	if err != nil {
+		span.RecordError(err)
+		return core.Entity{}, errors.Wrap(err, "Failed to unmarshal option")
+	}
+
+	// validate document
 	if doc.Body.Domain != s.config.Concurrent.FQDN {
-		// TODO: ほかのドメインだった場合、タグ等の一部の情報を保持しつつ、ドキュメントと現在の住所を更新してもよい
 		return core.Entity{}, errors.New("Domain is not match")
 	}
 
-	_, err = s.repository.GetEntityMeta(ctx, doc.Signer)
-	if err != nil {
-		return core.Entity{}, errors.Wrap(err, "Failed to get entity meta")
-	}
-
-	created, err := s.repository.CreateEntity(ctx, core.Entity{
-		ID:                   doc.Signer,
-		AffiliationPayload:   document,
-		AffiliationSignature: signature,
-	})
-
-	if err != nil {
-		return core.Entity{}, errors.Wrap(err, "Failed to create entity")
-	}
-
-	return created, nil
-}
-
-// Register creates new entity
-// check if registration is open
-func (s *service) Register(ctx context.Context, ccid, info, signature, invitation string) (core.EntityMeta, error) {
-	ctx, span := tracer.Start(ctx, "ServiceCreate")
-	defer span.End()
-
-	signatureBytes, err := hex.DecodeString(signature)
-	if err != nil {
-		span.RecordError(err)
-		return core.EntityMeta{}, errors.Wrap(err, "failed to decode signature")
-	}
-
-	err = util.VerifySignature([]byte(info), signatureBytes, ccid)
-	if err != nil {
-		span.RecordError(err)
-		return core.EntityMeta{}, errors.Wrap(err, "Failed to verify signature of info")
-	}
-
 	if s.config.Concurrent.Registration == "open" {
-		return s.repository.CreateEntityMeta(ctx,
+		entity, _, err := s.repository.CreateEntityWithMeta(
+			ctx,
+			core.Entity{
+				ID:                   doc.Signer,
+				Tag:                  "",
+				AffiliationPayload:   document,
+				AffiliationSignature: signature,
+			},
 			core.EntityMeta{
-				ID:      ccid,
-				Info:    info,
+				ID:      doc.Signer,
+				Info:    opts.Info,
 				Inviter: nil,
 			},
 		)
-	} else if s.config.Concurrent.Registration == "invite" {
-		if invitation == "" {
-			return core.EntityMeta{}, fmt.Errorf("invitation code is required")
+
+		if err != nil {
+			return core.Entity{}, errors.Wrap(err, "Failed to create entity")
 		}
 
-		claims, err := jwt.Validate(invitation)
+		return entity, nil
+	} else if s.config.Concurrent.Registration == "invite" {
+		if opts.Invitation == "" {
+			return core.Entity{}, fmt.Errorf("invitation code is required")
+		}
+
+		claims, err := jwt.Validate(opts.Invitation)
 		if err != nil {
 			span.RecordError(err)
-			return core.EntityMeta{}, err
+			return core.Entity{}, err
 		}
 		if claims.Subject != "CONCURRENT_INVITE" {
-			return core.EntityMeta{}, fmt.Errorf("invalid invitation code")
+			return core.Entity{}, fmt.Errorf("invalid invitation code")
 		}
 
 		ok, err := s.jwtService.CheckJTI(ctx, claims.JWTID)
 		if err != nil {
 			span.RecordError(err)
-			return core.EntityMeta{}, err
+			return core.Entity{}, err
 		}
 		if !ok {
-			return core.EntityMeta{}, fmt.Errorf("token is already used")
+			return core.Entity{}, fmt.Errorf("token is already used")
 		}
 
 		inviter, err := s.repository.GetEntity(ctx, claims.Issuer)
 		if err != nil {
 			span.RecordError(err)
-			return core.EntityMeta{}, err
+			return core.Entity{}, err
 		}
 
 		inviterTags := strings.Split(inviter.Tag, ",")
 		if !slices.Contains(inviterTags, "_invite") {
-			return core.EntityMeta{}, fmt.Errorf("inviter is not allowed to invite")
+			return core.Entity{}, fmt.Errorf("inviter is not allowed to invite")
 		}
 
-		registered, err := s.repository.CreateEntityMeta(ctx,
+		registered, _, err := s.repository.CreateEntityWithMeta(
+			ctx,
+			core.Entity{
+				ID:                   doc.Signer,
+				Tag:                  "",
+				AffiliationPayload:   document,
+				AffiliationSignature: signature,
+			},
 			core.EntityMeta{
-				ID:      ccid,
-				Info:    info,
+				ID:      doc.Signer,
+				Info:    opts.Info,
 				Inviter: &claims.Issuer,
 			},
 		)
 
 		if err != nil {
 			span.RecordError(err)
-			return core.EntityMeta{}, err
+			return core.Entity{}, err
 		}
 
 		expireAt, err := strconv.ParseInt(claims.ExpirationTime, 10, 64)
@@ -304,13 +301,13 @@ func (s *service) Register(ctx context.Context, ccid, info, signature, invitatio
 
 		if err != nil {
 			span.RecordError(err)
-			return core.EntityMeta{}, err
+			return core.Entity{}, err
 		}
 
 		return registered, nil
 
 	} else {
-		return core.EntityMeta{}, fmt.Errorf("registration is not open")
+		return core.Entity{}, fmt.Errorf("registration is not open")
 	}
 }
 

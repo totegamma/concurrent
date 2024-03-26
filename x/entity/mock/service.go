@@ -37,18 +37,18 @@ func (m *MockService) EXPECT() *MockServiceMockRecorder {
 }
 
 // Affiliation mocks base method.
-func (m *MockService) Affiliation(ctx context.Context, document, signature string) (core.Entity, error) {
+func (m *MockService) Affiliation(ctx context.Context, document, signature, meta string) (core.Entity, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Affiliation", ctx, document, signature)
+	ret := m.ctrl.Call(m, "Affiliation", ctx, document, signature, meta)
 	ret0, _ := ret[0].(core.Entity)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Affiliation indicates an expected call of Affiliation.
-func (mr *MockServiceMockRecorder) Affiliation(ctx, document, signature interface{}) *gomock.Call {
+func (mr *MockServiceMockRecorder) Affiliation(ctx, document, signature, meta interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Affiliation", reflect.TypeOf((*MockService)(nil).Affiliation), ctx, document, signature)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Affiliation", reflect.TypeOf((*MockService)(nil).Affiliation), ctx, document, signature, meta)
 }
 
 // Count mocks base method.
@@ -167,21 +167,6 @@ func (m *MockService) PullEntityFromRemote(ctx context.Context, id, domain strin
 func (mr *MockServiceMockRecorder) PullEntityFromRemote(ctx, id, domain interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PullEntityFromRemote", reflect.TypeOf((*MockService)(nil).PullEntityFromRemote), ctx, id, domain)
-}
-
-// Register mocks base method.
-func (m *MockService) Register(ctx context.Context, ccid, info, signature, invitation string) (core.EntityMeta, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Register", ctx, ccid, info, signature, invitation)
-	ret0, _ := ret[0].(core.EntityMeta)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// Register indicates an expected call of Register.
-func (mr *MockServiceMockRecorder) Register(ctx, ccid, info, signature, invitation interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Register", reflect.TypeOf((*MockService)(nil).Register), ctx, ccid, info, signature, invitation)
 }
 
 // ResolveHost mocks base method.

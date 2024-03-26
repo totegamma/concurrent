@@ -17,6 +17,7 @@ type Repository interface {
 	GetEntityMeta(ctx context.Context, key string) (core.EntityMeta, error)
 	CreateEntity(ctx context.Context, entity core.Entity) (core.Entity, error)
 	CreateEntityMeta(ctx context.Context, meta core.EntityMeta) (core.EntityMeta, error)
+	CreateEntityWithMeta(ctx context.Context, entity core.Entity, meta core.EntityMeta) (core.Entity, core.EntityMeta, error)
 	UpdateEntity(ctx context.Context, entity *core.Entity) error
 	GetList(ctx context.Context) ([]core.Entity, error)
 	ListModified(ctx context.Context, modified time.Time) ([]core.Entity, error)
@@ -145,6 +146,29 @@ func (r *repository) CreateEntityMeta(ctx context.Context, meta core.EntityMeta)
 	err := r.db.WithContext(ctx).Create(meta).Error
 
 	return meta, err
+}
+
+func (r *repository) CreateEntityWithMeta(ctx context.Context, entity core.Entity, meta core.EntityMeta) (core.Entity, core.EntityMeta, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryCreateWithMeta")
+	defer span.End()
+
+	err := r.db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Create(&entity).Error; err != nil {
+			return err
+		}
+		if err := tx.Create(&meta).Error; err != nil {
+			return err
+		}
+		return nil
+	})
+
+	if err != nil {
+		return core.Entity{}, core.EntityMeta{}, err
+	}
+
+	r.mc.Increment("entity_count", 1)
+
+	return entity, meta, nil
 }
 
 // GetList returns all entities

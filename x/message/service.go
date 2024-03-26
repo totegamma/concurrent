@@ -106,6 +106,8 @@ func (s *service) Create(ctx context.Context, objectStr string, signature string
 	ctx, span := tracer.Start(ctx, "ServicePostMessage")
 	defer span.End()
 
+	// TODO: check requester is authorized to post message
+
 	var object core.CreateMessage[any]
 	err := json.Unmarshal([]byte(objectStr), &object)
 	if err != nil {

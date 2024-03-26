@@ -68,7 +68,7 @@ func (s *service) Create(ctx context.Context, objectStr string, signature string
 	ctx, span := tracer.Start(ctx, "ServicePutProfile")
 	defer span.End()
 
-	var object core.CreateProfile[any]
+	var object core.UpsertProfile[any]
 	err := json.Unmarshal([]byte(objectStr), &object)
 	if err != nil {
 		span.RecordError(err)
@@ -103,7 +103,7 @@ func (s *service) Update(ctx context.Context, objectStr string, signature string
 	ctx, span := tracer.Start(ctx, "ServicePutProfile")
 	defer span.End()
 
-	var object core.UpdateProfile[any]
+	var object core.UpsertProfile[any]
 	err := json.Unmarshal([]byte(objectStr), &object)
 	if err != nil {
 		span.RecordError(err)
@@ -138,7 +138,7 @@ func (s *service) Delete(ctx context.Context, documentStr string) (core.Profile,
 	ctx, span := tracer.Start(ctx, "ServiceDelete")
 	defer span.End()
 
-	var document core.DeleteProfile
+	var document core.DeleteDocument
 	err := json.Unmarshal([]byte(documentStr), &document)
 	if err != nil {
 		span.RecordError(err)

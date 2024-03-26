@@ -27,6 +27,8 @@ import (
 // Service is the interface for entity service
 type Service interface {
 	Affiliation(ctx context.Context, document, signature, meta string) (core.Entity, error)
+	Tombstone(ctx context.Context, document, signature string) (core.Entity, error)
+	Extension(ctx context.Context, document, signature string) (core.EntityExtension, error)
 
 	Get(ctx context.Context, ccid string) (core.Entity, error)
 	List(ctx context.Context) ([]core.Entity, error)
@@ -309,6 +311,54 @@ func (s *service) Affiliation(ctx context.Context, document, signature, option s
 	} else {
 		return core.Entity{}, fmt.Errorf("registration is not open")
 	}
+}
+
+func (s *service) Tombstone(ctx context.Context, document, signature string) (core.Entity, error) {
+	ctx, span := tracer.Start(ctx, "ServiceTombstone")
+	defer span.End()
+
+	var doc core.EntityTombstone
+    err := json.Unmarshal([]byte(document), &doc)
+    if err != nil {
+        span.RecordError(err)
+        return core.Entity{}, errors.Wrap(err, "Failed to unmarshal document")
+    }
+
+    err = s.repository.SetTombstone(ctx, doc.Signer, document, signature)
+
+    if err != nil {
+        span.RecordError(err)
+        return core.Entity{}, err
+    }
+
+    return core.Entity{}, nil
+}
+
+func (s *service) Extension(ctx context.Context, document, signature string) (core.EntityExtension, error) {
+	ctx, span := tracer.Start(ctx, "ServiceExtension")
+	defer span.End()
+
+	var doc core.ExtensionDocument[any]
+	err := json.Unmarshal([]byte(document), &doc)
+	if err != nil {
+		span.RecordError(err)
+		return core.EntityExtension{}, errors.Wrap(err, "Failed to unmarshal document")
+	}
+
+	extension := core.EntityExtension{
+		ID:        doc.Signer,
+		Schema:    doc.Schema,
+		Document:  document,
+		Signature: signature,
+	}
+
+	updated, err := s.repository.UpsertEntityExtension(ctx, extension)
+	if err != nil {
+		span.RecordError(err)
+		return core.EntityExtension{}, err
+	}
+
+	return updated, nil
 }
 
 // Get returns entity by ccid

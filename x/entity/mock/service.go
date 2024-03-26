@@ -80,6 +80,21 @@ func (mr *MockServiceMockRecorder) Delete(ctx, id interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockService)(nil).Delete), ctx, id)
 }
 
+// Extension mocks base method.
+func (m *MockService) Extension(ctx context.Context, document, signature string) (core.EntityExtension, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Extension", ctx, document, signature)
+	ret0, _ := ret[0].(core.EntityExtension)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Extension indicates an expected call of Extension.
+func (mr *MockServiceMockRecorder) Extension(ctx, document, signature interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Extension", reflect.TypeOf((*MockService)(nil).Extension), ctx, document, signature)
+}
+
 // Get mocks base method.
 func (m *MockService) Get(ctx context.Context, ccid string) (core.Entity, error) {
 	m.ctrl.T.Helper()
@@ -182,6 +197,21 @@ func (m *MockService) ResolveHost(ctx context.Context, user, hint string) (strin
 func (mr *MockServiceMockRecorder) ResolveHost(ctx, user, hint interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveHost", reflect.TypeOf((*MockService)(nil).ResolveHost), ctx, user, hint)
+}
+
+// Tombstone mocks base method.
+func (m *MockService) Tombstone(ctx context.Context, document, signature string) (core.Entity, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Tombstone", ctx, document, signature)
+	ret0, _ := ret[0].(core.Entity)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Tombstone indicates an expected call of Tombstone.
+func (mr *MockServiceMockRecorder) Tombstone(ctx, document, signature interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Tombstone", reflect.TypeOf((*MockService)(nil).Tombstone), ctx, document, signature)
 }
 
 // Update mocks base method.

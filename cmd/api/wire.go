@@ -27,20 +27,18 @@ import (
 	"github.com/totegamma/concurrent/x/util"
 )
 
-var collectionHandlerProvider = wire.NewSet(collection.NewHandler, collection.NewService, collection.NewRepository)
-
 // Lv0
 var jwtServiceProvider = wire.NewSet(jwt.NewService, jwt.NewRepository)
 var schemaServiceProvider = wire.NewSet(schema.NewService, schema.NewRepository)
 var domainServiceProvider = wire.NewSet(domain.NewService, domain.NewRepository)
 var userKvServiceProvider = wire.NewSet(userkv.NewService, userkv.NewRepository)
-var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService)
 
 // Lv1
-var timelineServiceProvider = wire.NewSet(timeline.NewService, timeline.NewRepository, SetupEntityService, SetupDomainService)
+var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService, SetupSchemaService)
 
 // Lv2
 var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository, SetupEntityService)
+var timelineServiceProvider = wire.NewSet(timeline.NewService, timeline.NewRepository, SetupEntityService, SetupDomainService)
 
 // Lv3
 var profileServiceProvider = wire.NewSet(profile.NewService, profile.NewRepository, SetupKeyService)
@@ -55,6 +53,11 @@ var associationServiceProvider = wire.NewSet(association.NewService, association
 
 // Lv6
 var storeServiceProvider = wire.NewSet(store.NewService, SetupKeyService, SetupMessageService, SetupAssociationService, SetupProfileService, SetupEntityService)
+
+// not implemented
+var collectionHandlerProvider = wire.NewSet(collection.NewHandler, collection.NewService, collection.NewRepository)
+
+// -----------
 
 func SetupJwtService(rdb *redis.Client) jwt.Service {
 	wire.Build(jwtServiceProvider)

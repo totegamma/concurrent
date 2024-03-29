@@ -149,7 +149,7 @@ func TestManager(t *testing.T) {
 			ObjectID:   "",
 			TimelineID: remotetimeline1,
 			Owner:      "",
-			Author:     "",
+			Author:     nil,
 			CDate:      pivot,
 		},
 		Body: []byte(`{"foo":"bar"}`),

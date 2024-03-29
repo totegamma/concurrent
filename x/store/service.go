@@ -11,6 +11,7 @@ import (
 	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/profile"
+	"github.com/totegamma/concurrent/x/timeline"
 )
 
 type Service interface {
@@ -23,6 +24,7 @@ type service struct {
 	message     message.Service
 	association association.Service
 	profile     profile.Service
+	timeline    timeline.Service
 }
 
 func NewService(
@@ -31,6 +33,7 @@ func NewService(
 	message message.Service,
 	association association.Service,
 	profile profile.Service,
+	timeline timeline.Service,
 ) Service {
 	return &service{
 		key:         key,
@@ -38,6 +41,7 @@ func NewService(
 		message:     message,
 		association: association,
 		profile:     profile,
+		timeline:    timeline,
 	}
 }
 
@@ -66,10 +70,12 @@ func (s *service) Commit(ctx context.Context, document string, signature string,
 		return s.profile.Create(ctx, document, signature)
 	case "affiliation":
 		return s.entity.Affiliation(ctx, document, signature, option)
-    case "tombstone":
-        return s.entity.Tombstone(ctx, document, signature)
-    case "extension":
-        return s.entity.Extension(ctx, document, signature)
+	case "tombstone":
+		return s.entity.Tombstone(ctx, document, signature)
+	case "extension":
+		return s.entity.Extension(ctx, document, signature)
+	case "timeline":
+		return s.timeline.CreateTimeline(ctx, document, signature)
 	case "delete":
 		var doc core.DeleteDocument
 		err := json.Unmarshal([]byte(document), &doc)

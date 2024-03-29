@@ -14,6 +14,7 @@ import (
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/schema"
 	"github.com/totegamma/concurrent/x/socket"
 	"github.com/totegamma/concurrent/x/util"
 	"gorm.io/gorm"
@@ -56,12 +57,13 @@ type repository struct {
 	db      *gorm.DB
 	rdb     *redis.Client
 	mc      *memcache.Client
+	schema  schema.Service
 	manager socket.Manager
 	config  util.Config
 }
 
 // NewRepository creates a new timeline repository
-func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) Repository {
+func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, schema schema.Service, manager socket.Manager, config util.Config) Repository {
 
 	var count int64
 	err := db.Model(&core.Timeline{}).Count(&count).Error
@@ -74,7 +76,7 @@ func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager 
 
 	mc.Set(&memcache.Item{Key: "timeline_count", Value: []byte(strconv.FormatInt(count, 10))})
 
-	return &repository{db, rdb, mc, manager, config}
+	return &repository{db, rdb, mc, schema, manager, config}
 }
 
 // Total returns the total number of messages
@@ -514,7 +516,13 @@ func (r *repository) CreateTimeline(ctx context.Context, timeline core.Timeline)
 	ctx, span := tracer.Start(ctx, "RepositoryCreateTimeline")
 	defer span.End()
 
-	err := r.db.WithContext(ctx).Create(&timeline).Error
+	schemaID, err := r.schema.UrlToID(ctx, timeline.Schema)
+	if err != nil {
+		return timeline, err
+	}
+	timeline.SchemaID = schemaID
+
+	err = r.db.WithContext(ctx).Create(&timeline).Error
 
 	r.mc.Increment("timeline_count", 1)
 

@@ -152,7 +152,8 @@ func SetupStoreService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, mana
 	messageService := SetupMessageService(db, rdb, mc, manager, config)
 	associationService := SetupAssociationService(db, rdb, mc, manager, config)
 	profileService := SetupProfileService(db, rdb, mc, config)
-	storeService := store.NewService(service, entityService, messageService, associationService, profileService)
+	timelineService := SetupTimelineService(db, rdb, mc, manager, config)
+	storeService := store.NewService(service, entityService, messageService, associationService, profileService, timelineService)
 	return storeService
 }
 
@@ -189,7 +190,7 @@ var messageServiceProvider = wire.NewSet(message.NewService, message.NewReposito
 var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupTimelineService, SetupMessageService, SetupKeyService, SetupSchemaService)
 
 // Lv6
-var storeServiceProvider = wire.NewSet(store.NewService, SetupKeyService, SetupMessageService, SetupAssociationService, SetupProfileService, SetupEntityService)
+var storeServiceProvider = wire.NewSet(store.NewService, SetupKeyService, SetupMessageService, SetupAssociationService, SetupProfileService, SetupEntityService, SetupTimelineService)
 
 // not implemented
 var collectionHandlerProvider = wire.NewSet(collection.NewHandler, collection.NewService, collection.NewRepository)

@@ -67,18 +67,18 @@ func (mr *MockServiceMockRecorder) Count(ctx interface{}) *gomock.Call {
 }
 
 // CreateTimeline mocks base method.
-func (m *MockService) CreateTimeline(ctx context.Context, timeline core.Timeline) (core.Timeline, error) {
+func (m *MockService) CreateTimeline(ctx context.Context, document, signature string) (core.Timeline, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateTimeline", ctx, timeline)
+	ret := m.ctrl.Call(m, "CreateTimeline", ctx, document, signature)
 	ret0, _ := ret[0].(core.Timeline)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // CreateTimeline indicates an expected call of CreateTimeline.
-func (mr *MockServiceMockRecorder) CreateTimeline(ctx, timeline interface{}) *gomock.Call {
+func (mr *MockServiceMockRecorder) CreateTimeline(ctx, document, signature interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateTimeline", reflect.TypeOf((*MockService)(nil).CreateTimeline), ctx, timeline)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateTimeline", reflect.TypeOf((*MockService)(nil).CreateTimeline), ctx, document, signature)
 }
 
 // DeleteTimeline mocks base method.

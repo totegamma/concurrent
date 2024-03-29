@@ -9,13 +9,13 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
-	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/rs/xid"
+	"github.com/totegamma/concurrent/x/cdid"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
@@ -39,7 +39,7 @@ type Service interface {
 	PublishEventToLocal(ctx context.Context, event core.Event) error
 	DistributeEvent(ctx context.Context, timeline string, event core.Event) error
 
-	CreateTimeline(ctx context.Context, timeline core.Timeline) (core.Timeline, error)
+	CreateTimeline(ctx context.Context, document, signature string) (core.Timeline, error)
 	GetTimeline(ctx context.Context, key string) (core.Timeline, error)
 	UpdateTimeline(ctx context.Context, timeline core.Timeline) (core.Timeline, error)
 	DeleteTimeline(ctx context.Context, timelineID string) error
@@ -320,9 +320,9 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 
 	item.TimelineID = timelineID
 
-	author := item.Author
-	if author == "" {
-		author = item.Owner
+	author := item.Owner
+	if item.Author != nil {
+		author = *item.Author
 	}
 
 	if timelineHost == s.config.Concurrent.FQDN {
@@ -496,16 +496,31 @@ func (s *service) DistributeEvent(ctx context.Context, timeline string, event co
 }
 
 // Create updates timeline information
-func (s *service) CreateTimeline(ctx context.Context, obj core.Timeline) (core.Timeline, error) {
+func (s *service) CreateTimeline(ctx context.Context, document, signature string) (core.Timeline, error) {
 	ctx, span := tracer.Start(ctx, "ServiceCreate")
 	defer span.End()
 
-	if obj.ID != "" {
-		return core.Timeline{}, fmt.Errorf("id must be empty")
+	var doc core.TimelineDocument[any]
+	err := json.Unmarshal([]byte(document), &doc)
+	if err != nil {
+		return core.Timeline{}, err
 	}
-	obj.ID = xid.New().String()
 
-	created, err := s.repository.CreateTimeline(ctx, obj)
+	hash := util.GetHash([]byte(document))
+	hash10 := [10]byte{}
+	copy(hash10[:], hash[:10])
+	signedAt := doc.SignedAt
+	id := cdid.New(hash10, signedAt).String()
+
+	created, err := s.repository.CreateTimeline(ctx, core.Timeline{
+		ID:          id,
+		Indexable:   doc.Indexable,
+		Author:      doc.Signer,
+		DomainOwned: doc.DomainOwned,
+		Schema:      doc.Schema,
+		Payload:     document,
+		Signature:   signature,
+	})
 	created.ID = created.ID + "@" + s.config.Concurrent.FQDN
 
 	return created, err
@@ -618,46 +633,54 @@ func (s *service) HasWriteAccess(ctx context.Context, timelineID string, userAdd
 	ctx, span := tracer.Start(ctx, "ServiceHasWriteAccess")
 	defer span.End()
 
-	timeline, err := s.getTimelineAutoDomain(ctx, timelineID)
-	if err != nil {
-		return false
-	}
+	return true
 
-	if timeline.Author == userAddress {
-		return true
-	}
+	/*
+		timeline, err := s.getTimelineAutoDomain(ctx, timelineID)
+		if err != nil {
+			return false
+		}
 
-	if len(timeline.Writer) == 0 {
-		return true
-	}
+		if timeline.Author == userAddress {
+			return true
+		}
 
-	return slices.Contains(timeline.Writer, userAddress)
+		if len(timeline.Writer) == 0 {
+			return true
+		}
+
+		return slices.Contains(timeline.Writer, userAddress)
+	*/
 }
 
 func (s *service) HasReadAccess(ctx context.Context, timelineID string, userAddress string) bool {
 	ctx, span := tracer.Start(ctx, "ServiceHasReadAccess")
 	defer span.End()
 
-	span.SetAttributes(attribute.String("timeline", timelineID))
-	span.SetAttributes(attribute.String("user", userAddress))
+	return true
 
-	timeline, err := s.getTimelineAutoDomain(ctx, timelineID)
-	if err != nil {
-		span.AddEvent("timeline not found")
-		return false
-	}
+	/*
+		span.SetAttributes(attribute.String("timeline", timelineID))
+		span.SetAttributes(attribute.String("user", userAddress))
 
-	span.SetAttributes(attribute.StringSlice("reader", timeline.Reader))
+		timeline, err := s.getTimelineAutoDomain(ctx, timelineID)
+		if err != nil {
+			span.AddEvent("timeline not found")
+			return false
+		}
 
-	if timeline.Author == userAddress {
-		span.AddEvent("author has read access")
-		return true
-	}
+		span.SetAttributes(attribute.StringSlice("reader", timeline.Reader))
 
-	if len(timeline.Reader) == 0 {
-		span.AddEvent("no reader")
-		return true
-	}
+		if timeline.Author == userAddress {
+			span.AddEvent("author has read access")
+			return true
+		}
 
-	return slices.Contains(timeline.Reader, userAddress)
+		if len(timeline.Reader) == 0 {
+			span.AddEvent("no reader")
+			return true
+		}
+
+		return slices.Contains(timeline.Reader, userAddress)
+	*/
 }

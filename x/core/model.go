@@ -142,17 +142,16 @@ type Message struct {
 // Timeline is one of a base object of concurrent
 // mutable
 type Timeline struct {
-	ID         string         `json:"id" gorm:"primaryKey;type:char(20);"`
-	Visible    bool           `json:"visible" gorm:"type:boolean;default:false"`
-	Author     string         `json:"author" gorm:"type:char(42)"`
-	Maintainer pq.StringArray `json:"maintainer" gorm:"type:char(42)[];default:'{}'"`
-	Writer     pq.StringArray `json:"writer" gorm:"type:char(42)[];default:'{}'"`
-	Reader     pq.StringArray `json:"reader" gorm:"type:char(42)[];default:'{}'"`
-	SchemaID   uint           `json:"-"`
-	Schema     string         `json:"schema" gorm:"-"`
-	Payload    string         `json:"payload" gorm:"type:json"`
-	CDate      time.Time      `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
-	MDate      time.Time      `json:"mdate" gorm:"autoUpdateTime"`
+	ID          string    `json:"id" gorm:"primaryKey;type:char(26);"`
+	Indexable   bool      `json:"indexable" gorm:"type:boolean;default:false"`
+	Author      string    `json:"author" gorm:"type:char(42)"`
+	DomainOwned bool      `json:"domainOwned" gorm:"type:boolean;default:false"`
+	SchemaID    uint      `json:"-"`
+	Schema      string    `json:"schema" gorm:"-"`
+	Payload     string    `json:"payload" gorm:"type:json"`
+	Signature   string    `json:"signature" gorm:"type:char(130)"`
+	CDate       time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
+	MDate       time.Time `json:"mdate" gorm:"autoUpdateTime"`
 }
 
 // TimelineItem is one of a base object of concurrent
@@ -162,7 +161,7 @@ type TimelineItem struct {
 	TimelineID string    `json:"TimelineID" gorm:"primaryKey;type:char(20);"`
 	Type       string    `json:"type" gorm:"type:text;"`
 	Owner      string    `json:"owner" gorm:"type:char(42);"`
-	Author     string    `json:"author,omitempty" gorm:"type:char(42);"`
+	Author     *string   `json:"author,omitempty" gorm:"type:char(42);"`
 	CDate      time.Time `json:"cdate,omitempty" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 }
 

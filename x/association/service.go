@@ -92,7 +92,7 @@ func (s *service) Create(ctx context.Context, documentStr string, signature stri
 		Type:     "association",
 		ObjectID: created.ID,
 		Owner:    targetMessage.Author,
-		Author:   created.Author,
+		Author:   &created.Author,
 	}
 
 	for _, timeline := range association.Timelines {

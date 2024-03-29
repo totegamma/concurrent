@@ -49,24 +49,18 @@ func TestRepository(t *testing.T) {
 
 	// :: Timelineを作成 ::
 	timeline := core.Timeline{
-		ID:         "00000000000000000000",
-		Visible:    true,
-		Author:     "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
-		Maintainer: []string{"con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe"},
-		Writer:     []string{"con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe"},
-		Reader:     []string{"con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe"},
-		Schema:     "https://example.com/testschema.json",
-		Payload:    "{}",
+		ID:        "00000000000000000000",
+		Indexable: true,
+		Author:    "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
+		Schema:    "https://example.com/testschema.json",
+		Payload:   "{}",
 	}
 
 	created, err := repo.CreateTimeline(ctx, timeline)
 	if assert.NoError(t, err) {
 		assert.Equal(t, created.ID, timeline.ID)
-		assert.Equal(t, created.Visible, timeline.Visible)
+		assert.Equal(t, created.Indexable, timeline.Indexable)
 		assert.Equal(t, created.Author, timeline.Author)
-		assert.Contains(t, created.Maintainer, timeline.Author)
-		assert.Contains(t, created.Writer, timeline.Author)
-		assert.Contains(t, created.Reader, timeline.Author)
 		assert.Equal(t, created.Schema, timeline.Schema)
 		assert.Equal(t, created.Payload, timeline.Payload)
 		assert.NotZero(t, created.CDate)
@@ -121,14 +115,11 @@ func TestRepository(t *testing.T) {
 
 	// :: Timeline1を作成してItemを追加 ::
 	_, err = repo.CreateTimeline(ctx, core.Timeline{
-		ID:         "11111111111111111111",
-		Visible:    true,
-		Author:     "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
-		Maintainer: []string{"con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe"},
-		Writer:     []string{"con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe"},
-		Reader:     []string{"con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe"},
-		Schema:     "https://example.com/testschema.json",
-		Payload:    "{}",
+		ID:        "11111111111111111111",
+		Indexable: true,
+		Author:    "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
+		Schema:    "https://example.com/testschema.json",
+		Payload:   "{}",
 	})
 	assert.NoError(t, err)
 
@@ -177,14 +168,11 @@ func TestRepository(t *testing.T) {
 	// TimelineItemの順番のテスト
 
 	_, err = repo.CreateTimeline(ctx, core.Timeline{
-		ID:         "22222222222222222222",
-		Visible:    true,
-		Author:     "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
-		Maintainer: []string{"con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe"},
-		Writer:     []string{"con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe"},
-		Reader:     []string{"con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe"},
-		Schema:     "https://example.com/testschema.json",
-		Payload:    "{}",
+		ID:        "22222222222222222222",
+		Indexable: true,
+		Author:    "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
+		Schema:    "https://example.com/testschema.json",
+		Payload:   "{}",
 	})
 	assert.NoError(t, err)
 

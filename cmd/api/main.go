@@ -276,9 +276,7 @@ func main() {
 	apiV1.GET("/profiles", profileHandler.Query)
 
 	// timeline
-	apiV1.POST("/timeline", timelineHandler.Create, auth.Restrict(auth.ISLOCAL))
 	apiV1.GET("/timeline/:id", timelineHandler.Get)
-	apiV1.PUT("/timeline/:id", timelineHandler.Update, auth.Restrict(auth.ISLOCAL))
 	apiV1.DELETE("/timeline/:id", timelineHandler.Delete, auth.Restrict(auth.ISLOCAL))
 	apiV1.DELETE("/timeline/:timeline/:object", timelineHandler.Remove, auth.Restrict(auth.ISLOCAL))
 	apiV1.GET("/timelines", timelineHandler.List)

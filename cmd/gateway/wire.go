@@ -38,7 +38,7 @@ var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository,
 
 // Lv2
 var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository, SetupEntityService)
-var timelineServiceProvider = wire.NewSet(timeline.NewService, timeline.NewRepository, SetupEntityService, SetupDomainService)
+var timelineServiceProvider = wire.NewSet(timeline.NewService, timeline.NewRepository, SetupEntityService, SetupDomainService, SetupSchemaService)
 
 // Lv3
 var profileServiceProvider = wire.NewSet(profile.NewService, profile.NewRepository, SetupKeyService)
@@ -52,7 +52,7 @@ var messageServiceProvider = wire.NewSet(message.NewService, message.NewReposito
 var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupTimelineService, SetupMessageService, SetupKeyService, SetupSchemaService)
 
 // Lv6
-var storeServiceProvider = wire.NewSet(store.NewService, SetupKeyService, SetupMessageService, SetupAssociationService, SetupProfileService, SetupEntityService)
+var storeServiceProvider = wire.NewSet(store.NewService, SetupKeyService, SetupMessageService, SetupAssociationService, SetupProfileService, SetupEntityService, SetupTimelineService)
 
 // not implemented
 var collectionHandlerProvider = wire.NewSet(collection.NewHandler, collection.NewService, collection.NewRepository)

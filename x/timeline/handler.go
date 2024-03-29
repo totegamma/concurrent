@@ -19,8 +19,6 @@ var tracer = otel.Tracer("timeline")
 // Handler is the interface for handling HTTP requests
 type Handler interface {
 	Get(c echo.Context) error
-	Create(c echo.Context) error
-	Update(c echo.Context) error
 	Recent(c echo.Context) error
 	Range(c echo.Context) error
 	List(c echo.Context) error
@@ -55,51 +53,6 @@ func (h handler) Get(c echo.Context) error {
 		return err
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": timeline})
-}
-
-// Create creates a new timeline
-func (h handler) Create(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerCreate")
-	defer span.End()
-
-	var data core.Timeline
-	err := c.Bind(&data)
-	if err != nil {
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
-	}
-
-	created, err := h.service.CreateTimeline(ctx, data)
-	if err != nil {
-		span.RecordError(err)
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
-	}
-
-	return c.JSON(http.StatusCreated, echo.Map{"status": "ok", "content": created})
-}
-
-// Update updates a timeline
-func (h handler) Update(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerUpdate")
-	defer span.End()
-
-	id := c.Param("id")
-
-	var data core.Timeline
-	err := c.Bind(&data)
-	if err != nil {
-		span.RecordError(err)
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
-	}
-
-	data.ID = id
-
-	updated, err := h.service.UpdateTimeline(ctx, data)
-	if err != nil {
-		span.RecordError(err)
-		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
-	}
-
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": updated})
 }
 
 // Recent returns recent messages in some timelines
@@ -235,7 +188,7 @@ func (h handler) Remove(c echo.Context) error {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}
 
-	if target.Author != requester && target.Owner != requester {
+	if *target.Author != requester && target.Owner != requester {
 		return c.JSON(http.StatusForbidden, echo.Map{"error": "You are not owner of this timeline element"})
 	}
 

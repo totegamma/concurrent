@@ -99,23 +99,8 @@ type RevokeKey struct { // type: d.key
 }
 
 // timeline
-type CreateTimeline[T any] struct { // type: c.timeline
+type TimelineDocument[T any] struct { // type: timeline
 	DocumentBase[T]
-}
-
-type UpdateTimeline[T any] struct { // type: u.timeline
-	DocumentBase[T]
-}
-
-type DeleteTimeline struct { // type: d.stream
-	DocumentBase[DeleteBody]
-}
-
-type DeleteTimelineItemBody struct {
-	TimelineID string `json:"timelineID"`
-	ItemID     string `json:"itemID"`
-}
-
-type DeleteTimelineItem struct { // type: d.stream.item
-	DocumentBase[DeleteTimelineItemBody]
+	Indexable   bool `json:"indexable"`
+	DomainOwned bool `json:"domainOwned"`
 }

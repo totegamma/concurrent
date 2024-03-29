@@ -318,20 +318,20 @@ func (s *service) Tombstone(ctx context.Context, document, signature string) (co
 	defer span.End()
 
 	var doc core.EntityTombstone
-    err := json.Unmarshal([]byte(document), &doc)
-    if err != nil {
-        span.RecordError(err)
-        return core.Entity{}, errors.Wrap(err, "Failed to unmarshal document")
-    }
+	err := json.Unmarshal([]byte(document), &doc)
+	if err != nil {
+		span.RecordError(err)
+		return core.Entity{}, errors.Wrap(err, "Failed to unmarshal document")
+	}
 
-    err = s.repository.SetTombstone(ctx, doc.Signer, document, signature)
+	err = s.repository.SetTombstone(ctx, doc.Signer, document, signature)
 
-    if err != nil {
-        span.RecordError(err)
-        return core.Entity{}, err
-    }
+	if err != nil {
+		span.RecordError(err)
+		return core.Entity{}, err
+	}
 
-    return core.Entity{}, nil
+	return core.Entity{}, nil
 }
 
 func (s *service) Extension(ctx context.Context, document, signature string) (core.EntityExtension, error) {

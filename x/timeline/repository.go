@@ -598,8 +598,13 @@ func (r *repository) ListTimelineBySchema(ctx context.Context, schema string) ([
 	ctx, span := tracer.Start(ctx, "RepositoryListTimeline")
 	defer span.End()
 
+	id, err := r.schema.UrlToID(ctx, schema)
+	if err != nil {
+		return []core.Timeline{}, err
+	}
+
 	var timelines []core.Timeline
-	err := r.db.WithContext(ctx).Where("Schema = ? and visible = true", schema).Find(&timelines).Error
+	err = r.db.WithContext(ctx).Where("schema_id = ? and indexable = true", id).Find(&timelines).Error
 	return timelines, err
 }
 

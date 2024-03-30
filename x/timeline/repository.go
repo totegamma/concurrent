@@ -506,8 +506,24 @@ func (r *repository) GetTimeline(ctx context.Context, key string) (core.Timeline
 	ctx, span := tracer.Start(ctx, "RepositoryGetTimeline")
 	defer span.End()
 
+	if len(key) == 27 {
+		if key[0] != 't' {
+			return core.Timeline{}, fmt.Errorf("timeline typed-id must start with 't'")
+		}
+		key = key[1:]
+	}
+
 	var timeline core.Timeline
 	err := r.db.WithContext(ctx).First(&timeline, "id = ?", key).Error
+
+	schemaUrl, err := r.schema.IDToUrl(ctx, timeline.SchemaID)
+	if err != nil {
+		return timeline, err
+	}
+	timeline.Schema = schemaUrl
+
+	timeline.ID = "t" + timeline.ID
+
 	return timeline, err
 }
 
@@ -525,6 +541,8 @@ func (r *repository) CreateTimeline(ctx context.Context, timeline core.Timeline)
 	err = r.db.WithContext(ctx).Create(&timeline).Error
 
 	r.mc.Increment("timeline_count", 1)
+
+	timeline.ID = "t" + timeline.ID
 
 	return timeline, err
 }

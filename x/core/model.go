@@ -43,7 +43,7 @@ type Association struct {
 	Author    string         `json:"author" gorm:"type:char(42);uniqueIndex:uniq_association"`
 	SchemaID  uint           `json:"-" gorm:"uniqueIndex:uniq_association"`
 	Schema    string         `json:"schema" gorm:"-"`
-	TargetTID string         `json:"targetTID" gorm:"type:char(27);uniqueIndex:uniq_association"`
+	TargetID  string         `json:"targetID" gorm:"type:char(27);uniqueIndex:uniq_association"`
 	Variant   string         `json:"variant" gorm:"type:text;uniqueIndex:uniq_association"`
 	Document  string         `json:"document" gorm:"type:json"`
 	Signature string         `json:"signature" gorm:"type:char(130)"`

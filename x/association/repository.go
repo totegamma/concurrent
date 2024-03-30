@@ -149,7 +149,7 @@ func (r *repository) GetByTarget(ctx context.Context, targetID string) ([]core.A
 	defer span.End()
 
 	var associations []core.Association
-	err := r.db.WithContext(ctx).Where("target_t_id = ?", targetID).Find(&associations).Error
+	err := r.db.WithContext(ctx).Where("target_id = ?", targetID).Find(&associations).Error
 
 	for i := range associations {
 		schemaUrl, err := r.schema.IDToUrl(ctx, associations[i].SchemaID)
@@ -172,7 +172,7 @@ func (r *repository) GetCountsBySchema(ctx context.Context, messageID string) (m
 		Count    int64
 	}
 
-	err := r.db.WithContext(ctx).Model(&core.Association{}).Select("schema_id, count(*) as count").Where("target_t_id = ?", messageID).Group("schema_id").Scan(&counts).Error
+	err := r.db.WithContext(ctx).Model(&core.Association{}).Select("schema_id, count(*) as count").Where("target_id = ?", messageID).Group("schema_id").Scan(&counts).Error
 	if err != nil {
 		return nil, err
 	}
@@ -195,7 +195,7 @@ func (r *repository) GetOwnByTarget(ctx context.Context, targetID, author string
 	defer span.End()
 
 	var associations []core.Association
-	err := r.db.WithContext(ctx).Where("target_t_id = ? AND author = ?", targetID, author).Find(&associations).Error
+	err := r.db.WithContext(ctx).Where("target_id = ? AND author = ?", targetID, author).Find(&associations).Error
 
 	for i := range associations {
 		schemaUrl, err := r.schema.IDToUrl(ctx, associations[i].SchemaID)
@@ -219,7 +219,7 @@ func (r *repository) GetBySchema(ctx context.Context, messageID, schema string) 
 	}
 
 	var associations []core.Association
-	err = r.db.WithContext(ctx).Where("target_t_id = ? AND schema_id = ?", messageID, schemaID).Find(&associations).Error
+	err = r.db.WithContext(ctx).Where("target_id = ? AND schema_id = ?", messageID, schemaID).Find(&associations).Error
 
 	for i := range associations {
 		schemaUrl, err := r.schema.IDToUrl(ctx, associations[i].SchemaID)
@@ -247,7 +247,7 @@ func (r *repository) GetCountsBySchemaAndVariant(ctx context.Context, messageID,
 		return nil, err
 	}
 
-	err = r.db.WithContext(ctx).Model(&core.Association{}).Select("variant, count(*) as count").Where("target_t_id = ? AND schema_id = ?", messageID, schemaID).Group("variant").Scan(&counts).Error
+	err = r.db.WithContext(ctx).Model(&core.Association{}).Select("variant, count(*) as count").Where("target_id = ? AND schema_id = ?", messageID, schemaID).Group("variant").Scan(&counts).Error
 	if err != nil {
 		return nil, err
 	}
@@ -272,7 +272,7 @@ func (r *repository) GetBySchemaAndVariant(ctx context.Context, messageID, schem
 
 	var associations []core.Association
 
-	err = r.db.WithContext(ctx).Where("target_t_id = ? AND schema_id = ? AND variant = ?", messageID, schemaID, variant).Find(&associations).Error
+	err = r.db.WithContext(ctx).Where("target_id = ? AND schema_id = ? AND variant = ?", messageID, schemaID, variant).Find(&associations).Error
 	if err != nil {
 		return nil, err
 	}

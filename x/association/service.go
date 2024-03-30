@@ -6,10 +6,12 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/totegamma/concurrent/x/cdid"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/timeline"
+	"github.com/totegamma/concurrent/x/util"
 )
 
 // Service is the interface for association service
@@ -62,10 +64,17 @@ func (s *service) Create(ctx context.Context, documentStr string, signature stri
 		return core.Association{}, err
 	}
 
+	hash := util.GetHash([]byte(documentStr))
+	hash10 := [10]byte{}
+	copy(hash10[:], hash[:10])
+	signedAt := document.SignedAt
+	id := cdid.New(hash10, signedAt).String()
+
 	association := core.Association{
+		ID:        id,
 		Author:    document.Signer,
 		Schema:    document.Schema,
-		TargetTID: document.Target,
+		TargetID:  document.Target,
 		Document:  documentStr,
 		Signature: signature,
 		Timelines: document.Timelines,
@@ -82,7 +91,7 @@ func (s *service) Create(ctx context.Context, documentStr string, signature stri
 		return created, nil
 	}
 
-	targetMessage, err := s.message.Get(ctx, created.TargetTID, document.Signer)
+	targetMessage, err := s.message.Get(ctx, created.TargetID, document.Signer)
 	if err != nil {
 		span.RecordError(err)
 		return created, err
@@ -157,7 +166,7 @@ func (s *service) Delete(ctx context.Context, documentStr string) (core.Associat
 
 	requester := document.Signer
 
-	targetMessage, err := s.message.Get(ctx, targetAssociation.TargetTID, requester)
+	targetMessage, err := s.message.Get(ctx, targetAssociation.TargetID, requester)
 	if err != nil {
 		span.RecordError(err)
 		return core.Association{}, err
@@ -173,7 +182,7 @@ func (s *service) Delete(ctx context.Context, documentStr string) (core.Associat
 		return core.Association{}, err
 	}
 
-	if deleted.TargetTID[0] != 'm' { // distribute is needed only when targetType is messages
+	if deleted.TargetID[0] != 'm' { // distribute is needed only when targetType is messages
 		return deleted, nil
 	}
 

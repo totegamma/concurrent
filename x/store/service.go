@@ -12,6 +12,7 @@ import (
 	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/profile"
+	"github.com/totegamma/concurrent/x/subscription"
 	"github.com/totegamma/concurrent/x/timeline"
 )
 
@@ -20,13 +21,14 @@ type Service interface {
 }
 
 type service struct {
-	key         key.Service
-	entity      entity.Service
-	message     message.Service
-	association association.Service
-	profile     profile.Service
-	timeline    timeline.Service
-	ack         ack.Service
+	key          key.Service
+	entity       entity.Service
+	message      message.Service
+	association  association.Service
+	profile      profile.Service
+	timeline     timeline.Service
+	ack          ack.Service
+	subscription subscription.Service
 }
 
 func NewService(
@@ -37,15 +39,17 @@ func NewService(
 	profile profile.Service,
 	timeline timeline.Service,
 	ack ack.Service,
+	subscription subscription.Service,
 ) Service {
 	return &service{
-		key:         key,
-		entity:      entity,
-		message:     message,
-		association: association,
-		profile:     profile,
-		timeline:    timeline,
-		ack:         ack,
+		key:          key,
+		entity:       entity,
+		message:      message,
+		association:  association,
+		profile:      profile,
+		timeline:     timeline,
+		ack:          ack,
+		subscription: subscription,
 	}
 }
 
@@ -82,6 +86,10 @@ func (s *service) Commit(ctx context.Context, document string, signature string,
 		return s.timeline.CreateTimeline(ctx, document, signature)
 	case "ack", "unack":
 		return nil, s.ack.Ack(ctx, document, signature)
+	case "subscription":
+		return s.subscription.CreateSubscription(ctx, document, signature)
+	case "subscription_item":
+		return s.subscription.CreateItem(ctx, document, signature)
 	case "delete":
 		var doc core.DeleteDocument
 		err := json.Unmarshal([]byte(document), &doc)

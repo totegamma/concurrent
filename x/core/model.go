@@ -13,24 +13,12 @@ type Schema struct {
 }
 
 type Key struct {
-	ID            string `json:"id" gorm:"primaryKey;type:char(42)"` // e.g. CK...
-	Root          string `json:"root" gorm:"type:char(42)"`
-	Parent        string `json:"parent" gorm:"type:char(42)"`
-	EnactDocument string `json:"enactDocument" gorm:"type:json"`
-	/* type: enact
-	   {
-	       CKID: string,
-	       root: string,
-	       parent: string,
-	   }
-	*/
-	EnactSignature string `json:"enactSignature" gorm:"type:char(130)"`
-	RevokeDocument string `json:"revokeDocument" gorm:"type:json;default:'null'"`
-	/* type: revoke
-	   {
-	       CKID: string,
-	   }
-	*/
+	ID              string    `json:"id" gorm:"primaryKey;type:char(42)"` // e.g. CK...
+	Root            string    `json:"root" gorm:"type:char(42)"`
+	Parent          string    `json:"parent" gorm:"type:char(42)"`
+	EnactDocument   string    `json:"enactDocument" gorm:"type:json"`
+	EnactSignature  string    `json:"enactSignature" gorm:"type:char(130)"`
+	RevokeDocument  string    `json:"revokeDocument" gorm:"type:json;default:'null'"`
 	RevokeSignature string    `json:"revokeSignature" gorm:"type:char(130)"`
 	ValidSince      time.Time `json:"validSince" gorm:"type:timestamp with time zone"`
 	ValidUntil      time.Time `json:"validUntil" gorm:"type:timestamp with time zone"`
@@ -68,16 +56,11 @@ type Profile struct {
 // Entity is one of a concurrent base object
 // mutable
 type Entity struct {
-	ID                  string `json:"ccid" gorm:"type:char(42)"`
-	Tag                 string `json:"tag" gorm:"type:text;"`
-	Score               int    `json:"score" gorm:"type:integer;default:0"`
-	IsScoreFixed        bool   `json:"isScoreFixed" gorm:"type:boolean;default:false"`
-	AffiliationDocument string `json:"affiliationDocument" gorm:"type:json;default:'{}'"`
-	/* Domain Affiliation
-	   {
-	       domain: string,
-	   }
-	*/
+	ID                   string           `json:"ccid" gorm:"type:char(42)"`
+	Tag                  string           `json:"tag" gorm:"type:text;"`
+	Score                int              `json:"score" gorm:"type:integer;default:0"`
+	IsScoreFixed         bool             `json:"isScoreFixed" gorm:"type:boolean;default:false"`
+	AffiliationDocument  string           `json:"affiliationDocument" gorm:"type:json;default:'{}'"`
 	AffiliationSignature string           `json:"affiliationSignature" gorm:"type:char(130)"`
 	TombstoneDocument    *string          `json:"tombstoneDocument" gorm:"type:json;default:'null'"`
 	TombstoneSignature   *string          `json:"tombstoneSignature" gorm:"type:char(130)"`
@@ -168,39 +151,61 @@ type TimelineItem struct {
 // Collection is one of a base object of concurrent
 // mutable
 type Collection struct {
-	ID         string           `json:"id" gorm:"primaryKey;type:char(20);"`
-	Visible    bool             `json:"visible" gorm:"type:boolean;default:false"`
-	Author     string           `json:"author" gorm:"type:char(42)"`
-	Maintainer pq.StringArray   `json:"maintainer" gorm:"type:char(42)[];default:'{}'"`
-	Writer     pq.StringArray   `json:"writer" gorm:"type:char(42)[];default:'{}'"`
-	Reader     pq.StringArray   `json:"reader" gorm:"type:char(42)[];default:'{}'"`
-	SchemaID   uint             `json:"-"`
-	Schema     string           `json:"schema" gorm:"-"`
-	CDate      time.Time        `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
-	MDate      time.Time        `json:"mdate" gorm:"autoUpdateTime"`
-	Items      []CollectionItem `json:"items" gorm:"foreignKey:Collection"`
+	ID          string           `json:"id" gorm:"primaryKey;type:char(26);"`
+	Indexable   bool             `json:"indexable" gorm:"type:boolean;default:false"`
+	Author      string           `json:"author" gorm:"type:char(42)"`
+	DomainOwned bool             `json:"domainOwned" gorm:"type:boolean;default:false"`
+	SchemaID    uint             `json:"-"`
+	Schema      string           `json:"schema" gorm:"-"`
+	CDate       time.Time        `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
+	MDate       time.Time        `json:"mdate" gorm:"autoUpdateTime"`
+	Items       []CollectionItem `json:"items" gorm:"foreignKey:Collection"`
 }
 
 // CollectionItem is one of a base object of concurrent
 // mutable
 type CollectionItem struct {
-	ID         string `json:"id" gorm:"primaryKey;type:char(20);"`
-	Collection string `json:"collection" gorm:"type:char(20)"`
+	ID         string `json:"id" gorm:"primaryKey;type:char(26);"`
+	Collection string `json:"collection" gorm:"type:char(26)"`
 	Document   string `json:"document" gorm:"type:json;default:'{}'"`
+	Signature  string `json:"signature" gorm:"type:char(130)"`
 }
 
 type Ack struct {
-	From     string `json:"from" gorm:"primaryKey;type:char(42)"`
-	To       string `json:"to" gorm:"primaryKey;type:char(42)"`
-	Document string `json:"document" gorm:"type:json;default:'{}'"`
-	/*
-	   {
-	       from: string,
-	       to: string,
-	   }
-	*/
+	From      string `json:"from" gorm:"primaryKey;type:char(42)"`
+	To        string `json:"to" gorm:"primaryKey;type:char(42)"`
+	Document  string `json:"document" gorm:"type:json;default:'{}'"`
 	Signature string `json:"signature" gorm:"type:char(130)"`
 	Valid     bool   `json:"valid" gorm:"type:boolean;default:false"`
+}
+
+// Subscription
+type Subscription struct {
+	ID          string             `json:"id" gorm:"primaryKey;type:char(26)"`
+	Indexable   bool               `json:"indexable" gorm:"type:boolean;default:false"`
+	DomainOwned bool               `json:"domainOwned" gorm:"type:boolean;default:false"`
+	SchemaID    uint               `json:"-"`
+	Schema      string             `json:"schema" gorm:"-"`
+	Document    string             `json:"document" gorm:"type:json;default:'{}'"`
+	Signature   string             `json:"signature" gorm:"type:char(130)"`
+	Items       []SubscriptionItem `json:"items" gorm:"foreignKey:Subscription"`
+	CDate       time.Time          `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
+	MDate       time.Time          `json:"mdate" gorm:"autoUpdateTime"`
+}
+
+type ResolverType string
+
+const (
+	ResolverTypeEntity ResolverType = "entity"
+	ResolverTypeDomain ResolverType = "domain"
+)
+
+type SubscriptionItem struct {
+	Target       string       `json:"target" gorm:"primaryKey;type:char(27);"`
+	ResolverType ResolverType `json:"resolverType" gorm:"type:enum('entity', 'domain')"`
+	Entity       *string      `json:"entity" gorm:"type:char(42);"`
+	Domain       *string      `json:"domain" gorm:"type:text;"`
+	Subscription string       `json:"subscription" gorm:"type:char(26)"`
 }
 
 // Event is websocket root packet model

@@ -69,14 +69,14 @@ type UpsertProfile[T any] struct { // type: profile
 }
 
 // key
-type EnactKey struct { // type: c.key
+type EnactKey struct { // type: enact
 	DocumentBase[any]
 	Target string `json:"target"`
 	Root   string `json:"root"`
 	Parent string `json:"parent"`
 }
 
-type RevokeKey struct { // type: d.key
+type RevokeKey struct { // type: revoke
 	DocumentBase[any]
 	Target string `json:"target"`
 }
@@ -86,4 +86,17 @@ type TimelineDocument[T any] struct { // type: timeline
 	DocumentBase[T]
 	Indexable   bool `json:"indexable"`
 	DomainOwned bool `json:"domainOwned"`
+}
+
+// subscription
+type SubscriptionDocument[T any] struct { // type: subscription
+	DocumentBase[T]
+	Indexable   bool `json:"indexable"`
+	DomainOwned bool `json:"domainOwned"`
+}
+
+type SubscriptionItemDocument[T any] struct { // type: subscription_item
+	DocumentBase[T]
+	Subscription string `json:"subscription"`
+	Target       string `json:"target"`
 }

@@ -25,7 +25,7 @@ type Service interface {
 }
 
 type service struct {
-	rdb      *redis.Client
+	rdb      *redis.Client // TODO: remove this
 	repo     Repository
 	timeline timeline.Service
 	key      key.Service

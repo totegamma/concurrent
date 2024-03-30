@@ -29,6 +29,7 @@ import (
 	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/profile"
 	"github.com/totegamma/concurrent/x/store"
+	"github.com/totegamma/concurrent/x/subscription"
 	"github.com/totegamma/concurrent/x/timeline"
 	"github.com/totegamma/concurrent/x/userkv"
 	"github.com/totegamma/concurrent/x/util"
@@ -175,6 +176,8 @@ func main() {
 		&core.Ack{},
 		&core.Key{},
 		&core.UserKV{},
+		&core.Subscription{},
+		&core.SubscriptionItem{},
 	)
 
 	rdb := redis.NewClient(&redis.Options{
@@ -238,6 +241,9 @@ func main() {
 	storeService := SetupStoreService(db, rdb, mc, socketManager, config)
 	storeHandler := store.NewHandler(storeService)
 
+	subscriptionService := SetupSubscriptionService(db)
+	subscriptionHandler := subscription.NewHandler(subscriptionService)
+
 	apiV1 := e.Group("", auth.ReceiveGatewayAuthPropagation)
 	// store
 	apiV1.POST("/commit", storeHandler.Commit)
@@ -299,6 +305,9 @@ func main() {
 	apiV1.GET("/key/:id", keyHandler.GetKeyResolution)
 	apiV1.POST("key", keyHandler.UpdateKey, auth.Restrict(auth.ISLOCAL))
 	apiV1.GET("/keys/mine", keyHandler.GetKeyMine, auth.Restrict(auth.ISLOCAL))
+
+	// subscription
+	apiV1.GET("/subscription/:id", subscriptionHandler.GetSubscription)
 
 	// collection
 	apiV1.POST("/collection", collectionHandler.CreateCollection, auth.Restrict(auth.ISLOCAL))

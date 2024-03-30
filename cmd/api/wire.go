@@ -22,6 +22,7 @@ import (
 	"github.com/totegamma/concurrent/x/schema"
 	"github.com/totegamma/concurrent/x/socket"
 	"github.com/totegamma/concurrent/x/store"
+	"github.com/totegamma/concurrent/x/subscription"
 	"github.com/totegamma/concurrent/x/timeline"
 	"github.com/totegamma/concurrent/x/userkv"
 	"github.com/totegamma/concurrent/x/util"
@@ -35,6 +36,7 @@ var userKvServiceProvider = wire.NewSet(userkv.NewService, userkv.NewRepository)
 
 // Lv1
 var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService, SetupSchemaService)
+var subscriptionServiceProvider = wire.NewSet(subscription.NewService, subscription.NewRepository, SetupSchemaService)
 
 // Lv2
 var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository, SetupEntityService)
@@ -52,7 +54,17 @@ var messageServiceProvider = wire.NewSet(message.NewService, message.NewReposito
 var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupTimelineService, SetupMessageService, SetupKeyService, SetupSchemaService)
 
 // Lv6
-var storeServiceProvider = wire.NewSet(store.NewService, SetupKeyService, SetupMessageService, SetupAssociationService, SetupProfileService, SetupEntityService, SetupTimelineService, SetupAckService)
+var storeServiceProvider = wire.NewSet(
+	store.NewService,
+	SetupKeyService,
+	SetupMessageService,
+	SetupAssociationService,
+	SetupProfileService,
+	SetupEntityService,
+	SetupTimelineService,
+	SetupAckService,
+	SetupSubscriptionService,
+)
 
 // not implemented
 var collectionHandlerProvider = wire.NewSet(collection.NewHandler, collection.NewService, collection.NewRepository)
@@ -141,5 +153,10 @@ func SetupSchemaService(db *gorm.DB) schema.Service {
 
 func SetupStoreService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) store.Service {
 	wire.Build(storeServiceProvider)
+	return nil
+}
+
+func SetupSubscriptionService(db *gorm.DB) subscription.Service {
+	wire.Build(subscriptionServiceProvider)
 	return nil
 }

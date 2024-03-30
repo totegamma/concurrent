@@ -24,6 +24,7 @@ import (
 	"github.com/totegamma/concurrent/x/schema"
 	"github.com/totegamma/concurrent/x/socket"
 	"github.com/totegamma/concurrent/x/store"
+	"github.com/totegamma/concurrent/x/subscription"
 	"github.com/totegamma/concurrent/x/timeline"
 	"github.com/totegamma/concurrent/x/userkv"
 	"github.com/totegamma/concurrent/x/util"
@@ -154,8 +155,17 @@ func SetupStoreService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, mana
 	associationService := SetupAssociationService(db, rdb, mc, manager, config)
 	profileService := SetupProfileService(db, rdb, mc, config)
 	timelineService := SetupTimelineService(db, rdb, mc, manager, config)
-	storeService := store.NewService(service, entityService, messageService, associationService, profileService, timelineService)
+	ackService := SetupAckService(db, rdb, mc, config)
+	subscriptionService := SetupSubscriptionService(db)
+	storeService := store.NewService(service, entityService, messageService, associationService, profileService, timelineService, ackService, subscriptionService)
 	return storeService
+}
+
+func SetupSubscriptionService(db *gorm.DB) subscription.Service {
+	service := SetupSchemaService(db)
+	repository := subscription.NewRepository(db, service)
+	subscriptionService := subscription.NewService(repository)
+	return subscriptionService
 }
 
 // wire.go:
@@ -171,6 +181,8 @@ var userKvServiceProvider = wire.NewSet(userkv.NewService, userkv.NewRepository)
 
 // Lv1
 var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService, SetupSchemaService)
+
+var subscriptionServiceProvider = wire.NewSet(subscription.NewService, subscription.NewRepository, SetupSchemaService)
 
 // Lv2
 var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository, SetupEntityService)
@@ -191,7 +203,15 @@ var messageServiceProvider = wire.NewSet(message.NewService, message.NewReposito
 var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupTimelineService, SetupMessageService, SetupKeyService, SetupSchemaService)
 
 // Lv6
-var storeServiceProvider = wire.NewSet(store.NewService, SetupKeyService, SetupMessageService, SetupAssociationService, SetupProfileService, SetupEntityService, SetupTimelineService)
+var storeServiceProvider = wire.NewSet(store.NewService, SetupKeyService,
+	SetupMessageService,
+	SetupAssociationService,
+	SetupProfileService,
+	SetupEntityService,
+	SetupTimelineService,
+	SetupAckService,
+	SetupSubscriptionService,
+)
 
 // not implemented
 var collectionHandlerProvider = wire.NewSet(collection.NewHandler, collection.NewService, collection.NewRepository)

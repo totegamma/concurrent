@@ -2,7 +2,7 @@ package association
 
 import (
 	"context"
-	"fmt"
+	"errors"
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/schema"
@@ -91,6 +91,13 @@ func (r *repository) Get(ctx context.Context, id string) (core.Association, erro
 	ctx, span := tracer.Start(ctx, "RepositoryGet")
 	defer span.End()
 
+	if len(id) == 27 {
+		if id[0] != 'a' {
+			return core.Association{}, errors.New("association typed-id must start with 'a'")
+		}
+		id = id[1:]
+	}
+
 	var association core.Association
 	err := r.db.WithContext(ctx).Where("id = $1", id).First(&association).Error
 
@@ -127,14 +134,21 @@ func (r *repository) Delete(ctx context.Context, id string) (core.Association, e
 	ctx, span := tracer.Start(ctx, "RepositoryDelete")
 	defer span.End()
 
+	if len(id) == 27 {
+		if id[0] != 'a' {
+			return core.Association{}, errors.New("association typed-id must start with 'a'")
+		}
+		id = id[1:]
+	}
+
 	var deleted core.Association
 	if err := r.db.WithContext(ctx).First(&deleted, "id = ?", id).Error; err != nil {
-		fmt.Printf("Error finding association: %v\n", err)
+		span.RecordError(err)
 		return core.Association{}, err
 	}
 	err := r.db.WithContext(ctx).Where("id = $1", id).Delete(&core.Association{}).Error
 	if err != nil {
-		fmt.Printf("Error deleting association: %v\n", err)
+		span.RecordError(err)
 		return core.Association{}, err
 	}
 

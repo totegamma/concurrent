@@ -151,15 +151,15 @@ func (r *repository) GetWithOwnAssociations(ctx context.Context, key string, cci
 	message.Schema = schemaUrl
 	message.ID = "m" + message.ID
 	r.db.WithContext(ctx).Where("target_id = ? AND author = ?", message.ID, ccid).Find(&message.OwnAssociations)
-    for i := range message.OwnAssociations {
-        message.OwnAssociations[i].ID = "a" + message.OwnAssociations[i].ID
+	for i := range message.OwnAssociations {
+		message.OwnAssociations[i].ID = "a" + message.OwnAssociations[i].ID
 
-        schemaUrl, err := r.schema.IDToUrl(ctx, message.OwnAssociations[i].SchemaID)
-        if err != nil {
-            continue
-        }
-        message.OwnAssociations[i].Schema = schemaUrl
-    }
+		schemaUrl, err := r.schema.IDToUrl(ctx, message.OwnAssociations[i].SchemaID)
+		if err != nil {
+			continue
+		}
+		message.OwnAssociations[i].Schema = schemaUrl
+	}
 
 	return message, err
 }

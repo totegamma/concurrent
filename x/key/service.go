@@ -63,18 +63,18 @@ func (s *service) EnactKey(ctx context.Context, payload, signature string) (core
 		signerKey = object.Signer
 	}
 
-	if object.Signer != object.Body.Root {
+	if object.Signer != object.Root {
 		return core.Key{}, fmt.Errorf("Root is not matched with the signer")
 	}
 
-	if signerKey != object.Body.Parent {
+	if signerKey != object.Parent {
 		return core.Key{}, fmt.Errorf("Parent is not matched with the signer")
 	}
 
 	key := core.Key{
-		ID:             object.Body.CKID,
-		Root:           object.Body.Root,
-		Parent:         object.Body.Parent,
+		ID:             object.Target,
+		Root:           object.Root,
+		Parent:         object.Parent,
 		EnactDocument:  payload,
 		EnactSignature: signature,
 		ValidSince:     object.SignedAt,
@@ -111,7 +111,7 @@ func (s *service) RevokeKey(ctx context.Context, payload, signature string) (cor
 		return core.Key{}, fmt.Errorf("Invalid type: %s", object.Type)
 	}
 
-	targetKeyResolution, err := s.GetKeyResolution(ctx, object.Body.CKID)
+	targetKeyResolution, err := s.GetKeyResolution(ctx, object.Target)
 	if err != nil {
 		span.RecordError(err)
 		return core.Key{}, err
@@ -132,7 +132,7 @@ func (s *service) RevokeKey(ctx context.Context, payload, signature string) (cor
 		return core.Key{}, fmt.Errorf("KeyDepth is not enough. target: %d, performer: %d", len(targetKeyResolution), len(performerKeyResolution))
 	}
 
-	revoked, err := s.repository.Revoke(ctx, object.Body.CKID, payload, signature, object.SignedAt)
+	revoked, err := s.repository.Revoke(ctx, object.Target, payload, signature, object.SignedAt)
 	if err != nil {
 		span.RecordError(err)
 		return core.Key{}, err
@@ -276,15 +276,15 @@ func (s *service) ResolveRemoteSubkey(ctx context.Context, keyID, domain string)
 			return "", err
 		}
 
-		if enact.Body.CKID != key.ID {
+		if enact.Target != key.ID {
 			return "", fmt.Errorf("KeyID in payload is not matched with the keyID")
 		}
 
-		if enact.Body.Parent != key.Parent {
+		if enact.Parent != key.Parent {
 			return "", fmt.Errorf("Parent in payload is not matched with the parent")
 		}
 
-		if enact.Body.Root != key.Root {
+		if enact.Root != key.Root {
 			return "", fmt.Errorf("Root in payload is not matched with the root")
 		}
 

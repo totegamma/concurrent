@@ -68,16 +68,14 @@ func TestService(t *testing.T) {
 
 	// Test2. サブキーを新しく登録する
 	payload1 := core.EnactKey{
-		DocumentBase: core.DocumentBase[core.EnactBody]{
-			Signer: RootKey,
-			Type:   "enact",
-			Body: core.EnactBody{
-				CKID:   SubKey1,
-				Root:   RootKey,
-				Parent: RootKey,
-			},
+		DocumentBase: core.DocumentBase[any]{
+			Signer:   RootKey,
+			Type:     "enact",
 			SignedAt: time.Now(),
 		},
+		Target: SubKey1,
+		Root:   RootKey,
+		Parent: RootKey,
 	}
 
 	objb1, err := json.Marshal(payload1)
@@ -114,17 +112,15 @@ func TestService(t *testing.T) {
 	// Test4. サブキーのサブキーを新しく登録する
 
 	payload2 := core.EnactKey{
-		DocumentBase: core.DocumentBase[core.EnactBody]{
-			Signer: RootKey,
-			Type:   "enact",
-			Body: core.EnactBody{
-				CKID:   SubKey2,
-				Root:   RootKey,
-				Parent: SubKey1,
-			},
+		DocumentBase: core.DocumentBase[any]{
+			Signer:   RootKey,
+			Type:     "enact",
 			KeyID:    SubKey1,
 			SignedAt: time.Now(),
 		},
+		Target: SubKey2,
+		Root:   RootKey,
+		Parent: SubKey1,
 	}
 
 	objb2, err := json.Marshal(payload2)
@@ -177,15 +173,13 @@ func TestService(t *testing.T) {
 	// Test6. 中間のサブキーをその子キーから無効化してみようとする(失敗する)
 
 	payload4 := core.RevokeKey{
-		DocumentBase: core.DocumentBase[core.RevokeBody]{
-			Signer: RootKey,
-			Type:   "revoke",
-			Body: core.RevokeBody{
-				CKID: SubKey1,
-			},
+		DocumentBase: core.DocumentBase[any]{
+			Signer:   RootKey,
+			Type:     "revoke",
 			KeyID:    SubKey2,
 			SignedAt: time.Now(),
 		},
+		Target: SubKey1,
 	}
 
 	objb4, err := json.Marshal(payload4)
@@ -202,14 +196,12 @@ func TestService(t *testing.T) {
 	// Test7. 中間にあるサブキーをルートキーから無効化する
 
 	payload5 := core.RevokeKey{
-		DocumentBase: core.DocumentBase[core.RevokeBody]{
-			Signer: RootKey,
-			Type:   "revoke",
-			Body: core.RevokeBody{
-				CKID: SubKey1,
-			},
+		DocumentBase: core.DocumentBase[any]{
+			Signer:   RootKey,
+			Type:     "revoke",
 			SignedAt: time.Now(),
 		},
+		Target: SubKey1,
 	}
 
 	objb5, err := json.Marshal(payload5)

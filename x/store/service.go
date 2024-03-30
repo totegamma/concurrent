@@ -82,7 +82,7 @@ func (s *service) Commit(ctx context.Context, document string, signature string,
 		if err != nil {
 			return nil, err
 		}
-		typ := doc.Body.TargetID[0]
+		typ := doc.Target[0]
 		switch typ {
 		case 'm': // message
 			return s.message.Delete(ctx, document)

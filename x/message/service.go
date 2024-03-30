@@ -178,7 +178,7 @@ func (s *service) Delete(ctx context.Context, documentStr string) (core.Message,
 		return core.Message{}, err
 	}
 
-	deleteTarget, err := s.repo.Get(ctx, document.Body.TargetID)
+	deleteTarget, err := s.repo.Get(ctx, document.Target)
 	if err != nil {
 		span.RecordError(err)
 		return core.Message{}, err
@@ -188,7 +188,7 @@ func (s *service) Delete(ctx context.Context, documentStr string) (core.Message,
 		return core.Message{}, fmt.Errorf("you are not authorized to perform this action")
 	}
 
-	deleted, err := s.repo.Delete(ctx, document.Body.TargetID)
+	deleted, err := s.repo.Delete(ctx, document.Target)
 	slog.DebugContext(ctx, fmt.Sprintf("deleted: %v", deleted), slog.String("module", "message"))
 
 	if err != nil {

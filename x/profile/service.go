@@ -145,7 +145,7 @@ func (s *service) Delete(ctx context.Context, documentStr string) (core.Profile,
 		return core.Profile{}, err
 	}
 
-	deleteTarget, err := s.Get(ctx, document.Body.TargetID)
+	deleteTarget, err := s.Get(ctx, document.Target)
 	if err != nil {
 		span.RecordError(err)
 		return core.Profile{}, err
@@ -157,7 +157,7 @@ func (s *service) Delete(ctx context.Context, documentStr string) (core.Profile,
 		return core.Profile{}, err
 	}
 
-	return s.repo.Delete(ctx, document.Body.TargetID)
+	return s.repo.Delete(ctx, document.Target)
 }
 
 func (s *service) Get(ctx context.Context, id string) (core.Profile, error) {

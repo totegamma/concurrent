@@ -158,7 +158,7 @@ func (s *service) Delete(ctx context.Context, documentStr string) (core.Associat
 		return core.Association{}, err
 	}
 
-	targetAssociation, err := s.repo.Get(ctx, document.Body.TargetID)
+	targetAssociation, err := s.repo.Get(ctx, document.Target)
 	if err != nil {
 		span.RecordError(err)
 		return core.Association{}, err
@@ -176,7 +176,7 @@ func (s *service) Delete(ctx context.Context, documentStr string) (core.Associat
 		return core.Association{}, fmt.Errorf("you are not authorized to perform this action")
 	}
 
-	deleted, err := s.repo.Delete(ctx, document.Body.TargetID)
+	deleted, err := s.repo.Delete(ctx, document.Target)
 	if err != nil {
 		span.RecordError(err)
 		return core.Association{}, err

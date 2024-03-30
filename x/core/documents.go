@@ -11,31 +11,20 @@ type DocumentBase[T any] struct {
 	Type     string    `json:"type"`
 	Schema   string    `json:"schema,omitempty"`
 	KeyID    string    `json:"keyID,omitempty"`
-	Body     T         `json:"body"`
+	Body     T         `json:"body,omitempty"`
 	Meta     any       `json:"meta,omitempty"`
 	SignedAt time.Time `json:"signedAt"`
 }
 
-type DeleteBody struct {
-	TargetID string `json:"targetID"`
-}
-
-// --------
-
 // entity
-type AffiliationBody struct {
-	Domain string `json:"domain"`
-}
-
-type TombstoneBody struct {
-}
-
 type EntityAffiliation struct { // type: affiliation
-	DocumentBase[AffiliationBody]
+	Domain string `json:"domain"`
+	DocumentBase[any]
 }
 
 type EntityTombstone struct { // type: tombstone
-	DocumentBase[TombstoneBody]
+	Reason string `json:"reason"`
+	DocumentBase[any]
 }
 
 type ExtensionDocument[T any] struct { // type: extension
@@ -43,17 +32,16 @@ type ExtensionDocument[T any] struct { // type: extension
 }
 
 // ack
-type AckBody struct {
+type AckDocument struct { // type: ack
+	DocumentBase[any]
 	From string `json:"from"`
 	To   string `json:"to"`
 }
 
-type AckDocument struct { // type: ack
-	DocumentBase[AckBody]
-}
-
 type UnackDocument struct { // type: unack
-	DocumentBase[AckBody]
+	DocumentBase[any]
+	From string `json:"from"`
+	To   string `json:"to"`
 }
 
 // message
@@ -63,7 +51,8 @@ type CreateMessage[T any] struct { // type: message
 }
 
 type DeleteDocument struct { // type: delete
-	DocumentBase[DeleteBody]
+	DocumentBase[any]
+	Target string `json:"target"`
 }
 
 // association
@@ -80,22 +69,16 @@ type UpsertProfile[T any] struct { // type: profile
 }
 
 // key
-type EnactBody struct {
-	CKID   string `json:"ckid"`
+type EnactKey struct { // type: c.key
+	DocumentBase[any]
+	Target string `json:"target"`
 	Root   string `json:"root"`
 	Parent string `json:"parent"`
 }
 
-type RevokeBody struct {
-	CKID string `json:"ckid"`
-}
-
-type EnactKey struct { // type: c.key
-	DocumentBase[EnactBody]
-}
-
 type RevokeKey struct { // type: d.key
-	DocumentBase[RevokeBody]
+	DocumentBase[any]
+	Target string `json:"target"`
 }
 
 // timeline

@@ -142,7 +142,7 @@ func (s *service) PullEntityFromRemote(ctx context.Context, id, hintDomain strin
 		return "", fmt.Errorf("Invalid payload")
 	}
 
-	if signedObj.Body.Domain != targetDomain {
+	if signedObj.Domain != targetDomain {
 		err = fmt.Errorf("Remote entity is not for the target domain")
 		span.RecordError(err)
 		return "", err
@@ -216,7 +216,7 @@ func (s *service) Affiliation(ctx context.Context, document, signature, option s
 	}
 
 	// validate document
-	if doc.Body.Domain != s.config.Concurrent.FQDN {
+	if doc.Domain != s.config.Concurrent.FQDN {
 		return core.Entity{}, errors.New("Domain is not match")
 	}
 

@@ -65,7 +65,7 @@ func (s *service) Ack(ctx context.Context, objectStr string, signature string) e
 
 	switch object.Type {
 	case "ack":
-		address, err := s.entity.GetAddress(ctx, object.Body.To)
+		address, err := s.entity.GetAddress(ctx, object.To)
 		if err == nil {
 			packet := ackRequest{
 				SignedObject: objectStr,
@@ -108,13 +108,13 @@ func (s *service) Ack(ctx context.Context, objectStr string, signature string) e
 		}
 
 		return s.repository.Ack(ctx, &core.Ack{
-			From:      object.Body.From,
-			To:        object.Body.To,
+			From:      object.From,
+			To:        object.To,
 			Signature: signature,
 			Document:  objectStr,
 		})
 	case "unack":
-		address, err := s.entity.GetAddress(ctx, object.Body.To)
+		address, err := s.entity.GetAddress(ctx, object.To)
 		if err == nil {
 			packet := ackRequest{
 				SignedObject: objectStr,
@@ -156,8 +156,8 @@ func (s *service) Ack(ctx context.Context, objectStr string, signature string) e
 			defer resp.Body.Close()
 		}
 		return s.repository.Unack(ctx, &core.Ack{
-			From:      object.Body.From,
-			To:        object.Body.To,
+			From:      object.From,
+			To:        object.To,
 			Signature: signature,
 			Document:  objectStr,
 		})

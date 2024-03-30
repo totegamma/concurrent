@@ -338,6 +338,12 @@ func (r *repository) GetChunksFromDB(ctx context.Context, timelines []string, ch
 		if strings.Contains(timelineID, "@") {
 			timelineID = strings.Split(timelineID, "@")[0]
 		}
+		if len(timelineID) == 27 {
+			if timelineID[0] != 't' {
+				return nil, fmt.Errorf("timeline typed-id must start with 't'")
+			}
+			timelineID = timelineID[1:]
+		}
 
 		err = r.db.WithContext(ctx).Where("timeline_id = ? and c_date <= ?", timelineID, chunkDate).Order("c_date desc").Limit(100).Find(&items).Error
 		if err != nil {
@@ -403,6 +409,12 @@ func (r *repository) GetChunkIterators(ctx context.Context, timelines []string, 
 			if strings.Contains(dbid, "@") {
 				dbid = strings.Split(timeline, "@")[0]
 			}
+			if len(dbid) == 27 {
+				if dbid[0] != 't' {
+					return nil, fmt.Errorf("timeline typed-id must start with 't'")
+				}
+				dbid = dbid[1:]
+			}
 			err := r.db.WithContext(ctx).Where("timeline_id = ? and c_date <= ?", dbid, chunkTime).Order("c_date desc").First(&item).Error
 			if err != nil {
 				continue
@@ -431,9 +443,20 @@ func (r *repository) CreateItem(ctx context.Context, item core.TimelineItem) (co
 	ctx, span := tracer.Start(ctx, "RepositoryCreateItem")
 	defer span.End()
 
-	err := r.db.WithContext(ctx).Create(&item).Error
+	if len(item.TimelineID) == 27 {
+		if item.TimelineID[0] != 't' {
+			return core.TimelineItem{}, fmt.Errorf("timeline typed-id must start with 't'")
+		}
+		item.TimelineID = item.TimelineID[1:]
+	}
 
-	timelineID := item.TimelineID + "@" + r.config.Concurrent.FQDN
+	err := r.db.WithContext(ctx).Create(&item).Error
+	if err != nil {
+		span.RecordError(err)
+		return item, err
+	}
+
+	timelineID := "t" + item.TimelineID + "@" + r.config.Concurrent.FQDN
 
 	json, err := json.Marshal(item)
 	if err != nil {
@@ -469,6 +492,8 @@ func (r *repository) CreateItem(ctx context.Context, item core.TimelineItem) (co
 			r.mc.Set(&memcache.Item{Key: key, Value: []byte(dest)})
 		}
 	}
+
+	item.TimelineID = "t" + item.TimelineID
 
 	return item, err
 }
@@ -531,6 +556,13 @@ func (r *repository) GetTimeline(ctx context.Context, key string) (core.Timeline
 func (r *repository) CreateTimeline(ctx context.Context, timeline core.Timeline) (core.Timeline, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryCreateTimeline")
 	defer span.End()
+
+	if len(timeline.ID) == 27 {
+		if timeline.ID[0] != 't' {
+			return core.Timeline{}, fmt.Errorf("timeline typed-id must start with 't'")
+		}
+		timeline.ID = timeline.ID[1:]
+	}
 
 	schemaID, err := r.schema.UrlToID(ctx, timeline.Schema)
 	if err != nil {

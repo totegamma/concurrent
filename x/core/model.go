@@ -158,9 +158,8 @@ type Timeline struct {
 // TimelineItem is one of a base object of concurrent
 // immutable
 type TimelineItem struct {
-	ObjectID   string    `json:"objectID" gorm:"primaryKey;type:char(26);"`
-	TimelineID string    `json:"TimelineID" gorm:"primaryKey;type:char(20);"`
-	Type       string    `json:"type" gorm:"type:text;"`
+	ObjectID   string    `json:"objectID" gorm:"primaryKey;type:char(27);"`
+	TimelineID string    `json:"timelineID" gorm:"primaryKey;type:char(26);"`
 	Owner      string    `json:"owner" gorm:"type:char(42);"`
 	Author     *string   `json:"author,omitempty" gorm:"type:char(42);"`
 	CDate      time.Time `json:"cdate,omitempty" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
@@ -232,4 +231,19 @@ func Chunk2RecentTime(chunk string) time.Time {
 func Chunk2ImmediateTime(chunk string) time.Time {
 	i, _ := strconv.ParseInt(chunk, 10, 64)
 	return time.Unix(i, 0)
+}
+
+func TypedIDToType(id string) string {
+	if len(id) != 27 {
+		return ""
+	}
+	prefix := id[0]
+	switch prefix {
+	case 'a':
+		return "association"
+	case 'm':
+		return "message"
+	default:
+		return ""
+	}
 }

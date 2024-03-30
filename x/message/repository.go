@@ -111,7 +111,7 @@ func (r *repository) Get(ctx context.Context, key string) (core.Message, error) 
 	}
 
 	var message core.Message
-	err := r.db.WithContext(ctx).Preload("SchemaBody").First(&message, "id = ?", key).Error
+	err := r.db.WithContext(ctx).First(&message, "id = ?", key).Error
 	if err != nil {
 		return message, err
 	}

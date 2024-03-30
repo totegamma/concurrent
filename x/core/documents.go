@@ -59,7 +59,7 @@ type UnackDocument struct { // type: unack
 // message
 type CreateMessage[T any] struct { // type: message
 	DocumentBase[T]
-	Timelines []string `json:"streams"`
+	Timelines []string `json:"timelines"`
 }
 
 type DeleteDocument struct { // type: delete

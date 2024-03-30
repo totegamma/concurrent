@@ -156,7 +156,6 @@ func (s *service) Create(ctx context.Context, objectStr string, signature string
 
 	for _, timeline := range message.Timelines {
 		s.timeline.PostItem(ctx, timeline, core.TimelineItem{
-			Type:       "message",
 			ObjectID:   created.ID,
 			Owner:      object.Signer,
 			TimelineID: timeline,

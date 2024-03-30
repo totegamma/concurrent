@@ -62,7 +62,11 @@ func (h handler) Recent(c echo.Context) error {
 
 	timelinesStr := c.QueryParam("timelines")
 	timelines := strings.Split(timelinesStr, ",")
-	messages, _ := h.service.GetRecentItems(ctx, timelines, time.Now(), 16)
+	messages, err := h.service.GetRecentItems(ctx, timelines, time.Now(), 16)
+	if err != nil {
+		span.RecordError(err)
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	}
 
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": messages})
 }
@@ -83,7 +87,13 @@ func (h handler) Range(c echo.Context) error {
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
 		}
 		since := time.Unix(sinceEpoch, 0)
-		messages, _ := h.service.GetImmediateItems(ctx, timelines, since, 16)
+		messages, err := h.service.GetImmediateItems(ctx, timelines, since, 16)
+
+		if err != nil {
+			span.RecordError(err)
+			return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+		}
+
 		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": messages})
 	} else if queryUntil != "" {
 		untilEpoch, err := strconv.ParseInt(queryUntil, 10, 64)
@@ -91,7 +101,13 @@ func (h handler) Range(c echo.Context) error {
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
 		}
 		until := time.Unix(untilEpoch, 0)
-		messages, _ := h.service.GetRecentItems(ctx, timelines, until, 16)
+		messages, err := h.service.GetRecentItems(ctx, timelines, until, 16)
+
+		if err != nil {
+			span.RecordError(err)
+			return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+		}
+
 		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": messages})
 	} else {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})

@@ -352,11 +352,13 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 			return err
 		}
 
+		typ := core.TypedIDToType(created.ObjectID)
+
 		// publish event to pubsub
 		event := core.Event{
 			TimelineID: timeline,
 			Action:     "create",
-			Type:       item.Type,
+			Type:       typ,
 			Item:       created,
 			Body:       body,
 		}

@@ -145,7 +145,6 @@ func TestManager(t *testing.T) {
 		Action:     "create",
 		Type:       "message",
 		Item: core.TimelineItem{
-			Type:       "message",
 			ObjectID:   "",
 			TimelineID: remotetimeline1,
 			Owner:      "",

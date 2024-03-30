@@ -10,12 +10,16 @@ services:
     links:
       - db
       - redis
+      - loki
+      - tempo
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
       loki:
+        condition: service_started
+      tempo:
         condition: service_started
     ports:
       - "8080:8080"
@@ -38,12 +42,15 @@ services:
       - db
       - redis
       - loki
+      - tempo
     depends_on:
       db:
         condition: service_healthy
       redis:
         condition: service_healthy
       loki:
+        condition: service_started
+      tempo:
         condition: service_started
     ports:
       - "8000:8000"

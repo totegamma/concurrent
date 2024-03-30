@@ -11,7 +11,6 @@ var tracer = otel.Tracer("ack")
 
 // Handler is the interface for handling HTTP requests
 type Handler interface {
-	Ack(c echo.Context) error
 	GetAcker(c echo.Context) error
 	GetAcking(c echo.Context) error
 }
@@ -23,27 +22,6 @@ type handler struct {
 // NewHandler creates a new handler
 func NewHandler(service Service) Handler {
 	return &handler{service: service}
-}
-
-// Ack creates a new ack
-func (h handler) Ack(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerAck")
-	defer span.End()
-
-	var request ackRequest
-	err := c.Bind(&request)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-
-	err = h.service.Ack(ctx, request.SignedObject, request.Signature)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
 }
 
 // GetAcking returns acking entities

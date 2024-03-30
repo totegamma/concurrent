@@ -57,12 +57,6 @@ func (s *service) Ack(ctx context.Context, objectStr string, signature string) e
 		return err
 	}
 
-	err = s.key.ValidateSignedObject(ctx, objectStr, signature)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-
 	switch object.Type {
 	case "ack":
 		address, err := s.entity.GetAddress(ctx, object.To)

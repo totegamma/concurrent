@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/totegamma/concurrent/x/ack"
 	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/entity"
@@ -25,6 +26,7 @@ type service struct {
 	association association.Service
 	profile     profile.Service
 	timeline    timeline.Service
+	ack         ack.Service
 }
 
 func NewService(
@@ -34,6 +36,7 @@ func NewService(
 	association association.Service,
 	profile profile.Service,
 	timeline timeline.Service,
+	ack ack.Service,
 ) Service {
 	return &service{
 		key:         key,
@@ -42,6 +45,7 @@ func NewService(
 		association: association,
 		profile:     profile,
 		timeline:    timeline,
+		ack:         ack,
 	}
 }
 
@@ -76,6 +80,8 @@ func (s *service) Commit(ctx context.Context, document string, signature string,
 		return s.entity.Extension(ctx, document, signature)
 	case "timeline":
 		return s.timeline.CreateTimeline(ctx, document, signature)
+	case "ack", "unack":
+		return nil, s.ack.Ack(ctx, document, signature)
 	case "delete":
 		var doc core.DeleteDocument
 		err := json.Unmarshal([]byte(document), &doc)

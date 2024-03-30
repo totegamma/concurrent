@@ -52,7 +52,7 @@ var messageServiceProvider = wire.NewSet(message.NewService, message.NewReposito
 var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupTimelineService, SetupMessageService, SetupKeyService, SetupSchemaService)
 
 // Lv6
-var storeServiceProvider = wire.NewSet(store.NewService, SetupKeyService, SetupMessageService, SetupAssociationService, SetupProfileService, SetupEntityService, SetupTimelineService)
+var storeServiceProvider = wire.NewSet(store.NewService, SetupKeyService, SetupMessageService, SetupAssociationService, SetupProfileService, SetupEntityService, SetupTimelineService, SetupAckService)
 
 // not implemented
 var collectionHandlerProvider = wire.NewSet(collection.NewHandler, collection.NewService, collection.NewRepository)

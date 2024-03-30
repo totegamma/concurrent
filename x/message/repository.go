@@ -15,7 +15,6 @@ import (
 type Repository interface {
 	Create(ctx context.Context, message core.Message) (core.Message, error)
 	Get(ctx context.Context, key string) (core.Message, error)
-	GetWithAssociations(ctx context.Context, key string) (core.Message, error)
 	GetWithOwnAssociations(ctx context.Context, key string, ccid string) (core.Message, error)
 	Delete(ctx context.Context, key string) (core.Message, error)
 	Count(ctx context.Context) (int64, error)
@@ -145,29 +144,22 @@ func (r *repository) GetWithOwnAssociations(ctx context.Context, key string, cci
 		return message, err
 	}
 
-	r.db.WithContext(ctx).Where("target_id = ? AND author = ?", key, ccid).Find(&message.OwnAssociations)
-
-	message.ID = "m" + message.ID
-
-	return message, err
-}
-
-// GetWithAssociations returns a message by ID with associations
-func (r *repository) GetWithAssociations(ctx context.Context, key string) (core.Message, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetWithAssociations")
-	defer span.End()
-
-	if len(key) == 27 {
-		if key[0] != 'm' {
-			return core.Message{}, errors.New("message typed-id must start with 'm'")
-		}
-		key = key[1:]
+	schemaUrl, err := r.schema.IDToUrl(ctx, message.SchemaID)
+	if err != nil {
+		return message, err
 	}
-
-	var message core.Message
-	err := r.db.WithContext(ctx).Preload("Associations").First(&message, "id = ?", key).Error
-
+	message.Schema = schemaUrl
 	message.ID = "m" + message.ID
+	r.db.WithContext(ctx).Where("target_id = ? AND author = ?", message.ID, ccid).Find(&message.OwnAssociations)
+    for i := range message.OwnAssociations {
+        message.OwnAssociations[i].ID = "a" + message.OwnAssociations[i].ID
+
+        schemaUrl, err := r.schema.IDToUrl(ctx, message.OwnAssociations[i].SchemaID)
+        if err != nil {
+            continue
+        }
+        message.OwnAssociations[i].Schema = schemaUrl
+    }
 
 	return message, err
 }

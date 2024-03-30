@@ -87,8 +87,8 @@ type Entity struct {
 }
 
 type EntityExtension struct {
-	Owner     string `json:"owner" gorm:"type:char(42)"`
-	SchemaID  uint   `json:"-"`
+	Owner     string `json:"owner" gorm:"primaryKey;type:char(42)"`
+	SchemaID  uint   `json:"-" gorm:"primaryKey"`
 	Schema    string `json:"schema" gorm:"-"`
 	Document  string `json:"document" gorm:"type:json"`
 	Signature string `json:"signature" gorm:"type:char(130)"`

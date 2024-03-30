@@ -75,7 +75,7 @@ func (s *service) EnactKey(ctx context.Context, payload, signature string) (core
 		ID:             object.Body.CKID,
 		Root:           object.Body.Root,
 		Parent:         object.Body.Parent,
-		EnactPayload:   payload,
+		EnactDocument:  payload,
 		EnactSignature: signature,
 		ValidSince:     object.SignedAt,
 	}
@@ -264,14 +264,14 @@ func (s *service) ResolveRemoteSubkey(ctx context.Context, keyID, domain string)
 		}
 
 		// まず署名を検証
-		err := s.ValidateSignedObject(ctx, key.EnactPayload, key.EnactSignature)
+		err := s.ValidateSignedObject(ctx, key.EnactDocument, key.EnactSignature)
 		if err != nil {
 			return "", err
 		}
 
 		// 署名の内容が正しいか検証
 		var enact core.EnactKey
-		err = json.Unmarshal([]byte(key.EnactPayload), &enact)
+		err = json.Unmarshal([]byte(key.EnactDocument), &enact)
 		if err != nil {
 			return "", err
 		}
@@ -296,7 +296,7 @@ func (s *service) ResolveRemoteSubkey(ctx context.Context, keyID, domain string)
 			}
 		}
 
-		if key.RevokePayload != "null" {
+		if key.RevokeDocument != "null" {
 			return "", fmt.Errorf("Key %s is revoked", key.ID)
 		}
 
@@ -366,7 +366,7 @@ func (s *service) GetAllKeys(ctx context.Context, owner string) ([]core.Key, err
 }
 
 func IsKeyValid(ctx context.Context, key core.Key) bool {
-	return key.RevokePayload == "null"
+	return key.RevokeDocument == "null"
 }
 
 func IsCKID(keyID string) bool {

@@ -125,6 +125,21 @@ func (mr *MockServiceMockRecorder) GetAddress(ctx, ccid interface{}) *gomock.Cal
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAddress", reflect.TypeOf((*MockService)(nil).GetAddress), ctx, ccid)
 }
 
+// GetWithExtension mocks base method.
+func (m *MockService) GetWithExtension(ctx context.Context, ccid, extension string) (core.Entity, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetWithExtension", ctx, ccid, extension)
+	ret0, _ := ret[0].(core.Entity)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetWithExtension indicates an expected call of GetWithExtension.
+func (mr *MockServiceMockRecorder) GetWithExtension(ctx, ccid, extension interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetWithExtension", reflect.TypeOf((*MockService)(nil).GetWithExtension), ctx, ccid, extension)
+}
+
 // IsUserExists mocks base method.
 func (m *MockService) IsUserExists(ctx context.Context, user string) bool {
 	m.ctrl.T.Helper()

@@ -111,7 +111,7 @@ func (s *service) Ack(ctx context.Context, objectStr string, signature string) e
 			From:      object.Body.From,
 			To:        object.Body.To,
 			Signature: signature,
-			Payload:   objectStr,
+			Document:  objectStr,
 		})
 	case "unack":
 		address, err := s.entity.GetAddress(ctx, object.Body.To)
@@ -159,7 +159,7 @@ func (s *service) Ack(ctx context.Context, objectStr string, signature string) e
 			From:      object.Body.From,
 			To:        object.Body.To,
 			Signature: signature,
-			Payload:   objectStr,
+			Document:  objectStr,
 		})
 	default:
 		return fmt.Errorf("invalid object type")

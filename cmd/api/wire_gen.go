@@ -80,10 +80,11 @@ func SetupAssociationService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client
 }
 
 func SetupTimelineService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) timeline.Service {
-	repository := timeline.NewRepository(db, rdb, mc, manager, config)
-	service := SetupEntityService(db, rdb, mc, config)
+	service := SetupSchemaService(db)
+	repository := timeline.NewRepository(db, rdb, mc, service, manager, config)
+	entityService := SetupEntityService(db, rdb, mc, config)
 	domainService := SetupDomainService(db, config)
-	timelineService := timeline.NewService(repository, service, domainService, config)
+	timelineService := timeline.NewService(repository, entityService, domainService, config)
 	return timelineService
 }
 
@@ -174,7 +175,7 @@ var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository,
 // Lv2
 var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository, SetupEntityService)
 
-var timelineServiceProvider = wire.NewSet(timeline.NewService, timeline.NewRepository, SetupEntityService, SetupDomainService)
+var timelineServiceProvider = wire.NewSet(timeline.NewService, timeline.NewRepository, SetupEntityService, SetupDomainService, SetupSchemaService)
 
 // Lv3
 var profileServiceProvider = wire.NewSet(profile.NewService, profile.NewRepository, SetupKeyService)

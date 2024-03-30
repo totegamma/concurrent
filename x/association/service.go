@@ -66,7 +66,7 @@ func (s *service) Create(ctx context.Context, documentStr string, signature stri
 		Author:    document.Signer,
 		Schema:    document.Schema,
 		TargetTID: document.Target,
-		Payload:   documentStr,
+		Document:  documentStr,
 		Signature: signature,
 		Timelines: document.Timelines,
 		Variant:   document.Variant,

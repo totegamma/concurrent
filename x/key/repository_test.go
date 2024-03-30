@@ -25,15 +25,15 @@ func TestRepository(t *testing.T) {
 		ID:              "cck1v26je8uyhc9x6xgcw26d3cne20s44atr7a94em",
 		Root:            "con1fk8zlkrfmens3sgj7dzcu3gsw8v9kkysrf8dt5",
 		Parent:          "con1fk8zlkrfmens3sgj7dzcu3gsw8v9kkysrf8dt5",
-		EnactPayload:    "{}",                                                                                                                                 //TODO: change to real payload
+		EnactDocument:   "{}",                                                                                                                                 //TODO: change to real payload
 		EnactSignature:  "8c3e365f8b085d4823eb6c824d0eceeb5a2fc194b4055052260042a3a2d40f88002eb2ccbeac62169f4c579ae1831075e887d6e7a4ac9f0ce6a91306de54ba3301", //TODO: change to real signature
-		RevokePayload:   "null",
+		RevokeDocument:  "null",
 		RevokeSignature: "",
 	}
 
 	created, err := repo.Enact(ctx, newkey)
 	if assert.NoError(t, err) {
-		assert.NotZero(t, created.EnactPayload)
+		assert.NotZero(t, created.EnactDocument)
 		assert.NotZero(t, created.EnactSignature)
 		assert.NotZero(t, created.ID)
 	}
@@ -52,7 +52,7 @@ func TestRepository(t *testing.T) {
 	)
 
 	if assert.NoError(t, err) {
-		assert.NotZero(t, modified.RevokePayload)
+		assert.NotZero(t, modified.RevokeDocument)
 		assert.NotZero(t, modified.RevokeSignature)
 	}
 

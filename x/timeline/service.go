@@ -518,7 +518,7 @@ func (s *service) CreateTimeline(ctx context.Context, document, signature string
 		Author:      doc.Signer,
 		DomainOwned: doc.DomainOwned,
 		Schema:      doc.Schema,
-		Payload:     document,
+		Document:    document,
 		Signature:   signature,
 	})
 	created.ID = created.ID + "@" + s.config.Concurrent.FQDN

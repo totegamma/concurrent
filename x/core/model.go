@@ -13,10 +13,10 @@ type Schema struct {
 }
 
 type Key struct {
-	ID           string `json:"id" gorm:"primaryKey;type:char(42)"` // e.g. CK...
-	Root         string `json:"root" gorm:"type:char(42)"`
-	Parent       string `json:"parent" gorm:"type:char(42)"`
-	EnactPayload string `json:"enactPayload" gorm:"type:json"`
+	ID            string `json:"id" gorm:"primaryKey;type:char(42)"` // e.g. CK...
+	Root          string `json:"root" gorm:"type:char(42)"`
+	Parent        string `json:"parent" gorm:"type:char(42)"`
+	EnactDocument string `json:"enactDocument" gorm:"type:json"`
 	/* type: enact
 	   {
 	       CKID: string,
@@ -25,7 +25,7 @@ type Key struct {
 	   }
 	*/
 	EnactSignature string `json:"enactSignature" gorm:"type:char(130)"`
-	RevokePayload  string `json:"revokePayload" gorm:"type:json;default:'null'"`
+	RevokeDocument string `json:"revokeDocument" gorm:"type:json;default:'null'"`
 	/* type: revoke
 	   {
 	       CKID: string,
@@ -45,7 +45,7 @@ type Association struct {
 	Schema    string         `json:"schema" gorm:"-"`
 	TargetTID string         `json:"targetTID" gorm:"type:char(27);uniqueIndex:uniq_association"`
 	Variant   string         `json:"variant" gorm:"type:text;uniqueIndex:uniq_association"`
-	Payload   string         `json:"payload" gorm:"type:json"`
+	Document  string         `json:"document" gorm:"type:json"`
 	Signature string         `json:"signature" gorm:"type:char(130)"`
 	CDate     time.Time      `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 	Timelines pq.StringArray `json:"timelines" gorm:"type:text[]"`
@@ -58,7 +58,7 @@ type Profile struct {
 	Author       string        `json:"author" gorm:"type:char(42)"`
 	SchemaID     uint          `json:"-"`
 	Schema       string        `json:"schema" gorm:"-"`
-	Payload      string        `json:"payload" gorm:"type:json"`
+	Document     string        `json:"document" gorm:"type:json"`
 	Signature    string        `json:"signature" gorm:"type:char(130)"`
 	Associations []Association `json:"associations,omitempty" gorm:"-"`
 	CDate        time.Time     `json:"cdate" gorm:"->;<-:create;autoCreateTime"`
@@ -68,18 +68,18 @@ type Profile struct {
 // Entity is one of a concurrent base object
 // mutable
 type Entity struct {
-	ID                 string `json:"ccid" gorm:"type:char(42)"`
-	Tag                string `json:"tag" gorm:"type:text;"`
-	Score              int    `json:"score" gorm:"type:integer;default:0"`
-	IsScoreFixed       bool   `json:"isScoreFixed" gorm:"type:boolean;default:false"`
-	AffiliationPayload string `json:"affiliationPayload" gorm:"type:json;default:'{}'"`
+	ID                  string `json:"ccid" gorm:"type:char(42)"`
+	Tag                 string `json:"tag" gorm:"type:text;"`
+	Score               int    `json:"score" gorm:"type:integer;default:0"`
+	IsScoreFixed        bool   `json:"isScoreFixed" gorm:"type:boolean;default:false"`
+	AffiliationDocument string `json:"affiliationDocument" gorm:"type:json;default:'{}'"`
 	/* Domain Affiliation
 	   {
 	       domain: string,
 	   }
 	*/
 	AffiliationSignature string           `json:"affiliationSignature" gorm:"type:char(130)"`
-	TombstonePayload     *string          `json:"tombstonePayload" gorm:"type:json;default:'null'"`
+	TombstoneDocument    *string          `json:"tombstoneDocument" gorm:"type:json;default:'null'"`
 	TombstoneSignature   *string          `json:"tombstoneSignature" gorm:"type:char(130)"`
 	Extension            *EntityExtension `json:"extension,omitempty" gorm:"-"`
 	CDate                time.Time        `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
@@ -106,7 +106,7 @@ type Address struct {
 	ID       string    `json:"ccid" gorm:"type:char(42)"`
 	Domain   string    `json:"domain" gorm:"type:text"`
 	Score    int       `json:"score" gorm:"type:integer;default:0"`
-	Payload  string    `json:"payload" gorm:"type:json;default:'{}'"`
+	Document string    `json:"document" gorm:"type:json;default:'{}'"`
 	SignedAt time.Time `json:"validFrom" gorm:"type:timestamp with time zone"`
 	CDate    time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 }
@@ -132,7 +132,7 @@ type Message struct {
 	Author          string         `json:"author" gorm:"type:char(42)"`
 	SchemaID        uint           `json:"-"`
 	Schema          string         `json:"schema" gorm:"-"`
-	Payload         string         `json:"payload" gorm:"type:json"`
+	Document        string         `json:"document" gorm:"type:json"`
 	Signature       string         `json:"signature" gorm:"type:char(130)"`
 	CDate           time.Time      `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 	Associations    []Association  `json:"associations,omitempty" gorm:"-"`
@@ -149,7 +149,7 @@ type Timeline struct {
 	DomainOwned bool      `json:"domainOwned" gorm:"type:boolean;default:false"`
 	SchemaID    uint      `json:"-"`
 	Schema      string    `json:"schema" gorm:"-"`
-	Payload     string    `json:"payload" gorm:"type:json"`
+	Document    string    `json:"document" gorm:"type:json"`
 	Signature   string    `json:"signature" gorm:"type:char(130)"`
 	CDate       time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 	MDate       time.Time `json:"mdate" gorm:"autoUpdateTime"`
@@ -187,13 +187,13 @@ type Collection struct {
 type CollectionItem struct {
 	ID         string `json:"id" gorm:"primaryKey;type:char(20);"`
 	Collection string `json:"collection" gorm:"type:char(20)"`
-	Payload    string `json:"payload" gorm:"type:json;default:'{}'"`
+	Document   string `json:"document" gorm:"type:json;default:'{}'"`
 }
 
 type Ack struct {
-	From    string `json:"from" gorm:"primaryKey;type:char(42)"`
-	To      string `json:"to" gorm:"primaryKey;type:char(42)"`
-	Payload string `json:"payload" gorm:"type:json;default:'{}'"`
+	From     string `json:"from" gorm:"primaryKey;type:char(42)"`
+	To       string `json:"to" gorm:"primaryKey;type:char(42)"`
+	Document string `json:"document" gorm:"type:json;default:'{}'"`
 	/*
 	   {
 	       from: string,

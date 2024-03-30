@@ -85,7 +85,7 @@ func (s *service) Create(ctx context.Context, objectStr string, signature string
 		ID:        object.ID,
 		Author:    object.Signer,
 		Schema:    object.Schema,
-		Payload:   objectStr,
+		Document:  objectStr,
 		Signature: signature,
 	}
 
@@ -120,7 +120,7 @@ func (s *service) Update(ctx context.Context, objectStr string, signature string
 		ID:        object.ID,
 		Author:    object.Signer,
 		Schema:    object.Schema,
-		Payload:   objectStr,
+		Document:  objectStr,
 		Signature: signature,
 	}
 

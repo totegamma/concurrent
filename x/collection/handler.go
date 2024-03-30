@@ -123,7 +123,7 @@ func (h *handler) CreateItem(c echo.Context) error {
 
 	created, err := h.service.CreateItem(ctx, core.CollectionItem{
 		Collection: collectionID,
-		Payload:    value,
+		Document:   value,
 	})
 	if err != nil {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"status": "error", "message": err.Error()})
@@ -166,7 +166,7 @@ func (h *handler) UpdateItem(c echo.Context) error {
 	updated, err := h.service.UpdateItem(ctx, core.CollectionItem{
 		ID:         itemID,
 		Collection: collectionID,
-		Payload:    value,
+		Document:   value,
 	})
 
 	if err != nil {

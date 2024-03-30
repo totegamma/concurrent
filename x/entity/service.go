@@ -119,7 +119,7 @@ func (s *service) PullEntityFromRemote(ctx context.Context, id, hintDomain strin
 
 	entity := remoteEntity.Content
 
-	err = util.VerifySignature([]byte(entity.AffiliationPayload), []byte(entity.AffiliationSignature), entity.ID)
+	err = util.VerifySignature([]byte(entity.AffiliationDocument), []byte(entity.AffiliationSignature), entity.ID)
 	if err != nil {
 		span.RecordError(err)
 		slog.Error(
@@ -131,7 +131,7 @@ func (s *service) PullEntityFromRemote(ctx context.Context, id, hintDomain strin
 	}
 
 	var signedObj core.EntityAffiliation
-	err = json.Unmarshal([]byte(entity.AffiliationPayload), &signedObj)
+	err = json.Unmarshal([]byte(entity.AffiliationDocument), &signedObj)
 	if err != nil {
 		span.RecordError(err)
 		slog.Error(
@@ -226,7 +226,7 @@ func (s *service) Affiliation(ctx context.Context, document, signature, option s
 			core.Entity{
 				ID:                   doc.Signer,
 				Tag:                  "",
-				AffiliationPayload:   document,
+				AffiliationDocument:  document,
 				AffiliationSignature: signature,
 			},
 			core.EntityMeta{
@@ -280,7 +280,7 @@ func (s *service) Affiliation(ctx context.Context, document, signature, option s
 			core.Entity{
 				ID:                   doc.Signer,
 				Tag:                  "",
-				AffiliationPayload:   document,
+				AffiliationDocument:  document,
 				AffiliationSignature: signature,
 			},
 			core.EntityMeta{

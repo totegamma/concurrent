@@ -125,7 +125,7 @@ func (s *service) Create(ctx context.Context, objectStr string, signature string
 		ID:        id,
 		Author:    object.Signer,
 		Schema:    object.Schema,
-		Payload:   objectStr,
+		Document:  objectStr,
 		Signature: signature,
 		Timelines: object.Timelines,
 	}

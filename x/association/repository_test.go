@@ -46,7 +46,7 @@ func TestRepository(t *testing.T) {
 		ID:        "D895NMA837R0C6B90676P2S1J4",
 		Author:    "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
 		Schema:    "https://gammalab.net/test-message-schema.json",
-		Payload:   "{}",
+		Document:  "{}",
 		Signature: "DUMMY",
 	}
 
@@ -61,7 +61,7 @@ func TestRepository(t *testing.T) {
 		Author:    "con1n42l2lektua69gvza8xhksq3t2we8nnlkmzct4",
 		Schema:    "https://gammalab.net/test-like-schema.json",
 		TargetTID: messageTID,
-		Payload:   "{}",
+		Document:  "{}",
 		Variant:   "",
 		Signature: "DUMMY",
 	}
@@ -73,7 +73,7 @@ func TestRepository(t *testing.T) {
 		Author:    "con1n42l2lektua69gvza8xhksq3t2we8nnlkmzct4",
 		Schema:    "https://gammalab.net/test-emoji-schema.json",
 		TargetTID: messageTID,
-		Payload:   "{}",
+		Document:  "{}",
 		Variant:   "smile",
 		Signature: "DUMMY",
 	}
@@ -85,7 +85,7 @@ func TestRepository(t *testing.T) {
 		Author:    "con1n42l2lektua69gvza8xhksq3t2we8nnlkmzct4",
 		Schema:    "https://gammalab.net/test-emoji-schema.json",
 		TargetTID: messageTID,
-		Payload:   "{}",
+		Document:  "{}",
 		Variant:   "ultrafastpolar",
 		Signature: "DUMMY",
 	}
@@ -97,7 +97,7 @@ func TestRepository(t *testing.T) {
 		Author:    "con1sh4vuw03nn20hn94tuk7h7u3ne5n20avfl5sjm",
 		Schema:    "https://gammalab.net/test-emoji-schema.json",
 		TargetTID: messageTID,
-		Payload:   "{}",
+		Document:  "{}",
 		Variant:   "ultrafastpolar",
 		Signature: "DUMMY",
 	}

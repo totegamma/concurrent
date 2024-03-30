@@ -43,17 +43,17 @@ type ExtensionDocument[T any] struct { // type: extension
 }
 
 // ack
-type AckPayload struct {
+type AckBody struct {
 	From string `json:"from"`
 	To   string `json:"to"`
 }
 
 type AckDocument struct { // type: ack
-	DocumentBase[AckPayload]
+	DocumentBase[AckBody]
 }
 
 type UnackDocument struct { // type: unack
-	DocumentBase[AckPayload]
+	DocumentBase[AckBody]
 }
 
 // message

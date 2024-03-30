@@ -11,6 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/totegamma/concurrent/internal/testutil"
 	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/schema/mock"
 	"github.com/totegamma/concurrent/x/socket/mock"
 	"github.com/totegamma/concurrent/x/util"
 	"go.uber.org/mock/gomock"
@@ -45,7 +46,11 @@ func TestRepository(t *testing.T) {
 	mockManager := mock_socket.NewMockManager(ctrl)
 	mockManager.EXPECT().GetAllRemoteSubs().Return([]string{}).AnyTimes()
 
-	repo = NewRepository(db, rdb, mc, mockManager, util.Config{})
+	mockSchema := mock_schema.NewMockService(ctrl)
+	mockSchema.EXPECT().UrlToID(gomock.Any(), gomock.Any()).Return(uint(0), nil).AnyTimes()
+	mockSchema.EXPECT().IDToUrl(gomock.Any(), gomock.Any()).Return("", nil).AnyTimes()
+
+	repo = NewRepository(db, rdb, mc, mockSchema, mockManager, util.Config{})
 
 	// :: Timelineを作成 ::
 	timeline := core.Timeline{
@@ -53,7 +58,7 @@ func TestRepository(t *testing.T) {
 		Indexable: true,
 		Author:    "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
 		Schema:    "https://example.com/testschema.json",
-		Payload:   "{}",
+		Document:  "{}",
 	}
 
 	created, err := repo.CreateTimeline(ctx, timeline)
@@ -62,7 +67,7 @@ func TestRepository(t *testing.T) {
 		assert.Equal(t, created.Indexable, timeline.Indexable)
 		assert.Equal(t, created.Author, timeline.Author)
 		assert.Equal(t, created.Schema, timeline.Schema)
-		assert.Equal(t, created.Payload, timeline.Payload)
+		assert.Equal(t, created.Document, timeline.Document)
 		assert.NotZero(t, created.CDate)
 		assert.NotZero(t, created.MDate)
 	}
@@ -119,7 +124,7 @@ func TestRepository(t *testing.T) {
 		Indexable: true,
 		Author:    "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
 		Schema:    "https://example.com/testschema.json",
-		Payload:   "{}",
+		Document:  "{}",
 	})
 	assert.NoError(t, err)
 
@@ -172,7 +177,7 @@ func TestRepository(t *testing.T) {
 		Indexable: true,
 		Author:    "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
 		Schema:    "https://example.com/testschema.json",
-		Payload:   "{}",
+		Document:  "{}",
 	})
 	assert.NoError(t, err)
 

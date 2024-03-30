@@ -41,7 +41,8 @@ func (h handler) Get(c echo.Context) error {
 	defer span.End()
 
 	id := c.Param("id")
-	entity, err := h.service.Get(ctx, id)
+	extension := c.QueryParam("extension")
+	entity, err := h.service.GetWithExtension(ctx, id, extension)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			span.RecordError(err)

@@ -78,15 +78,16 @@ type Entity struct {
 	       domain: string,
 	   }
 	*/
-	AffiliationSignature string    `json:"affiliationSignature" gorm:"type:char(130)"`
-	TombstonePayload     *string   `json:"tombstonePayload" gorm:"type:json;default:'null'"`
-	TombstoneSignature   *string   `json:"tombstoneSignature" gorm:"type:char(130)"`
-	CDate                time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
-	MDate                time.Time `json:"mdate" gorm:"autoUpdateTime"`
+	AffiliationSignature string           `json:"affiliationSignature" gorm:"type:char(130)"`
+	TombstonePayload     *string          `json:"tombstonePayload" gorm:"type:json;default:'null'"`
+	TombstoneSignature   *string          `json:"tombstoneSignature" gorm:"type:char(130)"`
+	Extension            *EntityExtension `json:"extension,omitempty" gorm:"-"`
+	CDate                time.Time        `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
+	MDate                time.Time        `json:"mdate" gorm:"autoUpdateTime"`
 }
 
 type EntityExtension struct {
-	ID        string `json:"ccid" gorm:"type:char(42)"`
+	Owner     string `json:"owner" gorm:"type:char(42)"`
 	SchemaID  uint   `json:"-"`
 	Schema    string `json:"schema" gorm:"-"`
 	Document  string `json:"document" gorm:"type:json"`

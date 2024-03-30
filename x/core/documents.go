@@ -6,7 +6,7 @@ import (
 
 // commons
 type DocumentBase[T any] struct {
-	ID       string    `json:"id"`
+	ID       string    `json:"id,omitempty"`
 	Signer   string    `json:"signer"`
 	Type     string    `json:"type"`
 	Schema   string    `json:"schema,omitempty"`

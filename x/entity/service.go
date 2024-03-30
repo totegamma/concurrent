@@ -31,6 +31,7 @@ type Service interface {
 	Extension(ctx context.Context, document, signature string) (core.EntityExtension, error)
 
 	Get(ctx context.Context, ccid string) (core.Entity, error)
+	GetWithExtension(ctx context.Context, ccid string, extension string) (core.Entity, error)
 	List(ctx context.Context) ([]core.Entity, error)
 	ListModified(ctx context.Context, modified time.Time) ([]core.Entity, error)
 	ResolveHost(ctx context.Context, user, hint string) (string, error)
@@ -346,7 +347,7 @@ func (s *service) Extension(ctx context.Context, document, signature string) (co
 	}
 
 	extension := core.EntityExtension{
-		ID:        doc.Signer,
+		Owner:     doc.Signer,
 		Schema:    doc.Schema,
 		Document:  document,
 		Signature: signature,
@@ -370,6 +371,26 @@ func (s *service) Get(ctx context.Context, key string) (core.Entity, error) {
 	if err != nil {
 		span.RecordError(err)
 		return core.Entity{}, err
+	}
+
+	return entity, nil
+}
+
+func (s *service) GetWithExtension(ctx context.Context, key string, extension string) (core.Entity, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGet")
+	defer span.End()
+
+	entity, err := s.repository.GetEntity(ctx, key)
+	if err != nil {
+		span.RecordError(err)
+		return core.Entity{}, err
+	}
+
+	if extension != "" {
+		ext, err := s.repository.GetEntityExtension(ctx, key, extension)
+		if err == nil {
+			entity.Extension = &ext
+		}
 	}
 
 	return entity, nil

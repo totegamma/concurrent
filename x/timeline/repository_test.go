@@ -198,8 +198,8 @@ func TestRepository(t *testing.T) {
 	if assert.NoError(t, err) {
 		assert.Len(t, chunks, 1)
 		assert.Len(t, chunks["22222222222222222222"].Items, 2)
-		assert.Equal(t, "W4H1PZZ223D1B6ED0676P27J50", chunks["22222222222222222222"].Items[0].ObjectID)
-		assert.Equal(t, "A1HJCH9NK9MPMV7D0676P25PSR", chunks["22222222222222222222"].Items[1].ObjectID)
+		assert.Equal(t, "mW4H1PZZ223D1B6ED0676P27J50", chunks["22222222222222222222"].Items[0].ObjectID)
+		assert.Equal(t, "mA1HJCH9NK9MPMV7D0676P25PSR", chunks["22222222222222222222"].Items[1].ObjectID)
 	}
 
 	_, err = repo.CreateItem(ctx, core.TimelineItem{
@@ -214,9 +214,9 @@ func TestRepository(t *testing.T) {
 	if assert.NoError(t, err) {
 		assert.Len(t, chunks, 1)
 		assert.Len(t, chunks["22222222222222222222"].Items, 3)
-		assert.Equal(t, "T46G7BT5TJQQS4WY0676P2A9ZM", chunks["22222222222222222222"].Items[0].ObjectID)
-		assert.Equal(t, "W4H1PZZ223D1B6ED0676P27J50", chunks["22222222222222222222"].Items[1].ObjectID)
-		assert.Equal(t, "A1HJCH9NK9MPMV7D0676P25PSR", chunks["22222222222222222222"].Items[2].ObjectID)
+		assert.Equal(t, "mT46G7BT5TJQQS4WY0676P2A9ZM", chunks["22222222222222222222"].Items[0].ObjectID)
+		assert.Equal(t, "mW4H1PZZ223D1B6ED0676P27J50", chunks["22222222222222222222"].Items[1].ObjectID)
+		assert.Equal(t, "mA1HJCH9NK9MPMV7D0676P25PSR", chunks["22222222222222222222"].Items[2].ObjectID)
 	}
 
 	remoteKey0 := "timeline:body:all:00000000000000000000@remote.com:" + core.Time2Chunk(pivot.Add(-time.Minute*10))

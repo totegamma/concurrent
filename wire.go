@@ -1,6 +1,6 @@
 //go:build wireinject
 
-package main
+package concurrent
 
 import (
 	"github.com/bradfitz/gomemcache/memcache"

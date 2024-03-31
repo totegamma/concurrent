@@ -19,6 +19,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/totegamma/concurrent"
 	"github.com/totegamma/concurrent/x/ack"
 	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/auth"
@@ -75,7 +76,7 @@ var (
 
 func main() {
 
-	fmt.Fprint(os.Stderr, concurrentBanner)
+	fmt.Fprint(os.Stderr, concurrent.Banner)
 
 	handler := &CustomHandler{Handler: slog.NewJSONHandler(os.Stdout, nil)}
 	slogger := slog.New(handler)
@@ -201,47 +202,47 @@ func main() {
 	mc := memcache.New(config.Server.MemcachedAddr)
 	defer mc.Close()
 
-	agent := SetupAgent(db, rdb, mc, config)
+	agent := concurrent.SetupAgent(db, rdb, mc, config)
 
-	collectionHandler := SetupCollectionHandler(db, rdb, config)
+	collectionHandler := concurrent.SetupCollectionHandler(db, rdb, config)
 
-	socketManager := SetupSocketManager(mc, db, rdb, config)
-	socketHandler := SetupSocketHandler(rdb, socketManager, config)
+	socketManager := concurrent.SetupSocketManager(mc, db, rdb, config)
+	socketHandler := concurrent.SetupSocketHandler(rdb, socketManager, config)
 
-	domainService := SetupDomainService(db, config)
+	domainService := concurrent.SetupDomainService(db, config)
 	domainHandler := domain.NewHandler(domainService, config)
 
-	userKvService := SetupUserkvService(db)
+	userKvService := concurrent.SetupUserkvService(db)
 	userkvHandler := userkv.NewHandler(userKvService)
 
-	messageService := SetupMessageService(db, rdb, mc, socketManager, config)
+	messageService := concurrent.SetupMessageService(db, rdb, mc, socketManager, config)
 	messageHandler := message.NewHandler(messageService)
 
-	associationService := SetupAssociationService(db, rdb, mc, socketManager, config)
+	associationService := concurrent.SetupAssociationService(db, rdb, mc, socketManager, config)
 	associationHandler := association.NewHandler(associationService)
 
-	profileService := SetupProfileService(db, rdb, mc, config)
+	profileService := concurrent.SetupProfileService(db, rdb, mc, config)
 	profileHandler := profile.NewHandler(profileService)
 
-	timelineService := SetupTimelineService(db, rdb, mc, socketManager, config)
+	timelineService := concurrent.SetupTimelineService(db, rdb, mc, socketManager, config)
 	timelineHandler := timeline.NewHandler(timelineService)
 
-	entityService := SetupEntityService(db, rdb, mc, config)
+	entityService := concurrent.SetupEntityService(db, rdb, mc, config)
 	entityHandler := entity.NewHandler(entityService, config)
 
-	authService := SetupAuthService(db, rdb, mc, config)
+	authService := concurrent.SetupAuthService(db, rdb, mc, config)
 	authHandler := auth.NewHandler(authService)
 
-	keyService := SetupKeyService(db, rdb, mc, config)
+	keyService := concurrent.SetupKeyService(db, rdb, mc, config)
 	keyHandler := key.NewHandler(keyService)
 
-	ackService := SetupAckService(db, rdb, mc, config)
+	ackService := concurrent.SetupAckService(db, rdb, mc, config)
 	ackHandler := ack.NewHandler(ackService)
 
-	storeService := SetupStoreService(db, rdb, mc, socketManager, config)
+	storeService := concurrent.SetupStoreService(db, rdb, mc, socketManager, config)
 	storeHandler := store.NewHandler(storeService)
 
-	subscriptionService := SetupSubscriptionService(db)
+	subscriptionService := concurrent.SetupSubscriptionService(db)
 	subscriptionHandler := subscription.NewHandler(subscriptionService)
 
 	apiV1 := e.Group("", auth.ReceiveGatewayAuthPropagation)

@@ -1,6 +1,6 @@
-package main
+package concurrent
 
-var concurrentBanner = `
+const Banner = `
     ______                                            __ 
    / ____/___  ____  _______  _______________  ____  / /_
   / /   / __ \/ __ \/ ___/ / / / ___/ ___/ _ \/ __ \/ __/

@@ -56,25 +56,16 @@ type Profile struct {
 // Entity is one of a concurrent base object
 // mutable
 type Entity struct {
-	ID                   string           `json:"ccid" gorm:"type:char(42)"`
-	Tag                  string           `json:"tag" gorm:"type:text;"`
-	Score                int              `json:"score" gorm:"type:integer;default:0"`
-	IsScoreFixed         bool             `json:"isScoreFixed" gorm:"type:boolean;default:false"`
-	AffiliationDocument  string           `json:"affiliationDocument" gorm:"type:json;default:'{}'"`
-	AffiliationSignature string           `json:"affiliationSignature" gorm:"type:char(130)"`
-	TombstoneDocument    *string          `json:"tombstoneDocument" gorm:"type:json;default:'null'"`
-	TombstoneSignature   *string          `json:"tombstoneSignature" gorm:"type:char(130)"`
-	Extension            *EntityExtension `json:"extension,omitempty" gorm:"-"`
-	CDate                time.Time        `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
-	MDate                time.Time        `json:"mdate" gorm:"autoUpdateTime"`
-}
-
-type EntityExtension struct {
-	Owner     string `json:"owner" gorm:"primaryKey;type:char(42)"`
-	SchemaID  uint   `json:"-" gorm:"primaryKey"`
-	Schema    string `json:"schema" gorm:"-"`
-	Document  string `json:"document" gorm:"type:json"`
-	Signature string `json:"signature" gorm:"type:char(130)"`
+	ID                   string    `json:"ccid" gorm:"type:char(42)"`
+	Tag                  string    `json:"tag" gorm:"type:text;"`
+	Score                int       `json:"score" gorm:"type:integer;default:0"`
+	IsScoreFixed         bool      `json:"isScoreFixed" gorm:"type:boolean;default:false"`
+	AffiliationDocument  string    `json:"affiliationDocument" gorm:"type:json;default:'{}'"`
+	AffiliationSignature string    `json:"affiliationSignature" gorm:"type:char(130)"`
+	TombstoneDocument    *string   `json:"tombstoneDocument" gorm:"type:json;default:'null'"`
+	TombstoneSignature   *string   `json:"tombstoneSignature" gorm:"type:char(130)"`
+	CDate                time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
+	MDate                time.Time `json:"mdate" gorm:"autoUpdateTime"`
 }
 
 type EntityMeta struct {

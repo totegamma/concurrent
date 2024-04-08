@@ -16,11 +16,9 @@ import (
 type Repository interface {
 	GetEntity(ctx context.Context, key string) (core.Entity, error)
 	GetEntityMeta(ctx context.Context, key string) (core.EntityMeta, error)
-	GetEntityExtension(ctx context.Context, ccid, schema string) (core.EntityExtension, error)
 	CreateEntity(ctx context.Context, entity core.Entity) (core.Entity, error)
 	CreateEntityMeta(ctx context.Context, meta core.EntityMeta) (core.EntityMeta, error)
 	CreateEntityWithMeta(ctx context.Context, entity core.Entity, meta core.EntityMeta) (core.Entity, core.EntityMeta, error)
-	UpsertEntityExtension(ctx context.Context, extension core.EntityExtension) (core.EntityExtension, error)
 	UpdateEntity(ctx context.Context, entity *core.Entity) error
 	SetTombstone(ctx context.Context, id, document, signature string) error
 	GetList(ctx context.Context) ([]core.Entity, error)
@@ -108,40 +106,6 @@ func (r *repository) UpdateAddress(ctx context.Context, ccid string, domain stri
 	}
 
 	return r.db.WithContext(ctx).Model(&core.Address{}).Where("id = ?", ccid).Update("domain", domain).Error
-}
-
-// UpsertEntityExtension creates or updates a entity extension
-func (r *repository) UpsertEntityExtension(ctx context.Context, extension core.EntityExtension) (core.EntityExtension, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryUpsertExtension")
-	defer span.End()
-
-	schemaID, err := r.schema.UrlToID(ctx, extension.Schema)
-	if err != nil {
-		return extension, err
-	}
-	extension.SchemaID = schemaID
-
-	err = r.db.WithContext(ctx).Save(&extension).Error
-	return extension, err
-}
-
-func (r *repository) GetEntityExtension(ctx context.Context, ccid, schema string) (core.EntityExtension, error) {
-
-	schemaID, err := r.schema.UrlToID(ctx, schema)
-	if err != nil {
-		return core.EntityExtension{}, err
-	}
-
-	var extension core.EntityExtension
-	err = r.db.WithContext(ctx).First(&extension, "owner = ? AND schema_id = ?", ccid, schemaID).Error
-
-	schemaUrl, err := r.schema.IDToUrl(ctx, extension.SchemaID)
-	if err != nil {
-		return extension, err
-	}
-	extension.Schema = schemaUrl
-
-	return extension, err
 }
 
 // SetTombstone sets the tombstone of a entity

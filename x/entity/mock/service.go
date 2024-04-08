@@ -80,21 +80,6 @@ func (mr *MockServiceMockRecorder) Delete(ctx, id interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockService)(nil).Delete), ctx, id)
 }
 
-// Extension mocks base method.
-func (m *MockService) Extension(ctx context.Context, document, signature string) (core.EntityExtension, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Extension", ctx, document, signature)
-	ret0, _ := ret[0].(core.EntityExtension)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// Extension indicates an expected call of Extension.
-func (mr *MockServiceMockRecorder) Extension(ctx, document, signature interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Extension", reflect.TypeOf((*MockService)(nil).Extension), ctx, document, signature)
-}
-
 // Get mocks base method.
 func (m *MockService) Get(ctx context.Context, ccid string) (core.Entity, error) {
 	m.ctrl.T.Helper()
@@ -123,21 +108,6 @@ func (m *MockService) GetAddress(ctx context.Context, ccid string) (core.Address
 func (mr *MockServiceMockRecorder) GetAddress(ctx, ccid interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAddress", reflect.TypeOf((*MockService)(nil).GetAddress), ctx, ccid)
-}
-
-// GetWithExtension mocks base method.
-func (m *MockService) GetWithExtension(ctx context.Context, ccid, extension string) (core.Entity, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetWithExtension", ctx, ccid, extension)
-	ret0, _ := ret[0].(core.Entity)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetWithExtension indicates an expected call of GetWithExtension.
-func (mr *MockServiceMockRecorder) GetWithExtension(ctx, ccid, extension interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetWithExtension", reflect.TypeOf((*MockService)(nil).GetWithExtension), ctx, ccid, extension)
 }
 
 // IsUserExists mocks base method.

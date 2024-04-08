@@ -169,7 +169,6 @@ func main() {
 		&core.TimelineItem{},
 		&core.Domain{},
 		&core.Entity{},
-		&core.EntityExtension{},
 		&core.EntityMeta{},
 		&core.Address{},
 		&core.Collection{},

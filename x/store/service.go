@@ -80,8 +80,6 @@ func (s *service) Commit(ctx context.Context, document string, signature string,
 		return s.entity.Affiliation(ctx, document, signature, option)
 	case "tombstone":
 		return s.entity.Tombstone(ctx, document, signature)
-	case "extension":
-		return s.entity.Extension(ctx, document, signature)
 	case "timeline":
 		return s.timeline.CreateTimeline(ctx, document, signature)
 	case "ack", "unack":

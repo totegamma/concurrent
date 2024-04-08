@@ -1,5 +1,5 @@
 ![wordmark](https://github.com/totegamma/concurrent/assets/7270849/44864682-ca2d-427a-b1fb-552ca50bcfce)
-### Makes social media accounts your internet identities.
+### Concurrent: Makes social media accounts your internet identities.
 
 [日本語](README-ja.md)
 
@@ -28,15 +28,19 @@ There's a fear of unjust suspension, and if an account is suspended, it signifie
 While there is an account migration feature, if your account is suspended before migration, you're out of options. Additionally, major ActivityPub-supported social media platforms have a concept known as local timelines, which are not accessible or joinable by external users, ultimately forcing users to create new accounts on each server. Concurrent, however, allows for the creation of any number of topic-based community timelines on each server, which can be viewed and joined by users from other servers.
 
 ## nostr:
-It's a great mechanism that uses private keys to prove one's identity, but it requires careful selection of relay servers. There's also no guarantee that a relay server will retain or delete your data. Being essentially decentralized, it seems it won't implement non-essential but convenient features (like visibility control for non-encrypted messages).
+Nostr is a fantastic mechanism for proving one's identity using a private key, but it requires careful selection of relay servers. There is no guarantee that a relay server will retain or delete your data. (It works very well for use cases that do not require such assurances.) Due to its fundamentally decentralized nature, it seems unlikely to implement non-essential but convenient features (such as visibility control for non-encrypted messages).
 
 ## Bluesky:
-Bluesky is a project that has become active recently, so the details are still unclear, but it seems very similar to Concurrent. If Bluesky truly works, there might be no need for Concurrent.
+Bluesky is a project that has become more active recently, so details are still emerging, but it seems to share many similarities with Concurrent. Bluesky appears to be created with a mission similar to Twitter's, aimed at "making all the information in the world shareable." In contrast, Concurrent's mission focuses on "centering around communities and loosely connecting with the world." This difference in mission leads Bluesky to adopt an architecture that builds a massive index server and generates feeds, whereas Concurrent uses a single server to lightly and in real-time collect information from nearby sources.
 
 ## The problem of the Concurrent?:
-Concurrent is built on the concept of "protect your own identity." On the other hand, realistically protecting oneself requires a certain level of knowledge and skill, meaning there is a degree of difficulty and complexity involved.
+The architectural strategy adopted by Concurrent may not scale to an ultra-large system where countless users can follow as many others as they like, similar to Twitter. This is because, rather than constructing a single, massive home timeline, it is designed with the assumption that users will create and switch between several moderately sized lists.
 
-In that sense, for the average person, centralized social media platforms, where you rely on others to protect you while trying to stay in the good graces of the operators to avoid suspension, might feel safer.
+This approach is because Concurrent does not primarily aim to intensely connect with the world but to build relationships based on community timelines, optimizing for this purpose. This allows each domain to control information independently without the need for a massive server like an index server.
+
+Furthermore, Concurrent embraces the concept of "protecting one's identity by oneself." However, in reality, this requires a certain level of knowledge and expertise, meaning there is an inherent complexity and difficulty in use.
+
+In this sense, centralized social networks, where one relies on others for protection while trying to stay in the good graces of the administration to avoid being frozen, might be more reassuring for the average person.
 
 # For geeks
 ## How to launch own server

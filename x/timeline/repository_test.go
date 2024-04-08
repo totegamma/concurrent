@@ -61,7 +61,7 @@ func TestRepository(t *testing.T) {
 		Document:  "{}",
 	}
 
-	created, err := repo.CreateTimeline(ctx, timeline)
+	created, err := repo.UpsertTimeline(ctx, timeline)
 	if assert.NoError(t, err) {
 		assert.Equal(t, created.ID, timeline.ID)
 		assert.Equal(t, created.Indexable, timeline.Indexable)
@@ -116,7 +116,7 @@ func TestRepository(t *testing.T) {
 	}
 
 	// :: Timeline1を作成してItemを追加 ::
-	_, err = repo.CreateTimeline(ctx, core.Timeline{
+	_, err = repo.UpsertTimeline(ctx, core.Timeline{
 		ID:        "t11111111111111111111111111",
 		Indexable: true,
 		Author:    "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
@@ -167,7 +167,7 @@ func TestRepository(t *testing.T) {
 
 	// TimelineItemの順番のテスト
 
-	_, err = repo.CreateTimeline(ctx, core.Timeline{
+	_, err = repo.UpsertTimeline(ctx, core.Timeline{
 		ID:        "t22222222222222222222222222",
 		Indexable: true,
 		Author:    "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",

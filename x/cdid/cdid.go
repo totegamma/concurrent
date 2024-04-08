@@ -92,3 +92,29 @@ func Parse(s string) (CDID, error) {
 	copy(c.time[:], b[10:])
 	return c, nil
 }
+
+func IsCDIDChar(c byte) bool {
+	// 0-9 a-z but no i, l, o, u
+	return ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z')) && c != 'i' && c != 'l' && c != 'o' && c != 'u'
+}
+
+func IsSeemsCDID(str string, expectPrefix byte) bool {
+	if len(str) == 27 {
+		if str[0] != expectPrefix {
+			return false
+		}
+		str = str[1:]
+	}
+
+	if len(str) != 26 {
+		return false
+	}
+
+	for i := 0; i < 26; i++ {
+		if !IsCDIDChar(str[i]) {
+			return false
+		}
+	}
+
+	return true
+}

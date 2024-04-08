@@ -28,8 +28,7 @@ import (
 type Repository interface {
 	GetTimeline(ctx context.Context, key string) (core.Timeline, error)
 	GetTimelineFromRemote(ctx context.Context, host string, key string) (core.Timeline, error)
-	CreateTimeline(ctx context.Context, timeline core.Timeline) (core.Timeline, error)
-	UpdateTimeline(ctx context.Context, timeline core.Timeline) (core.Timeline, error)
+	UpsertTimeline(ctx context.Context, timeline core.Timeline) (core.Timeline, error)
 	DeleteTimeline(ctx context.Context, key string) error
 
 	GetItem(ctx context.Context, timelineID string, objectID string) (core.TimelineItem, error)
@@ -553,7 +552,7 @@ func (r *repository) GetTimeline(ctx context.Context, key string) (core.Timeline
 }
 
 // Create updates a timeline
-func (r *repository) CreateTimeline(ctx context.Context, timeline core.Timeline) (core.Timeline, error) {
+func (r *repository) UpsertTimeline(ctx context.Context, timeline core.Timeline) (core.Timeline, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryCreateTimeline")
 	defer span.End()
 
@@ -576,20 +575,6 @@ func (r *repository) CreateTimeline(ctx context.Context, timeline core.Timeline)
 
 	timeline.ID = "t" + timeline.ID
 
-	return timeline, err
-}
-
-// Update updates a timeline
-func (r *repository) UpdateTimeline(ctx context.Context, timeline core.Timeline) (core.Timeline, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryUpdateTimeline")
-	defer span.End()
-
-	var obj core.Timeline
-	err := r.db.WithContext(ctx).First(&obj, "id = ?", timeline.ID).Error
-	if err != nil {
-		return core.Timeline{}, err
-	}
-	err = r.db.WithContext(ctx).Model(&obj).Updates(timeline).Error
 	return timeline, err
 }
 

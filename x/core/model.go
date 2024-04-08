@@ -24,6 +24,16 @@ type Key struct {
 	ValidUntil      time.Time `json:"validUntil" gorm:"type:timestamp with time zone"`
 }
 
+type SemanticID struct {
+	ID        string    `json:"id" gorm:"primaryKey;type:text"`
+	Owner     string    `json:"owner" gorm:"type:char(42)"`
+	Target    string    `json:"target" gorm:"type:char(27)"`
+	Document  string    `json:"document" gorm:"type:json"`
+	Signature string    `json:"signature" gorm:"type:char(130)"`
+	CDate     time.Time `json:"cdate" gorm:"->;<-:create;autoCreateTime"`
+	MDate     time.Time `json:"mdate" gorm:"autoUpdateTime"`
+}
+
 // Association is one of a concurrent base object
 // immutable
 type Association struct {

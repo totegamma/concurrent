@@ -178,6 +178,7 @@ func main() {
 		&core.UserKV{},
 		&core.Subscription{},
 		&core.SubscriptionItem{},
+		&core.SemanticID{},
 	)
 
 	rdb := redis.NewClient(&redis.Options{

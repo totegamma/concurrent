@@ -66,21 +66,6 @@ func (mr *MockServiceMockRecorder) Count(ctx interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Count", reflect.TypeOf((*MockService)(nil).Count), ctx)
 }
 
-// CreateTimeline mocks base method.
-func (m *MockService) CreateTimeline(ctx context.Context, document, signature string) (core.Timeline, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateTimeline", ctx, document, signature)
-	ret0, _ := ret[0].(core.Timeline)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CreateTimeline indicates an expected call of CreateTimeline.
-func (mr *MockServiceMockRecorder) CreateTimeline(ctx, document, signature interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateTimeline", reflect.TypeOf((*MockService)(nil).CreateTimeline), ctx, document, signature)
-}
-
 // DeleteTimeline mocks base method.
 func (m *MockService) DeleteTimeline(ctx context.Context, timelineID string) error {
 	m.ctrl.T.Helper()
@@ -312,17 +297,17 @@ func (mr *MockServiceMockRecorder) RemoveItem(ctx, timeline, id interface{}) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveItem", reflect.TypeOf((*MockService)(nil).RemoveItem), ctx, timeline, id)
 }
 
-// UpdateTimeline mocks base method.
-func (m *MockService) UpdateTimeline(ctx context.Context, timeline core.Timeline) (core.Timeline, error) {
+// UpsertTimeline mocks base method.
+func (m *MockService) UpsertTimeline(ctx context.Context, document, signature string) (core.Timeline, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateTimeline", ctx, timeline)
+	ret := m.ctrl.Call(m, "UpsertTimeline", ctx, document, signature)
 	ret0, _ := ret[0].(core.Timeline)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// UpdateTimeline indicates an expected call of UpdateTimeline.
-func (mr *MockServiceMockRecorder) UpdateTimeline(ctx, timeline interface{}) *gomock.Call {
+// UpsertTimeline indicates an expected call of UpsertTimeline.
+func (mr *MockServiceMockRecorder) UpsertTimeline(ctx, document, signature interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateTimeline", reflect.TypeOf((*MockService)(nil).UpdateTimeline), ctx, timeline)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertTimeline", reflect.TypeOf((*MockService)(nil).UpsertTimeline), ctx, document, signature)
 }

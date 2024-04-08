@@ -6,14 +6,15 @@ import (
 
 // commons
 type DocumentBase[T any] struct {
-	ID       string    `json:"id,omitempty"`
-	Signer   string    `json:"signer"`
-	Type     string    `json:"type"`
-	Schema   string    `json:"schema,omitempty"`
-	KeyID    string    `json:"keyID,omitempty"`
-	Body     T         `json:"body,omitempty"`
-	Meta     any       `json:"meta,omitempty"`
-	SignedAt time.Time `json:"signedAt"`
+	ID         string    `json:"id,omitempty"`
+	Signer     string    `json:"signer"`
+	Type       string    `json:"type"`
+	Schema     string    `json:"schema,omitempty"`
+	KeyID      string    `json:"keyID,omitempty"`
+	Body       T         `json:"body,omitempty"`
+	Meta       any       `json:"meta,omitempty"`
+	SemanticID string    `json:"semanticID,omitempty"`
+	SignedAt   time.Time `json:"signedAt"`
 }
 
 // entity

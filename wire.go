@@ -20,6 +20,7 @@ import (
 	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/profile"
 	"github.com/totegamma/concurrent/x/schema"
+	"github.com/totegamma/concurrent/x/semanticid"
 	"github.com/totegamma/concurrent/x/socket"
 	"github.com/totegamma/concurrent/x/store"
 	"github.com/totegamma/concurrent/x/subscription"
@@ -32,6 +33,7 @@ import (
 var jwtServiceProvider = wire.NewSet(jwt.NewService, jwt.NewRepository)
 var schemaServiceProvider = wire.NewSet(schema.NewService, schema.NewRepository)
 var domainServiceProvider = wire.NewSet(domain.NewService, domain.NewRepository)
+var semanticidServiceProvider = wire.NewSet(semanticid.NewService, semanticid.NewRepository)
 var userKvServiceProvider = wire.NewSet(userkv.NewService, userkv.NewRepository)
 
 // Lv1
@@ -40,10 +42,10 @@ var subscriptionServiceProvider = wire.NewSet(subscription.NewService, subscript
 
 // Lv2
 var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository, SetupEntityService)
-var timelineServiceProvider = wire.NewSet(timeline.NewService, timeline.NewRepository, SetupEntityService, SetupDomainService, SetupSchemaService)
+var timelineServiceProvider = wire.NewSet(timeline.NewService, timeline.NewRepository, SetupEntityService, SetupDomainService, SetupSchemaService, SetupSemanticidService)
 
 // Lv3
-var profileServiceProvider = wire.NewSet(profile.NewService, profile.NewRepository, SetupKeyService)
+var profileServiceProvider = wire.NewSet(profile.NewService, profile.NewRepository, SetupKeyService, SetupSchemaService, SetupSemanticidService)
 var authServiceProvider = wire.NewSet(auth.NewService, SetupEntityService, SetupDomainService, SetupKeyService)
 var ackServiceProvider = wire.NewSet(ack.NewService, ack.NewRepository, SetupEntityService, SetupKeyService)
 
@@ -158,5 +160,10 @@ func SetupStoreService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, mana
 
 func SetupSubscriptionService(db *gorm.DB) subscription.Service {
 	wire.Build(subscriptionServiceProvider)
+	return nil
+}
+
+func SetupSemanticidService(db *gorm.DB) semanticid.Service {
+	wire.Build(semanticidServiceProvider)
 	return nil
 }

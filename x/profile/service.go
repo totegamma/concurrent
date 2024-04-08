@@ -4,14 +4,16 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/totegamma/concurrent/x/cdid"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/key"
+	"github.com/totegamma/concurrent/x/semanticid"
+	"github.com/totegamma/concurrent/x/util"
 )
 
 // Service is the interface for profile service
 type Service interface {
-	Create(ctx context.Context, objectStr string, signature string) (core.Profile, error)
-	Update(ctx context.Context, objectStr string, signature string) (core.Profile, error)
+	Upsert(ctx context.Context, objectStr string, signature string) (core.Profile, error)
 	Delete(ctx context.Context, document string) (core.Profile, error)
 
 	Count(ctx context.Context) (int64, error)
@@ -22,13 +24,14 @@ type Service interface {
 }
 
 type service struct {
-	repo Repository
-	key  key.Service
+	repo       Repository
+	key        key.Service
+	semanticid semanticid.Service
 }
 
 // NewService creates a new profile service
-func NewService(repo Repository, key key.Service) Service {
-	return &service{repo, key}
+func NewService(repo Repository, key key.Service, semanticid semanticid.Service) Service {
+	return &service{repo, key, semanticid}
 }
 
 // Count returns the count number of messages
@@ -63,29 +66,54 @@ func (s *service) GetBySchema(ctx context.Context, schema string) ([]core.Profil
 	return s.repo.GetBySchema(ctx, schema)
 }
 
-// PutProfile creates new profile if the signature is valid
-func (s *service) Create(ctx context.Context, objectStr string, signature string) (core.Profile, error) {
+// Upsert creates new profile if the signature is valid
+func (s *service) Upsert(ctx context.Context, document, signature string) (core.Profile, error) {
 	ctx, span := tracer.Start(ctx, "ServicePutProfile")
 	defer span.End()
 
-	var object core.UpsertProfile[any]
-	err := json.Unmarshal([]byte(objectStr), &object)
+	var doc core.UpsertProfile[any]
+	err := json.Unmarshal([]byte(document), &doc)
 	if err != nil {
 		span.RecordError(err)
 		return core.Profile{}, err
 	}
 
-	err = s.key.ValidateSignedObject(ctx, objectStr, signature)
+	if doc.SemanticID != "" {
+		existingID, err := s.semanticid.Lookup(ctx, doc.SemanticID, doc.Signer)
+		if err == nil {
+			_, err = s.Get(ctx, existingID)
+			if err != nil {
+				s.semanticid.Delete(ctx, doc.SemanticID, doc.Signer)
+			} else {
+				if doc.ID == "" {
+					doc.ID = existingID
+				} else {
+					if doc.ID != existingID {
+						return core.Profile{}, errors.New("semantic ID mismatch")
+					}
+				}
+			}
+		}
+	}
+
+	if doc.ID == "" {
+		hash := util.GetHash([]byte(document))
+		hash10 := [10]byte{}
+		copy(hash10[:], hash[:10])
+		doc.ID = cdid.New(hash10, doc.SignedAt).String()
+	}
+
+	err = s.key.ValidateSignedObject(ctx, document, signature)
 	if err != nil {
 		span.RecordError(err)
 		return core.Profile{}, err
 	}
 
 	profile := core.Profile{
-		ID:        object.ID,
-		Author:    object.Signer,
-		Schema:    object.Schema,
-		Document:  objectStr,
+		ID:        doc.ID,
+		Author:    doc.Signer,
+		Schema:    doc.Schema,
+		Document:  document,
 		Signature: signature,
 	}
 
@@ -95,39 +123,12 @@ func (s *service) Create(ctx context.Context, objectStr string, signature string
 		return core.Profile{}, err
 	}
 
-	return profile, nil
-}
-
-// PutProfile creates new profile if the signature is valid
-func (s *service) Update(ctx context.Context, objectStr string, signature string) (core.Profile, error) {
-	ctx, span := tracer.Start(ctx, "ServicePutProfile")
-	defer span.End()
-
-	var object core.UpsertProfile[any]
-	err := json.Unmarshal([]byte(objectStr), &object)
-	if err != nil {
-		span.RecordError(err)
-		return core.Profile{}, err
-	}
-
-	err = s.key.ValidateSignedObject(ctx, objectStr, signature)
-	if err != nil {
-		span.RecordError(err)
-		return core.Profile{}, err
-	}
-
-	profile := core.Profile{
-		ID:        object.ID,
-		Author:    object.Signer,
-		Schema:    object.Schema,
-		Document:  objectStr,
-		Signature: signature,
-	}
-
-	err = s.repo.Upsert(ctx, profile)
-	if err != nil {
-		span.RecordError(err)
-		return core.Profile{}, err
+	if doc.SemanticID != "" {
+		_, err = s.semanticid.Name(ctx, doc.SemanticID, doc.Signer, profile.ID, document, signature)
+		if err != nil {
+			span.RecordError(err)
+			return core.Profile{}, err
+		}
 	}
 
 	return profile, nil

@@ -20,6 +20,7 @@ import (
 	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/jwt"
+	"github.com/totegamma/concurrent/x/semanticid"
 	"github.com/totegamma/concurrent/x/util"
 
 	"go.opentelemetry.io/otel"
@@ -39,9 +40,8 @@ type Service interface {
 	PublishEventToLocal(ctx context.Context, event core.Event) error
 	DistributeEvent(ctx context.Context, timeline string, event core.Event) error
 
-	CreateTimeline(ctx context.Context, document, signature string) (core.Timeline, error)
+	UpsertTimeline(ctx context.Context, document, signature string) (core.Timeline, error)
 	GetTimeline(ctx context.Context, key string) (core.Timeline, error)
-	UpdateTimeline(ctx context.Context, timeline core.Timeline) (core.Timeline, error)
 	DeleteTimeline(ctx context.Context, timelineID string) error
 
 	HasWriteAccess(ctx context.Context, key string, author string) bool
@@ -63,27 +63,26 @@ type service struct {
 	repository Repository
 	entity     entity.Service
 	domain     domain.Service
+	semanticid semanticid.Service
 	config     util.Config
 }
 
 // NewService creates a new service
-func NewService(repository Repository, entity entity.Service, domain domain.Service, config util.Config) Service {
-	return &service{repository, entity, domain, config}
+func NewService(repository Repository, entity entity.Service, domain domain.Service, semanticid semanticid.Service, config util.Config) Service {
+	return &service{repository, entity, domain, semanticid, config}
 }
 
 func (s *service) Checkpoint(ctx context.Context, timeline string, item core.TimelineItem, body interface{}, principal string, requesterDomain string) error {
 	ctx, span := tracer.Start(ctx, "ServiceCheckpoint")
 	defer span.End()
 
-	if principal != "" { // TODO: for backward compatibility. Remove this condition after next release
-		_, err := s.entity.ResolveHost(ctx, principal, requesterDomain) // 一発resolveして存在確認+なければ取得を走らせておく
-		if err != nil {
-			span.RecordError(err)
-			return err
-		}
+	_, err := s.entity.ResolveHost(ctx, principal, requesterDomain) // 一発resolveして存在確認+なければ取得を走らせておく
+	if err != nil {
+		span.RecordError(err)
+		return err
 	}
 
-	err := s.PostItem(ctx, timeline, item, body)
+	err = s.PostItem(ctx, timeline, item, body)
 	return err
 }
 
@@ -498,8 +497,8 @@ func (s *service) DistributeEvent(ctx context.Context, timeline string, event co
 }
 
 // Create updates timeline information
-func (s *service) CreateTimeline(ctx context.Context, document, signature string) (core.Timeline, error) {
-	ctx, span := tracer.Start(ctx, "ServiceCreate")
+func (s *service) UpsertTimeline(ctx context.Context, document, signature string) (core.Timeline, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Service.UpsertTimline")
 	defer span.End()
 
 	var doc core.TimelineDocument[any]
@@ -508,14 +507,43 @@ func (s *service) CreateTimeline(ctx context.Context, document, signature string
 		return core.Timeline{}, err
 	}
 
-	hash := util.GetHash([]byte(document))
-	hash10 := [10]byte{}
-	copy(hash10[:], hash[:10])
-	signedAt := doc.SignedAt
-	id := cdid.New(hash10, signedAt).String()
+	// return existing timeline if semanticID exists
+	if doc.SemanticID != "" {
+		existingID, err := s.semanticid.Lookup(ctx, doc.SemanticID, doc.Signer)
+		if err == nil { // なければなにもしない
+			_, err := s.repository.GetTimeline(ctx, existingID) // 実在性チェック
+			if err != nil {                                     // 実在しなければ掃除しておく
+				s.semanticid.Delete(ctx, doc.SemanticID, doc.Signer)
+			} else {
+				if doc.ID == "" { // あるかつIDがない場合はセット
+					doc.ID = existingID
+				} else {
+					if doc.ID != existingID { // あるかつIDが違う場合はエラー
+						return core.Timeline{}, fmt.Errorf("SemanticID Mismatch: %s != %s", doc.ID, existingID)
+					}
+				}
+			}
+		}
+	}
 
-	created, err := s.repository.CreateTimeline(ctx, core.Timeline{
-		ID:          id,
+	if doc.ID == "" {
+		hash := util.GetHash([]byte(document))
+		hash10 := [10]byte{}
+		copy(hash10[:], hash[:10])
+		signedAt := doc.SignedAt
+		doc.ID = cdid.New(hash10, signedAt).String()
+	} else {
+		split := strings.Split(doc.ID, "@")
+		if len(split) == 2 {
+			if split[1] != s.config.Concurrent.FQDN {
+				return core.Timeline{}, fmt.Errorf("This timeline is not owned by this domain")
+			}
+			doc.ID = split[0]
+		}
+	}
+
+	saved, err := s.repository.UpsertTimeline(ctx, core.Timeline{
+		ID:          doc.ID,
 		Indexable:   doc.Indexable,
 		Author:      doc.Signer,
 		DomainOwned: doc.DomainOwned,
@@ -523,29 +551,21 @@ func (s *service) CreateTimeline(ctx context.Context, document, signature string
 		Document:    document,
 		Signature:   signature,
 	})
-	created.ID = created.ID + "@" + s.config.Concurrent.FQDN
 
-	return created, err
-}
-
-// Update updates timeline information
-func (s *service) UpdateTimeline(ctx context.Context, obj core.Timeline) (core.Timeline, error) {
-	ctx, span := tracer.Start(ctx, "ServiceUpdate")
-	defer span.End()
-
-	split := strings.Split(obj.ID, "@")
-	if len(split) == 2 {
-		if split[1] != s.config.Concurrent.FQDN {
-			return core.Timeline{}, fmt.Errorf("this timeline is not managed by this domain")
-		}
-		obj.ID = split[0]
+	if err != nil {
+		return core.Timeline{}, err
 	}
 
-	updated, err := s.repository.UpdateTimeline(ctx, obj)
+	if doc.SemanticID != "" {
+		_, err = s.semanticid.Name(ctx, doc.SemanticID, doc.Signer, doc.ID, document, signature)
+		if err != nil {
+			return core.Timeline{}, err
+		}
+	}
 
-	updated.ID = updated.ID + "@" + s.config.Concurrent.FQDN
+	saved.ID = saved.ID + "@" + s.config.Concurrent.FQDN
 
-	return updated, err
+	return saved, err
 }
 
 // Get returns timeline information by ID
@@ -553,7 +573,26 @@ func (s *service) GetTimeline(ctx context.Context, key string) (core.Timeline, e
 	ctx, span := tracer.Start(ctx, "ServiceGet")
 	defer span.End()
 
-	return s.repository.GetTimeline(ctx, key)
+	split := strings.Split(key, "@")
+	if len(split) == 2 {
+		if split[1] == s.config.Concurrent.FQDN {
+			return s.repository.GetTimeline(ctx, split[0])
+		} else {
+			if cdid.IsSeemsCDID(split[0], 't') {
+				timeline, err := s.repository.GetTimeline(ctx, split[0])
+				if err == nil {
+					return timeline, nil
+				}
+			}
+			targetID, err := s.semanticid.Lookup(ctx, split[0], split[1])
+			if err != nil {
+				return core.Timeline{}, err
+			}
+			return s.repository.GetTimeline(ctx, targetID)
+		}
+	} else {
+		return s.repository.GetTimeline(ctx, key)
+	}
 }
 
 // TimelineListBySchema returns timelineList by schema

@@ -75,13 +75,13 @@ func (s *service) Commit(ctx context.Context, document string, signature string,
 	case "association":
 		return s.association.Create(ctx, document, signature)
 	case "profile":
-		return s.profile.Create(ctx, document, signature)
+		return s.profile.Upsert(ctx, document, signature)
 	case "affiliation":
 		return s.entity.Affiliation(ctx, document, signature, option)
 	case "tombstone":
 		return s.entity.Tombstone(ctx, document, signature)
 	case "timeline":
-		return s.timeline.CreateTimeline(ctx, document, signature)
+		return s.timeline.UpsertTimeline(ctx, document, signature)
 	case "ack", "unack":
 		return nil, s.ack.Ack(ctx, document, signature)
 	case "subscription":

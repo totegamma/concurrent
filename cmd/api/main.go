@@ -283,7 +283,6 @@ func main() {
 
 	// timeline
 	apiV1.GET("/timeline/:id", timelineHandler.Get)
-	apiV1.DELETE("/timeline/:id", timelineHandler.Delete, auth.Restrict(auth.ISLOCAL))
 	apiV1.DELETE("/timeline/:timeline/:object", timelineHandler.Remove, auth.Restrict(auth.ISLOCAL))
 	apiV1.GET("/timelines", timelineHandler.List)
 	apiV1.GET("/timelines/mine", timelineHandler.ListMine)

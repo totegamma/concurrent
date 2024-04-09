@@ -102,6 +102,8 @@ func (s *service) Commit(ctx context.Context, document string, signature string,
 			return s.association.Delete(ctx, document)
 		case 'p': // profile
 			return s.profile.Delete(ctx, document)
+		case 't': // timeline
+			return s.timeline.DeleteTimeline(ctx, document)
 		default:
 			return nil, fmt.Errorf("unknown document type: %s", string(typ))
 		}

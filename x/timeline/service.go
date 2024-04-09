@@ -42,7 +42,7 @@ type Service interface {
 
 	UpsertTimeline(ctx context.Context, document, signature string) (core.Timeline, error)
 	GetTimeline(ctx context.Context, key string) (core.Timeline, error)
-	DeleteTimeline(ctx context.Context, timelineID string) error
+	DeleteTimeline(ctx context.Context, document string) (core.Timeline, error)
 
 	HasWriteAccess(ctx context.Context, key string, author string) bool
 	HasReadAccess(ctx context.Context, key string, author string) bool
@@ -635,11 +635,34 @@ func (s *service) RemoveItem(ctx context.Context, timeline string, id string) {
 }
 
 // Delete deletes
-func (s *service) DeleteTimeline(ctx context.Context, timelineID string) error {
+func (s *service) DeleteTimeline(ctx context.Context, document string) (core.Timeline, error) {
 	ctx, span := tracer.Start(ctx, "ServiceDelete")
 	defer span.End()
 
-	return s.repository.DeleteTimeline(ctx, timelineID)
+	var doc core.DeleteDocument
+	err := json.Unmarshal([]byte(document), &doc)
+	if err != nil {
+		span.RecordError(err)
+		return core.Timeline{}, err
+	}
+
+	deleteTarget, err := s.repository.GetTimeline(ctx, doc.Target)
+	if err != nil {
+		span.RecordError(err)
+		return core.Timeline{}, err
+	}
+
+	if deleteTarget.Author != doc.Signer {
+		return core.Timeline{}, fmt.Errorf("You are not authorized to perform this action")
+	}
+
+	err = s.repository.DeleteTimeline(ctx, doc.Target)
+	if err != nil {
+		span.RecordError(err)
+		return core.Timeline{}, err
+	}
+
+	return deleteTarget, err
 }
 
 func (s *service) ListTimelineSubscriptions(ctx context.Context) (map[string]int64, error) {

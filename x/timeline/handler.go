@@ -23,7 +23,6 @@ type Handler interface {
 	Range(c echo.Context) error
 	List(c echo.Context) error
 	ListMine(c echo.Context) error
-	Delete(c echo.Context) error
 	Remove(c echo.Context) error
 	Checkpoint(c echo.Context) error
 	EventCheckpoint(c echo.Context) error
@@ -144,40 +143,6 @@ func (h handler) ListMine(c echo.Context) error {
 		return err
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": list})
-}
-
-// Delete is for handling HTTP Delete Method
-func (h handler) Delete(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerDelete")
-	defer span.End()
-
-	timelineID := c.Param("id")
-	split := strings.Split(timelineID, "@")
-	if len(split) == 2 {
-		timelineID = split[0]
-	}
-
-	target, err := h.service.GetTimeline(ctx, timelineID)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-
-	requester, ok := c.Get(core.RequesterIdCtxKey).(string)
-	if !ok {
-		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
-	}
-
-	if target.Author != requester {
-		return c.JSON(http.StatusForbidden, echo.Map{"error": "You are not owner of this timeline"})
-	}
-
-	err = h.service.DeleteTimeline(ctx, timelineID)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
 }
 
 // Remove is remove timeline element from timeline

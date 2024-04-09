@@ -590,6 +590,16 @@ func (r *repository) ListTimelineBySchema(ctx context.Context, schema string) ([
 
 	var timelines []core.Timeline
 	err = r.db.WithContext(ctx).Where("schema_id = ? and indexable = true", id).Find(&timelines).Error
+
+	for i, timeline := range timelines {
+		timelines[i].ID = "t" + timeline.ID
+		schemaUrl, err := r.schema.IDToUrl(ctx, timeline.SchemaID)
+		if err != nil {
+			continue
+		}
+		timelines[i].Schema = schemaUrl
+	}
+
 	return timelines, err
 }
 
@@ -600,6 +610,16 @@ func (r *repository) ListTimelineByAuthor(ctx context.Context, author string) ([
 
 	var timelines []core.Timeline
 	err := r.db.WithContext(ctx).Where("Author = ?", author).Find(&timelines).Error
+
+	for i, timeline := range timelines {
+		timelines[i].ID = "t" + timeline.ID
+		schemaUrl, err := r.schema.IDToUrl(ctx, timeline.SchemaID)
+		if err != nil {
+			continue
+		}
+		timelines[i].Schema = schemaUrl
+	}
+
 	return timelines, err
 }
 
@@ -607,6 +627,13 @@ func (r *repository) ListTimelineByAuthor(ctx context.Context, author string) ([
 func (r *repository) DeleteTimeline(ctx context.Context, timelineID string) error {
 	ctx, span := tracer.Start(ctx, "RepositoryDeleteTimeline")
 	defer span.End()
+
+    if len(timelineID) == 27 {
+        if timelineID[0] != 't' {
+            return fmt.Errorf("timeline typed-id must start with 't'")
+        }
+        timelineID = timelineID[1:]
+    }
 
 	r.mc.Decrement("timeline_count", 1)
 

@@ -253,3 +253,11 @@ func TypedIDToType(id string) string {
 		return ""
 	}
 }
+
+func IsCKID(keyID string) bool {
+	return keyID[:3] == "cck"
+}
+
+func IsCCID(keyID string) bool {
+	return keyID[:3] == "con"
+}

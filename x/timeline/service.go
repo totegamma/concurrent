@@ -105,6 +105,33 @@ func (s *service) GetChunksFromRemote(ctx context.Context, host string, timeline
 	return s.repository.GetChunksFromRemote(ctx, host, timelines, pivot)
 }
 
+func (s *service) normalizeTimelineID(ctx context.Context, timeline string) (string, error) {
+	split := strings.Split(timeline, "@")
+	id := split[0]
+	domain := s.config.Concurrent.FQDN
+	if len(split) == 2 {
+		if strings.Contains(split[1], ".") { // FQDN
+			domain = split[1]
+		}
+		// else: ccid?
+		addr, err := s.entity.ResolveHost(ctx, split[1], "")
+		if err != nil {
+			return "", err
+		}
+		domain = addr
+	}
+
+	if !cdid.IsSeemsCDID(id, 't') && domain == s.config.Concurrent.FQDN && core.IsCCID(split[1]) {
+		target, err := s.semanticid.Lookup(ctx, id, split[1])
+		if err != nil {
+			return "", err
+		}
+		id = target
+	}
+
+	return fmt.Sprintf("%s@%s", id, domain), nil
+}
+
 // GetChunks returns chunks by timelineID and time
 func (s *service) GetChunks(ctx context.Context, timelines []string, until time.Time) (map[string]Chunk, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGetChunks")
@@ -112,17 +139,11 @@ func (s *service) GetChunks(ctx context.Context, timelines []string, until time.
 
 	// normalize timelineID and validate
 	for i, timeline := range timelines {
-		if !strings.Contains(timeline, "@") {
-			timelines[i] = fmt.Sprintf("%s@%s", timeline, s.config.Concurrent.FQDN)
-		} else {
-			split := strings.Split(timeline, "@")
-			if len(split) != 2 {
-				return nil, fmt.Errorf("invalid timelineID: %s", timeline)
-			}
-			if split[1] != s.config.Concurrent.FQDN {
-				return nil, fmt.Errorf("invalid timelineID: %s", timeline)
-			}
+		normalized, err := s.normalizeTimelineID(ctx, timeline)
+		if err != nil {
+			continue
 		}
+		timelines[i] = normalized
 	}
 
 	// first, try to get from cache
@@ -166,14 +187,11 @@ func (s *service) GetRecentItems(ctx context.Context, timelines []string, until 
 
 	// normalize timelineID and validate
 	for i, timeline := range timelines {
-		if !strings.Contains(timeline, "@") {
-			timelines[i] = fmt.Sprintf("%s@%s", timeline, s.config.Concurrent.FQDN)
-		} else {
-			split := strings.Split(timeline, "@")
-			if len(split) != 2 {
-				return nil, fmt.Errorf("invalid timelineID: %s", timeline)
-			}
+		normalized, err := s.normalizeTimelineID(ctx, timeline)
+		if err != nil {
+			continue
 		}
+		timelines[i] = normalized
 	}
 
 	// first, try to get from cache regardless of local or remote
@@ -255,50 +273,7 @@ func (s *service) GetImmediateItems(ctx context.Context, timelines []string, sin
 	ctx, span := tracer.Start(ctx, "ServiceGetImmediateItems")
 	defer span.End()
 
-	var messages []core.TimelineItem
-	var buckets map[string][]string = make(map[string][]string)
-
-	for _, timeline := range timelines {
-		split := strings.Split(timeline, "@")
-		host := s.config.Concurrent.FQDN
-		if len(split) != 2 {
-			host = split[1]
-		}
-
-		buckets[host] = append(buckets[host], split[0])
-	}
-
-	for host, localtimelines := range buckets {
-		if host == s.config.Concurrent.FQDN {
-			for _, timeline := range localtimelines {
-				items, err := s.repository.GetImmediateItems(ctx, timeline, since, limit)
-				if err != nil {
-					span.RecordError(err)
-					continue
-				}
-				messages = append(messages, items...)
-			}
-		} else {
-			// TODO: Get from remote
-		}
-	}
-
-	var uniq []core.TimelineItem
-	m := make(map[string]bool)
-	for _, elem := range messages {
-		if !m[elem.ObjectID] {
-			m[elem.ObjectID] = true
-			uniq = append(uniq, elem)
-		}
-	}
-
-	sort.Slice(uniq, func(l, r int) bool {
-		return uniq[l].CDate.Before(uniq[r].CDate)
-	})
-
-	chopped := uniq[:min(len(uniq), limit)]
-
-	return chopped, nil
+	return nil, fmt.Errorf("not implemented")
 }
 
 // Post posts events to the timeline.
@@ -316,6 +291,22 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 	}
 
 	timelineID, timelineHost := query[0], query[1]
+
+	if core.IsCCID(timelineHost) {
+		domain, err := s.entity.ResolveHost(ctx, timelineHost, "")
+		if err != nil {
+			return err
+		}
+		timelineHost = domain
+	}
+
+	if !cdid.IsSeemsCDID(timelineID, 't') && timelineHost == s.config.Concurrent.FQDN && core.IsCCID(query[1]) {
+		target, err := s.semanticid.Lookup(ctx, timelineID, query[1])
+		if err != nil {
+			return err
+		}
+		timelineID = target
+	}
 
 	item.TimelineID = timelineID
 

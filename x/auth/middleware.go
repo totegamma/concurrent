@@ -9,7 +9,6 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/jwt"
-	"github.com/totegamma/concurrent/x/key"
 	"github.com/xinguang/go-recaptcha"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -59,9 +58,9 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 			if claims.Subject == "CC_API" {
 
 				ccid := ""
-				if key.IsCCID(claims.Issuer) {
+				if core.IsCCID(claims.Issuer) {
 					ccid = claims.Issuer
-				} else if key.IsCKID(claims.Issuer) {
+				} else if core.IsCKID(claims.Issuer) {
 					ccid, err = s.key.ResolveSubkey(ctx, claims.Issuer)
 					if err != nil {
 						span.RecordError(err)

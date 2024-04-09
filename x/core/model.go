@@ -2,9 +2,10 @@ package core
 
 import (
 	"fmt"
-	"github.com/lib/pq"
 	"strconv"
 	"time"
+
+	"github.com/lib/pq"
 )
 
 type Schema struct {
@@ -254,10 +255,19 @@ func TypedIDToType(id string) string {
 	}
 }
 
+func hasChar(s string, c byte) bool {
+	for i := 0; i < len(s); i++ {
+		if s[i] == c {
+			return true
+		}
+	}
+	return false
+}
+
 func IsCKID(keyID string) bool {
-	return keyID[:3] == "cck"
+	return keyID[:3] == "cck" && len(keyID) == 42 && !hasChar(keyID, '.')
 }
 
 func IsCCID(keyID string) bool {
-	return keyID[:3] == "con"
+	return keyID[:3] == "con" && len(keyID) == 42 && !hasChar(keyID, '.')
 }

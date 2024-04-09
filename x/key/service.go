@@ -259,7 +259,7 @@ func (s *service) ResolveRemoteSubkey(ctx context.Context, keyID, domain string)
 			return "", fmt.Errorf("Key %s is not a child of %s", key.ID, nextKey)
 		}
 
-		if IsCCID(key.ID) {
+		if core.IsCCID(key.ID) {
 			break
 		}
 
@@ -339,7 +339,7 @@ func (s *service) GetKeyResolution(ctx context.Context, keyID string) ([]core.Ke
 	var keys []core.Key
 	var currentDepth = 0
 	for {
-		if IsCCID(keyID) {
+		if core.IsCCID(keyID) {
 			return keys, nil
 		}
 
@@ -367,12 +367,4 @@ func (s *service) GetAllKeys(ctx context.Context, owner string) ([]core.Key, err
 
 func IsKeyValid(ctx context.Context, key core.Key) bool {
 	return key.RevokeDocument == "null"
-}
-
-func IsCKID(keyID string) bool {
-	return keyID[:3] == "cck"
-}
-
-func IsCCID(keyID string) bool {
-	return keyID[:3] == "con"
 }

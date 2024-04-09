@@ -65,10 +65,11 @@ func SetupMessageService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, ma
 }
 
 func SetupProfileService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) profile.Service {
-	repository := profile.NewRepository(db, mc)
-	service := SetupKeyService(db, rdb, mc, config)
+	service := SetupSchemaService(db)
+	repository := profile.NewRepository(db, mc, service)
+	keyService := SetupKeyService(db, rdb, mc, config)
 	semanticidService := SetupSemanticidService(db)
-	profileService := profile.NewService(repository, service, semanticidService)
+	profileService := profile.NewService(repository, keyService, semanticidService)
 	return profileService
 }
 

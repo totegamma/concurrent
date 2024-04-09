@@ -569,7 +569,7 @@ func (r *repository) UpsertTimeline(ctx context.Context, timeline core.Timeline)
 	}
 	timeline.SchemaID = schemaID
 
-	err = r.db.WithContext(ctx).Create(&timeline).Error
+	err = r.db.WithContext(ctx).Save(&timeline).Error
 
 	r.mc.Increment("timeline_count", 1)
 

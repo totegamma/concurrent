@@ -278,6 +278,7 @@ func main() {
 
 	// profile
 	apiV1.GET("/profile/:id", profileHandler.Get)
+	apiV1.GET("/profile/:owner/:semanticid", profileHandler.GetBySemanticID)
 	apiV1.GET("/profiles", profileHandler.Query)
 
 	// timeline

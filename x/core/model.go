@@ -194,16 +194,16 @@ type Subscription struct {
 	MDate       time.Time          `json:"mdate" gorm:"autoUpdateTime"`
 }
 
-type ResolverType string
+type ResolverType uint
 
 const (
-	ResolverTypeEntity ResolverType = "entity"
-	ResolverTypeDomain ResolverType = "domain"
+	ResolverTypeEntity ResolverType = iota
+	ResolverTypeDomain
 )
 
 type SubscriptionItem struct {
 	Target       string       `json:"target" gorm:"primaryKey;type:char(27);"`
-	ResolverType ResolverType `json:"resolverType" gorm:"type:enum('entity', 'domain')"`
+	ResolverType ResolverType `json:"resolverType" gorm:"type:integer"`
 	Entity       *string      `json:"entity" gorm:"type:char(42);"`
 	Domain       *string      `json:"domain" gorm:"type:text;"`
 	Subscription string       `json:"subscription" gorm:"type:char(26)"`

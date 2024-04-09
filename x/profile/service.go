@@ -18,6 +18,7 @@ type Service interface {
 
 	Count(ctx context.Context) (int64, error)
 	Get(ctx context.Context, id string) (core.Profile, error)
+	GetBySemanticID(ctx context.Context, semanticID, owner string) (core.Profile, error)
 	GetByAuthorAndSchema(ctx context.Context, owner string, schema string) ([]core.Profile, error)
 	GetByAuthor(ctx context.Context, owner string) ([]core.Profile, error)
 	GetBySchema(ctx context.Context, schema string) ([]core.Profile, error)
@@ -40,6 +41,25 @@ func (s *service) Count(ctx context.Context) (int64, error) {
 	defer span.End()
 
 	return s.repo.Count(ctx)
+}
+
+func (s *service) Get(ctx context.Context, id string) (core.Profile, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGet")
+	defer span.End()
+
+	return s.repo.Get(ctx, id)
+}
+
+func (s *service) GetBySemanticID(ctx context.Context, semanticID, owner string) (core.Profile, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetBySemanticID")
+	defer span.End()
+
+	target, err := s.semanticid.Lookup(ctx, semanticID, owner)
+	if err != nil {
+		return core.Profile{}, err
+	}
+
+	return s.Get(ctx, target)
 }
 
 // GetByAuthorAndSchema returns profiles by owner and schema
@@ -117,21 +137,21 @@ func (s *service) Upsert(ctx context.Context, document, signature string) (core.
 		Signature: signature,
 	}
 
-	err = s.repo.Upsert(ctx, profile)
+	saved, err := s.repo.Upsert(ctx, profile)
 	if err != nil {
 		span.RecordError(err)
 		return core.Profile{}, err
 	}
 
 	if doc.SemanticID != "" {
-		_, err = s.semanticid.Name(ctx, doc.SemanticID, doc.Signer, profile.ID, document, signature)
+		_, err = s.semanticid.Name(ctx, doc.SemanticID, doc.Signer, saved.ID, document, signature)
 		if err != nil {
 			span.RecordError(err)
 			return core.Profile{}, err
 		}
 	}
 
-	return profile, nil
+	return saved, nil
 }
 
 // Delete deletes profile
@@ -159,11 +179,4 @@ func (s *service) Delete(ctx context.Context, documentStr string) (core.Profile,
 	}
 
 	return s.repo.Delete(ctx, document.Target)
-}
-
-func (s *service) Get(ctx context.Context, id string) (core.Profile, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGet")
-	defer span.End()
-
-	return s.repo.Get(ctx, id)
 }

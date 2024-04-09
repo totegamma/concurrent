@@ -557,7 +557,7 @@ func (s *service) UpsertTimeline(ctx context.Context, document, signature string
 	}
 
 	if doc.SemanticID != "" {
-		_, err = s.semanticid.Name(ctx, doc.SemanticID, doc.Signer, doc.ID, document, signature)
+		_, err = s.semanticid.Name(ctx, doc.SemanticID, doc.Signer, saved.ID, document, signature)
 		if err != nil {
 			return core.Timeline{}, err
 		}

@@ -17,6 +17,7 @@ var tracer = otel.Tracer("profile")
 // Handler is the interface for handling HTTP requests
 type Handler interface {
 	Get(c echo.Context) error
+	GetBySemanticID(c echo.Context) error
 	Query(c echo.Context) error
 }
 
@@ -40,6 +41,28 @@ func (h handler) Get(c echo.Context) error {
 	}
 
 	profile, err := h.service.Get(ctx, id)
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return c.JSON(http.StatusNotFound, echo.Map{"error": "Profile not found"})
+		}
+		return err
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": profile})
+}
+
+func (h handler) GetBySemanticID(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetBySemanticID")
+	defer span.End()
+
+	semanticID := c.Param("semanticid")
+	owner := c.Param("owner")
+
+	if semanticID == "" || owner == "" {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request", "message": "semanticID and owner are required"})
+	}
+
+	profile, err := h.service.GetBySemanticID(ctx, semanticID, owner)
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return c.JSON(http.StatusNotFound, echo.Map{"error": "Profile not found"})

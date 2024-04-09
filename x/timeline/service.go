@@ -439,6 +439,14 @@ func (s *service) DistributeEvent(ctx context.Context, timeline string, event co
 
 	_, timelineHost := query[0], query[1]
 
+	if core.IsCCID(timelineHost) {
+		domain, err := s.entity.ResolveHost(ctx, timelineHost, "")
+		if err != nil {
+			return err
+		}
+		timelineHost = domain
+	}
+
 	if timelineHost == s.config.Concurrent.FQDN {
 
 		s.repository.PublishEvent(ctx, event)

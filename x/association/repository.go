@@ -73,6 +73,21 @@ func (r *repository) Create(ctx context.Context, association core.Association) (
 	ctx, span := tracer.Start(ctx, "RepositoryCreate")
 	defer span.End()
 
+	if association.ID == "" {
+		return association, errors.New("association ID is required")
+	}
+
+	if len(association.ID) == 27 {
+		if association.ID[0] != 'a' {
+			return association, errors.New("association ID must start with 'a'")
+		}
+		association.ID = association.ID[1:]
+	}
+
+	if len(association.ID) != 26 {
+		return association, errors.New("association ID must be 26 characters long")
+	}
+
 	schemaID, err := r.schema.UrlToID(ctx, association.Schema)
 	if err != nil {
 		return association, err
@@ -82,6 +97,8 @@ func (r *repository) Create(ctx context.Context, association core.Association) (
 	err = r.db.WithContext(ctx).Create(&association).Error
 
 	r.mc.Increment("association_count", 1)
+
+	association.ID = "a" + association.ID
 
 	return association, err
 }
@@ -107,6 +124,8 @@ func (r *repository) Get(ctx context.Context, id string) (core.Association, erro
 	}
 	association.Schema = schemaUrl
 
+	association.ID = "a" + association.ID
+
 	return association, err
 }
 
@@ -124,6 +143,7 @@ func (r *repository) GetOwn(ctx context.Context, author string) ([]core.Associat
 			continue
 		}
 		associations[i].Schema = schemaUrl
+		associations[i].ID = "a" + associations[i].ID
 	}
 
 	return associations, err
@@ -154,6 +174,8 @@ func (r *repository) Delete(ctx context.Context, id string) (core.Association, e
 
 	r.mc.Decrement("association_count", 1)
 
+	deleted.ID = "a" + deleted.ID
+
 	return deleted, nil
 }
 
@@ -171,6 +193,7 @@ func (r *repository) GetByTarget(ctx context.Context, targetID string) ([]core.A
 			continue
 		}
 		associations[i].Schema = schemaUrl
+		associations[i].ID = "a" + associations[i].ID
 	}
 
 	return associations, err
@@ -217,6 +240,7 @@ func (r *repository) GetOwnByTarget(ctx context.Context, targetID, author string
 			continue
 		}
 		associations[i].Schema = schemaUrl
+		associations[i].ID = "a" + associations[i].ID
 	}
 
 	return associations, err
@@ -241,6 +265,7 @@ func (r *repository) GetBySchema(ctx context.Context, messageID, schema string) 
 			continue
 		}
 		associations[i].Schema = schemaUrl
+		associations[i].ID = "a" + associations[i].ID
 	}
 
 	return associations, err
@@ -297,6 +322,7 @@ func (r *repository) GetBySchemaAndVariant(ctx context.Context, messageID, schem
 			continue
 		}
 		associations[i].Schema = schemaUrl
+		associations[i].ID = "a" + associations[i].ID
 	}
 
 	return associations, nil

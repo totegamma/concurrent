@@ -628,12 +628,12 @@ func (r *repository) DeleteTimeline(ctx context.Context, timelineID string) erro
 	ctx, span := tracer.Start(ctx, "RepositoryDeleteTimeline")
 	defer span.End()
 
-    if len(timelineID) == 27 {
-        if timelineID[0] != 't' {
-            return fmt.Errorf("timeline typed-id must start with 't'")
-        }
-        timelineID = timelineID[1:]
-    }
+	if len(timelineID) == 27 {
+		if timelineID[0] != 't' {
+			return fmt.Errorf("timeline typed-id must start with 't'")
+		}
+		timelineID = timelineID[1:]
+	}
 
 	r.mc.Decrement("timeline_count", 1)
 

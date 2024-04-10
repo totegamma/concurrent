@@ -96,8 +96,14 @@ type SubscriptionDocument[T any] struct { // type: subscription
 	DomainOwned bool `json:"domainOwned"`
 }
 
-type SubscriptionItemDocument[T any] struct { // type: subscription_item
+type SubscribeDocument[T any] struct { // type: subscribe
 	DocumentBase[T]
+	Subscription string `json:"subscription"`
+	Target       string `json:"target"`
+}
+
+type UnsubscribeDocument struct { // type: unsubscribe
+	DocumentBase[any]
 	Subscription string `json:"subscription"`
 	Target       string `json:"target"`
 }

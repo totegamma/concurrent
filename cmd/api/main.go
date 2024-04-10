@@ -309,6 +309,7 @@ func main() {
 
 	// subscription
 	apiV1.GET("/subscription/:id", subscriptionHandler.GetSubscription)
+	apiV1.GET("/subscriptions/mine", subscriptionHandler.GetOwnSubscriptions, auth.Restrict(auth.ISLOCAL))
 
 	// collection
 	apiV1.POST("/collection", collectionHandler.CreateCollection, auth.Restrict(auth.ISLOCAL))

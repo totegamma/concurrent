@@ -184,6 +184,7 @@ type Ack struct {
 // Subscription
 type Subscription struct {
 	ID          string             `json:"id" gorm:"primaryKey;type:char(26)"`
+	Author      string             `json:"author" gorm:"type:char(42);"`
 	Indexable   bool               `json:"indexable" gorm:"type:boolean;default:false"`
 	DomainOwned bool               `json:"domainOwned" gorm:"type:boolean;default:false"`
 	SchemaID    uint               `json:"-"`
@@ -203,7 +204,7 @@ const (
 )
 
 type SubscriptionItem struct {
-	Target       string       `json:"target" gorm:"primaryKey;type:char(27);"`
+	ID           string       `json:"target" gorm:"primaryKey;type:text;"`
 	ResolverType ResolverType `json:"resolverType" gorm:"type:integer"`
 	Entity       *string      `json:"entity" gorm:"type:char(42);"`
 	Domain       *string      `json:"domain" gorm:"type:text;"`

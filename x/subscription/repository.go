@@ -15,10 +15,11 @@ type Repository interface {
 	GetSubscription(ctx context.Context, id string) (core.Subscription, error)
 	UpdateSubscription(ctx context.Context, subscription core.Subscription) (core.Subscription, error)
 	DeleteSubscription(ctx context.Context, id string) error
+	GetOwnSubscriptions(ctx context.Context, owner string) ([]core.Subscription, error)
 
 	CreateItem(ctx context.Context, item core.SubscriptionItem) (core.SubscriptionItem, error)
 	GetItem(ctx context.Context, id string, targetID string) (core.SubscriptionItem, error)
-	DeleteItem(ctx context.Context, id string, targetID string) (core.SubscriptionItem, error)
+	DeleteItem(ctx context.Context, id string, targetID string) error
 }
 
 type repository struct {
@@ -113,6 +114,27 @@ func (r *repository) DeleteSubscription(ctx context.Context, id string) error {
 	return r.db.WithContext(ctx).Delete(&core.Subscription{}, "id = ?", id).Error
 }
 
+// GetOwnSubscriptions returns a list of collections by owner
+func (r *repository) GetOwnSubscriptions(ctx context.Context, owner string) ([]core.Subscription, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryGetOwnSubscriptions")
+	defer span.End()
+
+	var subscriptions []core.Subscription
+	err := r.db.WithContext(ctx).Preload("Items").Find(&subscriptions, "author = ?", owner).Error
+
+	for i := range subscriptions {
+		schemaUrl, err := r.schema.IDToUrl(ctx, subscriptions[i].SchemaID)
+		if err != nil {
+			return subscriptions, err
+		}
+		subscriptions[i].Schema = schemaUrl
+
+		subscriptions[i].ID = "s" + subscriptions[i].ID
+	}
+
+	return subscriptions, err
+}
+
 // CreateItem creates new collection item
 func (r *repository) CreateItem(ctx context.Context, item core.SubscriptionItem) (core.SubscriptionItem, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryCreateItem")
@@ -132,7 +154,7 @@ func (r *repository) GetItem(ctx context.Context, collectionId string, targetId 
 }
 
 // DeleteItem deletes a collection item by ID
-func (r *repository) DeleteItem(ctx context.Context, collectionId string, targetId string) (core.SubscriptionItem, error) {
+func (r *repository) DeleteItem(ctx context.Context, collectionId string, targetId string) error {
 	ctx, span := tracer.Start(ctx, "RepositoryDeleteItem")
 	defer span.End()
 
@@ -140,10 +162,10 @@ func (r *repository) DeleteItem(ctx context.Context, collectionId string, target
 	var deleted core.SubscriptionItem
 	err := r.db.WithContext(ctx).First(&deleted, "collection = ? and target = ?", collectionId, targetId).Error
 	if err != nil {
-		return deleted, err
+		return err
 	}
 
 	err = r.db.WithContext(ctx).Where("collection = ? and target = ?", collectionId, targetId).Delete(&deleted).Error
 
-	return deleted, err
+	return err
 }

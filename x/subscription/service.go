@@ -16,9 +16,10 @@ type Service interface {
 	GetSubscription(ctx context.Context, id string) (core.Subscription, error)
 	UpdateSubscription(ctx context.Context, obj core.Subscription) (core.Subscription, error)
 	DeleteSubscription(ctx context.Context, id string) error
+	GetOwnSubscriptions(ctx context.Context, owner string) ([]core.Subscription, error)
 
-	CreateItem(ctx context.Context, objectStr string, signature string) (core.SubscriptionItem, error)
-	DeleteItem(ctx context.Context, id string, itemId string) (core.SubscriptionItem, error)
+	Subscribe(ctx context.Context, document string, signature string) (core.SubscriptionItem, error)
+	Unsubscribe(ctx context.Context, document string) (core.SubscriptionItem, error)
 }
 
 type service struct {
@@ -50,6 +51,7 @@ func (s *service) CreateSubscription(ctx context.Context, objectStr string, sign
 
 	subscription := core.Subscription{
 		ID:          id,
+		Author:      object.Signer,
 		Indexable:   object.Indexable,
 		DomainOwned: object.DomainOwned,
 		Schema:      object.Schema,
@@ -90,31 +92,49 @@ func (s *service) DeleteSubscription(ctx context.Context, id string) error {
 	return s.repo.DeleteSubscription(ctx, id)
 }
 
-// CreateItem creates new collection item
-func (s *service) CreateItem(ctx context.Context, objectStr string, signature string) (core.SubscriptionItem, error) {
+// GetOwnSubscriptions returns all subscriptions owned by the owner
+func (s *service) GetOwnSubscriptions(ctx context.Context, owner string) ([]core.Subscription, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetOwnSubscriptions")
+	defer span.End()
+
+	return s.repo.GetOwnSubscriptions(ctx, owner)
+}
+
+// Subscribe creates new collection item
+func (s *service) Subscribe(ctx context.Context, document string, signature string) (core.SubscriptionItem, error) {
 	ctx, span := tracer.Start(ctx, "ServiceCreateItem")
 	defer span.End()
 
-	var object core.SubscriptionItemDocument[any]
-	err := json.Unmarshal([]byte(objectStr), &object)
+	var doc core.SubscribeDocument[any]
+	err := json.Unmarshal([]byte(document), &doc)
 	if err != nil {
 		span.RecordError(err)
 		return core.SubscriptionItem{}, err
 	}
 
-	fullID := object.Target
+	subscription, err := s.repo.GetSubscription(ctx, doc.Subscription)
+	if err != nil {
+		span.RecordError(err)
+		return core.SubscriptionItem{}, err
+	}
+
+	if doc.Signer != subscription.Author {
+		return core.SubscriptionItem{}, errors.New("you are not authorized to perform this action")
+	}
+
+	fullID := doc.Target
 	split := strings.Split(fullID, "@")
 	if len(split) != 2 {
 		return core.SubscriptionItem{}, errors.New("target must be in the format of id@resolver")
 	}
 
 	item := core.SubscriptionItem{
-		Target:       split[0],
-		Subscription: object.Subscription,
+		ID:           doc.Target,
+		Subscription: doc.Subscription,
 	}
 
 	resolver := split[1]
-	if resolver[:3] == "con" { // ccid resolvation
+	if core.IsCCID(resolver) {
 		item.Entity = &resolver
 		item.ResolverType = core.ResolverTypeEntity
 	} else { // web resolvation
@@ -131,18 +151,35 @@ func (s *service) CreateItem(ctx context.Context, objectStr string, signature st
 	return created, nil
 }
 
-// GetItem returns a SubscriptionItem by ID
-func (s *service) GetItem(ctx context.Context, id string, itemId string) (core.SubscriptionItem, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetItem")
-	defer span.End()
-
-	return s.repo.GetItem(ctx, id, itemId)
-}
-
 // DeleteItem deletes a collection item by ID
-func (s *service) DeleteItem(ctx context.Context, id string, itemId string) (core.SubscriptionItem, error) {
+func (s *service) Unsubscribe(ctx context.Context, document string) (core.SubscriptionItem, error) {
 	ctx, span := tracer.Start(ctx, "ServiceDeleteItem")
 	defer span.End()
 
-	return s.repo.DeleteItem(ctx, id, itemId)
+	var doc core.UnsubscribeDocument
+	err := json.Unmarshal([]byte(document), &doc)
+	if err != nil {
+		span.RecordError(err)
+		return core.SubscriptionItem{}, err
+	}
+
+	item, err := s.repo.GetItem(ctx, doc.Target, doc.Subscription)
+	if err != nil {
+		span.RecordError(err)
+		return core.SubscriptionItem{}, err
+	}
+
+	subscription, err := s.repo.GetSubscription(ctx, doc.Subscription)
+	if err != nil {
+		span.RecordError(err)
+		return core.SubscriptionItem{}, err
+	}
+
+	if doc.Signer != subscription.Author {
+		return core.SubscriptionItem{}, errors.New("you are not authorized to perform this action")
+	}
+
+	err = s.repo.DeleteItem(ctx, doc.Target, doc.Subscription)
+
+	return item, err
 }

@@ -86,8 +86,10 @@ func (s *service) Commit(ctx context.Context, document string, signature string,
 		return nil, s.ack.Ack(ctx, document, signature)
 	case "subscription":
 		return s.subscription.CreateSubscription(ctx, document, signature)
-	case "subscription_item":
-		return s.subscription.CreateItem(ctx, document, signature)
+	case "subscribe":
+		return s.subscription.Subscribe(ctx, document, signature)
+	case "unsubscribe":
+		return s.subscription.Unsubscribe(ctx, document)
 	case "delete":
 		var doc core.DeleteDocument
 		err := json.Unmarshal([]byte(document), &doc)

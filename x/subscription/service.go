@@ -33,7 +33,7 @@ func NewService(repo Repository) Service {
 
 // CreateSubscription creates new collection
 func (s *service) CreateSubscription(ctx context.Context, objectStr string, signature string) (core.Subscription, error) {
-	ctx, span := tracer.Start(ctx, "ServiceCreateSubscription")
+	ctx, span := tracer.Start(ctx, "Subscription.Service.CreateSubscription")
 	defer span.End()
 
 	var object core.SubscriptionDocument[any]
@@ -70,7 +70,7 @@ func (s *service) CreateSubscription(ctx context.Context, objectStr string, sign
 
 // GetSubscription returns a Subscription by ID
 func (s *service) GetSubscription(ctx context.Context, id string) (core.Subscription, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetSubscription")
+	ctx, span := tracer.Start(ctx, "Subscription.Service.GetSubscription")
 	defer span.End()
 
 	return s.repo.GetSubscription(ctx, id)
@@ -78,7 +78,7 @@ func (s *service) GetSubscription(ctx context.Context, id string) (core.Subscrip
 
 // UpdateSubscription updates a collection
 func (s *service) UpdateSubscription(ctx context.Context, obj core.Subscription) (core.Subscription, error) {
-	ctx, span := tracer.Start(ctx, "ServiceUpdateSubscription")
+	ctx, span := tracer.Start(ctx, "Subscription.Service.UpdateSubscription")
 	defer span.End()
 
 	return s.repo.UpdateSubscription(ctx, obj)
@@ -86,7 +86,7 @@ func (s *service) UpdateSubscription(ctx context.Context, obj core.Subscription)
 
 // DeleteSubscription deletes a collection by ID
 func (s *service) DeleteSubscription(ctx context.Context, id string) error {
-	ctx, span := tracer.Start(ctx, "ServiceDeleteSubscription")
+	ctx, span := tracer.Start(ctx, "Subscription.Service.DeleteSubscription")
 	defer span.End()
 
 	return s.repo.DeleteSubscription(ctx, id)
@@ -94,7 +94,7 @@ func (s *service) DeleteSubscription(ctx context.Context, id string) error {
 
 // GetOwnSubscriptions returns all subscriptions owned by the owner
 func (s *service) GetOwnSubscriptions(ctx context.Context, owner string) ([]core.Subscription, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetOwnSubscriptions")
+	ctx, span := tracer.Start(ctx, "Subscription.Service.GetOwnSubscriptions")
 	defer span.End()
 
 	return s.repo.GetOwnSubscriptions(ctx, owner)
@@ -102,7 +102,7 @@ func (s *service) GetOwnSubscriptions(ctx context.Context, owner string) ([]core
 
 // Subscribe creates new collection item
 func (s *service) Subscribe(ctx context.Context, document string, signature string) (core.SubscriptionItem, error) {
-	ctx, span := tracer.Start(ctx, "ServiceCreateItem")
+	ctx, span := tracer.Start(ctx, "Subscription.Service.Subscribe")
 	defer span.End()
 
 	var doc core.SubscribeDocument[any]
@@ -153,7 +153,7 @@ func (s *service) Subscribe(ctx context.Context, document string, signature stri
 
 // DeleteItem deletes a collection item by ID
 func (s *service) Unsubscribe(ctx context.Context, document string) (core.SubscriptionItem, error) {
-	ctx, span := tracer.Start(ctx, "ServiceDeleteItem")
+	ctx, span := tracer.Start(ctx, "Subscription.Service.Unsubscribe")
 	defer span.End()
 
 	var doc core.UnsubscribeDocument

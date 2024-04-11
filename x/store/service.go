@@ -54,7 +54,7 @@ func NewService(
 }
 
 func (s *service) Commit(ctx context.Context, document string, signature string, option string) (any, error) {
-	ctx, span := tracer.Start(ctx, "store.service.Commit")
+	ctx, span := tracer.Start(ctx, "Store.Service.Commit")
 	defer span.End()
 
 	var base core.DocumentBase[any]

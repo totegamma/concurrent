@@ -204,7 +204,7 @@ const (
 )
 
 type SubscriptionItem struct {
-	ID           string       `json:"target" gorm:"primaryKey;type:text;"`
+	ID           string       `json:"id" gorm:"primaryKey;type:text;"`
 	ResolverType ResolverType `json:"resolverType" gorm:"type:integer"`
 	Entity       *string      `json:"entity" gorm:"type:char(42);"`
 	Domain       *string      `json:"domain" gorm:"type:text;"`

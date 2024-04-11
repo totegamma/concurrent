@@ -11,6 +11,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/x/core"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"gorm.io/gorm"
 )
 
@@ -40,7 +41,7 @@ func NewHandler(service Service) Handler {
 
 // Get returns a timeline by ID
 func (h handler) Get(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
+	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.Get")
 	defer span.End()
 
 	timelineID := c.Param("id")
@@ -56,12 +57,23 @@ func (h handler) Get(c echo.Context) error {
 
 // Recent returns recent messages in some timelines
 func (h handler) Recent(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerRecent")
+	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.Recent")
 	defer span.End()
 
 	timelinesStr := c.QueryParam("timelines")
 	timelines := strings.Split(timelinesStr, ",")
-	messages, err := h.service.GetRecentItems(ctx, timelines, time.Now(), 16)
+	subscription := c.QueryParam("subscription")
+
+	span.SetAttributes(attribute.StringSlice("timelines", timelines))
+	span.SetAttributes(attribute.String("subscription", subscription))
+
+	var messages []core.TimelineItem
+	var err error
+	if subscription != "" {
+		messages, err = h.service.GetRecentItemsFromSubscription(ctx, subscription, time.Now(), 16)
+	} else {
+		messages, err = h.service.GetRecentItems(ctx, timelines, time.Now(), 16)
+	}
 	if err != nil {
 		span.RecordError(err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
@@ -72,13 +84,19 @@ func (h handler) Recent(c echo.Context) error {
 
 // Range returns messages since to until in specified timelines
 func (h handler) Range(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerRange")
+	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.Range")
 	defer span.End()
 
 	queryTimelines := c.QueryParam("timelines")
 	timelines := strings.Split(queryTimelines, ",")
 	querySince := c.QueryParam("since")
 	queryUntil := c.QueryParam("until")
+	subscription := c.QueryParam("subscription")
+
+	span.SetAttributes(attribute.StringSlice("timelines", timelines))
+	span.SetAttributes(attribute.String("subscription", subscription))
+	span.SetAttributes(attribute.String("since", querySince))
+	span.SetAttributes(attribute.String("until", queryUntil))
 
 	if querySince != "" {
 		sinceEpoch, err := strconv.ParseInt(querySince, 10, 64)
@@ -86,7 +104,13 @@ func (h handler) Range(c echo.Context) error {
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
 		}
 		since := time.Unix(sinceEpoch, 0)
-		messages, err := h.service.GetImmediateItems(ctx, timelines, since, 16)
+		var messages []core.TimelineItem
+
+		if subscription != "" {
+			messages, err = h.service.GetImmediateItemsFromSubscription(ctx, subscription, since, 16)
+		} else {
+			messages, err = h.service.GetImmediateItems(ctx, timelines, since, 16)
+		}
 
 		if err != nil {
 			span.RecordError(err)
@@ -94,13 +118,20 @@ func (h handler) Range(c echo.Context) error {
 		}
 
 		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": messages})
+
 	} else if queryUntil != "" {
 		untilEpoch, err := strconv.ParseInt(queryUntil, 10, 64)
 		if err != nil {
 			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
 		}
 		until := time.Unix(untilEpoch, 0)
-		messages, err := h.service.GetRecentItems(ctx, timelines, until, 16)
+		var messages []core.TimelineItem
+
+		if subscription != "" {
+			messages, err = h.service.GetRecentItemsFromSubscription(ctx, subscription, until, 16)
+		} else {
+			messages, err = h.service.GetRecentItems(ctx, timelines, until, 16)
+		}
 
 		if err != nil {
 			span.RecordError(err)
@@ -115,7 +146,7 @@ func (h handler) Range(c echo.Context) error {
 
 // List returns timeline ids which filtered by specific schema
 func (h handler) List(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerList")
+	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.List")
 	defer span.End()
 
 	schema := c.QueryParam("schema")
@@ -129,7 +160,7 @@ func (h handler) List(c echo.Context) error {
 
 // ListMine returns timeline ids which filtered by specific schema
 func (h handler) ListMine(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerListMine")
+	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.ListMine")
 	defer span.End()
 
 	requester, ok := c.Get(core.RequesterIdCtxKey).(string)
@@ -147,7 +178,7 @@ func (h handler) ListMine(c echo.Context) error {
 
 // Remove is remove timeline element from timeline
 func (h handler) Remove(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerRemove")
+	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.Remove")
 	defer span.End()
 
 	timelineID := c.Param("timeline")
@@ -180,7 +211,7 @@ func (h handler) Remove(c echo.Context) error {
 
 // Checkpoint receives events from remote domains
 func (h handler) Checkpoint(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerCheckpoint")
+	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.Checkpoint")
 	defer span.End()
 
 	var packet checkpointPacket
@@ -205,7 +236,7 @@ func (h handler) Checkpoint(c echo.Context) error {
 }
 
 func (h handler) EventCheckpoint(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerEventCheckpoint")
+	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.EventCheckpoint")
 	defer span.End()
 
 	var event core.Event
@@ -226,7 +257,7 @@ func (h handler) EventCheckpoint(c echo.Context) error {
 
 // GetChunks
 func (h handler) GetChunks(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetChunks")
+	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.GetChunks")
 	defer span.End()
 
 	timelinesStr := c.QueryParam("timelines")

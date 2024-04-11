@@ -67,17 +67,18 @@ func (mr *MockServiceMockRecorder) Count(ctx interface{}) *gomock.Call {
 }
 
 // DeleteTimeline mocks base method.
-func (m *MockService) DeleteTimeline(ctx context.Context, timelineID string) error {
+func (m *MockService) DeleteTimeline(ctx context.Context, document string) (core.Timeline, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteTimeline", ctx, timelineID)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret := m.ctrl.Call(m, "DeleteTimeline", ctx, document)
+	ret0, _ := ret[0].(core.Timeline)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // DeleteTimeline indicates an expected call of DeleteTimeline.
-func (mr *MockServiceMockRecorder) DeleteTimeline(ctx, timelineID interface{}) *gomock.Call {
+func (mr *MockServiceMockRecorder) DeleteTimeline(ctx, document interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteTimeline", reflect.TypeOf((*MockService)(nil).DeleteTimeline), ctx, timelineID)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteTimeline", reflect.TypeOf((*MockService)(nil).DeleteTimeline), ctx, document)
 }
 
 // DistributeEvent mocks base method.
@@ -139,6 +140,21 @@ func (mr *MockServiceMockRecorder) GetImmediateItems(ctx, timelines, since, limi
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetImmediateItems", reflect.TypeOf((*MockService)(nil).GetImmediateItems), ctx, timelines, since, limit)
 }
 
+// GetImmediateItemsFromSubscription mocks base method.
+func (m *MockService) GetImmediateItemsFromSubscription(ctx context.Context, subscription string, since time.Time, limit int) ([]core.TimelineItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetImmediateItemsFromSubscription", ctx, subscription, since, limit)
+	ret0, _ := ret[0].([]core.TimelineItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetImmediateItemsFromSubscription indicates an expected call of GetImmediateItemsFromSubscription.
+func (mr *MockServiceMockRecorder) GetImmediateItemsFromSubscription(ctx, subscription, since, limit interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetImmediateItemsFromSubscription", reflect.TypeOf((*MockService)(nil).GetImmediateItemsFromSubscription), ctx, subscription, since, limit)
+}
+
 // GetItem mocks base method.
 func (m *MockService) GetItem(ctx context.Context, timeline, id string) (core.TimelineItem, error) {
 	m.ctrl.T.Helper()
@@ -167,6 +183,21 @@ func (m *MockService) GetRecentItems(ctx context.Context, timelines []string, un
 func (mr *MockServiceMockRecorder) GetRecentItems(ctx, timelines, until, limit interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRecentItems", reflect.TypeOf((*MockService)(nil).GetRecentItems), ctx, timelines, until, limit)
+}
+
+// GetRecentItemsFromSubscription mocks base method.
+func (m *MockService) GetRecentItemsFromSubscription(ctx context.Context, subscription string, until time.Time, limit int) ([]core.TimelineItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetRecentItemsFromSubscription", ctx, subscription, until, limit)
+	ret0, _ := ret[0].([]core.TimelineItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetRecentItemsFromSubscription indicates an expected call of GetRecentItemsFromSubscription.
+func (mr *MockServiceMockRecorder) GetRecentItemsFromSubscription(ctx, subscription, until, limit interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRecentItemsFromSubscription", reflect.TypeOf((*MockService)(nil).GetRecentItemsFromSubscription), ctx, subscription, until, limit)
 }
 
 // GetTimeline mocks base method.

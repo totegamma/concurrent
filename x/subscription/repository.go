@@ -140,12 +140,12 @@ func (r *repository) CreateItem(ctx context.Context, item core.SubscriptionItem)
 	ctx, span := tracer.Start(ctx, "Subscription.Repository.CreateItem")
 	defer span.End()
 
-    if len(item.Subscription) == 27 {
-        if item.Subscription[0] != 's' {
-            return item, errors.New("subscription typed-id must start with 's'")
-        }
-        item.Subscription = item.Subscription[1:]
-    }
+	if len(item.Subscription) == 27 {
+		if item.Subscription[0] != 's' {
+			return item, errors.New("subscription typed-id must start with 's'")
+		}
+		item.Subscription = item.Subscription[1:]
+	}
 
 	err := r.db.WithContext(ctx).Create(&item)
 	return item, err.Error
@@ -156,12 +156,12 @@ func (r *repository) GetItem(ctx context.Context, id, subscription string) (core
 	ctx, span := tracer.Start(ctx, "Subscription.Repository.GetItem")
 	defer span.End()
 
-    if len(subscription) == 27 {
-        if subscription[0] != 's' {
-            return core.SubscriptionItem{}, errors.New("subscription typed-id must start with 's'")
-        }
-        subscription = subscription[1:]
-    }
+	if len(subscription) == 27 {
+		if subscription[0] != 's' {
+			return core.SubscriptionItem{}, errors.New("subscription typed-id must start with 's'")
+		}
+		subscription = subscription[1:]
+	}
 
 	var obj core.SubscriptionItem
 	return obj, r.db.WithContext(ctx).First(&obj, "id = ? and subscription = ?", id, subscription).Error
@@ -172,12 +172,12 @@ func (r *repository) DeleteItem(ctx context.Context, id, subscription string) er
 	ctx, span := tracer.Start(ctx, "Subscription.Repository.DeleteItem")
 	defer span.End()
 
-    if len(subscription) == 27 {
-        if subscription[0] != 's' {
-            return errors.New("subscription typed-id must start with 's'")
-        }
-        subscription = subscription[1:]
-    }
+	if len(subscription) == 27 {
+		if subscription[0] != 's' {
+			return errors.New("subscription typed-id must start with 's'")
+		}
+		subscription = subscription[1:]
+	}
 
 	// get deleted
 	var deleted core.SubscriptionItem

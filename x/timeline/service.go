@@ -21,6 +21,7 @@ import (
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/semanticid"
+	"github.com/totegamma/concurrent/x/subscription"
 	"github.com/totegamma/concurrent/x/util"
 
 	"go.opentelemetry.io/otel"
@@ -32,7 +33,9 @@ import (
 // Service is the interface for timeline service
 type Service interface {
 	GetRecentItems(ctx context.Context, timelines []string, until time.Time, limit int) ([]core.TimelineItem, error)
+	GetRecentItemsFromSubscription(ctx context.Context, subscription string, until time.Time, limit int) ([]core.TimelineItem, error)
 	GetImmediateItems(ctx context.Context, timelines []string, since time.Time, limit int) ([]core.TimelineItem, error)
+	GetImmediateItemsFromSubscription(ctx context.Context, subscription string, since time.Time, limit int) ([]core.TimelineItem, error)
 	GetItem(ctx context.Context, timeline string, id string) (core.TimelineItem, error)
 	PostItem(ctx context.Context, timeline string, item core.TimelineItem, body interface{}) error
 	RemoveItem(ctx context.Context, timeline string, id string)
@@ -60,16 +63,31 @@ type Service interface {
 }
 
 type service struct {
-	repository Repository
-	entity     entity.Service
-	domain     domain.Service
-	semanticid semanticid.Service
-	config     util.Config
+	repository   Repository
+	entity       entity.Service
+	domain       domain.Service
+	semanticid   semanticid.Service
+	subscription subscription.Service
+	config       util.Config
 }
 
 // NewService creates a new service
-func NewService(repository Repository, entity entity.Service, domain domain.Service, semanticid semanticid.Service, config util.Config) Service {
-	return &service{repository, entity, domain, semanticid, config}
+func NewService(
+	repository Repository,
+	entity entity.Service,
+	domain domain.Service,
+	semanticid semanticid.Service,
+	subscription subscription.Service,
+	config util.Config,
+) Service {
+	return &service{
+		repository,
+		entity,
+		domain,
+		semanticid,
+		subscription,
+		config,
+	}
 }
 
 func (s *service) Checkpoint(ctx context.Context, timeline string, item core.TimelineItem, body interface{}, principal string, requesterDomain string) error {
@@ -180,6 +198,23 @@ func (s *service) GetChunks(ctx context.Context, timelines []string, until time.
 	return items, nil
 }
 
+func (s *service) GetRecentItemsFromSubscription(ctx context.Context, subscription string, until time.Time, limit int) ([]core.TimelineItem, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetRecentItemsFromSubscription")
+	defer span.End()
+
+	sub, err := s.subscription.GetSubscription(ctx, subscription)
+	if err != nil {
+		return nil, err
+	}
+
+	timelines := make([]string, 0)
+	for _, t := range sub.Items {
+		timelines = append(timelines, t.ID)
+	}
+
+	return s.GetRecentItems(ctx, timelines, until, limit)
+}
+
 // GetRecentItems returns recent message from timelines
 func (s *service) GetRecentItems(ctx context.Context, timelines []string, until time.Time, limit int) ([]core.TimelineItem, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGetRecentItems")
@@ -266,6 +301,23 @@ func (s *service) GetRecentItems(ctx context.Context, timelines []string, until 
 	chopped := uniq[:min(len(uniq), limit)]
 
 	return chopped, nil
+}
+
+func (s *service) GetImmediateItemsFromSubscription(ctx context.Context, subscription string, since time.Time, limit int) ([]core.TimelineItem, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetImmediateItemsFromSubscription")
+	defer span.End()
+
+	sub, err := s.subscription.GetSubscription(ctx, subscription)
+	if err != nil {
+		return nil, err
+	}
+
+	timelines := make([]string, 0)
+	for _, t := range sub.Items {
+		timelines = append(timelines, t.ID)
+	}
+
+	return s.GetImmediateItems(ctx, timelines, since, limit)
 }
 
 // GetImmediateItems returns immediate message from timelines

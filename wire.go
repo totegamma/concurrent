@@ -42,7 +42,7 @@ var subscriptionServiceProvider = wire.NewSet(subscription.NewService, subscript
 
 // Lv2
 var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository, SetupEntityService)
-var timelineServiceProvider = wire.NewSet(timeline.NewService, timeline.NewRepository, SetupEntityService, SetupDomainService, SetupSchemaService, SetupSemanticidService)
+var timelineServiceProvider = wire.NewSet(timeline.NewService, timeline.NewRepository, SetupEntityService, SetupDomainService, SetupSchemaService, SetupSemanticidService, SetupSubscriptionService)
 
 // Lv3
 var profileServiceProvider = wire.NewSet(profile.NewService, profile.NewRepository, SetupKeyService, SetupSchemaService, SetupSemanticidService)

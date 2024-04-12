@@ -289,8 +289,6 @@ func main() {
 	apiV1.GET("/timelines/recent", timelineHandler.Recent)
 	apiV1.GET("/timelines/range", timelineHandler.Range)
 	apiV1.GET("/timelines/chunks", timelineHandler.GetChunks)
-	apiV1.POST("/timelines/checkpoint/item", timelineHandler.Checkpoint, auth.Restrict(auth.ISUNITED))
-	apiV1.POST("/timelines/checkpoint/event", timelineHandler.EventCheckpoint, auth.Restrict(auth.ISUNITED))
 
 	// userkv
 	apiV1.GET("/kv/:key", userkvHandler.Get, auth.Restrict(auth.ISLOCAL))

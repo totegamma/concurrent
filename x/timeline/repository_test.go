@@ -223,8 +223,8 @@ func TestRepository(t *testing.T) {
 	remoteKey1 := "timeline:body:all:t11111111111111111111111111@remote.com:" + core.Time2Chunk(pivot.Add(-time.Minute*30))
 
 	// test SaveToCache
-	testchunks := make(map[string]Chunk)
-	testchunks["t00000000000000000000000000@remote.com"] = Chunk{
+	testchunks := make(map[string]core.Chunk)
+	testchunks["t00000000000000000000000000@remote.com"] = core.Chunk{
 		Key: remoteKey0,
 		Items: []core.TimelineItem{
 			{
@@ -237,7 +237,7 @@ func TestRepository(t *testing.T) {
 	}
 	testJson0, err := json.Marshal(testchunks["t00000000000000000000000000@remote.com"].Items[0])
 	testJson0 = append(testJson0, ',')
-	testchunks["t11111111111111111111111111@remote.com"] = Chunk{
+	testchunks["t11111111111111111111111111@remote.com"] = core.Chunk{
 		Key: remoteKey1,
 		Items: []core.TimelineItem{
 			{

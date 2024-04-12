@@ -5,11 +5,11 @@ import (
 	"encoding/json"
 	"fmt"
 
+	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/util"
-	"github.com/totegamma/concurrent/client"
 )
 
 // Service is the interface for entity service
@@ -52,24 +52,24 @@ func (s *service) Ack(ctx context.Context, document string, signature string) er
 	case "ack":
 		address, err := s.entity.GetAddress(ctx, doc.To)
 		if err == nil {
-            packet := core.Commit {
-                Document: document,
-                Signature: signature,
-            }
+			packet := core.Commit{
+				Document:  document,
+				Signature: signature,
+			}
 
-            packetStr, err := json.Marshal(packet)
-            if err != nil {
-                span.RecordError(err)
-                return err
-            }
+			packetStr, err := json.Marshal(packet)
+			if err != nil {
+				span.RecordError(err)
+				return err
+			}
 
-            resp, err := client.Commit(ctx, address.Domain, string(packetStr))
-            if err != nil {
-                span.RecordError(err)
-                return err
-            }
+			resp, err := client.Commit(ctx, address.Domain, string(packetStr))
+			if err != nil {
+				span.RecordError(err)
+				return err
+			}
 
-            defer resp.Body.Close()
+			defer resp.Body.Close()
 		}
 
 		return s.repository.Ack(ctx, &core.Ack{
@@ -82,18 +82,18 @@ func (s *service) Ack(ctx context.Context, document string, signature string) er
 		address, err := s.entity.GetAddress(ctx, doc.To)
 		if err == nil {
 
-            packet := core.Commit {
-                Document: document,
-                Signature: signature,
-            }
+			packet := core.Commit{
+				Document:  document,
+				Signature: signature,
+			}
 
-            packetStr, err := json.Marshal(packet)
-            if err != nil {
-                span.RecordError(err)
-                return err
-            }
+			packetStr, err := json.Marshal(packet)
+			if err != nil {
+				span.RecordError(err)
+				return err
+			}
 
-            resp, err := client.Commit(ctx, address.Domain, string(packetStr))
+			resp, err := client.Commit(ctx, address.Domain, string(packetStr))
 			if err != nil {
 				span.RecordError(err)
 				return err

@@ -3,8 +3,8 @@ package store
 import (
 	"net/http"
 
-    "github.com/totegamma/concurrent/x/core"
 	"github.com/labstack/echo/v4"
+	"github.com/totegamma/concurrent/x/core"
 	"go.opentelemetry.io/otel"
 )
 

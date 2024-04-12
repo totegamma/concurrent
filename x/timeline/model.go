@@ -36,17 +36,7 @@ type checkpointPacket struct {
 	Principal string            `json:"principal"`
 }
 
-type chunkResponse struct {
-	Status  string           `json:"status"`
-	Content map[string]Chunk `json:"content"`
-}
-
 type timelineResponse struct {
 	Status  string        `json:"status"`
 	Content core.Timeline `json:"content"`
-}
-
-type Chunk struct {
-	Key   string              `json:"key"`
-	Items []core.TimelineItem `json:"items"`
 }

@@ -217,13 +217,19 @@ type Event struct {
 	Type       string       `json:"type"`
 	Action     string       `json:"action"`
 	Item       TimelineItem `json:"item"`
-	Body       interface{}  `json:"body"`
+	Document   string       `json:"document"`
+	Signature  string       `json:"signature"`
 }
 
 type UserKV struct {
 	Owner string `json:"owner" gorm:"primaryKey;type:char(42)"`
 	Key   string `json:"key" gorm:"primaryKey;type:text"`
 	Value string `json:"value" gorm:"type:text"`
+}
+
+type Chunk struct {
+	Key   string         `json:"key"`
+	Items []TimelineItem `json:"items"`
 }
 
 func Time2Chunk(t time.Time) string {

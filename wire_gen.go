@@ -60,7 +60,7 @@ func SetupMessageService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, ma
 	repository := message.NewRepository(db, mc, service)
 	timelineService := SetupTimelineService(db, rdb, mc, manager, config)
 	keyService := SetupKeyService(db, rdb, mc, config)
-	messageService := message.NewService(rdb, repository, timelineService, keyService)
+	messageService := message.NewService(rdb, repository, timelineService, keyService, config)
 	return messageService
 }
 
@@ -79,7 +79,7 @@ func SetupAssociationService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client
 	timelineService := SetupTimelineService(db, rdb, mc, manager, config)
 	messageService := SetupMessageService(db, rdb, mc, manager, config)
 	keyService := SetupKeyService(db, rdb, mc, config)
-	associationService := association.NewService(repository, timelineService, messageService, keyService)
+	associationService := association.NewService(repository, timelineService, messageService, keyService, config)
 	return associationService
 }
 

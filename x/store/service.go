@@ -99,9 +99,9 @@ func (s *service) Commit(ctx context.Context, document string, signature string,
 		typ := doc.Target[0]
 		switch typ {
 		case 'm': // message
-			return s.message.Delete(ctx, document)
+			return s.message.Delete(ctx, document, signature)
 		case 'a': // association
-			return s.association.Delete(ctx, document)
+			return s.association.Delete(ctx, document, signature)
 		case 'p': // profile
 			return s.profile.Delete(ctx, document)
 		case 't': // timeline

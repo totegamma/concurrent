@@ -5,7 +5,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 
+	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/x/cdid"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/key"
@@ -16,8 +18,8 @@ import (
 
 // Service is the interface for association service
 type Service interface {
-	Create(ctx context.Context, documentStr string, signature string) (core.Association, error)
-	Delete(ctx context.Context, documentStr string) (core.Association, error)
+	Create(ctx context.Context, document, signature string) (core.Association, error)
+	Delete(ctx context.Context, document, signature string) (core.Association, error)
 
 	Get(ctx context.Context, id string) (core.Association, error)
 	GetOwn(ctx context.Context, author string) ([]core.Association, error)
@@ -35,11 +37,24 @@ type service struct {
 	timeline timeline.Service
 	message  message.Service
 	key      key.Service
+	config   util.Config
 }
 
 // NewService creates a new association service
-func NewService(repo Repository, timeline timeline.Service, message message.Service, key key.Service) Service {
-	return &service{repo, timeline, message, key}
+func NewService(
+	repo Repository,
+	timeline timeline.Service,
+	message message.Service,
+	key key.Service,
+	config util.Config,
+) Service {
+	return &service{
+		repo,
+		timeline,
+		message,
+		key,
+		config,
+	}
 }
 
 // Count returns the count number of messages
@@ -53,32 +68,32 @@ func (s *service) Count(ctx context.Context) (int64, error) {
 // PostAssociation creates a new association
 // If targetType is messages, it also posts the association to the target message's timelines
 // returns the created association
-func (s *service) Create(ctx context.Context, documentStr string, signature string) (core.Association, error) {
+func (s *service) Create(ctx context.Context, document string, signature string) (core.Association, error) {
 	ctx, span := tracer.Start(ctx, "ServicePostAssociation")
 	defer span.End()
 
-	var document core.CreateAssociation[any]
-	err := json.Unmarshal([]byte(documentStr), &document)
+	var doc core.CreateAssociation[any]
+	err := json.Unmarshal([]byte(document), &doc)
 	if err != nil {
 		span.RecordError(err)
 		return core.Association{}, err
 	}
 
-	hash := util.GetHash([]byte(documentStr))
+	hash := util.GetHash([]byte(document))
 	hash10 := [10]byte{}
 	copy(hash10[:], hash[:10])
-	signedAt := document.SignedAt
+	signedAt := doc.SignedAt
 	id := cdid.New(hash10, signedAt).String()
 
 	association := core.Association{
 		ID:        id,
-		Author:    document.Signer,
-		Schema:    document.Schema,
-		TargetID:  document.Target,
-		Document:  documentStr,
+		Author:    doc.Signer,
+		Schema:    doc.Schema,
+		TargetID:  doc.Target,
+		Document:  document,
 		Signature: signature,
-		Timelines: document.Timelines,
-		Variant:   document.Variant,
+		Timelines: doc.Timelines,
+		Variant:   doc.Variant,
 	}
 
 	created, err := s.repo.Create(ctx, association)
@@ -87,44 +102,112 @@ func (s *service) Create(ctx context.Context, documentStr string, signature stri
 		return created, err // TODO: if err is duplicate key error, server should return 409
 	}
 
-	if document.Target[0] != 'm' {
-		return created, nil
-	}
+	if doc.Target[0] == 'm' {
 
-	targetMessage, err := s.message.Get(ctx, created.TargetID, document.Signer)
-	if err != nil {
-		span.RecordError(err)
-		return created, err
-	}
-
-	item := core.TimelineItem{
-		ObjectID: created.ID,
-		Owner:    targetMessage.Author,
-		Author:   &created.Author,
-	}
-
-	for _, timeline := range association.Timelines {
-		err = s.timeline.PostItem(ctx, timeline, item, created)
+		targetMessage, err := s.message.Get(ctx, created.TargetID, doc.Signer)
 		if err != nil {
-			slog.ErrorContext(ctx, "failed to post timeline", slog.String("error", err.Error()), slog.String("module", "association"))
 			span.RecordError(err)
+			return created, err
 		}
-	}
 
-	for _, postto := range targetMessage.Timelines {
-		event := core.Event{
-			TimelineID: postto,
-			Action:     "create",
-			Type:       "association",
-			Item:       item,
-			Body:       created,
-		}
-		err = s.timeline.DistributeEvent(ctx, postto, event)
+		destinations := make(map[string][]string)
+		for _, timeline := range doc.Timelines {
+			normalized, err := s.timeline.NormalizeTimelineID(ctx, timeline)
+			if err != nil {
+				span.RecordError(err)
+				continue
+			}
+			split := strings.Split(normalized, "@")
+			if len(split) != 2 {
+				span.RecordError(fmt.Errorf("invalid timeline id: %s", normalized))
+				continue
+			}
+			domain := split[1]
 
-		if err != nil {
-			slog.ErrorContext(ctx, "failed to publish message to Redis", slog.String("error", err.Error()), slog.String("module", "association"))
-			span.RecordError(err)
+			if _, ok := destinations[domain]; !ok {
+				destinations[domain] = []string{}
+			}
+			destinations[domain] = append(destinations[domain], timeline)
 		}
+
+		for domain, timelines := range destinations {
+			if domain == s.config.Concurrent.FQDN {
+				for _, timeline := range timelines {
+					posted, err := s.timeline.PostItem(ctx, timeline, core.TimelineItem{
+						ObjectID: created.ID,
+						Owner:    targetMessage.Author,
+						Author:   &created.Author,
+					}, document, signature)
+					if err != nil {
+						span.RecordError(err)
+						continue
+					}
+
+					event := core.Event{
+						TimelineID: timeline,
+						Action:     "create",
+						Type:       "association",
+						Item:       posted,
+						Document:   document,
+						Signature:  signature,
+					}
+
+					err = s.timeline.PublishEvent(ctx, event)
+					if err != nil {
+						slog.ErrorContext(ctx, "failed to publish event", slog.String("error", err.Error()), slog.String("module", "timeline"))
+						span.RecordError(err)
+						continue
+					}
+				}
+			} else {
+				// send to remote
+				packet := core.Commit{
+					Document:  document,
+					Signature: signature,
+				}
+
+				packetStr, err := json.Marshal(packet)
+				if err != nil {
+					span.RecordError(err)
+					continue
+				}
+				client.Commit(ctx, domain, string(packetStr))
+			}
+		}
+
+		// オリジナルの送信先のうち、まだ送ってないドメインがあれば追加で配る
+		remainedDomains := make(map[string]bool)
+		for _, timeline := range targetMessage.Timelines {
+			normalized, err := s.timeline.NormalizeTimelineID(ctx, timeline)
+			if err != nil {
+				span.RecordError(err)
+				continue
+			}
+			split := strings.Split(normalized, "@")
+			if len(split) != 2 {
+				span.RecordError(fmt.Errorf("invalid timeline id: %s", normalized))
+				continue
+			}
+			domain := split[1]
+			if _, ok := destinations[domain]; !ok {
+				remainedDomains[domain] = true
+			}
+		}
+
+		for domain := range remainedDomains {
+			packet := core.Commit{
+				Document:  document,
+				Signature: signature,
+			}
+
+			packetStr, err := json.Marshal(packet)
+			if err != nil {
+				span.RecordError(err)
+				continue
+			}
+			client.Commit(ctx, domain, string(packetStr))
+		}
+
 	}
 
 	return created, nil
@@ -147,24 +230,24 @@ func (s *service) GetOwn(ctx context.Context, author string) ([]core.Association
 }
 
 // Delete deletes an association by ID
-func (s *service) Delete(ctx context.Context, documentStr string) (core.Association, error) {
+func (s *service) Delete(ctx context.Context, document, signature string) (core.Association, error) {
 	ctx, span := tracer.Start(ctx, "ServiceDelete")
 	defer span.End()
 
-	var document core.DeleteDocument
-	err := json.Unmarshal([]byte(documentStr), &document)
+	var doc core.DeleteDocument
+	err := json.Unmarshal([]byte(document), &doc)
 	if err != nil {
 		span.RecordError(err)
 		return core.Association{}, err
 	}
 
-	targetAssociation, err := s.repo.Get(ctx, document.Target)
+	targetAssociation, err := s.repo.Get(ctx, doc.Target)
 	if err != nil {
 		span.RecordError(err)
 		return core.Association{}, err
 	}
 
-	requester := document.Signer
+	requester := doc.Signer
 
 	targetMessage, err := s.message.Get(ctx, targetAssociation.TargetID, requester)
 	if err != nil {
@@ -176,30 +259,47 @@ func (s *service) Delete(ctx context.Context, documentStr string) (core.Associat
 		return core.Association{}, fmt.Errorf("you are not authorized to perform this action")
 	}
 
-	deleted, err := s.repo.Delete(ctx, document.Target)
+	deleted, err := s.repo.Delete(ctx, doc.Target)
 	if err != nil {
 		span.RecordError(err)
 		return core.Association{}, err
 	}
 
-	if deleted.TargetID[0] != 'm' { // distribute is needed only when targetType is messages
-		return deleted, nil
-	}
-
-	for _, posted := range targetMessage.Timelines {
+	for _, posted := range targetAssociation.Timelines {
 		event := core.Event{
 			TimelineID: posted,
 			Type:       "association",
 			Action:     "delete",
-			Body:       deleted,
+			Document:   document,
+			Signature:  signature,
 		}
-		err := s.timeline.DistributeEvent(ctx, posted, event)
+		err := s.timeline.PublishEvent(ctx, event)
 		if err != nil {
 			slog.ErrorContext(ctx, "failed to publish message to Redis", slog.String("error", err.Error()), slog.String("module", "association"))
 			span.RecordError(err)
 			return deleted, err
 		}
 	}
+
+	if deleted.TargetID[0] == 'm' { // distribute is needed only when targetType is messages
+		// TODO: まだ送ってないものだけに絞る
+		for _, posted := range targetMessage.Timelines {
+			event := core.Event{
+				TimelineID: posted,
+				Type:       "association",
+				Action:     "delete",
+				Document:   document,
+				Signature:  signature,
+			}
+			err := s.timeline.PublishEvent(ctx, event)
+			if err != nil {
+				slog.ErrorContext(ctx, "failed to publish message to Redis", slog.String("error", err.Error()), slog.String("module", "association"))
+				span.RecordError(err)
+				return deleted, err
+			}
+		}
+	}
+
 	return deleted, nil
 }
 

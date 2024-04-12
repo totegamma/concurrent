@@ -7,21 +7,16 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/pkg/errors"
-	"io"
 	"log/slog"
 	"strconv"
 	"strings"
 	"time"
 
-	"net/http"
-
+	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/util"
 	"golang.org/x/exp/slices"
-
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/propagation"
 )
 
 // Service is the interface for entity service
@@ -67,55 +62,17 @@ func (s *service) PullEntityFromRemote(ctx context.Context, id, hintDomain strin
 	ctx, span := tracer.Start(ctx, "RepositoryPullEntityFromRemote")
 	defer span.End()
 
-	client := new(http.Client)
-	client.Timeout = 3 * time.Second
-	req, err := http.NewRequest("GET", "https://"+hintDomain+"/api/v1/address/"+id, nil)
+	targetDomain, err := client.ResolveAddress(ctx, hintDomain, id)
 	if err != nil {
 		span.RecordError(err)
 		return "", err
 	}
 
-	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
-
-	resp, err := client.Do(req)
+	entity, err := client.GetEntity(ctx, targetDomain, id)
 	if err != nil {
 		span.RecordError(err)
 		return "", err
 	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-
-	var remoteAddress addressResponse
-	json.Unmarshal(body, &remoteAddress)
-
-	if remoteAddress.Status != "ok" {
-		return "", fmt.Errorf("Remote address is not found")
-	}
-
-	targetDomain := remoteAddress.Content
-
-	req, err = http.NewRequest("GET", "https://"+targetDomain+"/api/v1/entity/"+id, nil)
-	if err != nil {
-		span.RecordError(err)
-		return "", err
-	}
-
-	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
-
-	resp, err = client.Do(req)
-	if err != nil {
-		span.RecordError(err)
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	body, _ = io.ReadAll(resp.Body)
-
-	var remoteEntity entityResponse
-	json.Unmarshal(body, &remoteEntity)
-
-	entity := remoteEntity.Content
 
 	err = util.VerifySignature([]byte(entity.AffiliationDocument), []byte(entity.AffiliationSignature), entity.ID)
 	if err != nil {

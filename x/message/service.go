@@ -5,8 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/x/cdid"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/key"
@@ -19,8 +21,8 @@ import (
 type Service interface {
 	Get(ctx context.Context, id string, requester string) (core.Message, error)
 	GetWithOwnAssociations(ctx context.Context, id string, requester string) (core.Message, error)
-	Create(ctx context.Context, objectStr string, signature string) (core.Message, error)
-	Delete(ctx context.Context, id string) (core.Message, error)
+	Create(ctx context.Context, document string, signature string) (core.Message, error)
+	Delete(ctx context.Context, document, signature string) (core.Message, error)
 	Count(ctx context.Context) (int64, error)
 }
 
@@ -29,11 +31,12 @@ type service struct {
 	repo     Repository
 	timeline timeline.Service
 	key      key.Service
+	config   util.Config
 }
 
 // NewService creates a new message service
-func NewService(rdb *redis.Client, repo Repository, timeline timeline.Service, key key.Service) Service {
-	return &service{rdb, repo, timeline, key}
+func NewService(rdb *redis.Client, repo Repository, timeline timeline.Service, key key.Service, config util.Config) Service {
+	return &service{rdb, repo, timeline, key, config}
 }
 
 // Count returns the count number of messages
@@ -102,36 +105,34 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 
 // Create creates a new message
 // It also posts the message to the timelines
-func (s *service) Create(ctx context.Context, objectStr string, signature string) (core.Message, error) {
+func (s *service) Create(ctx context.Context, document string, signature string) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "ServicePostMessage")
 	defer span.End()
 
-	// TODO: check requester is authorized to post message
-
-	var object core.CreateMessage[any]
-	err := json.Unmarshal([]byte(objectStr), &object)
+	var doc core.CreateMessage[any]
+	err := json.Unmarshal([]byte(document), &doc)
 	if err != nil {
 		span.RecordError(err)
 		return core.Message{}, err
 	}
 
-	hash := util.GetHash([]byte(objectStr))
+	hash := util.GetHash([]byte(document))
 	hash10 := [10]byte{}
 	copy(hash10[:], hash[:10])
-	signedAt := object.SignedAt
+	signedAt := doc.SignedAt
 	id := cdid.New(hash10, signedAt).String()
 
 	message := core.Message{
 		ID:        id,
-		Author:    object.Signer,
-		Schema:    object.Schema,
-		Document:  objectStr,
+		Author:    doc.Signer,
+		Schema:    doc.Schema,
+		Document:  document,
 		Signature: signature,
-		Timelines: object.Timelines,
+		Timelines: doc.Timelines,
 	}
 
-	if !object.SignedAt.IsZero() {
-		message.CDate = object.SignedAt
+	if !doc.SignedAt.IsZero() {
+		message.CDate = doc.SignedAt
 	}
 
 	created, err := s.repo.Create(ctx, message)
@@ -141,7 +142,7 @@ func (s *service) Create(ctx context.Context, objectStr string, signature string
 	}
 
 	ispublic := true
-	for _, timeline := range object.Timelines {
+	for _, timeline := range doc.Timelines {
 		ok := s.timeline.HasReadAccess(ctx, timeline, "")
 		if !ok {
 			ispublic = false
@@ -149,46 +150,109 @@ func (s *service) Create(ctx context.Context, objectStr string, signature string
 		}
 	}
 
-	var body interface{}
+	sendDocument := ""
+	sendSignature := ""
 	if ispublic {
-		body = created
+		sendDocument = document
+		sendSignature = signature
 	}
 
-	for _, timeline := range message.Timelines {
-		s.timeline.PostItem(ctx, timeline, core.TimelineItem{
-			ObjectID:   created.ID,
-			Owner:      object.Signer,
-			TimelineID: timeline,
-		}, body)
+	destinations := make(map[string][]string)
+	for _, timeline := range doc.Timelines {
+		normalized, err := s.timeline.NormalizeTimelineID(ctx, timeline)
+		if err != nil {
+			span.RecordError(err)
+			continue
+		}
+		split := strings.Split(normalized, "@")
+		if len(split) != 2 {
+			span.RecordError(fmt.Errorf("invalid timeline id: %s", normalized))
+			continue
+		}
+		domain := split[1]
+
+		if _, ok := destinations[domain]; !ok {
+			destinations[domain] = []string{}
+		}
+		destinations[domain] = append(destinations[domain], timeline)
 	}
+
+	for domain, timelines := range destinations {
+		if domain == s.config.Concurrent.FQDN {
+			// localなら、timelineのエントリを生成→Eventを発行
+			for _, timeline := range timelines {
+				posted, err := s.timeline.PostItem(ctx, timeline, core.TimelineItem{
+					ObjectID:   created.ID,
+					Owner:      doc.Signer,
+					TimelineID: timeline,
+				}, sendDocument, sendSignature)
+				if err != nil {
+					span.RecordError(err)
+					continue
+				}
+
+				// eventを放流
+				event := core.Event{
+					TimelineID: timeline,
+					Action:     "create",
+					Type:       "message",
+					Item:       posted,
+					Document:   document,
+					Signature:  signature,
+				}
+
+				err = s.timeline.PublishEvent(ctx, event)
+				if err != nil {
+					slog.ErrorContext(ctx, "failed to publish event", slog.String("error", err.Error()), slog.String("module", "timeline"))
+					span.RecordError(err)
+					continue
+				}
+			}
+		} else {
+			// remoteならdocumentをリレー
+			packet := core.Commit{
+				Document:  document,
+				Signature: signature,
+			}
+
+			packetStr, err := json.Marshal(packet)
+			if err != nil {
+				span.RecordError(err)
+				continue
+			}
+			client.Commit(ctx, domain, string(packetStr))
+		}
+	}
+
+	// TODO: 実際に送信できたstreamの一覧を返すべき
 
 	return created, nil
 }
 
 // Delete deletes a message by ID
 // It also emits a delete event to the sockets
-func (s *service) Delete(ctx context.Context, documentStr string) (core.Message, error) {
+func (s *service) Delete(ctx context.Context, document, signature string) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "ServiceDelete")
 	defer span.End()
 
-	var document core.DeleteDocument
-	err := json.Unmarshal([]byte(documentStr), &document)
+	var doc core.DeleteDocument
+	err := json.Unmarshal([]byte(document), &doc)
 	if err != nil {
 		span.RecordError(err)
 		return core.Message{}, err
 	}
 
-	deleteTarget, err := s.repo.Get(ctx, document.Target)
+	deleteTarget, err := s.repo.Get(ctx, doc.Target)
 	if err != nil {
 		span.RecordError(err)
 		return core.Message{}, err
 	}
 
-	if deleteTarget.Author != document.Signer {
+	if deleteTarget.Author != doc.Signer {
 		return core.Message{}, fmt.Errorf("you are not authorized to perform this action")
 	}
 
-	deleted, err := s.repo.Delete(ctx, document.Target)
+	deleted, err := s.repo.Delete(ctx, doc.Target)
 	slog.DebugContext(ctx, fmt.Sprintf("deleted: %v", deleted), slog.String("module", "message"))
 
 	if err != nil {
@@ -201,7 +265,8 @@ func (s *service) Delete(ctx context.Context, documentStr string) (core.Message,
 			TimelineID: desttimeline,
 			Type:       "message",
 			Action:     "delete",
-			Body:       deleted,
+			Document:   document,
+			Signature:  signature,
 		})
 		err := s.rdb.Publish(context.Background(), desttimeline, jsonstr).Err()
 		if err != nil {

@@ -5,14 +5,9 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"time"
-
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/propagation"
 
 	"github.com/pkg/errors"
+	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/util"
@@ -223,29 +218,10 @@ func (s *service) ResolveRemoteSubkey(ctx context.Context, keyID, domain string)
 		return resovation, nil
 	}
 
-	req, err := http.NewRequest("GET", "https://"+domain+"/api/v1/key/"+keyID, nil)
+	keychain, err := client.GetKey(ctx, domain, keyID)
 	if err != nil {
-		span.RecordError(err)
 		return "", err
 	}
-
-	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
-
-	client := new(http.Client)
-	client.Timeout = 3 * time.Second
-	resp, err := client.Do(req)
-	if err != nil {
-		span.RecordError(err)
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-
-	var remoteKey keyResponse
-	json.Unmarshal(body, &remoteKey)
-
-	keychain := remoteKey.Content
 
 	if len(keychain) == 0 {
 		return "", fmt.Errorf("Key not found")

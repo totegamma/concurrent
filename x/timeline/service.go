@@ -3,31 +3,23 @@
 package timeline
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net/http"
 	"sort"
-	"strconv"
 	"strings"
 	"time"
 
-	"github.com/rs/xid"
 	"github.com/totegamma/concurrent/x/cdid"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
-	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/semanticid"
 	"github.com/totegamma/concurrent/x/subscription"
 	"github.com/totegamma/concurrent/x/util"
 
-	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/propagation"
-	"go.opentelemetry.io/otel/trace"
 )
 
 // Service is the interface for timeline service
@@ -37,11 +29,10 @@ type Service interface {
 	GetImmediateItems(ctx context.Context, timelines []string, since time.Time, limit int) ([]core.TimelineItem, error)
 	GetImmediateItemsFromSubscription(ctx context.Context, subscription string, since time.Time, limit int) ([]core.TimelineItem, error)
 	GetItem(ctx context.Context, timeline string, id string) (core.TimelineItem, error)
-	PostItem(ctx context.Context, timeline string, item core.TimelineItem, body interface{}) error
+	PostItem(ctx context.Context, timeline string, item core.TimelineItem, document, signature string) (core.TimelineItem, error)
 	RemoveItem(ctx context.Context, timeline string, id string)
 
-	PublishEventToLocal(ctx context.Context, event core.Event) error
-	DistributeEvent(ctx context.Context, timeline string, event core.Event) error
+	PublishEvent(ctx context.Context, event core.Event) error
 
 	UpsertTimeline(ctx context.Context, document, signature string) (core.Timeline, error)
 	GetTimeline(ctx context.Context, key string) (core.Timeline, error)
@@ -53,13 +44,12 @@ type Service interface {
 	ListTimelineBySchema(ctx context.Context, schema string) ([]core.Timeline, error)
 	ListTimelineByAuthor(ctx context.Context, author string) ([]core.Timeline, error)
 
-	GetChunks(ctx context.Context, timelines []string, pivot time.Time) (map[string]Chunk, error)
-	GetChunksFromRemote(ctx context.Context, host string, timelines []string, pivot time.Time) (map[string]Chunk, error)
-
-	Checkpoint(ctx context.Context, timeline string, item core.TimelineItem, body interface{}, principal string, requesterDomain string) error
+	GetChunks(ctx context.Context, timelines []string, pivot time.Time) (map[string]core.Chunk, error)
+	GetChunksFromRemote(ctx context.Context, host string, timelines []string, pivot time.Time) (map[string]core.Chunk, error)
 
 	ListTimelineSubscriptions(ctx context.Context) (map[string]int64, error)
 	Count(ctx context.Context) (int64, error)
+	NormalizeTimelineID(ctx context.Context, timeline string) (string, error)
 }
 
 type service struct {
@@ -90,20 +80,6 @@ func NewService(
 	}
 }
 
-func (s *service) Checkpoint(ctx context.Context, timeline string, item core.TimelineItem, body interface{}, principal string, requesterDomain string) error {
-	ctx, span := tracer.Start(ctx, "ServiceCheckpoint")
-	defer span.End()
-
-	_, err := s.entity.ResolveHost(ctx, principal, requesterDomain) // 一発resolveして存在確認+なければ取得を走らせておく
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-
-	err = s.PostItem(ctx, timeline, item, body)
-	return err
-}
-
 // Count returns the count number of messages
 func (s *service) Count(ctx context.Context) (int64, error) {
 	ctx, span := tracer.Start(ctx, "ServiceCount")
@@ -119,11 +95,11 @@ func min(a, b int) int {
 	return b
 }
 
-func (s *service) GetChunksFromRemote(ctx context.Context, host string, timelines []string, pivot time.Time) (map[string]Chunk, error) {
+func (s *service) GetChunksFromRemote(ctx context.Context, host string, timelines []string, pivot time.Time) (map[string]core.Chunk, error) {
 	return s.repository.GetChunksFromRemote(ctx, host, timelines, pivot)
 }
 
-func (s *service) normalizeTimelineID(ctx context.Context, timeline string) (string, error) {
+func (s *service) NormalizeTimelineID(ctx context.Context, timeline string) (string, error) {
 	split := strings.Split(timeline, "@")
 	id := split[0]
 	domain := s.config.Concurrent.FQDN
@@ -151,13 +127,13 @@ func (s *service) normalizeTimelineID(ctx context.Context, timeline string) (str
 }
 
 // GetChunks returns chunks by timelineID and time
-func (s *service) GetChunks(ctx context.Context, timelines []string, until time.Time) (map[string]Chunk, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetChunks")
+func (s *service) GetChunks(ctx context.Context, timelines []string, until time.Time) (map[string]core.Chunk, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Service.GetChunks")
 	defer span.End()
 
 	// normalize timelineID and validate
 	for i, timeline := range timelines {
-		normalized, err := s.normalizeTimelineID(ctx, timeline)
+		normalized, err := s.NormalizeTimelineID(ctx, timeline)
 		if err != nil {
 			continue
 		}
@@ -199,7 +175,7 @@ func (s *service) GetChunks(ctx context.Context, timelines []string, until time.
 }
 
 func (s *service) GetRecentItemsFromSubscription(ctx context.Context, subscription string, until time.Time, limit int) ([]core.TimelineItem, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetRecentItemsFromSubscription")
+	ctx, span := tracer.Start(ctx, "Timeline.Service.GetRecentItemsFromSubscription")
 	defer span.End()
 
 	sub, err := s.subscription.GetSubscription(ctx, subscription)
@@ -217,12 +193,12 @@ func (s *service) GetRecentItemsFromSubscription(ctx context.Context, subscripti
 
 // GetRecentItems returns recent message from timelines
 func (s *service) GetRecentItems(ctx context.Context, timelines []string, until time.Time, limit int) ([]core.TimelineItem, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetRecentItems")
+	ctx, span := tracer.Start(ctx, "Timeline.Service.GetRecentItems")
 	defer span.End()
 
 	// normalize timelineID and validate
 	for i, timeline := range timelines {
-		normalized, err := s.normalizeTimelineID(ctx, timeline)
+		normalized, err := s.NormalizeTimelineID(ctx, timeline)
 		if err != nil {
 			continue
 		}
@@ -304,7 +280,7 @@ func (s *service) GetRecentItems(ctx context.Context, timelines []string, until 
 }
 
 func (s *service) GetImmediateItemsFromSubscription(ctx context.Context, subscription string, since time.Time, limit int) ([]core.TimelineItem, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetImmediateItemsFromSubscription")
+	ctx, span := tracer.Start(ctx, "Timeline.Service.GetImmediateItemsFromSubscription")
 	defer span.End()
 
 	sub, err := s.subscription.GetSubscription(ctx, subscription)
@@ -322,24 +298,22 @@ func (s *service) GetImmediateItemsFromSubscription(ctx context.Context, subscri
 
 // GetImmediateItems returns immediate message from timelines
 func (s *service) GetImmediateItems(ctx context.Context, timelines []string, since time.Time, limit int) ([]core.TimelineItem, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetImmediateItems")
+	ctx, span := tracer.Start(ctx, "Timeline.Service.GetImmediateItems")
 	defer span.End()
 
 	return nil, fmt.Errorf("not implemented")
 }
 
-// Post posts events to the timeline.
-// If the timeline is local, it will be posted to the local Redis.
-// If the timeline is remote, it will be posted to the remote domain's Checkpoint.
-func (s *service) PostItem(ctx context.Context, timeline string, item core.TimelineItem, body interface{}) error {
-	ctx, span := tracer.Start(ctx, "ServicePostItem")
+// Post posts events to the local timeline.
+func (s *service) PostItem(ctx context.Context, timeline string, item core.TimelineItem, document, signature string) (core.TimelineItem, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Service.PostItem")
 	defer span.End()
 
 	span.SetAttributes(attribute.String("timeline", timeline))
 
 	query := strings.Split(timeline, "@")
 	if len(query) != 2 {
-		return fmt.Errorf("Invalid format: %v", timeline)
+		return core.TimelineItem{}, fmt.Errorf("Invalid format: %v", timeline)
 	}
 
 	timelineID, timelineHost := query[0], query[1]
@@ -347,7 +321,7 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 	if core.IsCCID(timelineHost) {
 		domain, err := s.entity.ResolveHost(ctx, timelineHost, "")
 		if err != nil {
-			return err
+			return core.TimelineItem{}, err
 		}
 		timelineHost = domain
 	}
@@ -355,7 +329,7 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 	if !cdid.IsSeemsCDID(timelineID, 't') && timelineHost == s.config.Concurrent.FQDN && core.IsCCID(query[1]) {
 		target, err := s.semanticid.Lookup(ctx, timelineID, query[1])
 		if err != nil {
-			return err
+			return core.TimelineItem{}, err
 		}
 		timelineID = target
 	}
@@ -367,184 +341,44 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 		author = *item.Author
 	}
 
-	if timelineHost == s.config.Concurrent.FQDN {
-
-		// check if the user has write access to the timeline
-		if !s.HasWriteAccess(ctx, timelineID, author) {
-			slog.InfoContext(
-				ctx, "failed to post to timeline",
-				slog.String("type", "audit"),
-				slog.String("principal", author),
-				slog.String("timeline", timelineID),
-				slog.String("module", "timeline"),
-			)
-			return fmt.Errorf("You don't have write access to %v", timelineID)
-		}
-
-		slog.DebugContext(
-			ctx, fmt.Sprintf("post to local timeline: %v to %v", item.ObjectID, timelineID),
-			slog.String("module", "timeline"),
-		)
-
-		// add to timeline
-		created, err := s.repository.CreateItem(ctx, item)
-		if err != nil {
-			slog.ErrorContext(ctx, "failed to create item", slog.String("error", err.Error()), slog.String("module", "timeline"))
-			span.RecordError(err)
-			return err
-		}
-
-		typ := core.TypedIDToType(created.ObjectID)
-
-		// publish event to pubsub
-		event := core.Event{
-			TimelineID: timeline,
-			Action:     "create",
-			Type:       typ,
-			Item:       created,
-			Body:       body,
-		}
-
-		err = s.repository.PublishEvent(ctx, event)
-		if err != nil {
-			slog.ErrorContext(ctx, "failed to publish event", slog.String("error", err.Error()), slog.String("module", "timeline"))
-			span.RecordError(err)
-			return err
-		}
-	} else {
-
-		slog.DebugContext(
-			ctx, fmt.Sprintf("post to remote timeline: %v to %v@%v", item.ObjectID, timelineID, timelineHost),
-			slog.String("module", "timeline"),
-		)
-
-		// check if domain exists
-		_, err := s.domain.GetByFQDN(ctx, timelineHost)
-		if err != nil { // TODO
-			span.RecordError(err)
-			return err
-		}
-
-		packet := checkpointPacket{
-			Timeline:  timeline,
-			Item:      item,
-			Body:      body,
-			Principal: author,
-		}
-		packetStr, err := json.Marshal(packet)
-		if err != nil {
-			span.RecordError(err)
-			return err
-		}
-		req, err := http.NewRequest("POST", "https://"+timelineHost+"/api/v1/timelines/checkpoint", bytes.NewBuffer(packetStr))
-
-		if err != nil {
-			span.RecordError(err)
-			return err
-		}
-
-		otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
-
-		jwt, err := jwt.Create(jwt.Claims{
-			Issuer:         s.config.Concurrent.CCID,
-			Subject:        "CC_API",
-			Audience:       timelineHost,
-			ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
-			IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
-			JWTID:          xid.New().String(),
-		}, s.config.Concurrent.PrivateKey)
-
-		req.Header.Add("content-type", "application/json")
-		req.Header.Add("authorization", "Bearer "+jwt)
-		client := new(http.Client)
-		client.Timeout = 10 * time.Second
-		resp, err := client.Do(req)
-		if err != nil {
-			span.RecordError(err)
-			return err
-		}
-		defer resp.Body.Close()
-
-		// TODO: response check
-		span.AddEvent("checkpoint response", trace.WithAttributes(attribute.String("response", resp.Status)))
-
+	if timelineHost != s.config.Concurrent.FQDN {
+		span.RecordError(fmt.Errorf("Remote timeline is not supported"))
+		return core.TimelineItem{}, fmt.Errorf("Program error: remote timeline is not supported")
 	}
-	return nil
+
+	// check if the user has write access to the timeline
+	if !s.HasWriteAccess(ctx, timelineID, author) {
+		slog.InfoContext(
+			ctx, "failed to post to timeline",
+			slog.String("type", "audit"),
+			slog.String("principal", author),
+			slog.String("timeline", timelineID),
+			slog.String("module", "timeline"),
+		)
+		return core.TimelineItem{}, fmt.Errorf("You don't have write access to %v", timelineID)
+	}
+
+	slog.DebugContext(
+		ctx, fmt.Sprintf("post to local timeline: %v to %v", item.ObjectID, timelineID),
+		slog.String("module", "timeline"),
+	)
+
+	// add to timeline
+	created, err := s.repository.CreateItem(ctx, item)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to create item", slog.String("error", err.Error()), slog.String("module", "timeline"))
+		span.RecordError(err)
+		return core.TimelineItem{}, err
+	}
+
+	return created, nil
 }
 
-func (s *service) PublishEventToLocal(ctx context.Context, event core.Event) error {
-	ctx, span := tracer.Start(ctx, "ServiceDistributeEvents")
+func (s *service) PublishEvent(ctx context.Context, event core.Event) error {
+	ctx, span := tracer.Start(ctx, "Timeline.Service.PublishEvent")
 	defer span.End()
 
 	return s.repository.PublishEvent(ctx, event)
-}
-
-// DistributeEvent distributes events to the timeline.
-func (s *service) DistributeEvent(ctx context.Context, timeline string, event core.Event) error {
-	ctx, span := tracer.Start(ctx, "ServiceDistributeEvents")
-	defer span.End()
-
-	query := strings.Split(timeline, "@")
-	if len(query) != 2 {
-		return fmt.Errorf("Invalid format: %v", timeline)
-	}
-
-	_, timelineHost := query[0], query[1]
-
-	if core.IsCCID(timelineHost) {
-		domain, err := s.entity.ResolveHost(ctx, timelineHost, "")
-		if err != nil {
-			return err
-		}
-		timelineHost = domain
-	}
-
-	if timelineHost == s.config.Concurrent.FQDN {
-
-		s.repository.PublishEvent(ctx, event)
-
-	} else {
-
-		jsonstr, _ := json.Marshal(event)
-
-		req, err := http.NewRequest(
-			"POST",
-			"https://"+timelineHost+"/api/v1/timelines/checkpoint/event",
-			bytes.NewBuffer(jsonstr),
-		)
-
-		if err != nil {
-			span.RecordError(err)
-			return err
-		}
-
-		otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
-
-		jwt, err := jwt.Create(jwt.Claims{
-			Issuer:         s.config.Concurrent.CCID,
-			Subject:        "CC_API",
-			Audience:       timelineHost,
-			ExpirationTime: strconv.FormatInt(time.Now().Add(1*time.Minute).Unix(), 10),
-			IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
-			JWTID:          xid.New().String(),
-		}, s.config.Concurrent.PrivateKey)
-
-		req.Header.Add("content-type", "application/json")
-		req.Header.Add("authorization", "Bearer "+jwt)
-		client := new(http.Client)
-		client.Timeout = 10 * time.Second
-		resp, err := client.Do(req)
-		if err != nil {
-			span.RecordError(err)
-			return err
-		}
-		defer resp.Body.Close()
-
-		// TODO: response check
-		span.AddEvent("checkpoint response", trace.WithAttributes(attribute.String("response", resp.Status)))
-	}
-
-	return nil
 }
 
 // Create updates timeline information
@@ -621,7 +455,7 @@ func (s *service) UpsertTimeline(ctx context.Context, document, signature string
 
 // Get returns timeline information by ID
 func (s *service) GetTimeline(ctx context.Context, key string) (core.Timeline, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGet")
+	ctx, span := tracer.Start(ctx, "Timeline.Service.GetTimeline")
 	defer span.End()
 
 	split := strings.Split(key, "@")
@@ -648,7 +482,7 @@ func (s *service) GetTimeline(ctx context.Context, key string) (core.Timeline, e
 
 // TimelineListBySchema returns timelineList by schema
 func (s *service) ListTimelineBySchema(ctx context.Context, schema string) ([]core.Timeline, error) {
-	ctx, span := tracer.Start(ctx, "ServiceTimelineListBySchema")
+	ctx, span := tracer.Start(ctx, "Timeline.Service.ListTimelineBySchema")
 	defer span.End()
 
 	timelines, err := s.repository.ListTimelineBySchema(ctx, schema)
@@ -660,7 +494,7 @@ func (s *service) ListTimelineBySchema(ctx context.Context, schema string) ([]co
 
 // TimelineListByAuthor returns timelineList by author
 func (s *service) ListTimelineByAuthor(ctx context.Context, author string) ([]core.Timeline, error) {
-	ctx, span := tracer.Start(ctx, "ServiceTimelineListByAuthor")
+	ctx, span := tracer.Start(ctx, "Timeline.Service.ListTimelineByAuthor")
 	defer span.End()
 
 	timelines, err := s.repository.ListTimelineByAuthor(ctx, author)
@@ -672,7 +506,7 @@ func (s *service) ListTimelineByAuthor(ctx context.Context, author string) ([]co
 
 // GetItem returns timeline element by ID
 func (s *service) GetItem(ctx context.Context, timeline string, id string) (core.TimelineItem, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetItem")
+	ctx, span := tracer.Start(ctx, "Timeline.Service.GetItem")
 	defer span.End()
 
 	return s.repository.GetItem(ctx, timeline, id)
@@ -680,7 +514,7 @@ func (s *service) GetItem(ctx context.Context, timeline string, id string) (core
 
 // Remove removes timeline element by ID
 func (s *service) RemoveItem(ctx context.Context, timeline string, id string) {
-	ctx, span := tracer.Start(ctx, "ServiceRemoveItem")
+	ctx, span := tracer.Start(ctx, "Timeline.ServiceRemoveItem")
 	defer span.End()
 
 	s.repository.DeleteItem(ctx, timeline, id)
@@ -688,7 +522,7 @@ func (s *service) RemoveItem(ctx context.Context, timeline string, id string) {
 
 // Delete deletes
 func (s *service) DeleteTimeline(ctx context.Context, document string) (core.Timeline, error) {
-	ctx, span := tracer.Start(ctx, "ServiceDelete")
+	ctx, span := tracer.Start(ctx, "Timeline.Service.DeleteTimeline")
 	defer span.End()
 
 	var doc core.DeleteDocument
@@ -718,14 +552,14 @@ func (s *service) DeleteTimeline(ctx context.Context, document string) (core.Tim
 }
 
 func (s *service) ListTimelineSubscriptions(ctx context.Context) (map[string]int64, error) {
-	ctx, span := tracer.Start(ctx, "ServiceListTimelineSubscriptions")
+	ctx, span := tracer.Start(ctx, "Timeline.Service.ListTimelineSubscriptions")
 	defer span.End()
 
 	return s.repository.ListTimelineSubscriptions(ctx)
 }
 
 func (s *service) getTimelineAutoDomain(ctx context.Context, timelineID string) (core.Timeline, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetTimelineAutoDomain")
+	ctx, span := tracer.Start(ctx, "Timeline.Service.getTimelineAutoDomain")
 	defer span.End()
 
 	key := timelineID
@@ -745,7 +579,7 @@ func (s *service) getTimelineAutoDomain(ctx context.Context, timelineID string) 
 }
 
 func (s *service) HasWriteAccess(ctx context.Context, timelineID string, userAddress string) bool {
-	ctx, span := tracer.Start(ctx, "ServiceHasWriteAccess")
+	ctx, span := tracer.Start(ctx, "Timeline.Service.HasWriteAccess")
 	defer span.End()
 
 	return true
@@ -769,7 +603,7 @@ func (s *service) HasWriteAccess(ctx context.Context, timelineID string, userAdd
 }
 
 func (s *service) HasReadAccess(ctx context.Context, timelineID string, userAddress string) bool {
-	ctx, span := tracer.Start(ctx, "ServiceHasReadAccess")
+	ctx, span := tracer.Start(ctx, "Timeline.Service.HasReadAccess")
 	defer span.End()
 
 	return true

@@ -10,7 +10,6 @@ import (
 	time "time"
 
 	core "github.com/totegamma/concurrent/x/core"
-	timeline "github.com/totegamma/concurrent/x/timeline"
 	gomock "go.uber.org/mock/gomock"
 )
 
@@ -35,20 +34,6 @@ func NewMockService(ctrl *gomock.Controller) *MockService {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockService) EXPECT() *MockServiceMockRecorder {
 	return m.recorder
-}
-
-// Checkpoint mocks base method.
-func (m *MockService) Checkpoint(ctx context.Context, timeline string, item core.TimelineItem, body interface{}, principal, requesterDomain string) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Checkpoint", ctx, timeline, item, body, principal, requesterDomain)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// Checkpoint indicates an expected call of Checkpoint.
-func (mr *MockServiceMockRecorder) Checkpoint(ctx, timeline, item, body, principal, requesterDomain interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Checkpoint", reflect.TypeOf((*MockService)(nil).Checkpoint), ctx, timeline, item, body, principal, requesterDomain)
 }
 
 // Count mocks base method.
@@ -81,25 +66,11 @@ func (mr *MockServiceMockRecorder) DeleteTimeline(ctx, document interface{}) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteTimeline", reflect.TypeOf((*MockService)(nil).DeleteTimeline), ctx, document)
 }
 
-// DistributeEvent mocks base method.
-func (m *MockService) DistributeEvent(ctx context.Context, timeline string, event core.Event) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DistributeEvent", ctx, timeline, event)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// DistributeEvent indicates an expected call of DistributeEvent.
-func (mr *MockServiceMockRecorder) DistributeEvent(ctx, timeline, event interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DistributeEvent", reflect.TypeOf((*MockService)(nil).DistributeEvent), ctx, timeline, event)
-}
-
 // GetChunks mocks base method.
-func (m *MockService) GetChunks(ctx context.Context, timelines []string, pivot time.Time) (map[string]timeline.Chunk, error) {
+func (m *MockService) GetChunks(ctx context.Context, timelines []string, pivot time.Time) (map[string]core.Chunk, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetChunks", ctx, timelines, pivot)
-	ret0, _ := ret[0].(map[string]timeline.Chunk)
+	ret0, _ := ret[0].(map[string]core.Chunk)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -111,10 +82,10 @@ func (mr *MockServiceMockRecorder) GetChunks(ctx, timelines, pivot interface{}) 
 }
 
 // GetChunksFromRemote mocks base method.
-func (m *MockService) GetChunksFromRemote(ctx context.Context, host string, timelines []string, pivot time.Time) (map[string]timeline.Chunk, error) {
+func (m *MockService) GetChunksFromRemote(ctx context.Context, host string, timelines []string, pivot time.Time) (map[string]core.Chunk, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetChunksFromRemote", ctx, host, timelines, pivot)
-	ret0, _ := ret[0].(map[string]timeline.Chunk)
+	ret0, _ := ret[0].(map[string]core.Chunk)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -288,32 +259,48 @@ func (mr *MockServiceMockRecorder) ListTimelineSubscriptions(ctx interface{}) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTimelineSubscriptions", reflect.TypeOf((*MockService)(nil).ListTimelineSubscriptions), ctx)
 }
 
-// PostItem mocks base method.
-func (m *MockService) PostItem(ctx context.Context, timeline string, item core.TimelineItem, body interface{}) error {
+// NormalizeTimelineID mocks base method.
+func (m *MockService) NormalizeTimelineID(ctx context.Context, timeline string) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PostItem", ctx, timeline, item, body)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret := m.ctrl.Call(m, "NormalizeTimelineID", ctx, timeline)
+	ret0, _ := ret[0].(string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// NormalizeTimelineID indicates an expected call of NormalizeTimelineID.
+func (mr *MockServiceMockRecorder) NormalizeTimelineID(ctx, timeline interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NormalizeTimelineID", reflect.TypeOf((*MockService)(nil).NormalizeTimelineID), ctx, timeline)
+}
+
+// PostItem mocks base method.
+func (m *MockService) PostItem(ctx context.Context, timeline string, item core.TimelineItem, document, signature string) (core.TimelineItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "PostItem", ctx, timeline, item, document, signature)
+	ret0, _ := ret[0].(core.TimelineItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // PostItem indicates an expected call of PostItem.
-func (mr *MockServiceMockRecorder) PostItem(ctx, timeline, item, body interface{}) *gomock.Call {
+func (mr *MockServiceMockRecorder) PostItem(ctx, timeline, item, document, signature interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PostItem", reflect.TypeOf((*MockService)(nil).PostItem), ctx, timeline, item, body)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PostItem", reflect.TypeOf((*MockService)(nil).PostItem), ctx, timeline, item, document, signature)
 }
 
-// PublishEventToLocal mocks base method.
-func (m *MockService) PublishEventToLocal(ctx context.Context, event core.Event) error {
+// PublishEvent mocks base method.
+func (m *MockService) PublishEvent(ctx context.Context, event core.Event) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "PublishEventToLocal", ctx, event)
+	ret := m.ctrl.Call(m, "PublishEvent", ctx, event)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// PublishEventToLocal indicates an expected call of PublishEventToLocal.
-func (mr *MockServiceMockRecorder) PublishEventToLocal(ctx, event interface{}) *gomock.Call {
+// PublishEvent indicates an expected call of PublishEvent.
+func (mr *MockServiceMockRecorder) PublishEvent(ctx, event interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PublishEventToLocal", reflect.TypeOf((*MockService)(nil).PublishEventToLocal), ctx, event)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PublishEvent", reflect.TypeOf((*MockService)(nil).PublishEvent), ctx, event)
 }
 
 // RemoveItem mocks base method.

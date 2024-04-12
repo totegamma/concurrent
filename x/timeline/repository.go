@@ -4,24 +4,20 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log/slog"
-	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/redis/go-redis/v9"
+	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/schema"
 	"github.com/totegamma/concurrent/x/socket"
 	"github.com/totegamma/concurrent/x/util"
 	"gorm.io/gorm"
 	"slices"
-
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/propagation"
 )
 
 // Repository is timeline repository interface
@@ -41,11 +37,11 @@ type Repository interface {
 	GetRecentItems(ctx context.Context, timelineID string, until time.Time, limit int) ([]core.TimelineItem, error)
 	GetImmediateItems(ctx context.Context, timelineID string, since time.Time, limit int) ([]core.TimelineItem, error)
 
-	GetChunksFromCache(ctx context.Context, timelines []string, chunk string) (map[string]Chunk, error)
-	GetChunksFromDB(ctx context.Context, timelines []string, chunk string) (map[string]Chunk, error)
+	GetChunksFromCache(ctx context.Context, timelines []string, chunk string) (map[string]core.Chunk, error)
+	GetChunksFromDB(ctx context.Context, timelines []string, chunk string) (map[string]core.Chunk, error)
 	GetChunkIterators(ctx context.Context, timelines []string, chunk string) (map[string]string, error)
-	GetChunksFromRemote(ctx context.Context, host string, timelines []string, queryTime time.Time) (map[string]Chunk, error)
-	SaveToCache(ctx context.Context, chunks map[string]Chunk, queryTime time.Time) error
+	GetChunksFromRemote(ctx context.Context, host string, timelines []string, queryTime time.Time) (map[string]core.Chunk, error)
+	SaveToCache(ctx context.Context, chunks map[string]core.Chunk, queryTime time.Time) error
 	PublishEvent(ctx context.Context, event core.Event) error
 
 	ListTimelineSubscriptions(ctx context.Context) (map[string]int64, error)
@@ -133,31 +129,21 @@ func (r *repository) GetTimelineFromRemote(ctx context.Context, host string, key
 		span.RecordError(err)
 	}
 
-	req, err := http.NewRequest("GET", "https://"+host+"/api/v1/timeline/"+key, nil)
-	if err != nil {
-		span.RecordError(err)
-		return core.Timeline{}, err
-	}
-	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
-	client := new(http.Client)
-	client.Timeout = 3 * time.Second
-	resp, err := client.Do(req)
-	if err != nil {
-		span.RecordError(err)
-		return core.Timeline{}, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
+	timeline, err := client.GetTimeline(ctx, host, key)
 	if err != nil {
 		span.RecordError(err)
 		return core.Timeline{}, err
 	}
 
-	var timelineResp timelineResponse
-	err = json.Unmarshal(body, &timelineResp)
+	// save to cache
+	body, err := json.Marshal(timeline)
 	if err != nil {
 		span.RecordError(err)
+		slog.ErrorContext(
+			ctx, "fail to marshal timeline",
+			slog.String("error", err.Error()),
+			slog.String("module", "timeline"),
+		)
 		return core.Timeline{}, err
 	}
 
@@ -171,38 +157,14 @@ func (r *repository) GetTimelineFromRemote(ctx context.Context, host string, key
 		)
 	}
 
-	return timelineResp.Content, nil
+	return timeline, nil
 }
 
-func (r *repository) GetChunksFromRemote(ctx context.Context, host string, timelines []string, queryTime time.Time) (map[string]Chunk, error) {
+func (r *repository) GetChunksFromRemote(ctx context.Context, host string, timelines []string, queryTime time.Time) (map[string]core.Chunk, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGetRemoteChunks")
 	defer span.End()
 
-	timelinesStr := strings.Join(timelines, ",")
-	timeStr := fmt.Sprintf("%d", queryTime.Unix())
-	req, err := http.NewRequest("GET", "https://"+host+"/api/v1/timelines/chunks?timelines="+timelinesStr+"&time="+timeStr, nil)
-	if err != nil {
-		span.RecordError(err)
-		return nil, err
-	}
-	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
-	client := new(http.Client)
-	client.Timeout = 3 * time.Second
-	resp, err := client.Do(req)
-	if err != nil {
-		span.RecordError(err)
-		return nil, err
-	}
-	defer resp.Body.Close()
-
-	body, err := io.ReadAll(resp.Body)
-	if err != nil {
-		span.RecordError(err)
-		return nil, err
-	}
-
-	var chunkResp chunkResponse
-	err = json.Unmarshal(body, &chunkResp)
+	chunks, err := client.GetChunks(ctx, host, timelines, queryTime)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -210,8 +172,8 @@ func (r *repository) GetChunksFromRemote(ctx context.Context, host string, timel
 
 	currentSubsciptions := r.manager.GetAllRemoteSubs()
 
-	cacheChunks := make(map[string]Chunk)
-	for timelineID, chunk := range chunkResp.Content {
+	cacheChunks := make(map[string]core.Chunk)
+	for timelineID, chunk := range chunks {
 		if slices.Contains(currentSubsciptions, timelineID) {
 			cacheChunks[timelineID] = chunk
 		}
@@ -228,11 +190,11 @@ func (r *repository) GetChunksFromRemote(ctx context.Context, host string, timel
 		return nil, err
 	}
 
-	return chunkResp.Content, nil
+	return chunks, nil
 }
 
 // SaveToCache saves items to cache
-func (r *repository) SaveToCache(ctx context.Context, chunks map[string]Chunk, queryTime time.Time) error {
+func (r *repository) SaveToCache(ctx context.Context, chunks map[string]core.Chunk, queryTime time.Time) error {
 	ctx, span := tracer.Start(ctx, "RepositorySaveToCache")
 	defer span.End()
 
@@ -259,7 +221,7 @@ func (r *repository) SaveToCache(ctx context.Context, chunks map[string]Chunk, q
 }
 
 // GetChunksFromCache gets chunks from cache
-func (r *repository) GetChunksFromCache(ctx context.Context, timelines []string, chunk string) (map[string]Chunk, error) {
+func (r *repository) GetChunksFromCache(ctx context.Context, timelines []string, chunk string) (map[string]core.Chunk, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGetChunksFromCache")
 	defer span.End()
 
@@ -275,7 +237,7 @@ func (r *repository) GetChunksFromCache(ctx context.Context, timelines []string,
 	}
 
 	if len(targetKeys) == 0 {
-		return map[string]Chunk{}, nil
+		return map[string]core.Chunk{}, nil
 	}
 
 	caches, err := r.mc.GetMulti(targetKeys)
@@ -284,7 +246,7 @@ func (r *repository) GetChunksFromCache(ctx context.Context, timelines []string,
 		return nil, err
 	}
 
-	result := make(map[string]Chunk)
+	result := make(map[string]core.Chunk)
 	for _, timeline := range timelines {
 		targetKey := targetKeyMap[timeline]
 		cache, ok := caches[targetKey]
@@ -302,7 +264,7 @@ func (r *repository) GetChunksFromCache(ctx context.Context, timelines []string,
 			continue
 		}
 		slices.Reverse(items)
-		result[timeline] = Chunk{
+		result[timeline] = core.Chunk{
 			Key:   targetKey,
 			Items: items,
 		}
@@ -312,7 +274,7 @@ func (r *repository) GetChunksFromCache(ctx context.Context, timelines []string,
 }
 
 // GetChunksFromDB gets chunks from db and cache them
-func (r *repository) GetChunksFromDB(ctx context.Context, timelines []string, chunk string) (map[string]Chunk, error) {
+func (r *repository) GetChunksFromDB(ctx context.Context, timelines []string, chunk string) (map[string]core.Chunk, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryGetChunksFromDB")
 	defer span.End()
 
@@ -327,7 +289,7 @@ func (r *repository) GetChunksFromDB(ctx context.Context, timelines []string, ch
 		targetKeys = append(targetKeys, targetKey)
 	}
 
-	result := make(map[string]Chunk)
+	result := make(map[string]core.Chunk)
 	for _, timeline := range timelines {
 		targetKey := targetKeyMap[timeline]
 		var items []core.TimelineItem
@@ -355,7 +317,7 @@ func (r *repository) GetChunksFromDB(ctx context.Context, timelines []string, ch
 			items[i].TimelineID = item.TimelineID + "@" + r.config.Concurrent.FQDN
 		}
 
-		result[timeline] = Chunk{
+		result[timeline] = core.Chunk{
 			Key:   targetKey,
 			Items: items,
 		}

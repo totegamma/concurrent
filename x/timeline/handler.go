@@ -25,8 +25,6 @@ type Handler interface {
 	List(c echo.Context) error
 	ListMine(c echo.Context) error
 	Remove(c echo.Context) error
-	Checkpoint(c echo.Context) error
-	EventCheckpoint(c echo.Context) error
 	GetChunks(c echo.Context) error
 }
 
@@ -205,52 +203,6 @@ func (h handler) Remove(c echo.Context) error {
 	}
 
 	h.service.RemoveItem(ctx, timelineID, objectID)
-
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
-}
-
-// Checkpoint receives events from remote domains
-func (h handler) Checkpoint(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.Checkpoint")
-	defer span.End()
-
-	var packet checkpointPacket
-	err := c.Bind(&packet)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-
-	requesterDomain, ok := c.Get(core.RequesterDomainCtxKey).(string)
-	if !ok {
-		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester domain not found"})
-	}
-
-	err = h.service.Checkpoint(ctx, packet.Timeline, packet.Item, packet.Body, packet.Principal, requesterDomain)
-	if err != nil {
-		span.RecordError(err)
-		return nil
-	}
-
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
-}
-
-func (h handler) EventCheckpoint(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.EventCheckpoint")
-	defer span.End()
-
-	var event core.Event
-	err := c.Bind(&event)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-
-	err = h.service.PublishEventToLocal(ctx, event)
-	if err != nil {
-		span.RecordError(err)
-		return nil
-	}
 
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
 }

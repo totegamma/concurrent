@@ -151,7 +151,8 @@ func TestManager(t *testing.T) {
 			Author:     nil,
 			CDate:      pivot,
 		},
-		Body: []byte(`{"foo":"bar"}`),
+		Document:  "",
+		Signature: "",
 	}
 	jsonstr, _ := json.Marshal(testEvent)
 	wshandler.EmitMessage(jsonstr)

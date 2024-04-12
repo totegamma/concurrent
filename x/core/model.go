@@ -27,7 +27,7 @@ type Key struct {
 
 type SemanticID struct {
 	ID        string    `json:"id" gorm:"primaryKey;type:text"`
-	Owner     string    `json:"owner" gorm:"type:char(42)"`
+	Owner     string    `json:"owner" gorm:"primaryKey;type:char(42)"`
 	Target    string    `json:"target" gorm:"type:char(27)"`
 	Document  string    `json:"document" gorm:"type:json"`
 	Signature string    `json:"signature" gorm:"type:char(130)"`

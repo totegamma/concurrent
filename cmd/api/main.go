@@ -250,7 +250,24 @@ func main() {
 	apiV1.POST("/commit", storeHandler.Commit)
 
 	// domain
-	apiV1.GET("/domain", domainHandler.Profile)
+	apiV1.GET("/domain", func(c echo.Context) error {
+		meta := config.Profile
+		meta.Registration = config.Concurrent.Registration
+		meta.Version = version
+		meta.BuildInfo = util.BuildInfo{
+			BuildTime:    buildTime,
+			BuildMachine: buildMachine,
+			GoVersion:    goVersion,
+		}
+		meta.SiteKey = config.Server.CaptchaSitekey
+
+		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": core.Domain{
+			ID:          config.Concurrent.FQDN,
+			CCID:        config.Concurrent.CCID,
+			DimensionID: "",
+			Meta:        meta,
+		}})
+	})
 	apiV1.GET("/domain/:id", domainHandler.Get)
 	apiV1.PUT("/domain/:id", domainHandler.Upsert, auth.Restrict(auth.ISADMIN))
 	apiV1.DELETE("/domain/:id", domainHandler.Delete, auth.Restrict(auth.ISADMIN))
@@ -321,18 +338,6 @@ func main() {
 	apiV1.DELETE("/collection/:collection/:item", collectionHandler.DeleteItem, auth.Restrict(auth.ISLOCAL))
 
 	// misc
-	apiV1.GET("/profile", func(c echo.Context) error {
-		profile := config.Profile
-		profile.Registration = config.Concurrent.Registration
-		profile.Version = version
-		profile.BuildInfo = util.BuildInfo{
-			BuildTime:    buildTime,
-			BuildMachine: buildMachine,
-			GoVersion:    goVersion,
-		}
-		profile.SiteKey = config.Server.CaptchaSitekey
-		return c.JSON(http.StatusOK, profile)
-	})
 	e.GET("/health", func(c echo.Context) (err error) {
 		ctx := c.Request().Context()
 

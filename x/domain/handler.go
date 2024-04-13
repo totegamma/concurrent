@@ -19,7 +19,6 @@ type Handler interface {
 	Get(c echo.Context) error
 	Upsert(c echo.Context) error
 	List(c echo.Context) error
-	Profile(c echo.Context) error
 	Delete(c echo.Context) error
 	Update(c echo.Context) error
 }
@@ -78,18 +77,6 @@ func (h handler) List(c echo.Context) error {
 		return err
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": hosts})
-}
-
-// Profile returns the host profile
-func (h handler) Profile(c echo.Context) error {
-	_, span := tracer.Start(c.Request().Context(), "HandlerProfile")
-	defer span.End()
-
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": Profile{
-		ID:     h.config.Concurrent.FQDN,
-		CCID:   h.config.Concurrent.CCID,
-		Pubkey: h.config.Concurrent.PublicKey,
-	}})
 }
 
 // Delete removes a host from the registry

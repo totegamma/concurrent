@@ -10,6 +10,7 @@ import (
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/x/cdid"
 	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/timeline"
@@ -34,6 +35,7 @@ type Service interface {
 
 type service struct {
 	repo     Repository
+	entity   entity.Service
 	timeline timeline.Service
 	message  message.Service
 	key      key.Service
@@ -43,6 +45,7 @@ type service struct {
 // NewService creates a new association service
 func NewService(
 	repo Repository,
+	entity entity.Service,
 	timeline timeline.Service,
 	message message.Service,
 	key key.Service,
@@ -50,6 +53,7 @@ func NewService(
 ) Service {
 	return &service{
 		repo,
+		entity,
 		timeline,
 		message,
 		key,
@@ -72,6 +76,8 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 	ctx, span := tracer.Start(ctx, "ServicePostAssociation")
 	defer span.End()
 
+	created := core.Association{}
+
 	var doc core.CreateAssociation[any]
 	err := json.Unmarshal([]byte(document), &doc)
 	if err != nil {
@@ -85,31 +91,33 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 	signedAt := doc.SignedAt
 	id := cdid.New(hash10, signedAt).String()
 
-	association := core.Association{
-		ID:        id,
-		Author:    doc.Signer,
-		Schema:    doc.Schema,
-		TargetID:  doc.Target,
-		Document:  document,
-		Signature: signature,
-		Timelines: doc.Timelines,
-		Variant:   doc.Variant,
-	}
-
-	created, err := s.repo.Create(ctx, association)
+	ownerDomain, err := s.entity.GetAddress(ctx, doc.Owner)
 	if err != nil {
 		span.RecordError(err)
-		return created, err // TODO: if err is duplicate key error, server should return 409
+		return created, err
+	}
+
+	if ownerDomain.Domain == s.config.Concurrent.FQDN { // signerが自ドメイン管轄の場合、リソースを作成
+		association := core.Association{
+			ID:        id,
+			Author:    doc.Signer,
+			Owner:     doc.Owner,
+			Schema:    doc.Schema,
+			TargetID:  doc.Target,
+			Document:  document,
+			Signature: signature,
+			Timelines: doc.Timelines,
+			Variant:   doc.Variant,
+		}
+
+		created, err = s.repo.Create(ctx, association)
+		if err != nil {
+			span.RecordError(err)
+			return created, err // TODO: if err is duplicate key error, server should return 409
+		}
 	}
 
 	if doc.Target[0] == 'm' {
-
-		targetMessage, err := s.message.Get(ctx, created.TargetID, doc.Signer)
-		if err != nil {
-			span.RecordError(err)
-			return created, err
-		}
-
 		destinations := make(map[string][]string)
 		for _, timeline := range doc.Timelines {
 			normalized, err := s.timeline.NormalizeTimelineID(ctx, timeline)
@@ -132,10 +140,11 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 
 		for domain, timelines := range destinations {
 			if domain == s.config.Concurrent.FQDN {
+				// localなら、timelineのエントリを生成→Eventを発行
 				for _, timeline := range timelines {
 					posted, err := s.timeline.PostItem(ctx, timeline, core.TimelineItem{
 						ObjectID: created.ID,
-						Owner:    targetMessage.Author,
+						Owner:    created.Owner,
 						Author:   &created.Author,
 					}, document, signature)
 					if err != nil {
@@ -159,7 +168,7 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 						continue
 					}
 				}
-			} else {
+			} else if ownerDomain.Domain == s.config.Concurrent.FQDN { // ここでリソースを作成したなら、リモートにもリレー
 				// send to remote
 				packet := core.Commit{
 					Document:  document,
@@ -175,39 +184,47 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 			}
 		}
 
+		// Associationだけの追加対応
 		// オリジナルの送信先のうち、まだ送ってないドメインがあれば追加で配る
-		remainedDomains := make(map[string]bool)
-		for _, timeline := range targetMessage.Timelines {
-			normalized, err := s.timeline.NormalizeTimelineID(ctx, timeline)
+		if ownerDomain.Domain == s.config.Concurrent.FQDN {
+			targetMessage, err := s.message.Get(ctx, created.TargetID, doc.Signer) //NOTE: これはownerのドメインしか実行できない
 			if err != nil {
 				span.RecordError(err)
-				continue
+				return created, err
 			}
-			split := strings.Split(normalized, "@")
-			if len(split) != 2 {
-				span.RecordError(fmt.Errorf("invalid timeline id: %s", normalized))
-				continue
+
+			remainedDomains := make(map[string]bool)
+			for _, timeline := range targetMessage.Timelines {
+				normalized, err := s.timeline.NormalizeTimelineID(ctx, timeline)
+				if err != nil {
+					span.RecordError(err)
+					continue
+				}
+				split := strings.Split(normalized, "@")
+				if len(split) != 2 {
+					span.RecordError(fmt.Errorf("invalid timeline id: %s", normalized))
+					continue
+				}
+				domain := split[1]
+				if _, ok := destinations[domain]; !ok {
+					remainedDomains[domain] = true
+				}
 			}
-			domain := split[1]
-			if _, ok := destinations[domain]; !ok {
-				remainedDomains[domain] = true
+
+			for domain := range remainedDomains {
+				packet := core.Commit{
+					Document:  document,
+					Signature: signature,
+				}
+
+				packetStr, err := json.Marshal(packet)
+				if err != nil {
+					span.RecordError(err)
+					continue
+				}
+				client.Commit(ctx, domain, string(packetStr))
 			}
 		}
-
-		for domain := range remainedDomains {
-			packet := core.Commit{
-				Document:  document,
-				Signature: signature,
-			}
-
-			packetStr, err := json.Marshal(packet)
-			if err != nil {
-				span.RecordError(err)
-				continue
-			}
-			client.Commit(ctx, domain, string(packetStr))
-		}
-
 	}
 
 	return created, nil

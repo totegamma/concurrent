@@ -8,6 +8,7 @@ import (
 type DocumentBase[T any] struct {
 	ID         string    `json:"id,omitempty"`
 	Signer     string    `json:"signer"`
+	Owner      string    `json:"owner,omitempty"`
 	Type       string    `json:"type"`
 	Schema     string    `json:"schema,omitempty"`
 	KeyID      string    `json:"keyID,omitempty"`

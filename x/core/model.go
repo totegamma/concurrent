@@ -40,6 +40,7 @@ type SemanticID struct {
 type Association struct {
 	ID        string         `json:"id" gorm:"primaryKey;type:char(26)"`
 	Author    string         `json:"author" gorm:"type:char(42);uniqueIndex:uniq_association"`
+	Owner     string         `json:"owner" gorm:"type:char(42);"`
 	SchemaID  uint           `json:"-" gorm:"uniqueIndex:uniq_association"`
 	Schema    string         `json:"schema" gorm:"-"`
 	TargetID  string         `json:"targetID" gorm:"type:char(27);uniqueIndex:uniq_association"`

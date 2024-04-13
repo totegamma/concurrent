@@ -58,9 +58,10 @@ func SetupKeyService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config
 func SetupMessageService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) message.Service {
 	service := SetupSchemaService(db)
 	repository := message.NewRepository(db, mc, service)
+	entityService := SetupEntityService(db, rdb, mc, config)
 	timelineService := SetupTimelineService(db, rdb, mc, manager, config)
 	keyService := SetupKeyService(db, rdb, mc, config)
-	messageService := message.NewService(repository, timelineService, keyService, config)
+	messageService := message.NewService(repository, entityService, timelineService, keyService, config)
 	return messageService
 }
 
@@ -76,10 +77,11 @@ func SetupProfileService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, co
 func SetupAssociationService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) association.Service {
 	service := SetupSchemaService(db)
 	repository := association.NewRepository(db, mc, service)
+	entityService := SetupEntityService(db, rdb, mc, config)
 	timelineService := SetupTimelineService(db, rdb, mc, manager, config)
 	messageService := SetupMessageService(db, rdb, mc, manager, config)
 	keyService := SetupKeyService(db, rdb, mc, config)
-	associationService := association.NewService(repository, timelineService, messageService, keyService, config)
+	associationService := association.NewService(repository, entityService, timelineService, messageService, keyService, config)
 	return associationService
 }
 
@@ -210,10 +212,10 @@ var authServiceProvider = wire.NewSet(auth.NewService, SetupEntityService, Setup
 var ackServiceProvider = wire.NewSet(ack.NewService, ack.NewRepository, SetupEntityService, SetupKeyService)
 
 // Lv4
-var messageServiceProvider = wire.NewSet(message.NewService, message.NewRepository, SetupTimelineService, SetupKeyService, SetupSchemaService)
+var messageServiceProvider = wire.NewSet(message.NewService, message.NewRepository, SetupEntityService, SetupTimelineService, SetupKeyService, SetupSchemaService)
 
 // Lv5
-var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupTimelineService, SetupMessageService, SetupKeyService, SetupSchemaService)
+var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupEntityService, SetupTimelineService, SetupMessageService, SetupKeyService, SetupSchemaService)
 
 // Lv6
 var storeServiceProvider = wire.NewSet(store.NewService, SetupKeyService,

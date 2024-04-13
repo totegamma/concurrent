@@ -10,6 +10,7 @@ import (
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/x/cdid"
 	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/timeline"
 	"github.com/totegamma/concurrent/x/util"
@@ -27,14 +28,15 @@ type Service interface {
 
 type service struct {
 	repo     Repository
+	entity   entity.Service
 	timeline timeline.Service
 	key      key.Service
 	config   util.Config
 }
 
 // NewService creates a new message service
-func NewService(repo Repository, timeline timeline.Service, key key.Service, config util.Config) Service {
-	return &service{repo, timeline, key, config}
+func NewService(repo Repository, entity entity.Service, timeline timeline.Service, key key.Service, config util.Config) Service {
+	return &service{repo, entity, timeline, key, config}
 }
 
 // Count returns the count number of messages
@@ -107,11 +109,13 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 	ctx, span := tracer.Start(ctx, "ServicePostMessage")
 	defer span.End()
 
+	created := core.Message{}
+
 	var doc core.CreateMessage[any]
 	err := json.Unmarshal([]byte(document), &doc)
 	if err != nil {
 		span.RecordError(err)
-		return core.Message{}, err
+		return created, err
 	}
 
 	hash := util.GetHash([]byte(document))
@@ -120,43 +124,44 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 	signedAt := doc.SignedAt
 	id := cdid.New(hash10, signedAt).String()
 
-	message := core.Message{
-		ID:        id,
-		Author:    doc.Signer,
-		Schema:    doc.Schema,
-		Document:  document,
-		Signature: signature,
-		Timelines: doc.Timelines,
-	}
-
-	if !doc.SignedAt.IsZero() {
-		message.CDate = doc.SignedAt
-	}
-
-	created, err := s.repo.Create(ctx, message)
+	signerDomain, err := s.entity.GetAddress(ctx, doc.Signer)
 	if err != nil {
 		span.RecordError(err)
-		return message, err
+		return core.Message{}, err
+	}
+
+	if signerDomain.Domain == s.config.Concurrent.FQDN { // signerが自ドメイン管轄の場合、リソースを作成
+
+		message := core.Message{
+			ID:        id,
+			Author:    doc.Signer,
+			Schema:    doc.Schema,
+			Document:  document,
+			Signature: signature,
+			Timelines: doc.Timelines,
+		}
+
+		if !doc.SignedAt.IsZero() {
+			message.CDate = doc.SignedAt
+		}
+
+		created, err = s.repo.Create(ctx, message)
+		if err != nil {
+			span.RecordError(err)
+			return message, err
+		}
+
 	}
 
 	ispublic := true
+	destinations := make(map[string][]string)
 	for _, timeline := range doc.Timelines {
+
 		ok := s.timeline.HasReadAccess(ctx, timeline, "")
 		if !ok {
 			ispublic = false
-			break
 		}
-	}
 
-	sendDocument := ""
-	sendSignature := ""
-	if ispublic {
-		sendDocument = document
-		sendSignature = signature
-	}
-
-	destinations := make(map[string][]string)
-	for _, timeline := range doc.Timelines {
 		normalized, err := s.timeline.NormalizeTimelineID(ctx, timeline)
 		if err != nil {
 			span.RecordError(err)
@@ -175,12 +180,19 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 		destinations[domain] = append(destinations[domain], timeline)
 	}
 
+	sendDocument := ""
+	sendSignature := ""
+	if ispublic {
+		sendDocument = document
+		sendSignature = signature
+	}
+
 	for domain, timelines := range destinations {
 		if domain == s.config.Concurrent.FQDN {
 			// localなら、timelineのエントリを生成→Eventを発行
 			for _, timeline := range timelines {
 				posted, err := s.timeline.PostItem(ctx, timeline, core.TimelineItem{
-					ObjectID:   created.ID,
+					ObjectID:   id,
 					Owner:      doc.Signer,
 					TimelineID: timeline,
 				}, sendDocument, sendSignature)
@@ -206,7 +218,7 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 					continue
 				}
 			}
-		} else {
+		} else if signerDomain.Domain == s.config.Concurrent.FQDN { // ここでリソースを作成したなら、リモートにもリレー
 			// remoteならdocumentをリレー
 			packet := core.Commit{
 				Document:  document,

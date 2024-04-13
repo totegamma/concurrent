@@ -7,7 +7,6 @@ import (
 	"log/slog"
 	"strings"
 
-	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/x/cdid"
 	"github.com/totegamma/concurrent/x/core"
@@ -27,7 +26,6 @@ type Service interface {
 }
 
 type service struct {
-	rdb      *redis.Client // TODO: remove this
 	repo     Repository
 	timeline timeline.Service
 	key      key.Service
@@ -35,8 +33,8 @@ type service struct {
 }
 
 // NewService creates a new message service
-func NewService(rdb *redis.Client, repo Repository, timeline timeline.Service, key key.Service, config util.Config) Service {
-	return &service{rdb, repo, timeline, key, config}
+func NewService(repo Repository, timeline timeline.Service, key key.Service, config util.Config) Service {
+	return &service{repo, timeline, key, config}
 }
 
 // Count returns the count number of messages
@@ -261,14 +259,14 @@ func (s *service) Delete(ctx context.Context, document, signature string) (core.
 	}
 
 	for _, desttimeline := range deleted.Timelines {
-		jsonstr, _ := json.Marshal(core.Event{
+		event := core.Event{
 			TimelineID: desttimeline,
 			Type:       "message",
 			Action:     "delete",
 			Document:   document,
 			Signature:  signature,
-		})
-		err := s.rdb.Publish(context.Background(), desttimeline, jsonstr).Err()
+		}
+		err := s.timeline.PublishEvent(ctx, event)
 		if err != nil {
 			span.RecordError(err)
 			return deleted, err

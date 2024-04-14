@@ -7,7 +7,6 @@ package mock_entity
 import (
 	context "context"
 	reflect "reflect"
-	time "time"
 
 	core "github.com/totegamma/concurrent/x/core"
 	gomock "go.uber.org/mock/gomock"
@@ -95,19 +94,19 @@ func (mr *MockServiceMockRecorder) Get(ctx, ccid interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockService)(nil).Get), ctx, ccid)
 }
 
-// GetAddress mocks base method.
-func (m *MockService) GetAddress(ctx context.Context, ccid string) (core.Address, error) {
+// GetWithHint mocks base method.
+func (m *MockService) GetWithHint(ctx context.Context, ccid, hint string) (core.Entity, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAddress", ctx, ccid)
-	ret0, _ := ret[0].(core.Address)
+	ret := m.ctrl.Call(m, "GetWithHint", ctx, ccid, hint)
+	ret0, _ := ret[0].(core.Entity)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetAddress indicates an expected call of GetAddress.
-func (mr *MockServiceMockRecorder) GetAddress(ctx, ccid interface{}) *gomock.Call {
+// GetWithHint indicates an expected call of GetWithHint.
+func (mr *MockServiceMockRecorder) GetWithHint(ctx, ccid, hint interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAddress", reflect.TypeOf((*MockService)(nil).GetAddress), ctx, ccid)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetWithHint", reflect.TypeOf((*MockService)(nil).GetWithHint), ctx, ccid, hint)
 }
 
 // IsUserExists mocks base method.
@@ -139,26 +138,11 @@ func (mr *MockServiceMockRecorder) List(ctx interface{}) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockService)(nil).List), ctx)
 }
 
-// ListModified mocks base method.
-func (m *MockService) ListModified(ctx context.Context, modified time.Time) ([]core.Entity, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListModified", ctx, modified)
-	ret0, _ := ret[0].([]core.Entity)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ListModified indicates an expected call of ListModified.
-func (mr *MockServiceMockRecorder) ListModified(ctx, modified interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListModified", reflect.TypeOf((*MockService)(nil).ListModified), ctx, modified)
-}
-
 // PullEntityFromRemote mocks base method.
-func (m *MockService) PullEntityFromRemote(ctx context.Context, id, domain string) (string, error) {
+func (m *MockService) PullEntityFromRemote(ctx context.Context, id, domain string) (core.Entity, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "PullEntityFromRemote", ctx, id, domain)
-	ret0, _ := ret[0].(string)
+	ret0, _ := ret[0].(core.Entity)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
@@ -167,21 +151,6 @@ func (m *MockService) PullEntityFromRemote(ctx context.Context, id, domain strin
 func (mr *MockServiceMockRecorder) PullEntityFromRemote(ctx, id, domain interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PullEntityFromRemote", reflect.TypeOf((*MockService)(nil).PullEntityFromRemote), ctx, id, domain)
-}
-
-// ResolveHost mocks base method.
-func (m *MockService) ResolveHost(ctx context.Context, user, hint string) (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ResolveHost", ctx, user, hint)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ResolveHost indicates an expected call of ResolveHost.
-func (mr *MockServiceMockRecorder) ResolveHost(ctx, user, hint interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveHost", reflect.TypeOf((*MockService)(nil).ResolveHost), ctx, user, hint)
 }
 
 // Tombstone mocks base method.
@@ -211,18 +180,4 @@ func (m *MockService) Update(ctx context.Context, entity *core.Entity) error {
 func (mr *MockServiceMockRecorder) Update(ctx, entity interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockService)(nil).Update), ctx, entity)
-}
-
-// UpdateAddress mocks base method.
-func (m *MockService) UpdateAddress(ctx context.Context, ccid, domain string, signedAt time.Time) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpdateAddress", ctx, ccid, domain, signedAt)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// UpdateAddress indicates an expected call of UpdateAddress.
-func (mr *MockServiceMockRecorder) UpdateAddress(ctx, ccid, domain, signedAt interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateAddress", reflect.TypeOf((*MockService)(nil).UpdateAddress), ctx, ccid, domain, signedAt)
 }

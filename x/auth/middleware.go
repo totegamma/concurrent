@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"strconv"
@@ -9,6 +10,8 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/jwt"
+	"github.com/totegamma/concurrent/x/key"
+	"github.com/totegamma/concurrent/x/util"
 	"github.com/xinguang/go-recaptcha"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -28,6 +31,7 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 		defer span.End()
 
 		authHeader := c.Request().Header.Get("authorization")
+		passportHeader := c.Request().Header.Get("passport")
 
 		if authHeader != "" {
 			split := strings.Split(authHeader, " ")
@@ -55,9 +59,136 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 
 			c.Set("jwtclaims", claims)
 
-			if claims.Subject == "CC_API" {
+			if claims.Subject != "CC_API" {
+				span.RecordError(fmt.Errorf("invalid subject"))
+				goto skip
+			}
 
-				ccid := ""
+			ccid := ""
+			if passportHeader != "" { // treat as remote user
+				// validate
+				var passport core.Passport
+				err = json.Unmarshal([]byte(passportHeader), &passport)
+				if err != nil {
+					span.RecordError(err)
+					goto skip
+				}
+
+				var passportDoc core.PassportDocument
+				err = json.Unmarshal([]byte(passport.Document), &passportDoc)
+				if err != nil {
+					span.RecordError(err)
+					goto skip
+				}
+
+				if passportDoc.Domain == s.config.Concurrent.FQDN {
+					span.RecordError(fmt.Errorf("do not use passport for local user"))
+					goto skip
+				}
+
+				domain, err := s.domain.GetByFQDN(ctx, passportDoc.Domain)
+				if err != nil {
+					span.RecordError(err)
+					goto skip
+				}
+
+				tags := core.ParseTags(domain.Tag)
+				if tags.Has("_block") {
+					return c.JSON(http.StatusForbidden, echo.Map{
+						"error":  "you are not authorized to perform this action",
+						"detail": "your domain is blocked",
+					})
+				}
+
+				err = util.VerifySignature([]byte(passport.Document), []byte(passport.Signature), domain.CCID)
+				if err != nil { // TODO: this is misbehaving. should be logged to audit
+					span.RecordError(err)
+					goto skip
+				}
+
+				// validate key
+				err = key.ValidateKeyResolution(passportDoc.Keys, passportDoc.Entity.ID)
+				if err != nil {
+					span.RecordError(err)
+					goto skip
+				}
+
+				entity := passportDoc.Entity
+				oldentity, err := s.entity.Get(ctx, passportDoc.Entity.ID)
+				if err == nil { // Already registered
+					shouldUpdate := false
+					tags = core.ParseTags(oldentity.Tag)
+					if tags.Has("_block") {
+						return c.JSON(http.StatusForbidden, echo.Map{
+							"error":  "you are not authorized to perform this action",
+							"detail": "you are blocked",
+						})
+					}
+					if !oldentity.IsScoreFixed {
+						if entity.Score != oldentity.Score {
+							shouldUpdate = true
+							entity.Score = oldentity.Score
+						}
+					}
+
+					if entity.Domain != oldentity.Domain {
+						shouldUpdate = true
+						// validate affiliation
+						err = util.VerifySignature([]byte(entity.AffiliationDocument), []byte(entity.AffiliationSignature), oldentity.ID)
+						if err != nil {
+							span.RecordError(err)
+							goto skip
+						}
+
+						var affiliation core.EntityAffiliation
+						err = json.Unmarshal([]byte(entity.AffiliationDocument), &affiliation)
+						if err != nil {
+							span.RecordError(err)
+							return c.JSON(http.StatusForbidden, echo.Map{
+								"error": "your affiliation document is invalid",
+							})
+						}
+
+						var oldaffiliation core.EntityAffiliation
+						err = json.Unmarshal([]byte(oldentity.AffiliationDocument), &oldaffiliation)
+						if err != nil {
+							span.RecordError(err)
+							goto skip
+						}
+
+						if affiliation.SignedAt.Before(oldaffiliation.SignedAt) {
+							span.RecordError(fmt.Errorf("affiliation is outdated"))
+							return c.JSON(http.StatusForbidden, echo.Map{
+								"error": "your affiliation document is outdated",
+							})
+						}
+						entity.AffiliationDocument = oldentity.AffiliationDocument
+						entity.AffiliationSignature = oldentity.AffiliationSignature
+					}
+
+					if shouldUpdate {
+						s.entity.Update(ctx, &entity)
+					}
+				} else {
+					err = util.VerifySignature([]byte(entity.AffiliationDocument), []byte(entity.AffiliationSignature), entity.ID)
+					if err != nil {
+						span.RecordError(err)
+						return c.JSON(http.StatusForbidden, echo.Map{
+							"error": "your affiliation document is invalid",
+						})
+					}
+					if entity.Domain != passportDoc.Domain {
+						span.RecordError(fmt.Errorf("invalid domain"))
+						return c.JSON(http.StatusForbidden, echo.Map{
+							"error": "your affiliation document and passport is not consistent",
+						})
+					}
+					s.entity.Update(ctx, &entity)
+				}
+
+				ccid = passportDoc.Entity.ID
+
+			} else { // treat as local user
 				if core.IsCCID(claims.Issuer) {
 					ccid = claims.Issuer
 				} else if core.IsCKID(claims.Issuer) {
@@ -71,86 +202,24 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 					goto skip
 				}
 
-				var requester core.Entity
-				var domain core.Domain
-				var err error
-				tags := &core.Tags{}
-
-				requester, err = s.entity.Get(ctx, ccid)
-				if err == nil {
-					tags = core.ParseTags(requester.Tag)
-					c.Set(core.RequesterTypeCtxKey, core.LocalUser)
-					c.Set(core.RequesterTagCtxKey, tags)
-					span.SetAttributes(attribute.String("RequesterType", core.RequesterTypeString(core.LocalUser)))
-					span.SetAttributes(attribute.String("RequesterTag", requester.Tag))
-				} else {
-					domain, err = s.domain.GetByCCID(ctx, claims.Issuer)
-					if err != nil {
-						span.RecordError(err)
-						goto skip
-					}
-					tags = core.ParseTags(domain.Tag)
-					c.Set(core.RequesterTypeCtxKey, core.RemoteDomain)
-					c.Set(core.RequesterDomainCtxKey, domain.ID)
-					c.Set(core.RequesterDomainTagsKey, tags)
-					span.SetAttributes(attribute.String("RequesterType", core.RequesterTypeString(core.RemoteDomain)))
-					span.SetAttributes(attribute.String("RequesterDomain", domain.ID))
-					span.SetAttributes(attribute.String("RequesterDomainTags", domain.Tag))
-				}
-
-				c.Set(core.RequesterIdCtxKey, requester.ID)
-				span.SetAttributes(attribute.String("RequesterId", ccid))
-
-				if tags.Has("_block") {
+				entity, err := s.entity.Get(ctx, ccid)
+				if err != nil {
+					span.RecordError(err)
 					return c.JSON(http.StatusForbidden, echo.Map{
 						"error":  "you are not authorized to perform this action",
-						"detail": "you are blocked",
+						"detail": "you are not registered",
 					})
 				}
 
-			} else if claims.Subject == "CC_PASSPORT" {
-
-				domain, err := s.domain.GetByCCID(ctx, claims.Issuer)
-				if err != nil {
-					if claims.Domain != "" {
-						// TODO:
-						// domain, err = s.domain.SayHello(ctx, claims.Domain)
-						// if err != nil {
-						// 	span.RecordError(err)
-						// 	goto skip
-						// }
-					} else {
-						span.RecordError(err)
-						goto skip
-					}
-				}
-
-				tags := core.ParseTags(domain.Tag)
-				if tags.Has("_block") {
-					return c.JSON(http.StatusForbidden, echo.Map{
-						"error":  "you are not authorized to perform this action",
-						"detail": "you are blocked",
-					})
-				}
-
-				ccid := claims.Principal
-				// pull entity from remote if not registered
-				_, err = s.entity.GetAddress(ctx, ccid)
-				if err != nil {
-					_, err = s.entity.PullEntityFromRemote(ctx, ccid, domain.ID)
-					if err != nil {
-						span.RecordError(err)
-						goto skip
-					}
-				}
-
-				c.Set(core.RequesterTypeCtxKey, core.RemoteUser)
-				c.Set(core.RequesterIdCtxKey, ccid)
-				c.Set(core.RequesterDomainCtxKey, domain.ID)
-				span.SetAttributes(attribute.String("RequesterType", core.RequesterTypeString(core.RemoteUser)))
-				span.SetAttributes(attribute.String("RequesterId", ccid))
-				span.SetAttributes(attribute.String("RequesterDomain", domain.ID))
+				tags := core.ParseTags(entity.Tag)
+				c.Set(core.RequesterTypeCtxKey, core.LocalUser)
+				c.Set(core.RequesterTagCtxKey, tags)
+				span.SetAttributes(attribute.String("RequesterType", core.RequesterTypeString(core.LocalUser)))
+				span.SetAttributes(attribute.String("RequesterTag", entity.Tag))
 			}
+
+			c.Set(core.RequesterIdCtxKey, ccid)
+			span.SetAttributes(attribute.String("RequesterId", ccid))
 		}
 	skip:
 		c.SetRequest(c.Request().WithContext(ctx))

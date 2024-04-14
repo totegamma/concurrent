@@ -108,11 +108,11 @@ func (s *service) NormalizeTimelineID(ctx context.Context, timeline string) (str
 			domain = split[1]
 		}
 		// else: ccid?
-		addr, err := s.entity.ResolveHost(ctx, split[1], "")
+		entity, err := s.entity.Get(ctx, split[1])
 		if err != nil {
 			return "", err
 		}
-		domain = addr
+		domain = entity.Domain
 	}
 
 	if !cdid.IsSeemsCDID(id, 't') && domain == s.config.Concurrent.FQDN && core.IsCCID(split[1]) {
@@ -319,11 +319,11 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 	timelineID, timelineHost := query[0], query[1]
 
 	if core.IsCCID(timelineHost) {
-		domain, err := s.entity.ResolveHost(ctx, timelineHost, "")
+		requester, err := s.entity.Get(ctx, timelineHost)
 		if err != nil {
 			return core.TimelineItem{}, err
 		}
-		timelineHost = domain
+		timelineHost = requester.Domain
 	}
 
 	if !cdid.IsSeemsCDID(timelineID, 't') && timelineHost == s.config.Concurrent.FQDN && core.IsCCID(query[1]) {

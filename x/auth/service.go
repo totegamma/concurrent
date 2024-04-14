@@ -2,15 +2,14 @@ package auth
 
 import (
 	"context"
-	"strconv"
-	"time"
+	"encoding/json"
+	"fmt"
 
 	"github.com/labstack/echo/v4"
-	"github.com/rs/xid"
 
+	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
-	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/util"
 )
@@ -34,45 +33,58 @@ func NewService(config util.Config, entity entity.Service, domain domain.Service
 }
 
 // GetPassport takes client signed JWT and returns server signed JWT
-func (s *service) IssuePassport(ctx context.Context, requester, remote string) (string, error) {
+func (s *service) IssuePassport(ctx context.Context, requester, keyID string) (string, error) {
 	ctx, span := tracer.Start(ctx, "ServiceIssueJWT")
 	defer span.End()
 
-	// check if domain exists
-	domain, err := s.domain.GetByFQDN(ctx, remote)
-	if err != nil {
-		// TODO:
-		// domain, err = s.domain.SayHello(ctx, remote)
-		// if err != nil {
-		// 	span.RecordError(err)
-		// 	return "", err
-		// }
-	}
-
-	// check if issuer exists in this domain
-	ent, err := s.entity.Get(ctx, requester)
+	entity, err := s.entity.Get(ctx, requester)
 	if err != nil {
 		span.RecordError(err)
 		return "", err
 	}
 
-	// create new jwt
-	response, err := jwt.Create(jwt.Claims{
-		Issuer:         s.config.Concurrent.CCID,
-		Subject:        "CC_PASSPORT",
-		Audience:       domain.ID,
-		Principal:      requester,
-		ExpirationTime: strconv.FormatInt(time.Now().Add(6*time.Hour).Unix(), 10),
-		IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
-		JWTID:          xid.New().String(),
-		Tag:            ent.Tag,
-		Domain:         s.config.Concurrent.FQDN,
-	}, s.config.Concurrent.PrivateKey)
+	if entity.Domain != s.config.Concurrent.FQDN {
+		return "", fmt.Errorf("You are not a local entity")
+	}
 
+	var keys []core.Key
+
+	if keyID == "" {
+		keys, err = s.key.GetKeyResolution(ctx, keyID)
+		if err != nil {
+			span.RecordError(err)
+			return "", err
+		}
+	}
+
+	documentObj := core.PassportDocument{
+		Domain: s.config.Concurrent.FQDN,
+		Entity: entity,
+		Keys:   keys,
+	}
+
+	document, err := json.Marshal(documentObj)
 	if err != nil {
 		span.RecordError(err)
 		return "", err
 	}
 
-	return response, nil
+	signature, err := util.SignBytes(document, s.config.Concurrent.PrivateKey)
+	if err != nil {
+		span.RecordError(err)
+		return "", err
+	}
+
+	passport := core.Passport{
+		Document:  string(document),
+		Signature: string(signature),
+	}
+
+	passportBytes, err := json.Marshal(passport)
+	if err != nil {
+		span.RecordError(err)
+		return "", err
+	}
+
+	return string(passportBytes), nil
 }

@@ -69,6 +69,7 @@ type Profile struct {
 // mutable
 type Entity struct {
 	ID                   string    `json:"ccid" gorm:"type:char(42)"`
+	Domain               string    `json:"domain" gorm:"type:text"`
 	Tag                  string    `json:"tag" gorm:"type:text;"`
 	Score                int       `json:"score" gorm:"type:integer;default:0"`
 	IsScoreFixed         bool      `json:"isScoreFixed" gorm:"type:boolean;default:false"`
@@ -85,16 +86,6 @@ type EntityMeta struct {
 	Inviter   *string `json:"inviter" gorm:"type:char(42)"`
 	Info      string  `json:"info" gorm:"type:json;default:'null'"`
 	Signature string  `json:"signature" gorm:"type:char(130)"`
-}
-
-// Address
-type Address struct {
-	ID       string    `json:"ccid" gorm:"type:char(42)"`
-	Domain   string    `json:"domain" gorm:"type:text"`
-	Score    int       `json:"score" gorm:"type:integer;default:0"`
-	Document string    `json:"document" gorm:"type:json;default:'{}'"`
-	SignedAt time.Time `json:"validFrom" gorm:"type:timestamp with time zone"`
-	CDate    time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 }
 
 // Domain is one of a concurrent base object

@@ -11,3 +11,8 @@ type ResponseBase[T any] struct {
 	Content T      `json:"content"`
 	Error   string `json:"error,omitempty"`
 }
+
+type Passport struct {
+	Document  string `json:"document"`
+	Signature string `json:"signature"`
+}

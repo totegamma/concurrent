@@ -161,7 +161,7 @@ func (s *service) ValidateSignedObject(ctx context.Context, payload, signature s
 		}
 	} else { // サブキーの場合: 親キーを取得して検証
 
-		domain, err := s.entity.ResolveHost(ctx, object.Signer, "")
+		signer, err := s.entity.GetWithHint(ctx, object.Signer, "")
 		if err != nil {
 			span.RecordError(err)
 			return errors.Wrap(err, "[sub] failed to resolve host")
@@ -169,14 +169,14 @@ func (s *service) ValidateSignedObject(ctx context.Context, payload, signature s
 
 		ccid := ""
 
-		if domain == s.config.Concurrent.FQDN {
+		if signer.Domain == s.config.Concurrent.FQDN {
 			ccid, err = s.ResolveSubkey(ctx, object.KeyID)
 			if err != nil {
 				span.RecordError(err)
 				return errors.Wrap(err, "[sub] failed to resolve subkey")
 			}
 		} else {
-			ccid, err = s.ResolveRemoteSubkey(ctx, object.KeyID, domain)
+			ccid, err = s.ResolveRemoteSubkey(ctx, object.KeyID, signer.Domain)
 			if err != nil {
 				span.RecordError(err)
 				return errors.Wrap(err, "[sub] failed to resolve remote subkey")
@@ -207,6 +207,35 @@ func (s *service) ValidateSignedObject(ctx context.Context, payload, signature s
 type keyResponse struct {
 	Status  string     `json:"status"`
 	Content []core.Key `json:"content"`
+}
+
+func ValidateKeyResolution(keys []core.Key, root string) error {
+
+	nextKey := ""
+	for _, key := range keys {
+		if (nextKey != "") && (nextKey != key.ID) {
+			return fmt.Errorf("Key %s is not a child of %s", key.ID, nextKey)
+		}
+
+		if core.IsCCID(key.ID) {
+			if key.ID != root {
+				return fmt.Errorf("Root is not matched with the previous key")
+			}
+			break
+		}
+
+		if key.Root != root {
+			return fmt.Errorf("Root is not matched with the previous key")
+		}
+
+		if key.RevokeDocument != "null" {
+			return fmt.Errorf("Key %s is revoked", key.ID)
+		}
+
+		nextKey = key.Parent
+	}
+
+	return nil
 }
 
 func (s *service) ResolveRemoteSubkey(ctx context.Context, keyID, domain string) (string, error) {

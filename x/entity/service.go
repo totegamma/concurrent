@@ -7,7 +7,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/pkg/errors"
-	"log/slog"
 	"strconv"
 	"strings"
 	"time"
@@ -25,16 +24,13 @@ type Service interface {
 	Tombstone(ctx context.Context, document, signature string) (core.Entity, error)
 
 	Get(ctx context.Context, ccid string) (core.Entity, error)
+	GetWithHint(ctx context.Context, ccid, hint string) (core.Entity, error)
 	List(ctx context.Context) ([]core.Entity, error)
-	ListModified(ctx context.Context, modified time.Time) ([]core.Entity, error)
-	ResolveHost(ctx context.Context, user, hint string) (string, error)
 	Update(ctx context.Context, entity *core.Entity) error
 	IsUserExists(ctx context.Context, user string) bool
 	Delete(ctx context.Context, id string) error
-	GetAddress(ctx context.Context, ccid string) (core.Address, error)
-	UpdateAddress(ctx context.Context, ccid string, domain string, signedAt time.Time) error
 	Count(ctx context.Context) (int64, error)
-	PullEntityFromRemote(ctx context.Context, id, domain string) (string, error)
+	PullEntityFromRemote(ctx context.Context, id, domain string) (core.Entity, error)
 }
 
 type service struct {
@@ -52,89 +48,36 @@ func NewService(repository Repository, config util.Config, jwtService jwt.Servic
 	}
 }
 
-type addressResponse struct {
-	Status  string `json:"status"`
-	Content string `json:"content"`
-}
-
 // PullEntityFromRemote pulls entity from remote
-func (s *service) PullEntityFromRemote(ctx context.Context, id, hintDomain string) (string, error) {
+func (s *service) PullEntityFromRemote(ctx context.Context, id, hintDomain string) (core.Entity, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryPullEntityFromRemote")
 	defer span.End()
 
 	targetDomain, err := client.ResolveAddress(ctx, hintDomain, id)
 	if err != nil {
 		span.RecordError(err)
-		return "", err
+		return core.Entity{}, err
 	}
 
 	entity, err := client.GetEntity(ctx, targetDomain, id)
 	if err != nil {
 		span.RecordError(err)
-		return "", err
+		return core.Entity{}, err
 	}
 
-	err = util.VerifySignature([]byte(entity.AffiliationDocument), []byte(entity.AffiliationSignature), entity.ID)
+	err = util.VerifySignature([]byte(entity.AffiliationDocument), []byte(entity.AffiliationSignature), id)
 	if err != nil {
 		span.RecordError(err)
-		slog.Error(
-			"Invalid signature",
-			slog.String("error", err.Error()),
-			slog.String("module", "agent"),
-		)
-		return "", fmt.Errorf("Invalid signature")
+		return core.Entity{}, err
 	}
 
-	var signedObj core.EntityAffiliation
-	err = json.Unmarshal([]byte(entity.AffiliationDocument), &signedObj)
+	created, err := s.Affiliation(ctx, entity.AffiliationDocument, entity.AffiliationSignature, "")
 	if err != nil {
 		span.RecordError(err)
-		slog.Error(
-			"pullRemoteEntities",
-			slog.String("error", err.Error()),
-			slog.String("module", "agent"),
-		)
-		return "", fmt.Errorf("Invalid payload")
+		return core.Entity{}, err
 	}
 
-	if signedObj.Domain != targetDomain {
-		err = fmt.Errorf("Remote entity is not for the target domain")
-		span.RecordError(err)
-		return "", err
-	}
-
-	existanceAddr, err := s.GetAddress(ctx, entity.ID)
-	if err == nil {
-		// compare signed date
-		if signedObj.SignedAt.Unix() <= existanceAddr.SignedAt.Unix() {
-			err = fmt.Errorf("Remote entity is older than local entity")
-			span.RecordError(err)
-			return "", err
-		}
-	}
-
-	existanceEntity, err := s.Get(ctx, entity.ID)
-	if err == nil {
-		if signedObj.SignedAt.Unix() <= existanceEntity.CDate.Unix() {
-			err = fmt.Errorf("Remote entity is older than local entity")
-			span.RecordError(err)
-			return "", err
-		}
-	}
-
-	err = s.UpdateAddress(ctx, entity.ID, targetDomain, signedObj.SignedAt)
-
-	if err != nil {
-		span.RecordError(err)
-		slog.Error(
-			"pullRemoteEntities",
-			slog.String("error", err.Error()),
-			slog.String("module", "agent"),
-		)
-		return "", err
-	}
-
-	return targetDomain, nil
+	return created, nil
 }
 
 // Total returns the count number of entities
@@ -149,13 +92,6 @@ func (s *service) Affiliation(ctx context.Context, document, signature, option s
 	ctx, span := tracer.Start(ctx, "ServiceAffiliation")
 	defer span.End()
 
-	if s.config.Profile.SiteKey != "" {
-		captchaVerified, ok := ctx.Value(core.CaptchaVerifiedKey).(bool)
-		if !ok || !captchaVerified {
-			return core.Entity{}, errors.New("Captcha verification failed")
-		}
-	}
-
 	var doc core.EntityAffiliation
 	err := json.Unmarshal([]byte(document), &doc)
 	if err != nil {
@@ -163,109 +99,148 @@ func (s *service) Affiliation(ctx context.Context, document, signature, option s
 		return core.Entity{}, errors.Wrap(err, "Failed to unmarshal document")
 	}
 
-	var opts affiliationOption
-	err = json.Unmarshal([]byte(option), &opts)
-	if err != nil {
-		span.RecordError(err)
-		return core.Entity{}, errors.Wrap(err, "Failed to unmarshal option")
+	existence, exists := s.repository.GetEntity(ctx, doc.Signer)
+	if exists == nil {
+		var existenceAffiliation core.EntityAffiliation
+		err = json.Unmarshal([]byte(existence.AffiliationDocument), &existenceAffiliation)
+		if err != nil {
+			span.RecordError(err)
+			return core.Entity{}, errors.Wrap(err, "Failed to unmarshal existence affiliation document")
+		}
+
+		if !existenceAffiliation.SignedAt.After(doc.SignedAt) {
+			return existence, nil
+		}
 	}
 
-	// validate document
 	if doc.Domain != s.config.Concurrent.FQDN {
-		return core.Entity{}, errors.New("Domain is not match")
-	}
-
-	if s.config.Concurrent.Registration == "open" {
-		entity, _, err := s.repository.CreateEntityWithMeta(
-			ctx,
-			core.Entity{
-				ID:                   doc.Signer,
-				Tag:                  "",
-				AffiliationDocument:  document,
-				AffiliationSignature: signature,
-			},
-			core.EntityMeta{
-				ID:      doc.Signer,
-				Info:    opts.Info,
-				Inviter: nil,
-			},
-		)
-
-		if err != nil {
-			return core.Entity{}, errors.Wrap(err, "Failed to create entity")
+		if s.config.Profile.SiteKey != "" {
+			captchaVerified, ok := ctx.Value(core.CaptchaVerifiedKey).(bool)
+			if !ok || !captchaVerified {
+				return core.Entity{}, errors.New("Captcha verification failed")
+			}
 		}
 
-		return entity, nil
-	} else if s.config.Concurrent.Registration == "invite" {
-		if opts.Invitation == "" {
-			return core.Entity{}, fmt.Errorf("invitation code is required")
-		}
-
-		claims, err := jwt.Validate(opts.Invitation)
+		var opts affiliationOption
+		err = json.Unmarshal([]byte(option), &opts)
 		if err != nil {
 			span.RecordError(err)
-			return core.Entity{}, err
-		}
-		if claims.Subject != "CONCURRENT_INVITE" {
-			return core.Entity{}, fmt.Errorf("invalid invitation code")
+			return core.Entity{}, errors.Wrap(err, "Failed to unmarshal option")
 		}
 
-		ok, err := s.jwtService.CheckJTI(ctx, claims.JWTID)
-		if err != nil {
-			span.RecordError(err)
-			return core.Entity{}, err
+		switch s.config.Concurrent.Registration {
+		case "open":
+			entity, _, err := s.repository.CreateEntityWithMeta(
+				ctx,
+				core.Entity{
+					ID:                   doc.Signer,
+					Tag:                  "",
+					AffiliationDocument:  document,
+					AffiliationSignature: signature,
+				},
+				core.EntityMeta{
+					ID:      doc.Signer,
+					Info:    opts.Info,
+					Inviter: nil,
+				},
+			)
+
+			if err != nil {
+				return core.Entity{}, errors.Wrap(err, "Failed to create entity")
+			}
+
+			return entity, nil
+		case "invite":
+			if opts.Invitation == "" {
+				return core.Entity{}, fmt.Errorf("invitation code is required")
+			}
+
+			claims, err := jwt.Validate(opts.Invitation)
+			if err != nil {
+				span.RecordError(err)
+				return core.Entity{}, err
+			}
+			if claims.Subject != "CONCURRENT_INVITE" {
+				return core.Entity{}, fmt.Errorf("invalid invitation code")
+			}
+
+			ok, err := s.jwtService.CheckJTI(ctx, claims.JWTID)
+			if err != nil {
+				span.RecordError(err)
+				return core.Entity{}, err
+			}
+			if !ok {
+				return core.Entity{}, fmt.Errorf("token is already used")
+			}
+
+			inviter, err := s.repository.GetEntity(ctx, claims.Issuer)
+			if err != nil {
+				span.RecordError(err)
+				return core.Entity{}, err
+			}
+
+			inviterTags := strings.Split(inviter.Tag, ",")
+			if !slices.Contains(inviterTags, "_invite") {
+				return core.Entity{}, fmt.Errorf("inviter is not allowed to invite")
+			}
+
+			registered, _, err := s.repository.CreateEntityWithMeta(
+				ctx,
+				core.Entity{
+					ID:                   doc.Signer,
+					Tag:                  "",
+					AffiliationDocument:  document,
+					AffiliationSignature: signature,
+				},
+				core.EntityMeta{
+					ID:      doc.Signer,
+					Info:    opts.Info,
+					Inviter: &claims.Issuer,
+				},
+			)
+
+			if err != nil {
+				span.RecordError(err)
+				return core.Entity{}, err
+			}
+
+			expireAt, err := strconv.ParseInt(claims.ExpirationTime, 10, 64)
+			if err != nil {
+				span.RecordError(err)
+				return registered, err
+			}
+			err = s.jwtService.InvalidateJTI(ctx, claims.JWTID, time.Unix(expireAt, 0))
+
+			if err != nil {
+				span.RecordError(err)
+				return core.Entity{}, err
+			}
+
+			return registered, nil
+
+		default:
+			return core.Entity{}, fmt.Errorf("registration is not open")
 		}
-		if !ok {
-			return core.Entity{}, fmt.Errorf("token is already used")
-		}
-
-		inviter, err := s.repository.GetEntity(ctx, claims.Issuer)
-		if err != nil {
-			span.RecordError(err)
-			return core.Entity{}, err
-		}
-
-		inviterTags := strings.Split(inviter.Tag, ",")
-		if !slices.Contains(inviterTags, "_invite") {
-			return core.Entity{}, fmt.Errorf("inviter is not allowed to invite")
-		}
-
-		registered, _, err := s.repository.CreateEntityWithMeta(
-			ctx,
-			core.Entity{
-				ID:                   doc.Signer,
-				Tag:                  "",
-				AffiliationDocument:  document,
-				AffiliationSignature: signature,
-			},
-			core.EntityMeta{
-				ID:      doc.Signer,
-				Info:    opts.Info,
-				Inviter: &claims.Issuer,
-			},
-		)
-
-		if err != nil {
-			span.RecordError(err)
-			return core.Entity{}, err
-		}
-
-		expireAt, err := strconv.ParseInt(claims.ExpirationTime, 10, 64)
-		if err != nil {
-			span.RecordError(err)
-			return registered, err
-		}
-		err = s.jwtService.InvalidateJTI(ctx, claims.JWTID, time.Unix(expireAt, 0))
-
-		if err != nil {
-			span.RecordError(err)
-			return core.Entity{}, err
-		}
-
-		return registered, nil
-
 	} else {
-		return core.Entity{}, fmt.Errorf("registration is not open")
+		newEntity := core.Entity{
+			ID:                   doc.Signer,
+			AffiliationDocument:  document,
+			AffiliationSignature: signature,
+		}
+
+		if exists == nil {
+			newEntity.Tag = existence.Tag
+			newEntity.IsScoreFixed = existence.IsScoreFixed
+			newEntity.Score = existence.Score
+		}
+
+		created, err := s.repository.CreateEntity(ctx, newEntity)
+		if err != nil {
+			span.RecordError(err)
+			return core.Entity{}, err
+		}
+
+		return created, nil
 	}
 }
 
@@ -304,47 +279,35 @@ func (s *service) Get(ctx context.Context, key string) (core.Entity, error) {
 	return entity, nil
 }
 
+// GetWithHint returns entity by ccid with hint
+func (s *service) GetWithHint(ctx context.Context, ccid, hint string) (core.Entity, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetWithHint")
+	defer span.End()
+
+	entity, err := s.repository.GetEntity(ctx, ccid)
+	if err == nil {
+		return entity, nil
+	}
+
+	if hint == "" {
+		return core.Entity{}, errors.New("hint is required")
+	}
+
+	entity, err = s.PullEntityFromRemote(ctx, ccid, hint)
+	if err != nil {
+		span.RecordError(err)
+		return core.Entity{}, err
+	}
+
+	return entity, nil
+}
+
 // List returns all entities
 func (s *service) List(ctx context.Context) ([]core.Entity, error) {
 	ctx, span := tracer.Start(ctx, "ServiceList")
 	defer span.End()
 
 	return s.repository.GetList(ctx)
-}
-
-// ListModified returns all entities modified after time
-func (s *service) ListModified(ctx context.Context, time time.Time) ([]core.Entity, error) {
-	ctx, span := tracer.Start(ctx, "ServiceListModified")
-	defer span.End()
-
-	return s.repository.ListModified(ctx, time)
-}
-
-// ResolveHost returns host for user
-func (s *service) ResolveHost(ctx context.Context, ccid string, hint string) (string, error) {
-	ctx, span := tracer.Start(ctx, "ServiceResolveHost")
-	defer span.End()
-
-	// check address book
-	addr, err := s.repository.GetAddress(ctx, ccid)
-	if err == nil {
-		return addr.Domain, nil
-	}
-
-	// check local user
-	_, err = s.repository.GetEntity(ctx, ccid)
-	if err == nil {
-		return s.config.Concurrent.FQDN, nil
-	}
-
-	if hint != "" {
-		host, err := s.PullEntityFromRemote(ctx, ccid, hint)
-		if err == nil {
-			return host, nil
-		}
-	}
-
-	return "", fmt.Errorf("User not found")
 }
 
 // Update updates entity
@@ -373,51 +336,4 @@ func (s *service) Delete(ctx context.Context, id string) error {
 	defer span.End()
 
 	return s.repository.Delete(ctx, id)
-}
-
-// GetAddress returns the address of a entity
-func (s *service) GetAddress(ctx context.Context, ccid string) (core.Address, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetAddress")
-	defer span.End()
-
-	return s.repository.GetAddress(ctx, ccid)
-}
-
-// UpdateAddress updates the address of a entity
-func (s *service) UpdateAddress(ctx context.Context, ccid string, domain string, signedAt time.Time) error {
-	ctx, span := tracer.Start(ctx, "ServiceUpdateAddress")
-	defer span.End()
-
-	return s.repository.UpdateAddress(ctx, ccid, domain, signedAt)
-}
-
-// ---
-
-func checkRegistration(ccid, payload, signature, mydomain string) error {
-
-	err := util.VerifySignature([]byte(payload), []byte(ccid), ccid)
-	if err != nil {
-		return err
-	}
-
-	var signedObject core.DocumentBase[any] //TODO
-	err = json.Unmarshal([]byte(payload), &signedObject)
-	if err != nil {
-		return err
-	}
-
-	if signedObject.Type != "Entity" {
-		return fmt.Errorf("object is not entity")
-	}
-
-	domain, ok := signedObject.Body.(map[string]interface{})["domain"].(string)
-	if !ok {
-		return fmt.Errorf("domain is not string")
-	}
-
-	if domain != mydomain {
-		return fmt.Errorf("domain is not match")
-	}
-
-	return nil
 }

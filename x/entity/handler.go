@@ -4,8 +4,6 @@ package entity
 import (
 	"errors"
 	"net/http"
-	"strconv"
-	"time"
 
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/x/core"
@@ -58,22 +56,12 @@ func (h handler) List(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerList")
 	defer span.End()
 
-	since, err := strconv.ParseInt(c.QueryParam("since"), 10, 64)
+	entities, err := h.service.List(ctx)
 	if err != nil {
-		entities, err := h.service.List(ctx)
-		if err != nil {
-			span.RecordError(err)
-			return err
-		}
-		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": entities})
-	} else {
-		entities, err := h.service.ListModified(ctx, time.Unix(since, 0))
-		if err != nil {
-			span.RecordError(err)
-			return err
-		}
-		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": entities})
+		span.RecordError(err)
+		return err
 	}
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": entities})
 }
 
 // Update updates an entity
@@ -116,10 +104,10 @@ func (h handler) Resolve(c echo.Context) error {
 
 	id := c.Param("id")
 	hint := c.QueryParam("hint")
-	fqdn, err := h.service.ResolveHost(ctx, id, hint)
+	entity, err := h.service.GetWithHint(ctx, id, hint)
 	if err != nil {
 		span.RecordError(err)
 		return err
 	}
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": fqdn})
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": entity.Domain})
 }

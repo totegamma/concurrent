@@ -124,13 +124,13 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 	signedAt := doc.SignedAt
 	id := cdid.New(hash10, signedAt).String()
 
-	signerDomain, err := s.entity.GetAddress(ctx, doc.Signer)
+	signer, err := s.entity.Get(ctx, doc.Signer)
 	if err != nil {
 		span.RecordError(err)
 		return core.Message{}, err
 	}
 
-	if signerDomain.Domain == s.config.Concurrent.FQDN { // signerが自ドメイン管轄の場合、リソースを作成
+	if signer.Domain == s.config.Concurrent.FQDN { // signerが自ドメイン管轄の場合、リソースを作成
 
 		message := core.Message{
 			ID:        id,
@@ -218,7 +218,7 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 					continue
 				}
 			}
-		} else if signerDomain.Domain == s.config.Concurrent.FQDN { // ここでリソースを作成したなら、リモートにもリレー
+		} else if signer.Domain == s.config.Concurrent.FQDN { // ここでリソースを作成したなら、リモートにもリレー
 			// remoteならdocumentをリレー
 			packet := core.Commit{
 				Document:  document,

@@ -91,13 +91,13 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 	signedAt := doc.SignedAt
 	id := cdid.New(hash10, signedAt).String()
 
-	ownerDomain, err := s.entity.GetAddress(ctx, doc.Owner)
+	owner, err := s.entity.Get(ctx, doc.Owner)
 	if err != nil {
 		span.RecordError(err)
 		return created, err
 	}
 
-	if ownerDomain.Domain == s.config.Concurrent.FQDN { // signerが自ドメイン管轄の場合、リソースを作成
+	if owner.Domain == s.config.Concurrent.FQDN { // signerが自ドメイン管轄の場合、リソースを作成
 		association := core.Association{
 			ID:        id,
 			Author:    doc.Signer,
@@ -168,7 +168,7 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 						continue
 					}
 				}
-			} else if ownerDomain.Domain == s.config.Concurrent.FQDN { // ここでリソースを作成したなら、リモートにもリレー
+			} else if owner.Domain == s.config.Concurrent.FQDN { // ここでリソースを作成したなら、リモートにもリレー
 				// send to remote
 				packet := core.Commit{
 					Document:  document,
@@ -186,7 +186,7 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 
 		// Associationだけの追加対応
 		// オリジナルの送信先のうち、まだ送ってないドメインがあれば追加で配る
-		if ownerDomain.Domain == s.config.Concurrent.FQDN {
+		if owner.Domain == s.config.Concurrent.FQDN {
 			targetMessage, err := s.message.Get(ctx, created.TargetID, doc.Signer) //NOTE: これはownerのドメインしか実行できない
 			if err != nil {
 				span.RecordError(err)

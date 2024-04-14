@@ -170,7 +170,6 @@ func main() {
 		&core.Domain{},
 		&core.Entity{},
 		&core.EntityMeta{},
-		&core.Address{},
 		&core.Collection{},
 		&core.CollectionItem{},
 		&core.Ack{},

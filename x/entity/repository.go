@@ -25,8 +25,6 @@ type Repository interface {
 	ListModified(ctx context.Context, modified time.Time) ([]core.Entity, error)
 	Delete(ctx context.Context, key string) error
 	Count(ctx context.Context) (int64, error)
-	GetAddress(ctx context.Context, ccid string) (core.Address, error)
-	UpdateAddress(ctx context.Context, ccid string, domain string, signedAt time.Time) error
 }
 
 type repository struct {
@@ -69,43 +67,6 @@ func (r *repository) Count(ctx context.Context) (int64, error) {
 		return 0, err
 	}
 	return count, nil
-}
-
-// GetAddress returns the address of a entity
-func (r *repository) GetAddress(ctx context.Context, ccid string) (core.Address, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetAddress")
-	defer span.End()
-
-	var addr core.Address
-	err := r.db.WithContext(ctx).First(&addr, "id = ?", ccid).Error
-	return addr, err
-}
-
-// SetAddress sets the address of a entity
-func (r *repository) SetAddress(ctx context.Context, ccid string, address string) error {
-	ctx, span := tracer.Start(ctx, "RepositorySetAddress")
-	defer span.End()
-
-	return r.db.WithContext(ctx).Model(&core.Entity{}).Where("id = ?", ccid).Update("address", address).Error
-}
-
-// UpdateAddress updates the address of a entity
-func (r *repository) UpdateAddress(ctx context.Context, ccid string, domain string, signedAt time.Time) error {
-	ctx, span := tracer.Start(ctx, "RepositoryUpdateAddress")
-	defer span.End()
-
-	// create if not exists
-	var addr core.Address
-	err := r.db.WithContext(ctx).First(&addr, "id = ?", ccid).Error
-	if err != nil {
-		return r.db.WithContext(ctx).Create(&core.Address{
-			ID:       ccid,
-			Domain:   domain,
-			SignedAt: signedAt,
-		}).Error
-	}
-
-	return r.db.WithContext(ctx).Model(&core.Address{}).Where("id = ?", ccid).Update("domain", domain).Error
 }
 
 // SetTombstone sets the tombstone of a entity

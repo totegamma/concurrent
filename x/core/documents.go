@@ -108,3 +108,10 @@ type UnsubscribeDocument struct { // type: unsubscribe
 	Subscription string `json:"subscription"`
 	Target       string `json:"target"`
 }
+
+type PassportDocument struct {
+	DocumentBase[any]
+	Domain string `json:"domain"`
+	Entity Entity `json:"entity"`
+	Keys   []Key  `json:"keys"`
+}

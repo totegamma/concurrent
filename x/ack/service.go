@@ -50,7 +50,7 @@ func (s *service) Ack(ctx context.Context, document string, signature string) er
 
 	switch doc.Type {
 	case "ack":
-		address, err := s.entity.GetAddress(ctx, doc.To)
+		to, err := s.entity.Get(ctx, doc.To)
 		if err == nil {
 			packet := core.Commit{
 				Document:  document,
@@ -63,7 +63,7 @@ func (s *service) Ack(ctx context.Context, document string, signature string) er
 				return err
 			}
 
-			resp, err := client.Commit(ctx, address.Domain, string(packetStr))
+			resp, err := client.Commit(ctx, to.Domain, string(packetStr))
 			if err != nil {
 				span.RecordError(err)
 				return err
@@ -79,7 +79,7 @@ func (s *service) Ack(ctx context.Context, document string, signature string) er
 			Signature: signature,
 		})
 	case "unack":
-		address, err := s.entity.GetAddress(ctx, doc.To)
+		to, err := s.entity.Get(ctx, doc.To)
 		if err == nil {
 
 			packet := core.Commit{
@@ -93,7 +93,7 @@ func (s *service) Ack(ctx context.Context, document string, signature string) er
 				return err
 			}
 
-			resp, err := client.Commit(ctx, address.Domain, string(packetStr))
+			resp, err := client.Commit(ctx, to.Domain, string(packetStr))
 			if err != nil {
 				span.RecordError(err)
 				return err

@@ -264,7 +264,7 @@ func main() {
 		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": core.Domain{
 			ID:          config.Concurrent.FQDN,
 			CCID:        config.Concurrent.CCID,
-			DimensionID: "",
+			DimensionID: config.Concurrent.Dimension,
 			Meta:        meta,
 		}})
 	})

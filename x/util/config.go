@@ -31,6 +31,7 @@ type Concurrent struct {
 	FQDN         string `yaml:"fqdn"`
 	PrivateKey   string `yaml:"privatekey"`
 	Registration string `yaml:"registration"` // open, invite, close
+	Dimension    string `yaml:"dimension"`
 
 	// internal generated
 	CCID      string `yaml:"ccid"`

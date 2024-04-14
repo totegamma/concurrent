@@ -228,3 +228,36 @@ func GetKey(ctx context.Context, domain, id string) ([]core.Key, error) {
 
 	return remoteKey.Content, nil
 }
+
+func GetDomain(ctx context.Context, domain string) (core.Domain, error) {
+	ctx, span := tracer.Start(ctx, "Client.GetDomain")
+	defer span.End()
+
+	req, err := http.NewRequest("GET", "https://"+domain+"/api/v1/domain", nil)
+	if err != nil {
+		span.RecordError(err)
+		return core.Domain{}, err
+	}
+
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+
+	client := new(http.Client)
+	client.Timeout = 3 * time.Second
+	resp, err := client.Do(req)
+	if err != nil {
+		span.RecordError(err)
+		return core.Domain{}, err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+
+	var remoteDomain core.ResponseBase[core.Domain]
+	err = json.Unmarshal(body, &remoteDomain)
+	if err != nil {
+		span.RecordError(err)
+		return core.Domain{}, err
+	}
+
+	return remoteDomain.Content, nil
+}

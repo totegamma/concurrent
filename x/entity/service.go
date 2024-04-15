@@ -26,7 +26,8 @@ type Service interface {
 	Get(ctx context.Context, ccid string) (core.Entity, error)
 	GetWithHint(ctx context.Context, ccid, hint string) (core.Entity, error)
 	List(ctx context.Context) ([]core.Entity, error)
-	Update(ctx context.Context, entity *core.Entity) error
+	UpdateScore(ctx context.Context, id string, score int) error
+	UpdateTag(ctx context.Context, id, tag string) error
 	IsUserExists(ctx context.Context, user string) bool
 	Delete(ctx context.Context, id string) error
 	Count(ctx context.Context) (int64, error)
@@ -99,7 +100,7 @@ func (s *service) Affiliation(ctx context.Context, document, signature, option s
 		return core.Entity{}, errors.Wrap(err, "Failed to unmarshal document")
 	}
 
-	existence, exists := s.repository.GetEntity(ctx, doc.Signer)
+	existence, exists := s.repository.Get(ctx, doc.Signer)
 	if exists == nil {
 		var existenceAffiliation core.EntityAffiliation
 		err = json.Unmarshal([]byte(existence.AffiliationDocument), &existenceAffiliation)
@@ -130,7 +131,7 @@ func (s *service) Affiliation(ctx context.Context, document, signature, option s
 
 		switch s.config.Concurrent.Registration {
 		case "open":
-			entity, _, err := s.repository.CreateEntityWithMeta(
+			entity, _, err := s.repository.CreateWithMeta(
 				ctx,
 				core.Entity{
 					ID:                   doc.Signer,
@@ -173,7 +174,7 @@ func (s *service) Affiliation(ctx context.Context, document, signature, option s
 				return core.Entity{}, fmt.Errorf("token is already used")
 			}
 
-			inviter, err := s.repository.GetEntity(ctx, claims.Issuer)
+			inviter, err := s.repository.Get(ctx, claims.Issuer)
 			if err != nil {
 				span.RecordError(err)
 				return core.Entity{}, err
@@ -184,7 +185,7 @@ func (s *service) Affiliation(ctx context.Context, document, signature, option s
 				return core.Entity{}, fmt.Errorf("inviter is not allowed to invite")
 			}
 
-			registered, _, err := s.repository.CreateEntityWithMeta(
+			registered, _, err := s.repository.CreateWithMeta(
 				ctx,
 				core.Entity{
 					ID:                   doc.Signer,
@@ -234,7 +235,7 @@ func (s *service) Affiliation(ctx context.Context, document, signature, option s
 			newEntity.Score = existence.Score
 		}
 
-		created, err := s.repository.CreateEntity(ctx, newEntity)
+		created, err := s.repository.Create(ctx, newEntity)
 		if err != nil {
 			span.RecordError(err)
 			return core.Entity{}, err
@@ -270,7 +271,7 @@ func (s *service) Get(ctx context.Context, key string) (core.Entity, error) {
 	ctx, span := tracer.Start(ctx, "ServiceGet")
 	defer span.End()
 
-	entity, err := s.repository.GetEntity(ctx, key)
+	entity, err := s.repository.Get(ctx, key)
 	if err != nil {
 		span.RecordError(err)
 		return core.Entity{}, err
@@ -284,7 +285,7 @@ func (s *service) GetWithHint(ctx context.Context, ccid, hint string) (core.Enti
 	ctx, span := tracer.Start(ctx, "ServiceGetWithHint")
 	defer span.End()
 
-	entity, err := s.repository.GetEntity(ctx, ccid)
+	entity, err := s.repository.Get(ctx, ccid)
 	if err == nil {
 		return entity, nil
 	}
@@ -310,24 +311,32 @@ func (s *service) List(ctx context.Context) ([]core.Entity, error) {
 	return s.repository.GetList(ctx)
 }
 
-// Update updates entity
-func (s *service) Update(ctx context.Context, entity *core.Entity) error {
-	ctx, span := tracer.Start(ctx, "ServiceUpdate")
-	defer span.End()
-
-	return s.repository.UpdateEntity(ctx, entity)
-}
-
 // IsUserExists returns true if user exists
 func (s *service) IsUserExists(ctx context.Context, user string) bool {
 	ctx, span := tracer.Start(ctx, "ServiceIsUserExists")
 	defer span.End()
 
-	_, err := s.repository.GetEntity(ctx, user)
+	_, err := s.repository.Get(ctx, user)
 	if err != nil {
 		return false
 	}
 	return true
+}
+
+// UpdateScore updates entity score
+func (s *service) UpdateScore(ctx context.Context, id string, score int) error {
+	ctx, span := tracer.Start(ctx, "ServiceUpdateScore")
+	defer span.End()
+
+	return s.repository.UpdateScore(ctx, id, score)
+}
+
+// UpdateTag updates entity tag
+func (s *service) UpdateTag(ctx context.Context, id, tag string) error {
+	ctx, span := tracer.Start(ctx, "ServiceUpdateTag")
+	defer span.End()
+
+	return s.repository.UpdateTag(ctx, id, tag)
 }
 
 // Delete deletes entity

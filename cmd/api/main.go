@@ -277,7 +277,6 @@ func main() {
 
 	// entity
 	apiV1.GET("/entity/:id", entityHandler.Get)
-	apiV1.PUT("/entity/:id", entityHandler.Update, auth.Restrict(auth.ISADMIN))
 	apiV1.DELETE("/entity/:id", entityHandler.Delete, auth.Restrict(auth.ISADMIN))
 	apiV1.GET("/entity/:id/acking", ackHandler.GetAcking)
 	apiV1.GET("/entity/:id/acker", ackHandler.GetAcker)

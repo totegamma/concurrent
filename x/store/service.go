@@ -63,7 +63,12 @@ func (s *service) Commit(ctx context.Context, document string, signature string,
 		return nil, err
 	}
 
-	err = s.key.ValidateSignedObject(ctx, document, signature)
+	keys, ok := ctx.Value(core.RequesterKeychainKey).([]core.Key)
+	if !ok {
+		keys = []core.Key{}
+	}
+
+	err = s.key.ValidateDocument(ctx, document, signature, keys)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err

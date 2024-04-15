@@ -5,9 +5,8 @@ const (
 	RequesterIdCtxKey      = "cc-requesterId"
 	RequesterTagCtxKey     = "cc-requesterTag"
 	RequesterDomainCtxKey  = "cc-requesterDomain"
-	RequesterKeyDepathKey  = "cc-requesterKeyDepath"
 	RequesterDomainTagsKey = "cc-requesterDomainTags"
-	RequesterRemoteTagsKey = "cc-requesterRemoteTags"
+	RequesterKeychainKey   = "cc-requesterKeychain"
 	CaptchaVerifiedKey     = "cc-captchaVerified"
 )
 
@@ -16,9 +15,8 @@ const (
 	RequesterIdHeader         = "cc-requester-ccid"
 	RequesterTagHeader        = "cc-requester-tag"
 	RequesterDomainHeader     = "cc-requester-domain"
-	RequesterKeyDepathHeader  = "cc-requester-key-depath"
 	RequesterDomainTagsHeader = "cc-requester-domain-tags"
-	RequesterRemoteTagsHeader = "cc-requester-remote-tags"
+	RequesterKeychainHeader   = "cc-requester-keychain"
 	CaptchaVerifiedHeader     = "cc-captcha-verified"
 )
 

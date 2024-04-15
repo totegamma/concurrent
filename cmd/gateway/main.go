@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -263,19 +264,18 @@ func main() {
 				c.Request().Header.Set(core.RequesterDomainHeader, requesterDomain)
 			}
 
-			requesterKeyDepath, ok := c.Get(core.RequesterKeyDepathKey).(string)
-			if ok {
-				c.Request().Header.Set(core.RequesterKeyDepathHeader, requesterKeyDepath)
-			}
-
 			requesterDomainTags, ok := c.Get(core.RequesterDomainTagsKey).(core.Tags)
 			if ok {
 				c.Request().Header.Set(core.RequesterDomainTagsHeader, requesterDomainTags.ToString())
 			}
 
-			requesterRemoteTags, ok := c.Get(core.RequesterRemoteTagsKey).(core.Tags)
+			requesterKeys, ok := c.Get(core.RequesterKeychainKey).([]core.Key)
 			if ok {
-				c.Request().Header.Set(core.RequesterRemoteTagsHeader, requesterRemoteTags.ToString())
+				serialized, err := json.Marshal(requesterKeys)
+				if err != nil {
+					return err
+				}
+				c.Request().Header.Set(core.RequesterKeychainHeader, string(serialized))
 			}
 
 			captchaVerified, ok := c.Get(core.CaptchaVerifiedKey).(bool)

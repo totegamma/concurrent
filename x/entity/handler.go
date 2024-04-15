@@ -6,7 +6,6 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
@@ -18,7 +17,6 @@ var tracer = otel.Tracer("entity")
 type Handler interface {
 	Get(c echo.Context) error
 	List(c echo.Context) error
-	Update(c echo.Context) error
 	Delete(c echo.Context) error
 	Resolve(c echo.Context) error
 }
@@ -62,25 +60,6 @@ func (h handler) List(c echo.Context) error {
 		return err
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": entities})
-}
-
-// Update updates an entity
-func (h handler) Update(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerUpdate")
-	defer span.End()
-
-	var request core.Entity
-	err := c.Bind(&request)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-	err = h.service.Update(ctx, &request)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": request})
 }
 
 // Delete deletes an entity

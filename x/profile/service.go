@@ -123,12 +123,6 @@ func (s *service) Upsert(ctx context.Context, document, signature string) (core.
 		doc.ID = cdid.New(hash10, doc.SignedAt).String()
 	}
 
-	err = s.key.ValidateSignedObject(ctx, document, signature)
-	if err != nil {
-		span.RecordError(err)
-		return core.Profile{}, err
-	}
-
 	profile := core.Profile{
 		ID:        doc.ID,
 		Author:    doc.Signer,

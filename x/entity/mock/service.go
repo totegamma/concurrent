@@ -168,16 +168,30 @@ func (mr *MockServiceMockRecorder) Tombstone(ctx, document, signature interface{
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Tombstone", reflect.TypeOf((*MockService)(nil).Tombstone), ctx, document, signature)
 }
 
-// Update mocks base method.
-func (m *MockService) Update(ctx context.Context, entity *core.Entity) error {
+// UpdateScore mocks base method.
+func (m *MockService) UpdateScore(ctx context.Context, id string, score int) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Update", ctx, entity)
+	ret := m.ctrl.Call(m, "UpdateScore", ctx, id, score)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
-// Update indicates an expected call of Update.
-func (mr *MockServiceMockRecorder) Update(ctx, entity interface{}) *gomock.Call {
+// UpdateScore indicates an expected call of UpdateScore.
+func (mr *MockServiceMockRecorder) UpdateScore(ctx, id, score interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Update", reflect.TypeOf((*MockService)(nil).Update), ctx, entity)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateScore", reflect.TypeOf((*MockService)(nil).UpdateScore), ctx, id, score)
+}
+
+// UpdateTag mocks base method.
+func (m *MockService) UpdateTag(ctx context.Context, id, tag string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateTag", ctx, id, tag)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateTag indicates an expected call of UpdateTag.
+func (mr *MockServiceMockRecorder) UpdateTag(ctx, id, tag interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateTag", reflect.TypeOf((*MockService)(nil).UpdateTag), ctx, id, tag)
 }

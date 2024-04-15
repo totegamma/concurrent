@@ -63,7 +63,7 @@ func TestService(t *testing.T) {
 
 	objSig0Hex := hex.EncodeToString(objSig0)
 
-	err = test_service.ValidateSignedObject(ctx, objStr0, objSig0Hex)
+	err = test_service.ValidateDocument(ctx, objStr0, objSig0Hex, []core.Key{})
 	assert.Error(t, err) // まだKeyChainが存在しないのでエラーになる
 
 	// Test2. サブキーを新しく登録する
@@ -94,7 +94,7 @@ func TestService(t *testing.T) {
 	}
 
 	// Test3. 登録したサブキーで署名されたオブジェクトを検証する
-	err = test_service.ValidateSignedObject(ctx, objStr0, objSig0Hex)
+	err = test_service.ValidateDocument(ctx, objStr0, objSig0Hex, []core.Key{})
 	assert.NoError(t, err)
 
 	// test3.1 test GetKeyResolution
@@ -167,7 +167,7 @@ func TestService(t *testing.T) {
 	assert.NoError(t, err)
 	objSig3Hex := hex.EncodeToString(objSig3)
 
-	err = test_service.ValidateSignedObject(ctx, objStr3, objSig3Hex)
+	err = test_service.ValidateDocument(ctx, objStr3, objSig3Hex, []core.Key{})
 	assert.NoError(t, err)
 
 	// Test6. 中間のサブキーをその子キーから無効化してみようとする(失敗する)
@@ -220,12 +220,12 @@ func TestService(t *testing.T) {
 
 	// Test8. 無効化したサブキーで署名されたオブジェクトを検証する(失敗する)
 
-	err = test_service.ValidateSignedObject(ctx, objStr0, objSig0Hex)
+	err = test_service.ValidateDocument(ctx, objStr0, objSig0Hex, []core.Key{})
 	assert.Error(t, err)
 
 	// Test9. 無効化したサブキーのサブキーで署名されたオブジェクトを検証する(失敗する)
 
-	err = test_service.ValidateSignedObject(ctx, objStr3, objSig3Hex)
+	err = test_service.ValidateDocument(ctx, objStr3, objSig3Hex, []core.Key{})
 	assert.Error(t, err)
 
 	_, err = test_service.ResolveSubkey(ctx, SubKey2)

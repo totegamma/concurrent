@@ -4,7 +4,6 @@ import (
 	"context"
 	"log/slog"
 	"strconv"
-	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/totegamma/concurrent/x/core"
@@ -14,15 +13,15 @@ import (
 
 // Repository is the interface for host repository
 type Repository interface {
-	GetEntity(ctx context.Context, key string) (core.Entity, error)
-	GetEntityMeta(ctx context.Context, key string) (core.EntityMeta, error)
-	CreateEntity(ctx context.Context, entity core.Entity) (core.Entity, error)
-	CreateEntityMeta(ctx context.Context, meta core.EntityMeta) (core.EntityMeta, error)
-	CreateEntityWithMeta(ctx context.Context, entity core.Entity, meta core.EntityMeta) (core.Entity, core.EntityMeta, error)
-	UpdateEntity(ctx context.Context, entity *core.Entity) error
+	Get(ctx context.Context, key string) (core.Entity, error)
+	GetMeta(ctx context.Context, key string) (core.EntityMeta, error)
+	Create(ctx context.Context, entity core.Entity) (core.Entity, error)
+	CreateMeta(ctx context.Context, meta core.EntityMeta) (core.EntityMeta, error)
+	CreateWithMeta(ctx context.Context, entity core.Entity, meta core.EntityMeta) (core.Entity, core.EntityMeta, error)
+	UpdateScore(ctx context.Context, id string, score int) error
+	UpdateTag(ctx context.Context, id, tag string) error
 	SetTombstone(ctx context.Context, id, document, signature string) error
 	GetList(ctx context.Context) ([]core.Entity, error)
-	ListModified(ctx context.Context, modified time.Time) ([]core.Entity, error)
 	Delete(ctx context.Context, key string) error
 	Count(ctx context.Context) (int64, error)
 }
@@ -52,7 +51,7 @@ func NewRepository(db *gorm.DB, mc *memcache.Client, schema schema.Service) Repo
 
 // Count returns the total number of entities
 func (r *repository) Count(ctx context.Context) (int64, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryCount")
+	ctx, span := tracer.Start(ctx, "Entity.Repository.Count")
 	defer span.End()
 
 	item, err := r.mc.Get("entity_count")
@@ -71,7 +70,7 @@ func (r *repository) Count(ctx context.Context) (int64, error) {
 
 // SetTombstone sets the tombstone of a entity
 func (r *repository) SetTombstone(ctx context.Context, id, document, signature string) error {
-	ctx, span := tracer.Start(ctx, "RepositorySetThumbstone")
+	ctx, span := tracer.Start(ctx, "Entity.Repository.SetTombstone")
 	defer span.End()
 
 	err := r.db.Model(&core.Entity{}).Where("id = ?", id).Updates(map[string]interface{}{
@@ -83,8 +82,8 @@ func (r *repository) SetTombstone(ctx context.Context, id, document, signature s
 }
 
 // Get returns a entity by key
-func (r *repository) GetEntity(ctx context.Context, key string) (core.Entity, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGet")
+func (r *repository) Get(ctx context.Context, key string) (core.Entity, error) {
+	ctx, span := tracer.Start(ctx, "Entity.Repository.Get")
 	defer span.End()
 
 	var entity core.Entity
@@ -92,8 +91,8 @@ func (r *repository) GetEntity(ctx context.Context, key string) (core.Entity, er
 	return entity, err
 }
 
-func (r *repository) GetEntityMeta(ctx context.Context, key string) (core.EntityMeta, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetMeta")
+func (r *repository) GetMeta(ctx context.Context, key string) (core.EntityMeta, error) {
+	ctx, span := tracer.Start(ctx, "Entity.Repository.GetMeta")
 	defer span.End()
 
 	var meta core.EntityMeta
@@ -102,8 +101,8 @@ func (r *repository) GetEntityMeta(ctx context.Context, key string) (core.Entity
 }
 
 // Create creates new entity
-func (r *repository) CreateEntity(ctx context.Context, entity core.Entity) (core.Entity, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryCreate")
+func (r *repository) Create(ctx context.Context, entity core.Entity) (core.Entity, error) {
+	ctx, span := tracer.Start(ctx, "Entity.Repository.Create")
 	defer span.End()
 
 	if err := r.db.WithContext(ctx).Create(&entity).Error; err != nil {
@@ -116,8 +115,8 @@ func (r *repository) CreateEntity(ctx context.Context, entity core.Entity) (core
 }
 
 // CreateEntityMeta creates new entity meta
-func (r *repository) CreateEntityMeta(ctx context.Context, meta core.EntityMeta) (core.EntityMeta, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryCreateMeta")
+func (r *repository) CreateMeta(ctx context.Context, meta core.EntityMeta) (core.EntityMeta, error) {
+	ctx, span := tracer.Start(ctx, "Entity.Repository.CreateMeta")
 	defer span.End()
 
 	err := r.db.WithContext(ctx).Create(meta).Error
@@ -125,8 +124,8 @@ func (r *repository) CreateEntityMeta(ctx context.Context, meta core.EntityMeta)
 	return meta, err
 }
 
-func (r *repository) CreateEntityWithMeta(ctx context.Context, entity core.Entity, meta core.EntityMeta) (core.Entity, core.EntityMeta, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryCreateWithMeta")
+func (r *repository) CreateWithMeta(ctx context.Context, entity core.Entity, meta core.EntityMeta) (core.Entity, core.EntityMeta, error) {
+	ctx, span := tracer.Start(ctx, "Entity.Repository.CreateWithMeta")
 	defer span.End()
 
 	err := r.db.Transaction(func(tx *gorm.DB) error {
@@ -158,16 +157,6 @@ func (r *repository) GetList(ctx context.Context) ([]core.Entity, error) {
 	return entities, err
 }
 
-// ListModified returns all entities which modified after given time
-func (r *repository) ListModified(ctx context.Context, time time.Time) ([]core.Entity, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryListModified")
-	defer span.End()
-
-	var entities []core.Entity
-	err := r.db.WithContext(ctx).Model(&core.Entity{}).Where("m_date > ?", time).Find(&entities).Error
-	return entities, err
-}
-
 // Delete deletes a entity
 func (r *repository) Delete(ctx context.Context, id string) error {
 	ctx, span := tracer.Start(ctx, "RepositoryDelete")
@@ -182,10 +171,16 @@ func (r *repository) Delete(ctx context.Context, id string) error {
 	return err
 }
 
-// Update updates a entity
-func (r *repository) UpdateEntity(ctx context.Context, entity *core.Entity) error {
-	ctx, span := tracer.Start(ctx, "RepositoryUpdate")
+func (r *repository) UpdateScore(ctx context.Context, id string, score int) error {
+	ctx, span := tracer.Start(ctx, "RepositoryUpdateScore")
 	defer span.End()
 
-	return r.db.WithContext(ctx).Where("id = ?", entity.ID).Updates(&entity).Error
+	return r.db.WithContext(ctx).Model(&core.Entity{}).Where("id = ?", id).Update("score", score).Error
+}
+
+func (r *repository) UpdateTag(ctx context.Context, id, tag string) error {
+	ctx, span := tracer.Start(ctx, "RepositoryUpdateTag")
+	defer span.End()
+
+	return r.db.WithContext(ctx).Model(&core.Entity{}).Where("id = ?", id).Update("tag", tag).Error
 }

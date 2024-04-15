@@ -92,8 +92,8 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 					goto skip
 				}
 
-				tags := core.ParseTags(domain.Tag)
-				if tags.Has("_block") {
+				domainTags := core.ParseTags(domain.Tag)
+				if domainTags.Has("_block") {
 					return c.JSON(http.StatusForbidden, echo.Map{
 						"error":  "you are not authorized to perform this action",
 						"detail": "your domain is blocked",
@@ -106,87 +106,40 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 					goto skip
 				}
 
-				// validate key
-				err = key.ValidateKeyResolution(passportDoc.Keys, passportDoc.Entity.ID)
+				resolved, err := key.ValidateKeyResolution(passportDoc.Keys)
 				if err != nil {
 					span.RecordError(err)
 					goto skip
 				}
 
+				if resolved != passportDoc.Entity.ID {
+					span.RecordError(fmt.Errorf("Signer is not matched with the resolved signer"))
+					goto skip
+				}
+
 				entity := passportDoc.Entity
-				oldentity, err := s.entity.Get(ctx, passportDoc.Entity.ID)
-				if err == nil { // Already registered
-					shouldUpdate := false
-					tags = core.ParseTags(oldentity.Tag)
-					if tags.Has("_block") {
-						return c.JSON(http.StatusForbidden, echo.Map{
-							"error":  "you are not authorized to perform this action",
-							"detail": "you are blocked",
-						})
-					}
-					if !oldentity.IsScoreFixed {
-						if entity.Score != oldentity.Score {
-							shouldUpdate = true
-							entity.Score = oldentity.Score
-						}
-					}
+				entityTags := core.ParseTags(entity.Tag)
+				updated, err := s.entity.Affiliation(ctx, entity.AffiliationDocument, entity.AffiliationSignature, "")
+				if err != nil {
+					span.RecordError(err)
+					return c.JSON(http.StatusForbidden, echo.Map{
+						"error": "your affiliation document is invalid",
+					})
+				}
 
-					if entity.Domain != oldentity.Domain {
-						shouldUpdate = true
-						// validate affiliation
-						err = util.VerifySignature([]byte(entity.AffiliationDocument), []byte(entity.AffiliationSignature), oldentity.ID)
-						if err != nil {
-							span.RecordError(err)
-							goto skip
-						}
-
-						var affiliation core.EntityAffiliation
-						err = json.Unmarshal([]byte(entity.AffiliationDocument), &affiliation)
-						if err != nil {
-							span.RecordError(err)
-							return c.JSON(http.StatusForbidden, echo.Map{
-								"error": "your affiliation document is invalid",
-							})
-						}
-
-						var oldaffiliation core.EntityAffiliation
-						err = json.Unmarshal([]byte(oldentity.AffiliationDocument), &oldaffiliation)
-						if err != nil {
-							span.RecordError(err)
-							goto skip
-						}
-
-						if affiliation.SignedAt.Before(oldaffiliation.SignedAt) {
-							span.RecordError(fmt.Errorf("affiliation is outdated"))
-							return c.JSON(http.StatusForbidden, echo.Map{
-								"error": "your affiliation document is outdated",
-							})
-						}
-						entity.AffiliationDocument = oldentity.AffiliationDocument
-						entity.AffiliationSignature = oldentity.AffiliationSignature
-					}
-
-					if shouldUpdate {
-						s.entity.Update(ctx, &entity)
-					}
-				} else {
-					err = util.VerifySignature([]byte(entity.AffiliationDocument), []byte(entity.AffiliationSignature), entity.ID)
-					if err != nil {
-						span.RecordError(err)
-						return c.JSON(http.StatusForbidden, echo.Map{
-							"error": "your affiliation document is invalid",
-						})
-					}
-					if entity.Domain != passportDoc.Domain {
-						span.RecordError(fmt.Errorf("invalid domain"))
-						return c.JSON(http.StatusForbidden, echo.Map{
-							"error": "your affiliation document and passport is not consistent",
-						})
-					}
-					s.entity.Update(ctx, &entity)
+				if !updated.IsScoreFixed && updated.Score != entity.Score {
+					entity.Score = updated.Score
+					s.entity.UpdateScore(ctx, entity.ID, entity.Score)
 				}
 
 				ccid = passportDoc.Entity.ID
+
+				c.Set(core.RequesterTypeCtxKey, core.RemoteUser)
+				c.Set(core.RequesterTagCtxKey, entityTags)
+				c.Set(core.RequesterDomainTagsKey, domainTags)
+				c.Set(core.RequesterKeychainKey, passportDoc.Keys)
+				span.SetAttributes(attribute.String("RequesterType", core.RequesterTypeString(core.RemoteUser)))
+				span.SetAttributes(attribute.String("RequesterTag", entity.Tag))
 
 			} else { // treat as local user
 				if core.IsCCID(claims.Issuer) {
@@ -236,9 +189,8 @@ func ReceiveGatewayAuthPropagation(next echo.HandlerFunc) echo.HandlerFunc {
 		reqIdHeader := c.Request().Header.Get(core.RequesterIdHeader)
 		reqTagHeader := c.Request().Header.Get(core.RequesterTagHeader)
 		reqDomainHeader := c.Request().Header.Get(core.RequesterDomainHeader)
-		reqKeyDepathHeader := c.Request().Header.Get(core.RequesterKeyDepathHeader)
+		reqKeyHeader := c.Request().Header.Get(core.RequesterKeychainHeader)
 		reqDomainTagsHeader := c.Request().Header.Get(core.RequesterDomainTagsHeader)
-		reqRemoteTagsHeader := c.Request().Header.Get(core.RequesterRemoteTagsHeader)
 		reqCaptchaVerifiedHeader := c.Request().Header.Get(core.CaptchaVerifiedHeader)
 
 		if reqTypeHeader != "" {
@@ -264,19 +216,18 @@ func ReceiveGatewayAuthPropagation(next echo.HandlerFunc) echo.HandlerFunc {
 			span.SetAttributes(attribute.String("RequesterDomain", reqDomainHeader))
 		}
 
-		if reqKeyDepathHeader != "" {
-			c.Set(core.RequesterKeyDepathKey, reqKeyDepathHeader)
-			span.SetAttributes(attribute.String("RequesterKeyDepath", reqKeyDepathHeader))
+		if reqKeyHeader != "" {
+			var keys []core.Key
+			err := json.Unmarshal([]byte(reqKeyHeader), &keys)
+			if err == nil {
+				c.Set(core.RequesterKeychainKey, keys)
+				span.SetAttributes(attribute.String("RequesterKeychain", reqKeyHeader))
+			}
 		}
 
 		if reqDomainTagsHeader != "" {
 			c.Set(core.RequesterDomainTagsKey, core.ParseTags(reqDomainTagsHeader))
 			span.SetAttributes(attribute.String("RequesterDomainTags", reqDomainTagsHeader))
-		}
-
-		if reqRemoteTagsHeader != "" {
-			c.Set(core.RequesterRemoteTagsKey, core.ParseTags(reqRemoteTagsHeader))
-			span.SetAttributes(attribute.String("RequesterRemoteTags", reqRemoteTagsHeader))
 		}
 
 		if reqCaptchaVerifiedHeader != "" {

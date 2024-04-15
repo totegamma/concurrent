@@ -7,7 +7,6 @@ import (
 	"fmt"
 
 	"github.com/pkg/errors"
-	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/util"
@@ -17,9 +16,8 @@ import (
 type Service interface {
 	EnactKey(ctx context.Context, payload, signature string) (core.Key, error)
 	RevokeKey(ctx context.Context, payload, signature string) (core.Key, error)
-	ValidateSignedObject(ctx context.Context, payload, signature string) error
+	ValidateDocument(ctx context.Context, document, signature string, keys []core.Key) error
 	ResolveSubkey(ctx context.Context, keyID string) (string, error)
-	ResolveRemoteSubkey(ctx context.Context, keyID, domain string) (string, error)
 	GetKeyResolution(ctx context.Context, keyID string) ([]core.Key, error)
 	GetAllKeys(ctx context.Context, owner string) ([]core.Key, error)
 }
@@ -40,14 +38,8 @@ func (s *service) EnactKey(ctx context.Context, payload, signature string) (core
 	ctx, span := tracer.Start(ctx, "ServiceEnactKey")
 	defer span.End()
 
-	err := s.ValidateSignedObject(ctx, payload, signature)
-	if err != nil {
-		span.RecordError(err)
-		return core.Key{}, err
-	}
-
 	object := core.EnactKey{}
-	err = json.Unmarshal([]byte(payload), &object)
+	err := json.Unmarshal([]byte(payload), &object)
 	if err != nil {
 		span.RecordError(err)
 		return core.Key{}, err
@@ -89,14 +81,8 @@ func (s *service) RevokeKey(ctx context.Context, payload, signature string) (cor
 	ctx, span := tracer.Start(ctx, "ServiceRevokeKey")
 	defer span.End()
 
-	err := s.ValidateSignedObject(ctx, payload, signature)
-	if err != nil {
-		span.RecordError(err)
-		return core.Key{}, err
-	}
-
 	object := core.RevokeKey{}
-	err = json.Unmarshal([]byte(payload), &object)
+	err := json.Unmarshal([]byte(payload), &object)
 	if err != nil {
 		span.RecordError(err)
 		return core.Key{}, err
@@ -136,12 +122,12 @@ func (s *service) RevokeKey(ctx context.Context, payload, signature string) (cor
 	return revoked, nil
 }
 
-func (s *service) ValidateSignedObject(ctx context.Context, payload, signature string) error {
+func (s *service) ValidateDocument(ctx context.Context, document, signature string, keys []core.Key) error {
 	ctx, span := tracer.Start(ctx, "ServiceValidate")
 	defer span.End()
 
 	object := core.DocumentBase[any]{}
-	err := json.Unmarshal([]byte(payload), &object)
+	err := json.Unmarshal([]byte(document), &object)
 	if err != nil {
 		span.RecordError(err)
 		return errors.Wrap(err, "failed to unmarshal payload")
@@ -154,14 +140,14 @@ func (s *service) ValidateSignedObject(ctx context.Context, payload, signature s
 			span.RecordError(err)
 			return errors.Wrap(err, "[master] failed to decode signature")
 		}
-		err = util.VerifySignature([]byte(payload), signatureBytes, object.Signer)
+		err = util.VerifySignature([]byte(document), signatureBytes, object.Signer)
 		if err != nil {
 			span.RecordError(err)
 			return errors.Wrap(err, "[master] failed to verify signature")
 		}
 	} else { // サブキーの場合: 親キーを取得して検証
 
-		signer, err := s.entity.GetWithHint(ctx, object.Signer, "")
+		signer, err := s.entity.Get(ctx, object.Signer)
 		if err != nil {
 			span.RecordError(err)
 			return errors.Wrap(err, "[sub] failed to resolve host")
@@ -176,7 +162,7 @@ func (s *service) ValidateSignedObject(ctx context.Context, payload, signature s
 				return errors.Wrap(err, "[sub] failed to resolve subkey")
 			}
 		} else {
-			ccid, err = s.ResolveRemoteSubkey(ctx, object.KeyID, signer.Domain)
+			ccid, err = ValidateKeyResolution(keys)
 			if err != nil {
 				span.RecordError(err)
 				return errors.Wrap(err, "[sub] failed to resolve remote subkey")
@@ -194,7 +180,7 @@ func (s *service) ValidateSignedObject(ctx context.Context, payload, signature s
 			span.RecordError(err)
 			return errors.Wrap(err, "[sub] failed to decode signature")
 		}
-		err = util.VerifySignature([]byte(payload), signatureBytes, object.KeyID)
+		err = util.VerifySignature([]byte(document), signatureBytes, object.KeyID)
 		if err != nil {
 			span.RecordError(err)
 			return errors.Wrap(err, "[sub] failed to verify signature")
@@ -204,77 +190,24 @@ func (s *service) ValidateSignedObject(ctx context.Context, payload, signature s
 	return nil
 }
 
-type keyResponse struct {
-	Status  string     `json:"status"`
-	Content []core.Key `json:"content"`
-}
+func ValidateKeyResolution(keys []core.Key) (string, error) {
 
-func ValidateKeyResolution(keys []core.Key, root string) error {
-
-	nextKey := ""
+	var rootKey string
+	var nextKey string
 	for _, key := range keys {
-		if (nextKey != "") && (nextKey != key.ID) {
-			return fmt.Errorf("Key %s is not a child of %s", key.ID, nextKey)
-		}
-
-		if core.IsCCID(key.ID) {
-			if key.ID != root {
-				return fmt.Errorf("Root is not matched with the previous key")
-			}
-			break
-		}
-
-		if key.Root != root {
-			return fmt.Errorf("Root is not matched with the previous key")
-		}
-
-		if key.RevokeDocument != "null" {
-			return fmt.Errorf("Key %s is revoked", key.ID)
-		}
-
-		nextKey = key.Parent
-	}
-
-	return nil
-}
-
-func (s *service) ResolveRemoteSubkey(ctx context.Context, keyID, domain string) (string, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetRemoteKeyResolution")
-	defer span.End()
-
-	resovation, err := s.repository.GetRemoteKeyValidationCache(ctx, keyID)
-	if err == nil {
-		return resovation, nil
-	}
-
-	keychain, err := client.GetKey(ctx, domain, keyID)
-	if err != nil {
-		return "", err
-	}
-
-	if len(keychain) == 0 {
-		return "", fmt.Errorf("Key not found")
-	}
-
-	rootKey := ""
-	nextKey := ""
-	for _, key := range keychain {
-
 		if (nextKey != "") && (nextKey != key.ID) {
 			return "", fmt.Errorf("Key %s is not a child of %s", key.ID, nextKey)
 		}
 
-		if core.IsCCID(key.ID) {
-			break
-		}
-
-		// まず署名を検証
-		err := s.ValidateSignedObject(ctx, key.EnactDocument, key.EnactSignature)
+		err := util.VerifySignature([]byte(key.EnactDocument), []byte(key.EnactSignature), key.ID)
 		if err != nil {
 			return "", err
 		}
 
-		// 署名の内容が正しいか検証
+		if key.RevokeSignature != "" {
+			return "", fmt.Errorf("Key %s is revoked", key.ID)
+		}
+
 		var enact core.EnactKey
 		err = json.Unmarshal([]byte(key.EnactDocument), &enact)
 		if err != nil {
@@ -307,8 +240,6 @@ func (s *service) ResolveRemoteSubkey(ctx context.Context, keyID, domain string)
 
 		nextKey = key.Parent
 	}
-
-	s.repository.SetRemoteKeyValidationCache(ctx, keyID, rootKey)
 
 	return rootKey, nil
 }

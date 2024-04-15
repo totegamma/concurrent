@@ -41,6 +41,7 @@ func TestService(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockEntity := mock_entity.NewMockService(ctrl)
+	mockEntity.EXPECT().Get(gomock.Any(), gomock.Any()).Return(core.Entity{}, nil).AnyTimes()
 	mockEntity.EXPECT().GetWithHint(gomock.Any(), gomock.Any(), gomock.Any()).Return(core.Entity{}, nil).AnyTimes()
 
 	test_repo := NewRepository(db, mc)

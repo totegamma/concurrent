@@ -83,6 +83,10 @@ func CreateDB() (*gorm.DB, func()) {
 		&core.CollectionItem{},
 		&core.Ack{},
 		&core.Key{},
+		&core.UserKV{},
+		&core.Subscription{},
+		&core.SubscriptionItem{},
+		&core.SemanticID{},
 	)
 
 	return db, cleanup

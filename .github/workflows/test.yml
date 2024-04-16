@@ -37,7 +37,7 @@ jobs:
       run: go generate ./...
 
     - name: Run tests with coverage
-      run: go test -coverprofile=coverage.out $(go list ./... | grep -v mock)
+      run: go test -coverprofile=coverage.out $(go list ./x/... | grep -v mock)
 
     - name: Set custom env var
       run: |

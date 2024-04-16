@@ -9,6 +9,7 @@ import (
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/stretchr/testify/assert"
+	"github.com/totegamma/concurrent/client/mock"
 	"github.com/totegamma/concurrent/internal/testutil"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/schema/mock"
@@ -50,7 +51,9 @@ func TestRepository(t *testing.T) {
 	mockSchema.EXPECT().UrlToID(gomock.Any(), gomock.Any()).Return(uint(0), nil).AnyTimes()
 	mockSchema.EXPECT().IDToUrl(gomock.Any(), gomock.Any()).Return("", nil).AnyTimes()
 
-	repo = NewRepository(db, rdb, mc, mockSchema, mockManager, util.Config{})
+	mockClient := mock_client.NewMockClient(ctrl)
+
+	repo = NewRepository(db, rdb, mc, mockClient, mockSchema, mockManager, util.Config{})
 
 	// :: Timelineを作成 ::
 	timeline := core.Timeline{

@@ -35,6 +35,7 @@ type Service interface {
 
 type service struct {
 	repo     Repository
+	client   client.Client
 	entity   entity.Service
 	timeline timeline.Service
 	message  message.Service
@@ -45,6 +46,7 @@ type service struct {
 // NewService creates a new association service
 func NewService(
 	repo Repository,
+	client client.Client,
 	entity entity.Service,
 	timeline timeline.Service,
 	message message.Service,
@@ -53,6 +55,7 @@ func NewService(
 ) Service {
 	return &service{
 		repo,
+		client,
 		entity,
 		timeline,
 		message,
@@ -180,7 +183,7 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 					span.RecordError(err)
 					continue
 				}
-				client.Commit(ctx, domain, string(packetStr))
+				s.client.Commit(ctx, domain, string(packetStr))
 			}
 		}
 
@@ -222,7 +225,7 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 					span.RecordError(err)
 					continue
 				}
-				client.Commit(ctx, domain, string(packetStr))
+				s.client.Commit(ctx, domain, string(packetStr))
 			}
 		}
 	}

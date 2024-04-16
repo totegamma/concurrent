@@ -36,14 +36,16 @@ type Service interface {
 
 type service struct {
 	repository Repository
+	client     client.Client
 	config     util.Config
 	jwtService jwt.Service
 }
 
 // NewService creates a new entity service
-func NewService(repository Repository, config util.Config, jwtService jwt.Service) Service {
+func NewService(repository Repository, client client.Client, config util.Config, jwtService jwt.Service) Service {
 	return &service{
 		repository,
+		client,
 		config,
 		jwtService,
 	}
@@ -54,13 +56,13 @@ func (s *service) PullEntityFromRemote(ctx context.Context, id, hintDomain strin
 	ctx, span := tracer.Start(ctx, "RepositoryPullEntityFromRemote")
 	defer span.End()
 
-	targetDomain, err := client.ResolveAddress(ctx, hintDomain, id)
+	targetDomain, err := s.client.ResolveAddress(ctx, hintDomain, id)
 	if err != nil {
 		span.RecordError(err)
 		return core.Entity{}, err
 	}
 
-	entity, err := client.GetEntity(ctx, targetDomain, id)
+	entity, err := s.client.GetEntity(ctx, targetDomain, id)
 	if err != nil {
 		span.RecordError(err)
 		return core.Entity{}, err

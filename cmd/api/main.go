@@ -20,6 +20,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 
 	"github.com/totegamma/concurrent"
+	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/x/ack"
 	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/auth"
@@ -201,44 +202,46 @@ func main() {
 	mc := memcache.New(config.Server.MemcachedAddr)
 	defer mc.Close()
 
-	agent := concurrent.SetupAgent(db, rdb, mc, config)
+	client := client.NewClient()
+
+	agent := concurrent.SetupAgent(db, rdb, mc, client, config)
 
 	collectionHandler := concurrent.SetupCollectionHandler(db, rdb, config)
 
 	socketManager := concurrent.SetupSocketManager(mc, db, rdb, config)
 	socketHandler := concurrent.SetupSocketHandler(rdb, socketManager, config)
 
-	domainService := concurrent.SetupDomainService(db, config)
+	domainService := concurrent.SetupDomainService(db, client, config)
 	domainHandler := domain.NewHandler(domainService, config)
 
 	userKvService := concurrent.SetupUserkvService(db)
 	userkvHandler := userkv.NewHandler(userKvService)
 
-	messageService := concurrent.SetupMessageService(db, rdb, mc, socketManager, config)
+	messageService := concurrent.SetupMessageService(db, rdb, mc, client, socketManager, config)
 	messageHandler := message.NewHandler(messageService)
 
-	associationService := concurrent.SetupAssociationService(db, rdb, mc, socketManager, config)
+	associationService := concurrent.SetupAssociationService(db, rdb, mc, client, socketManager, config)
 	associationHandler := association.NewHandler(associationService)
 
-	profileService := concurrent.SetupProfileService(db, rdb, mc, config)
+	profileService := concurrent.SetupProfileService(db, rdb, mc, client, config)
 	profileHandler := profile.NewHandler(profileService)
 
-	timelineService := concurrent.SetupTimelineService(db, rdb, mc, socketManager, config)
+	timelineService := concurrent.SetupTimelineService(db, rdb, mc, client, socketManager, config)
 	timelineHandler := timeline.NewHandler(timelineService)
 
-	entityService := concurrent.SetupEntityService(db, rdb, mc, config)
+	entityService := concurrent.SetupEntityService(db, rdb, mc, client, config)
 	entityHandler := entity.NewHandler(entityService, config)
 
-	authService := concurrent.SetupAuthService(db, rdb, mc, config)
+	authService := concurrent.SetupAuthService(db, rdb, mc, client, config)
 	authHandler := auth.NewHandler(authService)
 
-	keyService := concurrent.SetupKeyService(db, rdb, mc, config)
+	keyService := concurrent.SetupKeyService(db, rdb, mc, client, config)
 	keyHandler := key.NewHandler(keyService)
 
-	ackService := concurrent.SetupAckService(db, rdb, mc, config)
+	ackService := concurrent.SetupAckService(db, rdb, mc, client, config)
 	ackHandler := ack.NewHandler(ackService)
 
-	storeService := concurrent.SetupStoreService(db, rdb, mc, socketManager, config)
+	storeService := concurrent.SetupStoreService(db, rdb, mc, client, socketManager, config)
 	storeHandler := store.NewHandler(storeService)
 
 	subscriptionService := concurrent.SetupSubscriptionService(db)

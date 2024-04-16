@@ -8,6 +8,7 @@ import (
 	"github.com/redis/go-redis/v9"
 	"gorm.io/gorm"
 
+	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/x/ack"
 	"github.com/totegamma/concurrent/x/agent"
 	"github.com/totegamma/concurrent/x/association"
@@ -78,42 +79,42 @@ func SetupJwtService(rdb *redis.Client) jwt.Service {
 	return nil
 }
 
-func SetupAckService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) ack.Service {
+func SetupAckService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, config util.Config) ack.Service {
 	wire.Build(ackServiceProvider)
 	return nil
 }
 
-func SetupKeyService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) key.Service {
+func SetupKeyService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, config util.Config) key.Service {
 	wire.Build(keyServiceProvider)
 	return nil
 }
 
-func SetupMessageService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) message.Service {
+func SetupMessageService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, manager socket.Manager, config util.Config) message.Service {
 	wire.Build(messageServiceProvider)
 	return nil
 }
 
-func SetupProfileService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) profile.Service {
+func SetupProfileService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, config util.Config) profile.Service {
 	wire.Build(profileServiceProvider)
 	return nil
 }
 
-func SetupAssociationService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) association.Service {
+func SetupAssociationService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, manager socket.Manager, config util.Config) association.Service {
 	wire.Build(associationServiceProvider)
 	return nil
 }
 
-func SetupTimelineService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) timeline.Service {
+func SetupTimelineService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, manager socket.Manager, config util.Config) timeline.Service {
 	wire.Build(timelineServiceProvider)
 	return nil
 }
 
-func SetupDomainService(db *gorm.DB, config util.Config) domain.Service {
+func SetupDomainService(db *gorm.DB, client client.Client, config util.Config) domain.Service {
 	wire.Build(domainServiceProvider)
 	return nil
 }
 
-func SetupEntityService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) entity.Service {
+func SetupEntityService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, config util.Config) entity.Service {
 	wire.Build(entityServiceProvider)
 	return nil
 }
@@ -123,12 +124,12 @@ func SetupSocketHandler(rdb *redis.Client, manager socket.Manager, config util.C
 	return nil
 }
 
-func SetupAgent(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) agent.Agent {
+func SetupAgent(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, config util.Config) agent.Agent {
 	wire.Build(agent.NewAgent, SetupEntityService, SetupDomainService)
 	return nil
 }
 
-func SetupAuthService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, config util.Config) auth.Service {
+func SetupAuthService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, config util.Config) auth.Service {
 	wire.Build(authServiceProvider)
 	return nil
 }
@@ -153,7 +154,7 @@ func SetupSchemaService(db *gorm.DB) schema.Service {
 	return nil
 }
 
-func SetupStoreService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, manager socket.Manager, config util.Config) store.Service {
+func SetupStoreService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, manager socket.Manager, config util.Config) store.Service {
 	wire.Build(storeServiceProvider)
 	return nil
 }

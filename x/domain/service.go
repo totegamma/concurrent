@@ -23,12 +23,13 @@ type Service interface {
 
 type service struct {
 	repository Repository
+	client     client.Client
 	config     util.Config
 }
 
 // NewService creates a new host service
-func NewService(repository Repository, config util.Config) Service {
-	return &service{repository, config}
+func NewService(repository Repository, client client.Client, config util.Config) Service {
+	return &service{repository, client, config}
 }
 
 // Upsert creates new host
@@ -52,7 +53,7 @@ func (s *service) GetByFQDN(ctx context.Context, fqdn string) (core.Domain, erro
 		return domain, nil
 	}
 
-	domain, err = client.GetDomain(ctx, fqdn)
+	domain, err = s.client.GetDomain(ctx, fqdn)
 	if err != nil {
 		return core.Domain{}, err
 	}

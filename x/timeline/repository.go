@@ -52,13 +52,14 @@ type repository struct {
 	db      *gorm.DB
 	rdb     *redis.Client
 	mc      *memcache.Client
+	client  client.Client
 	schema  schema.Service
 	manager socket.Manager
 	config  util.Config
 }
 
 // NewRepository creates a new timeline repository
-func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, schema schema.Service, manager socket.Manager, config util.Config) Repository {
+func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, schema schema.Service, manager socket.Manager, config util.Config) Repository {
 
 	var count int64
 	err := db.Model(&core.Timeline{}).Count(&count).Error
@@ -71,7 +72,7 @@ func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, schema s
 
 	mc.Set(&memcache.Item{Key: "timeline_count", Value: []byte(strconv.FormatInt(count, 10))})
 
-	return &repository{db, rdb, mc, schema, manager, config}
+	return &repository{db, rdb, mc, client, schema, manager, config}
 }
 
 // Total returns the total number of messages
@@ -129,7 +130,7 @@ func (r *repository) GetTimelineFromRemote(ctx context.Context, host string, key
 		span.RecordError(err)
 	}
 
-	timeline, err := client.GetTimeline(ctx, host, key)
+	timeline, err := r.client.GetTimeline(ctx, host, key)
 	if err != nil {
 		span.RecordError(err)
 		return core.Timeline{}, err
@@ -164,7 +165,7 @@ func (r *repository) GetChunksFromRemote(ctx context.Context, host string, timel
 	ctx, span := tracer.Start(ctx, "RepositoryGetRemoteChunks")
 	defer span.End()
 
-	chunks, err := client.GetChunks(ctx, host, timelines, queryTime)
+	chunks, err := r.client.GetChunks(ctx, host, timelines, queryTime)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err

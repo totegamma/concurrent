@@ -24,6 +24,7 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 
 	"github.com/totegamma/concurrent"
+	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
@@ -204,7 +205,8 @@ func main() {
 	mc := memcache.New(config.Server.MemcachedAddr)
 	defer mc.Close()
 
-	authService := concurrent.SetupAuthService(db, rdb, mc, config)
+	client := client.NewClient()
+	authService := concurrent.SetupAuthService(db, rdb, mc, client, config)
 
 	e.Use(authService.IdentifyIdentity)
 

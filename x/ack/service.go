@@ -21,15 +21,17 @@ type Service interface {
 
 type service struct {
 	repository Repository
+	client     client.Client
 	entity     entity.Service
 	key        key.Service
 	config     util.Config
 }
 
 // NewService creates a new entity service
-func NewService(repository Repository, entity entity.Service, key key.Service, config util.Config) Service {
+func NewService(repository Repository, client client.Client, entity entity.Service, key key.Service, config util.Config) Service {
 	return &service{
 		repository,
+		client,
 		entity,
 		key,
 		config,
@@ -63,7 +65,7 @@ func (s *service) Ack(ctx context.Context, document string, signature string) er
 				return err
 			}
 
-			resp, err := client.Commit(ctx, to.Domain, string(packetStr))
+			resp, err := s.client.Commit(ctx, to.Domain, string(packetStr))
 			if err != nil {
 				span.RecordError(err)
 				return err
@@ -93,7 +95,7 @@ func (s *service) Ack(ctx context.Context, document string, signature string) er
 				return err
 			}
 
-			resp, err := client.Commit(ctx, to.Domain, string(packetStr))
+			resp, err := s.client.Commit(ctx, to.Domain, string(packetStr))
 			if err != nil {
 				span.RecordError(err)
 				return err

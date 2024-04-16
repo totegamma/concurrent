@@ -28,6 +28,7 @@ type Service interface {
 
 type service struct {
 	repo     Repository
+	client   client.Client
 	entity   entity.Service
 	timeline timeline.Service
 	key      key.Service
@@ -35,8 +36,8 @@ type service struct {
 }
 
 // NewService creates a new message service
-func NewService(repo Repository, entity entity.Service, timeline timeline.Service, key key.Service, config util.Config) Service {
-	return &service{repo, entity, timeline, key, config}
+func NewService(repo Repository, client client.Client, entity entity.Service, timeline timeline.Service, key key.Service, config util.Config) Service {
+	return &service{repo, client, entity, timeline, key, config}
 }
 
 // Count returns the count number of messages
@@ -230,7 +231,7 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 				span.RecordError(err)
 				continue
 			}
-			client.Commit(ctx, domain, string(packetStr))
+			s.client.Commit(ctx, domain, string(packetStr))
 		}
 	}
 

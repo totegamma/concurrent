@@ -1,3 +1,4 @@
+//go:generate go run go.uber.org/mock/mockgen -source=client.go -destination=mock/client.go
 package client
 
 import (
@@ -21,7 +22,23 @@ const (
 
 var tracer = otel.Tracer("client")
 
-func Commit(ctx context.Context, domain, body string) (*http.Response, error) {
+type Client interface {
+	Commit(ctx context.Context, domain, body string) (*http.Response, error)
+	ResolveAddress(ctx context.Context, domain, address string) (string, error)
+	GetEntity(ctx context.Context, domain, address string) (core.Entity, error)
+	GetTimeline(ctx context.Context, domain, id string) (core.Timeline, error)
+	GetChunks(ctx context.Context, domain string, timelines []string, queryTime time.Time) (map[string]core.Chunk, error)
+	GetKey(ctx context.Context, domain, id string) ([]core.Key, error)
+	GetDomain(ctx context.Context, domain string) (core.Domain, error)
+}
+
+type client struct{}
+
+func NewClient() Client {
+	return &client{}
+}
+
+func (c *client) Commit(ctx context.Context, domain, body string) (*http.Response, error) {
 	ctx, span := tracer.Start(ctx, "Client.Commit")
 	defer span.End()
 
@@ -44,7 +61,7 @@ func Commit(ctx context.Context, domain, body string) (*http.Response, error) {
 	return resp, nil
 }
 
-func ResolveAddress(ctx context.Context, domain, address string) (string, error) {
+func (c *client) ResolveAddress(ctx context.Context, domain, address string) (string, error) {
 	ctx, span := tracer.Start(ctx, "Client.ResolveAddress")
 	defer span.End()
 
@@ -79,7 +96,7 @@ func ResolveAddress(ctx context.Context, domain, address string) (string, error)
 	return targetDomain, nil
 }
 
-func GetEntity(ctx context.Context, domain, address string) (core.Entity, error) {
+func (c *client) GetEntity(ctx context.Context, domain, address string) (core.Entity, error) {
 	ctx, span := tracer.Start(ctx, "Client.GetEntity")
 	defer span.End()
 
@@ -116,7 +133,7 @@ func GetEntity(ctx context.Context, domain, address string) (core.Entity, error)
 	return remoteEntity.Content, nil
 }
 
-func GetTimeline(ctx context.Context, domain, id string) (core.Timeline, error) {
+func (c *client) GetTimeline(ctx context.Context, domain, id string) (core.Timeline, error) {
 	ctx, span := tracer.Start(ctx, "Client.GetTimeline")
 	defer span.End()
 
@@ -155,7 +172,7 @@ func GetTimeline(ctx context.Context, domain, id string) (core.Timeline, error) 
 	return timelineResp.Content, nil
 }
 
-func GetChunks(ctx context.Context, domain string, timelines []string, queryTime time.Time) (map[string]core.Chunk, error) {
+func (c *client) GetChunks(ctx context.Context, domain string, timelines []string, queryTime time.Time) (map[string]core.Chunk, error) {
 	ctx, span := tracer.Start(ctx, "Client.GetChunks")
 	defer span.End()
 
@@ -196,7 +213,7 @@ func GetChunks(ctx context.Context, domain string, timelines []string, queryTime
 	return chunkResp.Content, nil
 }
 
-func GetKey(ctx context.Context, domain, id string) ([]core.Key, error) {
+func (c *client) GetKey(ctx context.Context, domain, id string) ([]core.Key, error) {
 	ctx, span := tracer.Start(ctx, "Client.GetKey")
 	defer span.End()
 
@@ -229,7 +246,7 @@ func GetKey(ctx context.Context, domain, id string) ([]core.Key, error) {
 	return remoteKey.Content, nil
 }
 
-func GetDomain(ctx context.Context, domain string) (core.Domain, error) {
+func (c *client) GetDomain(ctx context.Context, domain string) (core.Domain, error) {
 	ctx, span := tracer.Start(ctx, "Client.GetDomain")
 	defer span.End()
 

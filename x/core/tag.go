@@ -9,12 +9,12 @@ type Tags struct {
 	Body map[string]string
 }
 
-func NewTags() *Tags {
-	return &Tags{Body: make(map[string]string)}
+func NewTags() Tags {
+	return Tags{Body: make(map[string]string)}
 }
 
-func ParseTags(input string) *Tags {
-	tags := &Tags{Body: make(map[string]string)}
+func ParseTags(input string) Tags {
+	tags := Tags{Body: make(map[string]string)}
 	split := strings.Split(input, ",")
 	for _, tag := range split {
 		pair := strings.Split(tag, ":")

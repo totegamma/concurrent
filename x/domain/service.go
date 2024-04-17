@@ -1,3 +1,4 @@
+//go:generate go run go.uber.org/mock/mockgen -source=service.go -destination=mock/service.go
 package domain
 
 import (

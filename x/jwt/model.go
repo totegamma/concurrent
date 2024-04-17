@@ -14,8 +14,4 @@ type Claims struct {
 	ExpirationTime string `json:"exp,omitempty"` // 失効時刻
 	IssuedAt       string `json:"iat,omitempty"` // 発行時刻
 	JWTID          string `json:"jti,omitempty"` // JWT ID
-	Tag            string `json:"tag,omitempty"` // comma separated list of tags
-	Scope          string `json:"scp,omitempty"` // semicomma separated list of scopes
-	Principal      string `json:"prn,omitempty"` // principal
-	Domain         string `json:"dom,omitempty"` // domain
 }

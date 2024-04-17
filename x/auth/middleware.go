@@ -33,6 +33,8 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 		authHeader := c.Request().Header.Get("authorization")
 		passportHeader := c.Request().Header.Get("passport")
 
+		span.SetAttributes(attribute.String("Authorization", authHeader))
+
 		if authHeader != "" {
 			split := strings.Split(authHeader, " ")
 			if len(split) != 2 {
@@ -59,7 +61,7 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 
 			c.Set("jwtclaims", claims)
 
-			if claims.Subject != "CC_API" {
+			if claims.Subject != "concrnt" {
 				span.RecordError(fmt.Errorf("invalid subject"))
 				goto skip
 			}

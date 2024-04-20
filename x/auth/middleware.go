@@ -138,8 +138,10 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				}
 
 				if !updated.IsScoreFixed && updated.Score != entity.Score {
-					entity.Score = updated.Score
-					s.entity.UpdateScore(ctx, entity.ID, entity.Score)
+					err := s.entity.UpdateScore(ctx, entity.ID, entity.Score)
+					if err != nil {
+						span.RecordError(errors.Wrap(err, "failed to update score"))
+					}
 				}
 
 				ccid = passportDoc.Entity.ID

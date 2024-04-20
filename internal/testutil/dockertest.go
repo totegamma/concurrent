@@ -1,17 +1,25 @@
 package testutil
 
 import (
+	"encoding/json"
 	"fmt"
 	"log"
+	"net/http"
+	"net/http/httptest"
 	"sync"
+	"testing"
 	"time"
 
+	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/labstack/echo/v4"
 	"github.com/ory/dockertest"
+	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
-	"github.com/bradfitz/gomemcache/memcache"
-	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/x/core"
 )
 
@@ -26,6 +34,62 @@ var (
 var pool *dockertest.Pool
 var poolLock = &sync.Mutex{}
 var dbLock = &sync.Mutex{}
+
+var tracer = otel.Tracer("auth")
+
+func SetupMockTraceProvider(t *testing.T) *tracetest.InMemoryExporter {
+	t.Helper()
+
+	spanChecker := tracetest.NewInMemoryExporter()
+	provider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(spanChecker))
+	otel.SetTracerProvider(provider)
+
+	return spanChecker
+}
+
+func printJson(v interface{}) {
+	b, _ := json.MarshalIndent(v, "", "  ")
+	log.Println(string(b))
+}
+
+func CreateHttpRequest() (echo.Context, *http.Request, *httptest.ResponseRecorder, string) {
+	e := echo.New()
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	rec := httptest.NewRecorder()
+
+	c := e.NewContext(req, rec)
+	ctx, span := tracer.Start(c.Request().Context(), "testRoot")
+	defer span.End()
+	c.SetRequest(c.Request().WithContext(ctx))
+	traceID := span.SpanContext().TraceID().String()
+
+	return c, req, rec, traceID
+}
+
+func PrintSpans(spans tracetest.SpanStubs, traceID string) {
+	fmt.Print("--------------------------------\n")
+	for _, span := range spans {
+		if !(span.SpanContext.TraceID().String() == traceID) {
+			continue
+		}
+
+		fmt.Printf("Name: %s\n", span.Name)
+		fmt.Printf("TraceID: %s\n", span.SpanContext.TraceID().String())
+		fmt.Printf("Attributes:\n")
+		for _, attr := range span.Attributes {
+			fmt.Printf("  %s: %s: %s\n", attr.Key, attr.Value.Type().String(), attr.Value.AsString())
+		}
+		fmt.Printf("Events:\n")
+		for _, event := range span.Events {
+			fmt.Printf("  %s\n", event.Name)
+			for _, attr := range event.Attributes {
+				fmt.Printf("    %s: %s: %s\n", attr.Key, attr.Value.Type().String(), attr.Value.AsString())
+			}
+		}
+		fmt.Print("--------------------------------\n")
+	}
+
+}
 
 func CreateDB() (*gorm.DB, func()) {
 	dbLock.Lock()

@@ -1,11 +1,7 @@
 package auth
 
 import (
-	"encoding/json"
-	"fmt"
 	"log"
-	"net/http"
-	"net/http/httptest"
 	"testing"
 
 	"github.com/labstack/echo/v4"
@@ -15,14 +11,11 @@ import (
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
 
+	"github.com/totegamma/concurrent/internal/testutil"
 	"github.com/totegamma/concurrent/x/domain/mock"
 	"github.com/totegamma/concurrent/x/entity/mock"
 	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/key/mock"
-
-	"go.opentelemetry.io/otel"
-	sdktrace "go.opentelemetry.io/otel/sdk/trace"
-	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 )
 
 const (
@@ -33,24 +26,8 @@ const (
 	SubKey1Priv = "1ca30329e8d35217b2328bacfc21c5e3d762713edab0252eead1f4c1ac0b4d81"
 )
 
-func SetupMockTraceProvider(t *testing.T) *tracetest.InMemoryExporter {
-	t.Helper()
-
-	spanChecker := tracetest.NewInMemoryExporter()
-	provider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(spanChecker))
-	otel.SetTracerProvider(provider)
-
-	return spanChecker
-}
-
-func printJson(v interface{}) {
-	b, _ := json.MarshalIndent(v, "", "  ")
-	log.Println(string(b))
-}
-
 func TestIdentifyLocalIdentity(t *testing.T) {
-
-	checker := SetupMockTraceProvider(t)
+	checker := testutil.SetupMockTraceProvider(t)
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -71,15 +48,7 @@ func TestIdentifyLocalIdentity(t *testing.T) {
 
 	service := NewService(config, mockEntity, mockDomain, mockKey)
 
-	e := echo.New()
-	req := httptest.NewRequest(http.MethodGet, "/", nil)
-	rec := httptest.NewRecorder()
-
-	c := e.NewContext(req, rec)
-	ctx, span := tracer.Start(c.Request().Context(), "testRoot")
-	defer span.End()
-	c.SetRequest(c.Request().WithContext(ctx))
-	traceID := span.SpanContext().TraceID().String()
+	c, req, rec, traceID := testutil.CreateHttpRequest()
 
 	claims := jwt.Claims{
 		Issuer:   User1ID,
@@ -112,31 +81,5 @@ func TestIdentifyLocalIdentity(t *testing.T) {
 		assert.Equal(t, nil, c.Get(core.CaptchaVerifiedKey))
 	}
 
-	PrintSpans(checker.GetSpans(), traceID)
-
-}
-
-func PrintSpans(spans tracetest.SpanStubs, traceID string) {
-	fmt.Print("--------------------------------\n")
-	for _, span := range spans {
-		if !(span.SpanContext.TraceID().String() == traceID) {
-			continue
-		}
-
-		fmt.Printf("Name: %s\n", span.Name)
-		fmt.Printf("TraceID: %s\n", span.SpanContext.TraceID().String())
-		fmt.Printf("Attributes:\n")
-		for _, attr := range span.Attributes {
-			fmt.Printf("  %s: %s: %s\n", attr.Key, attr.Value.Type().String(), attr.Value.AsString())
-		}
-		fmt.Printf("Events:\n")
-		for _, event := range span.Events {
-			fmt.Printf("  %s\n", event.Name)
-			for _, attr := range event.Attributes {
-				fmt.Printf("    %s: %s: %s\n", attr.Key, attr.Value.Type().String(), attr.Value.AsString())
-			}
-		}
-		fmt.Print("--------------------------------\n")
-	}
-
+	testutil.PrintSpans(checker.GetSpans(), traceID)
 }

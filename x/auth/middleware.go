@@ -1,8 +1,10 @@
 package auth
 
 import (
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"github.com/pkg/errors"
 	"net/http"
 	"strconv"
 	"strings"
@@ -50,7 +52,7 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 
 			claims, err := jwt.Validate(token)
 			if err != nil {
-				span.RecordError(err)
+				span.RecordError(errors.Wrap(err, "jwt validation failed"))
 				goto skip
 			}
 
@@ -72,14 +74,14 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				var passport core.Passport
 				err = json.Unmarshal([]byte(passportHeader), &passport)
 				if err != nil {
-					span.RecordError(err)
+					span.RecordError(errors.Wrap(err, "failed to unmarshal passport"))
 					goto skip
 				}
 
 				var passportDoc core.PassportDocument
 				err = json.Unmarshal([]byte(passport.Document), &passportDoc)
 				if err != nil {
-					span.RecordError(err)
+					span.RecordError(errors.Wrap(err, "failed to unmarshal passport document"))
 					goto skip
 				}
 
@@ -90,7 +92,7 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 
 				domain, err := s.domain.GetByFQDN(ctx, passportDoc.Domain)
 				if err != nil {
-					span.RecordError(err)
+					span.RecordError(errors.Wrap(err, "failed to get domain by fqdn"))
 					goto skip
 				}
 
@@ -102,25 +104,31 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 					})
 				}
 
-				err = util.VerifySignature([]byte(passport.Document), []byte(passport.Signature), domain.CCID)
-				if err != nil { // TODO: this is misbehaving. should be logged to audit
-					span.RecordError(err)
-					goto skip
-				}
-
-				resolved, err := key.ValidateKeyResolution(passportDoc.Keys)
+				signatureBytes, err := hex.DecodeString(passport.Signature)
 				if err != nil {
-					span.RecordError(err)
+					span.RecordError(errors.Wrap(err, "failed to decode signature"))
+					goto skip
+				}
+				err = util.VerifySignature([]byte(passport.Document), signatureBytes, domain.CCID)
+				if err != nil { // TODO: this is misbehaving. should be logged to audit
+					span.RecordError(errors.Wrap(err, "failed to verify signature of passport"))
 					goto skip
 				}
 
-				if resolved != passportDoc.Entity.ID {
-					span.RecordError(fmt.Errorf("Signer is not matched with the resolved signer"))
-					goto skip
+				if len(passportDoc.Keys) > 0 {
+					resolved, err := key.ValidateKeyResolution(passportDoc.Keys)
+					if err != nil {
+						span.RecordError(errors.Wrap(err, "failed to validate key resolution"))
+						goto skip
+					}
+
+					if resolved != passportDoc.Entity.ID {
+						span.RecordError(fmt.Errorf("Signer is not matched with the resolved signer. expected: %s, actual: %s", resolved, passportDoc.Entity.ID))
+						goto skip
+					}
 				}
 
 				entity := passportDoc.Entity
-				entityTags := core.ParseTags(entity.Tag)
 				updated, err := s.entity.Affiliation(ctx, entity.AffiliationDocument, entity.AffiliationSignature, "")
 				if err != nil {
 					span.RecordError(err)
@@ -135,13 +143,16 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				}
 
 				ccid = passportDoc.Entity.ID
+				entityTags := core.ParseTags(updated.Tag)
 
 				c.Set(core.RequesterTypeCtxKey, core.RemoteUser)
 				c.Set(core.RequesterTagCtxKey, entityTags)
+				c.Set(core.RequesterDomainCtxKey, domain.ID)
 				c.Set(core.RequesterDomainTagsKey, domainTags)
 				c.Set(core.RequesterKeychainKey, passportDoc.Keys)
 				span.SetAttributes(attribute.String("RequesterType", core.RequesterTypeString(core.RemoteUser)))
-				span.SetAttributes(attribute.String("RequesterTag", entity.Tag))
+				span.SetAttributes(attribute.String("RequesterTag", updated.Tag))
+				span.SetAttributes(attribute.String("RequesterDomain", domain.ID))
 
 			} else { // treat as local user
 				if core.IsCCID(claims.Issuer) {
@@ -149,7 +160,7 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				} else if core.IsCKID(claims.Issuer) {
 					ccid, err = s.key.ResolveSubkey(ctx, claims.Issuer)
 					if err != nil {
-						span.RecordError(err)
+						span.RecordError(errors.Wrap(err, "failed to resolve subkey"))
 						goto skip
 					}
 				} else {
@@ -159,7 +170,7 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 
 				entity, err := s.entity.Get(ctx, ccid)
 				if err != nil {
-					span.RecordError(err)
+					span.RecordError(errors.Wrap(err, "failed to get entity"))
 					return c.JSON(http.StatusForbidden, echo.Map{
 						"error":  "you are not authorized to perform this action",
 						"detail": "you are not registered",

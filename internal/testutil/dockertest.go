@@ -7,7 +7,6 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"sync"
-	"testing"
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
@@ -37,8 +36,7 @@ var dbLock = &sync.Mutex{}
 
 var tracer = otel.Tracer("auth")
 
-func SetupMockTraceProvider(t *testing.T) *tracetest.InMemoryExporter {
-	t.Helper()
+func SetupMockTraceProvider() *tracetest.InMemoryExporter {
 
 	spanChecker := tracetest.NewInMemoryExporter()
 	provider := sdktrace.NewTracerProvider(sdktrace.WithSyncer(spanChecker))
@@ -68,10 +66,15 @@ func CreateHttpRequest() (echo.Context, *http.Request, *httptest.ResponseRecorde
 
 func PrintSpans(spans tracetest.SpanStubs, traceID string) {
 	fmt.Print("--------------------------------\n")
+
+	var found bool = false
+
 	for _, span := range spans {
 		if !(span.SpanContext.TraceID().String() == traceID) {
 			continue
 		}
+
+		found = true
 
 		fmt.Printf("Name: %s\n", span.Name)
 		fmt.Printf("TraceID: %s\n", span.SpanContext.TraceID().String())
@@ -89,6 +92,12 @@ func PrintSpans(spans tracetest.SpanStubs, traceID string) {
 		fmt.Print("--------------------------------\n")
 	}
 
+	if !found {
+		fmt.Print("Span not found. spans:\n")
+		for _, span := range spans {
+			fmt.Printf("%s(%s)\n", span.Name, span.SpanContext.TraceID().String())
+		}
+	}
 }
 
 func CreateDB() (*gorm.DB, func()) {

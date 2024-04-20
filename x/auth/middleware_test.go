@@ -1,6 +1,10 @@
 package auth
 
 import (
+	"encoding/hex"
+	"encoding/json"
+	"fmt"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"log"
 	"testing"
 
@@ -24,10 +28,29 @@ const (
 
 	SubKey1ID   = "cck1ydda2qj3nr32hulm65vj2g746f06hy36wzh9ke"
 	SubKey1Priv = "1ca30329e8d35217b2328bacfc21c5e3d762713edab0252eead1f4c1ac0b4d81"
+
+	RemoteDomainFQDN = "remote.example.com"
+	RemoteDomainCCID = "con1er7kuzrw6vtv6nrq98d4jg7n2r0ayz772zvwxz"
+	RemoteDomainPriv = "863183823d2c2a19101140eef0f905c872de1dae6470c9129a1547f3482cb612"
 )
 
-func TestIdentifyLocalIdentity(t *testing.T) {
-	checker := testutil.SetupMockTraceProvider(t)
+func createJwt(t *testing.T, priv string, claims jwt.Claims) string {
+	jwt, err := jwt.Create(claims, priv)
+	if !assert.NoError(t, err) {
+		log.Fatal(err)
+	}
+
+	return jwt
+}
+
+var checker *tracetest.InMemoryExporter
+
+func TestMain(m *testing.M) {
+	checker = testutil.SetupMockTraceProvider()
+	m.Run()
+}
+
+func TestLocalRootSuccess(t *testing.T) {
 
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -35,14 +58,14 @@ func TestIdentifyLocalIdentity(t *testing.T) {
 	mockEntity := mock_entity.NewMockService(ctrl)
 	mockEntity.EXPECT().Get(gomock.Any(), gomock.Any()).Return(core.Entity{
 		ID:     User1ID,
-		Domain: "example.com",
+		Domain: "local.example.com",
 	}, nil).AnyTimes()
 	mockDomain := mock_domain.NewMockService(ctrl)
 	mockKey := mock_key.NewMockService(ctrl)
 
 	config := util.Config{
 		Concurrent: util.Concurrent{
-			FQDN: "example.com",
+			FQDN: "local.example.com",
 		},
 	}
 
@@ -50,16 +73,11 @@ func TestIdentifyLocalIdentity(t *testing.T) {
 
 	c, req, rec, traceID := testutil.CreateHttpRequest()
 
-	claims := jwt.Claims{
+	jwt := createJwt(t, User1Priv, jwt.Claims{
 		Issuer:   User1ID,
 		Subject:  "concrnt",
-		Audience: "example.com",
-	}
-
-	jwt, err := jwt.Create(claims, User1Priv)
-	if !assert.NoError(t, err) {
-		log.Fatal(err)
-	}
+		Audience: "local.example.com",
+	})
 
 	req.Header.Set("Authorization", "Bearer "+jwt)
 
@@ -67,7 +85,7 @@ func TestIdentifyLocalIdentity(t *testing.T) {
 		return nil
 	})
 
-	err = h(c)
+	err := h(c)
 	log.Println(rec.Body.String())
 	if assert.NoError(t, err) {
 		assert.Equal(t, core.LocalUser, c.Get(core.RequesterTypeCtxKey))
@@ -79,7 +97,96 @@ func TestIdentifyLocalIdentity(t *testing.T) {
 		assert.Equal(t, nil, c.Get(core.RequesterDomainTagsKey))
 		assert.Equal(t, nil, c.Get(core.RequesterKeychainKey))
 		assert.Equal(t, nil, c.Get(core.CaptchaVerifiedKey))
+	} else {
+		testutil.PrintSpans(checker.GetSpans(), traceID)
+	}
+}
+
+func TestRemoteRootSuccess(t *testing.T) {
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockEntity := mock_entity.NewMockService(ctrl)
+	mockEntity.EXPECT().Affiliation(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(core.Entity{
+		ID:     User1ID,
+		Domain: RemoteDomainFQDN,
+	}, nil).AnyTimes()
+
+	mockDomain := mock_domain.NewMockService(ctrl)
+	mockDomain.EXPECT().GetByFQDN(gomock.Any(), RemoteDomainFQDN).Return(core.Domain{
+		ID:   RemoteDomainFQDN,
+		CCID: RemoteDomainCCID,
+	}, nil).AnyTimes()
+
+	mockKey := mock_key.NewMockService(ctrl)
+
+	config := util.Config{
+		Concurrent: util.Concurrent{
+			FQDN: "local.example.com",
+		},
 	}
 
+	service := NewService(config, mockEntity, mockDomain, mockKey)
+	c, req, rec, traceID := testutil.CreateHttpRequest()
+
+	fmt.Print("traceID: ", traceID, "\n")
+
+	jwt := createJwt(t, User1Priv, jwt.Claims{
+		Issuer:   User1ID,
+		Subject:  "concrnt",
+		Audience: "local.example.com",
+	})
+
+	req.Header.Set("Authorization", "Bearer "+jwt)
+
+	passportDoc := core.PassportDocument{
+		Domain: RemoteDomainFQDN,
+		Entity: core.Entity{
+			ID:     User1ID,
+			Domain: RemoteDomainFQDN,
+			Tag:    "_admin, _root",
+		},
+		Keys: []core.Key{},
+	}
+
+	passportDocJson, _ := json.Marshal(passportDoc)
+	signatureBytes, _ := util.SignBytes(passportDocJson, RemoteDomainPriv)
+	signature := hex.EncodeToString(signatureBytes)
+
+	fmt.Println("signature: ", signature)
+
+	passport := core.Passport{
+		Document:  string(passportDocJson),
+		Signature: string(signature),
+	}
+
+	passportJson, _ := json.Marshal(passport)
+
+	req.Header.Set("passport", string(passportJson))
+
+	h := service.IdentifyIdentity(func(c echo.Context) error {
+		return nil
+	})
+
+	err := h(c)
+	log.Println(rec.Body.String())
+
 	testutil.PrintSpans(checker.GetSpans(), traceID)
+	if assert.NoError(t, err) {
+		assert.Equal(t, core.RemoteUser, c.Get(core.RequesterTypeCtxKey))
+		assert.Equal(t, User1ID, c.Get(core.RequesterIdCtxKey))
+		tags := c.Get(core.RequesterTagCtxKey).(core.Tags)
+		tagString := tags.ToString()
+		assert.Equal(t, "", tagString)
+		assert.Equal(t, RemoteDomainFQDN, c.Get(core.RequesterDomainCtxKey))
+		domainTags := c.Get(core.RequesterDomainTagsKey).(core.Tags)
+		domainTagString := domainTags.ToString()
+		assert.Equal(t, "", domainTagString)
+		assert.Len(t, c.Get(core.RequesterKeychainKey).([]core.Key), 0)
+		assert.Equal(t, nil, c.Get(core.CaptchaVerifiedKey))
+	}
+
+	log.Println(traceID)
+
 }

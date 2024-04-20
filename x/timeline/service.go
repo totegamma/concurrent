@@ -11,6 +11,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/totegamma/concurrent/x/cdid"
 	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/domain"
@@ -18,8 +21,6 @@ import (
 	"github.com/totegamma/concurrent/x/semanticid"
 	"github.com/totegamma/concurrent/x/subscription"
 	"github.com/totegamma/concurrent/x/util"
-
-	"go.opentelemetry.io/otel/attribute"
 )
 
 // Service is the interface for timeline service
@@ -100,24 +101,31 @@ func (s *service) GetChunksFromRemote(ctx context.Context, host string, timeline
 }
 
 func (s *service) NormalizeTimelineID(ctx context.Context, timeline string) (string, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Service.NormalizeTimelineID")
+	defer span.End()
+
 	split := strings.Split(timeline, "@")
 	id := split[0]
 	domain := s.config.Concurrent.FQDN
 	if len(split) == 2 {
-		if strings.Contains(split[1], ".") { // FQDN
+		if core.IsCCID(split[1]) {
+			entity, err := s.entity.Get(ctx, split[1])
+			if err != nil {
+				span.SetAttributes(attribute.String("timeline", timeline))
+				span.RecordError(err)
+				return "", err
+			}
+			domain = entity.Domain
+		} else {
 			domain = split[1]
 		}
-		// else: ccid?
-		entity, err := s.entity.Get(ctx, split[1])
-		if err != nil {
-			return "", err
-		}
-		domain = entity.Domain
 	}
 
 	if !cdid.IsSeemsCDID(id, 't') && domain == s.config.Concurrent.FQDN && core.IsCCID(split[1]) {
 		target, err := s.semanticid.Lookup(ctx, id, split[1])
 		if err != nil {
+			span.SetAttributes(attribute.String("timeline", timeline))
+			span.RecordError(errors.Wrap(err, "failed to lookup semanticID"))
 			return "", err
 		}
 		id = target
@@ -321,6 +329,7 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 	if core.IsCCID(timelineHost) {
 		requester, err := s.entity.Get(ctx, timelineHost)
 		if err != nil {
+			span.RecordError(err)
 			return core.TimelineItem{}, err
 		}
 		timelineHost = requester.Domain
@@ -329,6 +338,7 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 	if !cdid.IsSeemsCDID(timelineID, 't') && timelineHost == s.config.Concurrent.FQDN && core.IsCCID(query[1]) {
 		target, err := s.semanticid.Lookup(ctx, timelineID, query[1])
 		if err != nil {
+			span.RecordError(err)
 			return core.TimelineItem{}, err
 		}
 		timelineID = target

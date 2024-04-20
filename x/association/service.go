@@ -92,7 +92,7 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 	hash10 := [10]byte{}
 	copy(hash10[:], hash[:10])
 	signedAt := doc.SignedAt
-	id := cdid.New(hash10, signedAt).String()
+	id := "a" + cdid.New(hash10, signedAt).String()
 
 	owner, err := s.entity.Get(ctx, doc.Owner)
 	if err != nil {

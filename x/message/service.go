@@ -7,6 +7,8 @@ import (
 	"log/slog"
 	"strings"
 
+	"github.com/pkg/errors"
+
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/x/cdid"
 	"github.com/totegamma/concurrent/x/core"
@@ -42,7 +44,7 @@ func NewService(repo Repository, client client.Client, entity entity.Service, ti
 
 // Count returns the count number of messages
 func (s *service) Count(ctx context.Context) (int64, error) {
-	ctx, span := tracer.Start(ctx, "ServiceCount")
+	ctx, span := tracer.Start(ctx, "Message.Service.Count")
 	defer span.End()
 
 	return s.repo.Count(ctx)
@@ -50,7 +52,7 @@ func (s *service) Count(ctx context.Context) (int64, error) {
 
 // Get returns a message by ID
 func (s *service) Get(ctx context.Context, id string, requester string) (core.Message, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGet")
+	ctx, span := tracer.Start(ctx, "Message.Service.Get")
 	defer span.End()
 
 	message, err := s.repo.Get(ctx, id)
@@ -78,7 +80,7 @@ func (s *service) Get(ctx context.Context, id string, requester string) (core.Me
 
 // GetWithOwnAssociations returns a message by ID with associations
 func (s *service) GetWithOwnAssociations(ctx context.Context, id string, requester string) (core.Message, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetWithOwnAssociations")
+	ctx, span := tracer.Start(ctx, "Message.Service.GetWithOwnAssociations")
 	defer span.End()
 
 	message, err := s.repo.GetWithOwnAssociations(ctx, id, requester)
@@ -107,7 +109,7 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 // Create creates a new message
 // It also posts the message to the timelines
 func (s *service) Create(ctx context.Context, document string, signature string) (core.Message, error) {
-	ctx, span := tracer.Start(ctx, "ServicePostMessage")
+	ctx, span := tracer.Start(ctx, "Message.Service.Create")
 	defer span.End()
 
 	created := core.Message{}
@@ -123,7 +125,7 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 	hash10 := [10]byte{}
 	copy(hash10[:], hash[:10])
 	signedAt := doc.SignedAt
-	id := cdid.New(hash10, signedAt).String()
+	id := "m" + cdid.New(hash10, signedAt).String()
 
 	signer, err := s.entity.Get(ctx, doc.Signer)
 	if err != nil {
@@ -165,7 +167,7 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 
 		normalized, err := s.timeline.NormalizeTimelineID(ctx, timeline)
 		if err != nil {
-			span.RecordError(err)
+			span.RecordError(errors.Wrap(err, "failed to normalize timeline id"))
 			continue
 		}
 		split := strings.Split(normalized, "@")
@@ -198,7 +200,7 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 					TimelineID: timeline,
 				}, sendDocument, sendSignature)
 				if err != nil {
-					span.RecordError(err)
+					span.RecordError(errors.Wrap(err, "failed to post item"))
 					continue
 				}
 
@@ -215,7 +217,7 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 				err = s.timeline.PublishEvent(ctx, event)
 				if err != nil {
 					slog.ErrorContext(ctx, "failed to publish event", slog.String("error", err.Error()), slog.String("module", "timeline"))
-					span.RecordError(err)
+					span.RecordError(errors.Wrap(err, "failed to publish event"))
 					continue
 				}
 			}
@@ -243,7 +245,7 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 // Delete deletes a message by ID
 // It also emits a delete event to the sockets
 func (s *service) Delete(ctx context.Context, document, signature string) (core.Message, error) {
-	ctx, span := tracer.Start(ctx, "ServiceDelete")
+	ctx, span := tracer.Start(ctx, "Message.Service.Delete")
 	defer span.End()
 
 	var doc core.DeleteDocument

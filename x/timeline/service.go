@@ -33,6 +33,7 @@ type Service interface {
 	PostItem(ctx context.Context, timeline string, item core.TimelineItem, document, signature string) (core.TimelineItem, error)
 	RemoveItem(ctx context.Context, timeline string, id string)
 
+	Event(ctx context.Context, document, signature string) (core.Event, error)
 	PublishEvent(ctx context.Context, event core.Event) error
 
 	UpsertTimeline(ctx context.Context, document, signature string) (core.Timeline, error)
@@ -389,6 +390,28 @@ func (s *service) PublishEvent(ctx context.Context, event core.Event) error {
 	defer span.End()
 
 	return s.repository.PublishEvent(ctx, event)
+}
+
+func (s *service) Event(ctx context.Context, document, signature string) (core.Event, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Service.Event")
+	defer span.End()
+
+	var doc core.EventDocument
+	err := json.Unmarshal([]byte(document), &doc)
+	if err != nil {
+		span.RecordError(err)
+		return core.Event{}, err
+	}
+
+	event := core.Event{
+		TimelineID: doc.TimelineID,
+		Item:       doc.Item,
+		Document:   doc.Document,
+		Signature:  doc.Signature,
+		Resource:   doc.Resource,
+	}
+
+	return event, s.repository.PublishEvent(ctx, event)
 }
 
 // Create updates timeline information

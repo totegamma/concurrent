@@ -2,6 +2,7 @@ package association
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"log/slog"
@@ -210,6 +211,7 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 					TimelineID: timeline,
 					Document:   document,
 					Signature:  signature,
+					Resource:   created,
 				}
 				err := s.timeline.PublishEvent(ctx, event)
 				if err != nil {
@@ -218,51 +220,41 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 					return created, err
 				}
 			} else {
-				// TODO: commit event to remote
-			}
-		}
+				documentObj := core.EventDocument{
+					TimelineID: timeline,
+					Document:   document,
+					Signature:  signature,
+					Resource:   created,
+				}
 
-		/*
-			if owner.Domain == s.config.Concurrent.FQDN {
-				targetMessage, err := s.message.Get(ctx, created.TargetID, doc.Signer) //NOTE: これはownerのドメインしか実行できない
+				document, err := json.Marshal(documentObj)
 				if err != nil {
 					span.RecordError(err)
 					return created, err
 				}
 
-				remainedDomains := make(map[string]bool)
-				for _, timeline := range targetMessage.Timelines {
-					normalized, err := s.timeline.NormalizeTimelineID(ctx, timeline)
-					if err != nil {
-						span.RecordError(err)
-						continue
-					}
-					split := strings.Split(normalized, "@")
-					if len(split) != 2 {
-						span.RecordError(fmt.Errorf("invalid timeline id: %s", normalized))
-						continue
-					}
-					domain := split[1]
-					if _, ok := destinations[domain]; !ok {
-						remainedDomains[domain] = true
-					}
+				signatureBytes, err := util.SignBytes([]byte(document), s.config.Concurrent.PrivateKey)
+				if err != nil {
+					span.RecordError(err)
+					return created, err
 				}
 
-				for domain := range remainedDomains {
-					packet := core.Commit{
-						Document:  document,
-						Signature: signature,
-					}
+				signature := hex.EncodeToString(signatureBytes)
 
-					packetStr, err := json.Marshal(packet)
-					if err != nil {
-						span.RecordError(err)
-						continue
-					}
-					s.client.Commit(ctx, domain, string(packetStr))
+				packetObj := core.Commit{
+					Document:  string(document),
+					Signature: signature,
 				}
+
+				packet, err := json.Marshal(packetObj)
+				if err != nil {
+					span.RecordError(err)
+					return created, err
+				}
+
+				s.client.Commit(ctx, domain, string(packet))
 			}
-		*/
+		}
 	}
 
 	return created, nil
@@ -335,19 +327,67 @@ func (s *service) Delete(ctx context.Context, document, signature string) (core.
 	}
 
 	if deleted.TargetID[0] == 'm' { // distribute is needed only when targetType is messages
-		// TODO: まだ送ってないものだけに絞る
-		for _, posted := range targetMessage.Timelines {
-			event := core.Event{
-				TimelineID: posted,
-				Document:   document,
-				Signature:  signature,
-				Resource:   deleted,
-			}
-			err := s.timeline.PublishEvent(ctx, event)
+		for _, timeline := range targetMessage.Timelines {
+
+			normalized, err := s.timeline.NormalizeTimelineID(ctx, timeline)
 			if err != nil {
-				slog.ErrorContext(ctx, "failed to publish message to Redis", slog.String("error", err.Error()), slog.String("module", "association"))
 				span.RecordError(err)
-				return deleted, err
+				continue
+			}
+			split := strings.Split(normalized, "@")
+			if len(split) != 2 {
+				span.RecordError(fmt.Errorf("invalid timeline id: %s", normalized))
+				continue
+			}
+			domain := split[1]
+
+			if domain == s.config.Concurrent.FQDN {
+				event := core.Event{
+					TimelineID: timeline,
+					Document:   document,
+					Signature:  signature,
+					Resource:   deleted,
+				}
+				err := s.timeline.PublishEvent(ctx, event)
+				if err != nil {
+					slog.ErrorContext(ctx, "failed to publish message to Redis", slog.String("error", err.Error()), slog.String("module", "association"))
+					span.RecordError(err)
+					return deleted, err
+				}
+			} else {
+				documentObj := core.EventDocument{
+					TimelineID: timeline,
+					Document:   document,
+					Signature:  signature,
+					Resource:   deleted,
+				}
+
+				document, err := json.Marshal(documentObj)
+				if err != nil {
+					span.RecordError(err)
+					return deleted, err
+				}
+
+				signatureBytes, err := util.SignBytes([]byte(document), s.config.Concurrent.PrivateKey)
+				if err != nil {
+					span.RecordError(err)
+					return deleted, err
+				}
+
+				signature := hex.EncodeToString(signatureBytes)
+
+				packetObj := core.Commit{
+					Document:  string(document),
+					Signature: signature,
+				}
+
+				packet, err := json.Marshal(packetObj)
+				if err != nil {
+					span.RecordError(err)
+					return deleted, err
+				}
+
+				s.client.Commit(ctx, domain, string(packet))
 			}
 		}
 	}

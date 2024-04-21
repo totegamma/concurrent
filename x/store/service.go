@@ -87,6 +87,8 @@ func (s *service) Commit(ctx context.Context, document string, signature string,
 		return s.entity.Tombstone(ctx, document, signature)
 	case "timeline":
 		return s.timeline.UpsertTimeline(ctx, document, signature)
+	case "event":
+		return s.timeline.Event(ctx, document, signature)
 	case "ack", "unack":
 		return nil, s.ack.Ack(ctx, document, signature)
 	case "subscription":

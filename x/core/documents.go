@@ -115,3 +115,12 @@ type PassportDocument struct {
 	Entity Entity `json:"entity"`
 	Keys   []Key  `json:"keys"`
 }
+
+type EventDocument struct { // type: event
+	DocumentBase[any]
+	TimelineID string       `json:"timelineID"`
+	Item       TimelineItem `json:"item"`
+	Resource   any          `json:"resource"`
+	Document   string       `json:"document"`
+	Signature  string       `json:"signature"`
+}

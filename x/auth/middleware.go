@@ -33,75 +33,171 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 		ctx, span := tracer.Start(c.Request().Context(), "auth.IdentifyIdentity")
 		defer span.End()
 
+		// # authtoken
+		// 実体はjwtトークン
+		// requesterが本人であることを証明するのに使う。
 		authHeader := c.Request().Header.Get("authorization")
+		// # passport
+		// 実体はbase64エンコードされたjson
+		// リクエストに必要な情報を補完するのに使う。
 		passportHeader := c.Request().Header.Get("passport")
 
 		span.SetAttributes(attribute.String("Authorization", authHeader))
+
+		if passportHeader != "" {
+			passportJson, err := base64.URLEncoding.DecodeString(passportHeader)
+			if err != nil {
+				span.RecordError(errors.Wrap(err, "failed to decode passport"))
+				goto skipCheckPassport
+			}
+
+			var passport core.Passport
+			err = json.Unmarshal(passportJson, &passport)
+			if err != nil {
+				span.RecordError(errors.Wrap(err, "failed to unmarshal passport"))
+				goto skipCheckPassport
+			}
+
+			var passportDoc core.PassportDocument
+			err = json.Unmarshal([]byte(passport.Document), &passportDoc)
+			if err != nil {
+				span.RecordError(errors.Wrap(err, "failed to unmarshal passport document"))
+				goto skipCheckPassport
+			}
+
+			if passportDoc.Domain == s.config.Concurrent.FQDN {
+				span.RecordError(fmt.Errorf("do not use passport for local user"))
+				goto skipCheckPassport
+			}
+
+			domain, err := s.domain.GetByFQDN(ctx, passportDoc.Domain)
+			if err != nil {
+				span.RecordError(errors.Wrap(err, "failed to get domain by fqdn"))
+				goto skipCheckPassport
+			}
+
+			signatureBytes, err := hex.DecodeString(passport.Signature)
+			if err != nil {
+				span.RecordError(errors.Wrap(err, "failed to decode signature"))
+				goto skipCheckPassport
+			}
+			err = util.VerifySignature([]byte(passport.Document), signatureBytes, domain.CCID)
+			if err != nil { // TODO: this is misbehaving. should be logged to audit
+				span.RecordError(errors.Wrap(err, "failed to verify signature of passport"))
+				goto skipCheckPassport
+			}
+
+			if len(passportDoc.Keys) > 0 {
+				resolved, err := key.ValidateKeyResolution(passportDoc.Keys)
+				if err != nil {
+					span.RecordError(errors.Wrap(err, "failed to validate key resolution"))
+					goto skipCheckPassport
+				}
+
+				if resolved != passportDoc.Entity.ID {
+					span.RecordError(fmt.Errorf("Signer is not matched with the resolved signer. expected: %s, actual: %s", resolved, passportDoc.Entity.ID))
+					goto skipCheckPassport
+				}
+			}
+
+			entity := passportDoc.Entity
+			updated, err := s.entity.Affiliation(ctx, entity.AffiliationDocument, entity.AffiliationSignature, "")
+			if err != nil {
+				span.RecordError(err)
+				return c.JSON(http.StatusForbidden, echo.Map{
+					"error": "your affiliation document is invalid",
+				})
+			}
+
+			if !updated.IsScoreFixed && updated.Score != entity.Score {
+				err := s.entity.UpdateScore(ctx, entity.ID, entity.Score)
+				if err != nil {
+					span.RecordError(errors.Wrap(err, "failed to update score"))
+				}
+			}
+
+			c.Set(core.RequesterKeychainKey, passportDoc.Keys)
+		}
+	skipCheckPassport:
 
 		if authHeader != "" {
 			split := strings.Split(authHeader, " ")
 			if len(split) != 2 {
 				span.RecordError(fmt.Errorf("invalid authentication header"))
-				goto skip
+				goto skipCheckAuthorization
 			}
 
 			authType, token := split[0], split[1]
 			if authType != "Bearer" {
 				span.RecordError(fmt.Errorf("only Bearer is acceptable"))
-				goto skip
+				goto skipCheckAuthorization
 			}
 
 			claims, err := jwt.Validate(token)
 			if err != nil {
 				span.RecordError(errors.Wrap(err, "jwt validation failed"))
-				goto skip
+				goto skipCheckAuthorization
 			}
 
 			if claims.Audience != s.config.Concurrent.FQDN {
 				span.RecordError(fmt.Errorf("jwt is not for this domain"))
-				goto skip
+				goto skipCheckAuthorization
 			}
-
-			c.Set("jwtclaims", claims)
 
 			if claims.Subject != "concrnt" {
 				span.RecordError(fmt.Errorf("invalid subject"))
-				goto skip
+				goto skipCheckAuthorization
 			}
 
-			ccid := ""
-			if passportHeader != "" { // treat as remote user
-				// validate
-
-				passportJson, err := base64.URLEncoding.DecodeString(passportHeader)
-				if err != nil {
-					span.RecordError(errors.Wrap(err, "failed to decode passport"))
-					goto skip
+			var ccid string
+			if core.IsCCID(claims.Issuer) {
+				ccid = claims.Issuer
+			} else if core.IsCKID(claims.Issuer) {
+				if providedKeyChain, ok := c.Get(core.RequesterKeychainKey).([]core.Key); ok {
+					ccid, err = key.ValidateKeyResolution(providedKeyChain)
+					if err != nil {
+						span.RecordError(errors.Wrap(err, "failed to validate key resolution"))
+						goto skipCheckAuthorization
+					}
+				} else {
+					ccid, err = s.key.ResolveSubkey(ctx, claims.Issuer)
+					if err != nil {
+						span.RecordError(errors.Wrap(err, "failed to resolve subkey"))
+						goto skipCheckAuthorization
+					}
 				}
+			} else {
+				span.RecordError(fmt.Errorf("invalid issuer"))
+				goto skipCheckAuthorization
+			}
 
-				var passport core.Passport
-				err = json.Unmarshal(passportJson, &passport)
-				if err != nil {
-					span.RecordError(errors.Wrap(err, "failed to unmarshal passport"))
-					goto skip
-				}
+			entity, err := s.entity.Get(ctx, ccid)
+			if err != nil {
+				span.RecordError(errors.Wrap(err, "failed to get entity"))
+				return c.JSON(http.StatusForbidden, echo.Map{})
+			}
 
-				var passportDoc core.PassportDocument
-				err = json.Unmarshal([]byte(passport.Document), &passportDoc)
-				if err != nil {
-					span.RecordError(errors.Wrap(err, "failed to unmarshal passport document"))
-					goto skip
-				}
+			tags := core.ParseTags(entity.Tag)
+			c.Set(core.RequesterTagCtxKey, tags)
 
-				if passportDoc.Domain == s.config.Concurrent.FQDN {
-					span.RecordError(fmt.Errorf("do not use passport for local user"))
-					goto skip
-				}
+			if tags.Has("_block") {
+				return c.JSON(http.StatusForbidden, echo.Map{
+					"error": "you are blocked",
+				})
+			}
 
-				domain, err := s.domain.GetByFQDN(ctx, passportDoc.Domain)
+			if entity.Domain == s.config.Concurrent.FQDN {
+				// local user
+				c.Set(core.RequesterIdCtxKey, ccid)
+				span.SetAttributes(attribute.String("RequesterId", ccid))
+				c.Set(core.RequesterTypeCtxKey, core.LocalUser)
+				span.SetAttributes(attribute.String("RequesterType", core.RequesterTypeString(core.LocalUser)))
+			} else {
+
+				domain, err := s.domain.GetByFQDN(ctx, entity.Domain)
 				if err != nil {
 					span.RecordError(errors.Wrap(err, "failed to get domain by fqdn"))
-					goto skip
+					return c.JSON(http.StatusForbidden, echo.Map{})
 				}
 
 				domainTags := core.ParseTags(domain.Tag)
@@ -112,92 +208,18 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 					})
 				}
 
-				signatureBytes, err := hex.DecodeString(passport.Signature)
-				if err != nil {
-					span.RecordError(errors.Wrap(err, "failed to decode signature"))
-					goto skip
-				}
-				err = util.VerifySignature([]byte(passport.Document), signatureBytes, domain.CCID)
-				if err != nil { // TODO: this is misbehaving. should be logged to audit
-					span.RecordError(errors.Wrap(err, "failed to verify signature of passport"))
-					goto skip
-				}
-
-				if len(passportDoc.Keys) > 0 {
-					resolved, err := key.ValidateKeyResolution(passportDoc.Keys)
-					if err != nil {
-						span.RecordError(errors.Wrap(err, "failed to validate key resolution"))
-						goto skip
-					}
-
-					if resolved != passportDoc.Entity.ID {
-						span.RecordError(fmt.Errorf("Signer is not matched with the resolved signer. expected: %s, actual: %s", resolved, passportDoc.Entity.ID))
-						goto skip
-					}
-				}
-
-				entity := passportDoc.Entity
-				updated, err := s.entity.Affiliation(ctx, entity.AffiliationDocument, entity.AffiliationSignature, "")
-				if err != nil {
-					span.RecordError(err)
-					return c.JSON(http.StatusForbidden, echo.Map{
-						"error": "your affiliation document is invalid",
-					})
-				}
-
-				if !updated.IsScoreFixed && updated.Score != entity.Score {
-					err := s.entity.UpdateScore(ctx, entity.ID, entity.Score)
-					if err != nil {
-						span.RecordError(errors.Wrap(err, "failed to update score"))
-					}
-				}
-
-				ccid = passportDoc.Entity.ID
-				entityTags := core.ParseTags(updated.Tag)
-
+				// remote user
+				c.Set(core.RequesterIdCtxKey, ccid)
+				span.SetAttributes(attribute.String("RequesterId", ccid))
 				c.Set(core.RequesterTypeCtxKey, core.RemoteUser)
-				c.Set(core.RequesterTagCtxKey, entityTags)
-				c.Set(core.RequesterDomainCtxKey, domain.ID)
-				c.Set(core.RequesterDomainTagsKey, domainTags)
-				c.Set(core.RequesterKeychainKey, passportDoc.Keys)
 				span.SetAttributes(attribute.String("RequesterType", core.RequesterTypeString(core.RemoteUser)))
-				span.SetAttributes(attribute.String("RequesterTag", updated.Tag))
-				span.SetAttributes(attribute.String("RequesterDomain", domain.ID))
-
-			} else { // treat as local user
-				if core.IsCCID(claims.Issuer) {
-					ccid = claims.Issuer
-				} else if core.IsCKID(claims.Issuer) {
-					ccid, err = s.key.ResolveSubkey(ctx, claims.Issuer)
-					if err != nil {
-						span.RecordError(errors.Wrap(err, "failed to resolve subkey"))
-						goto skip
-					}
-				} else {
-					span.RecordError(fmt.Errorf("invalid issuer"))
-					goto skip
-				}
-
-				entity, err := s.entity.Get(ctx, ccid)
-				if err != nil {
-					span.RecordError(errors.Wrap(err, "failed to get entity"))
-					return c.JSON(http.StatusForbidden, echo.Map{
-						"error":  "you are not authorized to perform this action",
-						"detail": "you are not registered",
-					})
-				}
-
-				tags := core.ParseTags(entity.Tag)
-				c.Set(core.RequesterTypeCtxKey, core.LocalUser)
-				c.Set(core.RequesterTagCtxKey, tags)
-				span.SetAttributes(attribute.String("RequesterType", core.RequesterTypeString(core.LocalUser)))
-				span.SetAttributes(attribute.String("RequesterTag", entity.Tag))
+				c.Set(core.RequesterDomainCtxKey, entity.Domain)
+				span.SetAttributes(attribute.String("RequesterDomain", entity.Domain))
+				c.Set(core.RequesterDomainTagsKey, domainTags)
+				span.SetAttributes(attribute.String("RequesterDomainTags", domain.Tag))
 			}
-
-			c.Set(core.RequesterIdCtxKey, ccid)
-			span.SetAttributes(attribute.String("RequesterId", ccid))
 		}
-	skip:
+	skipCheckAuthorization:
 		c.SetRequest(c.Request().WithContext(ctx))
 		return next(c)
 	}

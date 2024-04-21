@@ -126,18 +126,3 @@ func (mr *MockClientMockRecorder) GetTimeline(ctx, domain, id interface{}) *gomo
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTimeline", reflect.TypeOf((*MockClient)(nil).GetTimeline), ctx, domain, id)
 }
-
-// ResolveAddress mocks base method.
-func (m *MockClient) ResolveAddress(ctx context.Context, domain, address string) (string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ResolveAddress", ctx, domain, address)
-	ret0, _ := ret[0].(string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// ResolveAddress indicates an expected call of ResolveAddress.
-func (mr *MockClientMockRecorder) ResolveAddress(ctx, domain, address interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveAddress", reflect.TypeOf((*MockClient)(nil).ResolveAddress), ctx, domain, address)
-}

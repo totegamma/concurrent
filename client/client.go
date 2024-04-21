@@ -42,6 +42,7 @@ func (c *client) Commit(ctx context.Context, domain, body string) (*http.Respons
 	defer span.End()
 
 	req, err := http.NewRequest("POST", "https://"+domain+"/api/v1/commit", bytes.NewBuffer([]byte(body)))
+	req.Header.Set("Content-Type", "application/json")
 	if err != nil {
 		span.RecordError(err)
 		return &http.Response{}, err

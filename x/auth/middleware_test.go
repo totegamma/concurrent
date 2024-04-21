@@ -115,12 +115,16 @@ func TestRemoteRootSuccess(t *testing.T) {
 		Score:  0,
 	}, nil)
 	mockEntity.EXPECT().UpdateScore(gomock.Any(), User1ID, 100).Return(nil)
+    mockEntity.EXPECT().Get(gomock.Any(), gomock.Any()).Return(core.Entity{
+        ID:     User1ID,
+        Domain: RemoteDomainFQDN,
+    }, nil).AnyTimes()
 
 	mockDomain := mock_domain.NewMockService(ctrl)
 	mockDomain.EXPECT().GetByFQDN(gomock.Any(), RemoteDomainFQDN).Return(core.Domain{
 		ID:   RemoteDomainFQDN,
 		CCID: RemoteDomainCCID,
-	}, nil)
+	}, nil).Times(2)
 
 	mockKey := mock_key.NewMockService(ctrl)
 

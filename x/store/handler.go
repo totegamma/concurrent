@@ -31,11 +31,13 @@ func (h *handler) Commit(c echo.Context) error {
 	var request core.Commit
 	err := c.Bind(&request)
 	if err != nil {
+		span.RecordError(err)
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
 	}
 
 	result, err := h.service.Commit(ctx, request.Document, request.Signature, request.Option)
 	if err != nil {
+		span.RecordError(err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 

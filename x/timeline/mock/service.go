@@ -66,6 +66,21 @@ func (mr *MockServiceMockRecorder) DeleteTimeline(ctx, document interface{}) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteTimeline", reflect.TypeOf((*MockService)(nil).DeleteTimeline), ctx, document)
 }
 
+// Event mocks base method.
+func (m *MockService) Event(ctx context.Context, document, signature string) (core.Event, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Event", ctx, document, signature)
+	ret0, _ := ret[0].(core.Event)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Event indicates an expected call of Event.
+func (mr *MockServiceMockRecorder) Event(ctx, document, signature interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Event", reflect.TypeOf((*MockService)(nil).Event), ctx, document, signature)
+}
+
 // GetChunks mocks base method.
 func (m *MockService) GetChunks(ctx context.Context, timelines []string, pivot time.Time) (map[string]core.Chunk, error) {
 	m.ctrl.T.Helper()

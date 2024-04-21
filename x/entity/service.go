@@ -116,7 +116,7 @@ func (s *service) Affiliation(ctx context.Context, document, signature, option s
 		}
 	}
 
-	if doc.Domain != s.config.Concurrent.FQDN {
+	if doc.Domain == s.config.Concurrent.FQDN {
 		if s.config.Profile.SiteKey != "" {
 			captchaVerified, ok := ctx.Value(core.CaptchaVerifiedKey).(bool)
 			if !ok || !captchaVerified {
@@ -137,7 +137,10 @@ func (s *service) Affiliation(ctx context.Context, document, signature, option s
 				ctx,
 				core.Entity{
 					ID:                   doc.Signer,
+					Domain:               doc.Domain,
 					Tag:                  "",
+					Score:                0,
+					IsScoreFixed:         false,
 					AffiliationDocument:  document,
 					AffiliationSignature: signature,
 				},
@@ -191,7 +194,10 @@ func (s *service) Affiliation(ctx context.Context, document, signature, option s
 				ctx,
 				core.Entity{
 					ID:                   doc.Signer,
+					Domain:               doc.Domain,
 					Tag:                  "",
+					Score:                0,
+					IsScoreFixed:         false,
 					AffiliationDocument:  document,
 					AffiliationSignature: signature,
 				},
@@ -227,6 +233,7 @@ func (s *service) Affiliation(ctx context.Context, document, signature, option s
 	} else {
 		newEntity := core.Entity{
 			ID:                   doc.Signer,
+			Domain:               doc.Domain,
 			AffiliationDocument:  document,
 			AffiliationSignature: signature,
 		}

@@ -107,7 +107,7 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 			Author:    doc.Signer,
 			Owner:     doc.Owner,
 			Schema:    doc.Schema,
-			TargetID:  doc.Target,
+			Target:    doc.Target,
 			Document:  document,
 			Signature: signature,
 			Timelines: doc.Timelines,
@@ -147,9 +147,9 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 				// localなら、timelineのエントリを生成→Eventを発行
 				for _, timeline := range timelines {
 					posted, err := s.timeline.PostItem(ctx, timeline, core.TimelineItem{
-						ObjectID: created.ID,
-						Owner:    created.Owner,
-						Author:   &created.Author,
+						ResourceID: created.ID,
+						Owner:      created.Owner,
+						Author:     &created.Author,
 					}, document, signature)
 					if err != nil {
 						span.RecordError(err)
@@ -157,10 +157,11 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 					}
 
 					event := core.Event{
-						TimelineID: timeline,
-						Item:       posted,
-						Document:   document,
-						Signature:  signature,
+						Timeline:  timeline,
+						Item:      posted,
+						Document:  document,
+						Signature: signature,
+						Resource:  created,
 					}
 
 					err = s.timeline.PublishEvent(ctx, event)
@@ -188,7 +189,7 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 
 		// Associationだけの追加対応
 		// メッセージの場合は、ターゲットのタイムラインにも追加する
-		targetMessage, err := s.message.Get(ctx, created.TargetID, doc.Signer) //NOTE: これはownerのドメインしか実行できない
+		targetMessage, err := s.message.Get(ctx, created.Target, doc.Signer) //NOTE: これはownerのドメインしか実行できない
 		if err != nil {
 			span.RecordError(err)
 			return created, err
@@ -208,10 +209,10 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 			domain := split[1]
 			if domain == s.config.Concurrent.FQDN {
 				event := core.Event{
-					TimelineID: timeline,
-					Document:   document,
-					Signature:  signature,
-					Resource:   created,
+					Timeline:  timeline,
+					Document:  document,
+					Signature: signature,
+					Resource:  created,
 				}
 				err := s.timeline.PublishEvent(ctx, event)
 				if err != nil {
@@ -221,10 +222,10 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 				}
 			} else {
 				documentObj := core.EventDocument{
-					TimelineID: timeline,
-					Document:   document,
-					Signature:  signature,
-					Resource:   created,
+					Timeline:  timeline,
+					Document:  document,
+					Signature: signature,
+					Resource:  created,
 				}
 
 				document, err := json.Marshal(documentObj)
@@ -296,7 +297,7 @@ func (s *service) Delete(ctx context.Context, document, signature string) (core.
 
 	requester := doc.Signer
 
-	targetMessage, err := s.message.Get(ctx, targetAssociation.TargetID, requester)
+	targetMessage, err := s.message.Get(ctx, targetAssociation.Target, requester)
 	if err != nil {
 		span.RecordError(err)
 		return core.Association{}, err
@@ -314,9 +315,9 @@ func (s *service) Delete(ctx context.Context, document, signature string) (core.
 
 	for _, posted := range targetAssociation.Timelines {
 		event := core.Event{
-			TimelineID: posted,
-			Document:   document,
-			Signature:  signature,
+			Timeline:  posted,
+			Document:  document,
+			Signature: signature,
 		}
 		err := s.timeline.PublishEvent(ctx, event)
 		if err != nil {
@@ -326,7 +327,7 @@ func (s *service) Delete(ctx context.Context, document, signature string) (core.
 		}
 	}
 
-	if deleted.TargetID[0] == 'm' { // distribute is needed only when targetType is messages
+	if deleted.Target[0] == 'm' { // distribute is needed only when targetType is messages
 		for _, timeline := range targetMessage.Timelines {
 
 			normalized, err := s.timeline.NormalizeTimelineID(ctx, timeline)
@@ -343,10 +344,10 @@ func (s *service) Delete(ctx context.Context, document, signature string) (core.
 
 			if domain == s.config.Concurrent.FQDN {
 				event := core.Event{
-					TimelineID: timeline,
-					Document:   document,
-					Signature:  signature,
-					Resource:   deleted,
+					Timeline:  timeline,
+					Document:  document,
+					Signature: signature,
+					Resource:  deleted,
 				}
 				err := s.timeline.PublishEvent(ctx, event)
 				if err != nil {
@@ -356,10 +357,10 @@ func (s *service) Delete(ctx context.Context, document, signature string) (core.
 				}
 			} else {
 				documentObj := core.EventDocument{
-					TimelineID: timeline,
-					Document:   document,
-					Signature:  signature,
-					Resource:   deleted,
+					Timeline:  timeline,
+					Document:  document,
+					Signature: signature,
+					Resource:  deleted,
 				}
 
 				document, err := json.Marshal(documentObj)

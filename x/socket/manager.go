@@ -303,7 +303,7 @@ func (m *manager) RemoteSubRoutine(domain string, timelines []string) {
 					}
 
 					// publish message to Redis
-					err = m.rdb.Publish(ctx, event.TimelineID, string(message)).Err()
+					err = m.rdb.Publish(ctx, event.Timeline, string(message)).Err()
 					if err != nil {
 						slog.Error(
 							fmt.Sprintf("fail to publish message to Redis"),

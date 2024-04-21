@@ -13,7 +13,7 @@ function App(): JSX.Element {
 
     useEffect(() => {
         console.log('fetching profile')
-        fetch('/api/v1/profile', {
+        fetch('/api/v1/domain', {
             method: 'GET',
         }).then(response => {
             if (response.ok) {
@@ -22,7 +22,7 @@ function App(): JSX.Element {
                 throw new Error('Something went wrong')
             }
         }).then(data => {
-            setProfile(data)
+            setProfile(data.content.meta)
             console.log(data)
         }).catch(error => {
             console.log(error)

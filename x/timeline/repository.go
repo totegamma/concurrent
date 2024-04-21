@@ -100,7 +100,7 @@ func (r *repository) PublishEvent(ctx context.Context, event core.Event) error {
 
 	jsonstr, _ := json.Marshal(event)
 
-	err := r.rdb.Publish(context.Background(), event.TimelineID, jsonstr).Err()
+	err := r.rdb.Publish(context.Background(), event.Timeline, jsonstr).Err()
 	if err != nil {
 		span.RecordError(err)
 		slog.ErrorContext(
@@ -396,7 +396,7 @@ func (r *repository) GetItem(ctx context.Context, timelineID string, objectID st
 	defer span.End()
 
 	var item core.TimelineItem
-	err := r.db.WithContext(ctx).First(&item, "timeline_id = ? and object_id = ?", timelineID, objectID).Error
+	err := r.db.WithContext(ctx).First(&item, "timeline_id = ? and resource_id = ?", timelineID, objectID).Error
 	return item, err
 }
 
@@ -465,7 +465,7 @@ func (r *repository) DeleteItem(ctx context.Context, timelineID string, objectID
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.DeleteItem")
 	defer span.End()
 
-	return r.db.WithContext(ctx).Delete(&core.TimelineItem{}, "timeline_id = ? and object_id = ?", timelineID, objectID).Error
+	return r.db.WithContext(ctx).Delete(&core.TimelineItem{}, "timeline_id = ? and resource_id = ?", timelineID, objectID).Error
 }
 
 // GetTimelineRecent returns a list of timeline items by TimelineID and time range

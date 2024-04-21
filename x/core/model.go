@@ -43,7 +43,7 @@ type Association struct {
 	Owner     string         `json:"owner" gorm:"type:char(42);"`
 	SchemaID  uint           `json:"-" gorm:"uniqueIndex:uniq_association"`
 	Schema    string         `json:"schema" gorm:"-"`
-	TargetID  string         `json:"target" gorm:"type:char(27);uniqueIndex:uniq_association"`
+	Target    string         `json:"target" gorm:"type:char(27);uniqueIndex:uniq_association"`
 	Variant   string         `json:"variant" gorm:"type:text;uniqueIndex:uniq_association"`
 	Document  string         `json:"document" gorm:"type:json"`
 	Signature string         `json:"signature" gorm:"type:char(130)"`
@@ -97,7 +97,7 @@ type Domain struct {
 	Score        int         `json:"score" gorm:"type:integer;default:0"`
 	Meta         interface{} `json:"meta" gorm:"-"`
 	IsScoreFixed bool        `json:"isScoreFixed" gorm:"type:boolean;default:false"`
-	DimensionID  string      `json:"dimension" gorm:"type:text"`
+	Dimension    string      `json:"dimension" gorm:"type:text"`
 	CDate        time.Time   `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 	MDate        time.Time   `json:"mdate" gorm:"autoUpdateTime"`
 	LastScraped  time.Time   `json:"lastScraped" gorm:"type:timestamp with time zone"`
@@ -136,7 +136,7 @@ type Timeline struct {
 // TimelineItem is one of a base object of concurrent
 // immutable
 type TimelineItem struct {
-	ObjectID   string    `json:"objectID" gorm:"primaryKey;type:char(27);"`
+	ResourceID string    `json:"resourceID" gorm:"primaryKey;type:char(27);"`
 	TimelineID string    `json:"timelineID" gorm:"primaryKey;type:char(26);"`
 	Owner      string    `json:"owner" gorm:"type:char(42);"`
 	Author     *string   `json:"author,omitempty" gorm:"type:char(42);"`
@@ -206,11 +206,11 @@ type SubscriptionItem struct {
 
 // Event is websocket root packet model
 type Event struct {
-	TimelineID string       `json:"timelineID"` // stream full id (ex: <streamID>@<domain>)
-	Item       TimelineItem `json:"item,omitempty"`
-	Resource   any          `json:"resource,omitempty"`
-	Document   string       `json:"document"`
-	Signature  string       `json:"signature"`
+	Timeline  string       `json:"timeline"` // stream full id (ex: <streamID>@<domain>)
+	Item      TimelineItem `json:"item,omitempty"`
+	Resource  any          `json:"resource,omitempty"`
+	Document  string       `json:"document"`
+	Signature string       `json:"signature"`
 }
 
 type UserKV struct {

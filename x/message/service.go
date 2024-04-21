@@ -195,7 +195,7 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 			// localなら、timelineのエントリを生成→Eventを発行
 			for _, timeline := range timelines {
 				posted, err := s.timeline.PostItem(ctx, timeline, core.TimelineItem{
-					ObjectID:   id,
+					ResourceID: id,
 					Owner:      doc.Signer,
 					TimelineID: timeline,
 				}, sendDocument, sendSignature)
@@ -206,10 +206,10 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 
 				// eventを放流
 				event := core.Event{
-					TimelineID: timeline,
-					Item:       posted,
-					Document:   document,
-					Signature:  signature,
+					Timeline:  timeline,
+					Item:      posted,
+					Document:  document,
+					Signature: signature,
 				}
 
 				err = s.timeline.PublishEvent(ctx, event)
@@ -273,9 +273,9 @@ func (s *service) Delete(ctx context.Context, document, signature string) (core.
 
 	for _, desttimeline := range deleted.Timelines {
 		event := core.Event{
-			TimelineID: desttimeline,
-			Document:   document,
-			Signature:  signature,
+			Timeline:  desttimeline,
+			Document:  document,
+			Signature: signature,
 		}
 		err := s.timeline.PublishEvent(ctx, event)
 		if err != nil {

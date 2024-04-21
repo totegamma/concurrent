@@ -264,10 +264,10 @@ func main() {
 		meta.SiteKey = config.Server.CaptchaSitekey
 
 		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": core.Domain{
-			ID:          config.Concurrent.FQDN,
-			CCID:        config.Concurrent.CCID,
-			DimensionID: config.Concurrent.Dimension,
-			Meta:        meta,
+			ID:        config.Concurrent.FQDN,
+			CCID:      config.Concurrent.CCID,
+			Dimension: config.Concurrent.Dimension,
+			Meta:      meta,
 		}})
 	})
 	apiV1.GET("/domain/:id", domainHandler.Get)

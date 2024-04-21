@@ -18,6 +18,7 @@ concurrent:
   registration: open
   # server agent account
   # it is handy to generate these info with concurrent.world devtool
+  dimension: concrnt-mainnet
   privatekey: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 profile:

@@ -48,7 +48,7 @@ func (s *service) GetByFQDN(ctx context.Context, fqdn string) (core.Domain, erro
 
 	domain, err := s.repository.GetByFQDN(ctx, fqdn)
 	if err == nil {
-		if domain.DimensionID != s.config.Concurrent.Dimension {
+		if domain.Dimension != s.config.Concurrent.Dimension {
 			return core.Domain{}, fmt.Errorf("domain is not in the same dimension")
 		}
 		return domain, nil
@@ -64,7 +64,7 @@ func (s *service) GetByFQDN(ctx context.Context, fqdn string) (core.Domain, erro
 		return core.Domain{}, err
 	}
 
-	if domain.DimensionID != s.config.Concurrent.Dimension {
+	if domain.Dimension != s.config.Concurrent.Dimension {
 		return core.Domain{}, fmt.Errorf("domain is not in the same dimension")
 	}
 

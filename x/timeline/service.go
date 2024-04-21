@@ -273,8 +273,8 @@ func (s *service) GetRecentItems(ctx context.Context, timelines []string, until 
 	var uniq []core.TimelineItem
 	m := make(map[string]bool)
 	for _, elem := range messages {
-		if !m[elem.ObjectID] {
-			m[elem.ObjectID] = true
+		if !m[elem.ResourceID] {
+			m[elem.ResourceID] = true
 			uniq = append(uniq, elem)
 		}
 	}
@@ -370,7 +370,7 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 	}
 
 	slog.DebugContext(
-		ctx, fmt.Sprintf("post to local timeline: %v to %v", item.ObjectID, timelineID),
+		ctx, fmt.Sprintf("post to local timeline: %v to %v", item.ResourceID, timelineID),
 		slog.String("module", "timeline"),
 	)
 
@@ -404,11 +404,11 @@ func (s *service) Event(ctx context.Context, document, signature string) (core.E
 	}
 
 	event := core.Event{
-		TimelineID: doc.TimelineID,
-		Item:       doc.Item,
-		Document:   doc.Document,
-		Signature:  doc.Signature,
-		Resource:   doc.Resource,
+		Timeline:  doc.Timeline,
+		Item:      doc.Item,
+		Document:  doc.Document,
+		Signature: doc.Signature,
+		Resource:  doc.Resource,
 	}
 
 	return event, s.repository.PublishEvent(ctx, event)

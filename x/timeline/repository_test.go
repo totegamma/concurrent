@@ -77,7 +77,7 @@ func TestRepository(t *testing.T) {
 
 	// :: Itemを作成 ::
 	item := core.TimelineItem{
-		ObjectID:   "mRGZKRZ5YTMTNDE9J0676P1TQAW",
+		ResourceID: "mRGZKRZ5YTMTNDE9J0676P1TQAW",
 		TimelineID: "t00000000000000000000000000",
 		Owner:      "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
 		CDate:      pivot.Add(-time.Minute * 0),
@@ -85,7 +85,7 @@ func TestRepository(t *testing.T) {
 
 	createdItem, err := repo.CreateItem(ctx, item)
 	if assert.NoError(t, err) {
-		assert.Equal(t, createdItem.ObjectID, item.ObjectID)
+		assert.Equal(t, createdItem.ResourceID, item.ResourceID)
 		assert.Equal(t, createdItem.TimelineID, item.TimelineID)
 		assert.Equal(t, createdItem.Owner, item.Owner)
 		assert.NotZero(t, createdItem.CDate)
@@ -95,7 +95,7 @@ func TestRepository(t *testing.T) {
 	pivotChunk := core.Time2Chunk(pivot)
 
 	_, err = repo.CreateItem(ctx, core.TimelineItem{
-		ObjectID:   "mRV75ZS5R588QDNQ00676P1X440",
+		ResourceID: "mRV75ZS5R588QDNQ00676P1X440",
 		TimelineID: "t00000000000000000000000000",
 		Owner:      "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
 		CDate:      pivot.Add(-time.Minute * 10),
@@ -129,7 +129,7 @@ func TestRepository(t *testing.T) {
 	assert.NoError(t, err)
 
 	_, err = repo.CreateItem(ctx, core.TimelineItem{
-		ObjectID:   "m5JY6724DKGDBCMP60676P2055M",
+		ResourceID: "m5JY6724DKGDBCMP60676P2055M",
 		TimelineID: "t11111111111111111111111111",
 		Owner:      "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
 		CDate:      pivot.Add(-time.Minute * 0),
@@ -137,7 +137,7 @@ func TestRepository(t *testing.T) {
 	assert.NoError(t, err)
 
 	_, err = repo.CreateItem(ctx, core.TimelineItem{
-		ObjectID:   "m5KV37HA63HVE7KNP0676P228RM",
+		ResourceID: "m5KV37HA63HVE7KNP0676P228RM",
 		TimelineID: "t11111111111111111111111111",
 		Owner:      "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
 		CDate:      pivot.Add(-time.Minute * 10),
@@ -180,7 +180,7 @@ func TestRepository(t *testing.T) {
 	assert.NoError(t, err)
 
 	_, err = repo.CreateItem(ctx, core.TimelineItem{
-		ObjectID:   "mA1HJCH9NK9MPMV7D0676P25PSR",
+		ResourceID: "mA1HJCH9NK9MPMV7D0676P25PSR",
 		TimelineID: "t22222222222222222222222222",
 		Owner:      "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
 		CDate:      pivot.Add(-time.Minute * 10),
@@ -188,7 +188,7 @@ func TestRepository(t *testing.T) {
 	assert.NoError(t, err)
 
 	_, err = repo.CreateItem(ctx, core.TimelineItem{
-		ObjectID:   "mW4H1PZZ223D1B6ED0676P27J50",
+		ResourceID: "mW4H1PZZ223D1B6ED0676P27J50",
 		TimelineID: "t22222222222222222222222222",
 		Owner:      "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
 		CDate:      pivot.Add(-time.Minute * 5),
@@ -201,12 +201,12 @@ func TestRepository(t *testing.T) {
 	if assert.NoError(t, err) {
 		assert.Len(t, chunks, 1)
 		assert.Len(t, chunks["t22222222222222222222222222"].Items, 2)
-		assert.Equal(t, "mW4H1PZZ223D1B6ED0676P27J50", chunks["t22222222222222222222222222"].Items[0].ObjectID)
-		assert.Equal(t, "mA1HJCH9NK9MPMV7D0676P25PSR", chunks["t22222222222222222222222222"].Items[1].ObjectID)
+		assert.Equal(t, "mW4H1PZZ223D1B6ED0676P27J50", chunks["t22222222222222222222222222"].Items[0].ResourceID)
+		assert.Equal(t, "mA1HJCH9NK9MPMV7D0676P25PSR", chunks["t22222222222222222222222222"].Items[1].ResourceID)
 	}
 
 	_, err = repo.CreateItem(ctx, core.TimelineItem{
-		ObjectID:   "mT46G7BT5TJQQS4WY0676P2A9ZM",
+		ResourceID: "mT46G7BT5TJQQS4WY0676P2A9ZM",
 		TimelineID: "t22222222222222222222222222",
 		Owner:      "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
 		CDate:      pivot.Add(-time.Minute * 1),
@@ -217,9 +217,9 @@ func TestRepository(t *testing.T) {
 	if assert.NoError(t, err) {
 		assert.Len(t, chunks, 1)
 		assert.Len(t, chunks["t22222222222222222222222222"].Items, 3)
-		assert.Equal(t, "mT46G7BT5TJQQS4WY0676P2A9ZM", chunks["t22222222222222222222222222"].Items[0].ObjectID)
-		assert.Equal(t, "mW4H1PZZ223D1B6ED0676P27J50", chunks["t22222222222222222222222222"].Items[1].ObjectID)
-		assert.Equal(t, "mA1HJCH9NK9MPMV7D0676P25PSR", chunks["t22222222222222222222222222"].Items[2].ObjectID)
+		assert.Equal(t, "mT46G7BT5TJQQS4WY0676P2A9ZM", chunks["t22222222222222222222222222"].Items[0].ResourceID)
+		assert.Equal(t, "mW4H1PZZ223D1B6ED0676P27J50", chunks["t22222222222222222222222222"].Items[1].ResourceID)
+		assert.Equal(t, "mA1HJCH9NK9MPMV7D0676P25PSR", chunks["t22222222222222222222222222"].Items[2].ResourceID)
 	}
 
 	remoteKey0 := "timeline:body:all:t00000000000000000000000000@remote.com:" + core.Time2Chunk(pivot.Add(-time.Minute*10))
@@ -231,7 +231,7 @@ func TestRepository(t *testing.T) {
 		Key: remoteKey0,
 		Items: []core.TimelineItem{
 			{
-				ObjectID:   "mDMZMRRS7N16E1PDN0676P2QH6C",
+				ResourceID: "mDMZMRRS7N16E1PDN0676P2QH6C",
 				TimelineID: "t00000000000000000000000000@remote.com",
 				Owner:      "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
 				CDate:      pivot.Add(-time.Minute * 10),
@@ -244,7 +244,7 @@ func TestRepository(t *testing.T) {
 		Key: remoteKey1,
 		Items: []core.TimelineItem{
 			{
-				ObjectID:   "mD895NMA837R0C6B90676P2S1J4",
+				ResourceID: "mD895NMA837R0C6B90676P2S1J4",
 				TimelineID: "t11111111111111111111111111@remote.com",
 				Owner:      "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
 				CDate:      pivot.Add(-time.Minute * 30),

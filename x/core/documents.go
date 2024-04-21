@@ -118,9 +118,9 @@ type PassportDocument struct {
 
 type EventDocument struct { // type: event
 	DocumentBase[any]
-	TimelineID string       `json:"timelineID"`
-	Item       TimelineItem `json:"item"`
-	Resource   any          `json:"resource"`
-	Document   string       `json:"document"`
-	Signature  string       `json:"signature"`
+	Timeline  string       `json:"timeline"`
+	Item      TimelineItem `json:"item"`
+	Resource  any          `json:"resource"`
+	Document  string       `json:"document"`
+	Signature string       `json:"signature"`
 }

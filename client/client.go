@@ -43,6 +43,12 @@ func (c *client) Commit(ctx context.Context, domain, body string) (*http.Respons
 
 	req, err := http.NewRequest("POST", "https://"+domain+"/api/v1/commit", bytes.NewBuffer([]byte(body)))
 	req.Header.Set("Content-Type", "application/json")
+
+	passport, ok := ctx.Value(core.RequesterPassportKey).(string)
+	if ok {
+		req.Header.Set(core.RequesterPassportHeader, passport)
+	}
+
 	if err != nil {
 		span.RecordError(err)
 		return &http.Response{}, err

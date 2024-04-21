@@ -280,6 +280,11 @@ func main() {
 				c.Request().Header.Set(core.RequesterKeychainHeader, string(serialized))
 			}
 
+			requesterPassport, ok := c.Get(core.RequesterPassportKey).(string)
+			if ok {
+				c.Request().Header.Set(core.RequesterPassportHeader, requesterPassport)
+			}
+
 			captchaVerified, ok := c.Get(core.CaptchaVerifiedKey).(bool)
 			if ok && captchaVerified {
 				c.Request().Header.Set(core.CaptchaVerifiedHeader, strconv.FormatBool(captchaVerified))

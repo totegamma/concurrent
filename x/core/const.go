@@ -7,6 +7,7 @@ const (
 	RequesterDomainCtxKey  = "cc-requesterDomain"
 	RequesterDomainTagsKey = "cc-requesterDomainTags"
 	RequesterKeychainKey   = "cc-requesterKeychain"
+	RequesterPassportKey   = "cc-requesterPassport"
 	CaptchaVerifiedKey     = "cc-captchaVerified"
 )
 
@@ -17,6 +18,7 @@ const (
 	RequesterDomainHeader     = "cc-requester-domain"
 	RequesterDomainTagsHeader = "cc-requester-domain-tags"
 	RequesterKeychainHeader   = "cc-requester-keychain"
+	RequesterPassportHeader   = "passport"
 	CaptchaVerifiedHeader     = "cc-captcha-verified"
 )
 

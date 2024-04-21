@@ -45,6 +45,8 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 		span.SetAttributes(attribute.String("Authorization", authHeader))
 
 		if passportHeader != "" {
+			c.Set(core.RequesterPassportKey, passportHeader)
+
 			passportJson, err := base64.URLEncoding.DecodeString(passportHeader)
 			if err != nil {
 				span.RecordError(errors.Wrap(err, "failed to decode passport"))

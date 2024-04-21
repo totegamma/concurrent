@@ -77,7 +77,7 @@ func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client c
 
 // Total returns the total number of messages
 func (r *repository) Count(ctx context.Context) (int64, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryTotal")
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.Count")
 	defer span.End()
 
 	item, err := r.mc.Get("timeline_count")
@@ -95,7 +95,7 @@ func (r *repository) Count(ctx context.Context) (int64, error) {
 }
 
 func (r *repository) PublishEvent(ctx context.Context, event core.Event) error {
-	ctx, span := tracer.Start(ctx, "ServiceDistributeEvents")
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.PublishEvent")
 	defer span.End()
 
 	jsonstr, _ := json.Marshal(event)
@@ -115,7 +115,7 @@ func (r *repository) PublishEvent(ctx context.Context, event core.Event) error {
 
 // GetTimelineFromRemote gets a timeline from remote
 func (r *repository) GetTimelineFromRemote(ctx context.Context, host string, key string) (core.Timeline, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetTimelineFromRemote")
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.GetTimelineFromRemote")
 	defer span.End()
 
 	// check cache
@@ -162,7 +162,7 @@ func (r *repository) GetTimelineFromRemote(ctx context.Context, host string, key
 }
 
 func (r *repository) GetChunksFromRemote(ctx context.Context, host string, timelines []string, queryTime time.Time) (map[string]core.Chunk, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetRemoteChunks")
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.GetChunksFromRemote")
 	defer span.End()
 
 	chunks, err := r.client.GetChunks(ctx, host, timelines, queryTime)
@@ -196,7 +196,7 @@ func (r *repository) GetChunksFromRemote(ctx context.Context, host string, timel
 
 // SaveToCache saves items to cache
 func (r *repository) SaveToCache(ctx context.Context, chunks map[string]core.Chunk, queryTime time.Time) error {
-	ctx, span := tracer.Start(ctx, "RepositorySaveToCache")
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.SaveToCache")
 	defer span.End()
 
 	for timelineID, chunk := range chunks {
@@ -223,7 +223,7 @@ func (r *repository) SaveToCache(ctx context.Context, chunks map[string]core.Chu
 
 // GetChunksFromCache gets chunks from cache
 func (r *repository) GetChunksFromCache(ctx context.Context, timelines []string, chunk string) (map[string]core.Chunk, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetChunksFromCache")
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.GetChunksFromCache")
 	defer span.End()
 
 	targetKeyMap, err := r.GetChunkIterators(ctx, timelines, chunk)
@@ -276,7 +276,7 @@ func (r *repository) GetChunksFromCache(ctx context.Context, timelines []string,
 
 // GetChunksFromDB gets chunks from db and cache them
 func (r *repository) GetChunksFromDB(ctx context.Context, timelines []string, chunk string) (map[string]core.Chunk, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetChunksFromDB")
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.GetChunksFromDB")
 	defer span.End()
 
 	targetKeyMap, err := r.GetChunkIterators(ctx, timelines, chunk)
@@ -346,7 +346,7 @@ func (r *repository) GetChunksFromDB(ctx context.Context, timelines []string, ch
 
 // GetChunkIterators returns a list of iterated chunk keys
 func (r *repository) GetChunkIterators(ctx context.Context, timelines []string, chunk string) (map[string]string, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetChunkIterators")
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.GetChunkIterators")
 	defer span.End()
 
 	keys := make([]string, len(timelines))
@@ -392,7 +392,7 @@ func (r *repository) GetChunkIterators(ctx context.Context, timelines []string, 
 
 // GetItem returns a timeline item by TimelineID and ObjectID
 func (r *repository) GetItem(ctx context.Context, timelineID string, objectID string) (core.TimelineItem, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetItem")
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.GetItem")
 	defer span.End()
 
 	var item core.TimelineItem
@@ -402,7 +402,7 @@ func (r *repository) GetItem(ctx context.Context, timelineID string, objectID st
 
 // CreateItem creates a new timeline item
 func (r *repository) CreateItem(ctx context.Context, item core.TimelineItem) (core.TimelineItem, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryCreateItem")
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.CreateItem")
 	defer span.End()
 
 	if len(item.TimelineID) == 27 {
@@ -462,7 +462,7 @@ func (r *repository) CreateItem(ctx context.Context, item core.TimelineItem) (co
 
 // DeleteItem deletes a timeline item
 func (r *repository) DeleteItem(ctx context.Context, timelineID string, objectID string) error {
-	ctx, span := tracer.Start(ctx, "RepositoryDeleteItem")
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.DeleteItem")
 	defer span.End()
 
 	return r.db.WithContext(ctx).Delete(&core.TimelineItem{}, "timeline_id = ? and object_id = ?", timelineID, objectID).Error
@@ -470,7 +470,7 @@ func (r *repository) DeleteItem(ctx context.Context, timelineID string, objectID
 
 // GetTimelineRecent returns a list of timeline items by TimelineID and time range
 func (r *repository) GetRecentItems(ctx context.Context, timelineID string, until time.Time, limit int) ([]core.TimelineItem, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetTimelineRecent")
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.GetRecentItems")
 	defer span.End()
 
 	var items []core.TimelineItem
@@ -480,7 +480,7 @@ func (r *repository) GetRecentItems(ctx context.Context, timelineID string, unti
 
 // GetTimelineImmediate returns a list of timeline items by TimelineID and time range
 func (r *repository) GetImmediateItems(ctx context.Context, timelineID string, since time.Time, limit int) ([]core.TimelineItem, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetTimelineImmediate")
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.GetImmediateItems")
 	defer span.End()
 
 	var items []core.TimelineItem
@@ -490,7 +490,7 @@ func (r *repository) GetImmediateItems(ctx context.Context, timelineID string, s
 
 // GetTimeline returns a timeline by ID
 func (r *repository) GetTimeline(ctx context.Context, key string) (core.Timeline, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetTimeline")
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.GetTimeline")
 	defer span.End()
 
 	if len(key) == 27 {
@@ -516,7 +516,7 @@ func (r *repository) GetTimeline(ctx context.Context, key string) (core.Timeline
 
 // Create updates a timeline
 func (r *repository) UpsertTimeline(ctx context.Context, timeline core.Timeline) (core.Timeline, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryCreateTimeline")
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.UpsertTimeline")
 	defer span.End()
 
 	if len(timeline.ID) == 27 {
@@ -543,7 +543,7 @@ func (r *repository) UpsertTimeline(ctx context.Context, timeline core.Timeline)
 
 // GetListBySchema returns list of schemas by schema
 func (r *repository) ListTimelineBySchema(ctx context.Context, schema string) ([]core.Timeline, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryListTimeline")
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.ListTimelineBySchema")
 	defer span.End()
 
 	id, err := r.schema.UrlToID(ctx, schema)
@@ -568,7 +568,7 @@ func (r *repository) ListTimelineBySchema(ctx context.Context, schema string) ([
 
 // GetListByAuthor returns list of schemas by owner
 func (r *repository) ListTimelineByAuthor(ctx context.Context, author string) ([]core.Timeline, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryListTimeline")
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.ListTimelineByAuthor")
 	defer span.End()
 
 	var timelines []core.Timeline
@@ -588,7 +588,7 @@ func (r *repository) ListTimelineByAuthor(ctx context.Context, author string) ([
 
 // Delete deletes a timeline
 func (r *repository) DeleteTimeline(ctx context.Context, timelineID string) error {
-	ctx, span := tracer.Start(ctx, "RepositoryDeleteTimeline")
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.DeleteTimeline")
 	defer span.End()
 
 	if len(timelineID) == 27 {
@@ -605,7 +605,7 @@ func (r *repository) DeleteTimeline(ctx context.Context, timelineID string) erro
 
 // List Timeline Subscriptions
 func (r *repository) ListTimelineSubscriptions(ctx context.Context) (map[string]int64, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryListTimelineSubscriptions")
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.ListTimelineSubscriptions")
 	defer span.End()
 
 	query_l := r.rdb.PubSubChannels(ctx, "*")

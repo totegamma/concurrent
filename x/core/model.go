@@ -43,7 +43,7 @@ type Association struct {
 	Owner     string         `json:"owner" gorm:"type:char(42);"`
 	SchemaID  uint           `json:"-" gorm:"uniqueIndex:uniq_association"`
 	Schema    string         `json:"schema" gorm:"-"`
-	TargetID  string         `json:"targetID" gorm:"type:char(27);uniqueIndex:uniq_association"`
+	TargetID  string         `json:"target" gorm:"type:char(27);uniqueIndex:uniq_association"`
 	Variant   string         `json:"variant" gorm:"type:text;uniqueIndex:uniq_association"`
 	Document  string         `json:"document" gorm:"type:json"`
 	Signature string         `json:"signature" gorm:"type:char(130)"`
@@ -207,9 +207,8 @@ type SubscriptionItem struct {
 // Event is websocket root packet model
 type Event struct {
 	TimelineID string       `json:"timelineID"` // stream full id (ex: <streamID>@<domain>)
-	Type       string       `json:"type"`
-	Action     string       `json:"action"`
-	Item       TimelineItem `json:"item"`
+	Item       TimelineItem `json:"item,omitempty"`
+	Resource   any          `json:"resource,omitempty"`
 	Document   string       `json:"document"`
 	Signature  string       `json:"signature"`
 }

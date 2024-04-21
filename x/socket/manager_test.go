@@ -142,8 +142,6 @@ func TestManager(t *testing.T) {
 	// - キャッシュが存在しないとき
 	testEvent := core.Event{
 		TimelineID: remotetimeline1,
-		Action:     "create",
-		Type:       "message",
 		Item: core.TimelineItem{
 			ObjectID:   "",
 			TimelineID: remotetimeline1,

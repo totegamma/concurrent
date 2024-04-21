@@ -207,8 +207,6 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 				// eventを放流
 				event := core.Event{
 					TimelineID: timeline,
-					Action:     "create",
-					Type:       "message",
 					Item:       posted,
 					Document:   document,
 					Signature:  signature,
@@ -276,8 +274,6 @@ func (s *service) Delete(ctx context.Context, document, signature string) (core.
 	for _, desttimeline := range deleted.Timelines {
 		event := core.Event{
 			TimelineID: desttimeline,
-			Type:       "message",
-			Action:     "delete",
 			Document:   document,
 			Signature:  signature,
 		}

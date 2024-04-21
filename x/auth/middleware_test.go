@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -159,14 +160,16 @@ func TestRemoteRootSuccess(t *testing.T) {
 
 	fmt.Println("signature: ", signature)
 
-	passport := core.Passport{
+	passportObj := core.Passport{
 		Document:  string(passportDocJson),
 		Signature: string(signature),
 	}
 
-	passportJson, _ := json.Marshal(passport)
+	passportJson, _ := json.Marshal(passportObj)
 
-	req.Header.Set("passport", string(passportJson))
+	passport := base64.URLEncoding.EncodeToString(passportJson)
+
+	req.Header.Set("passport", passport)
 
 	h := service.IdentifyIdentity(func(c echo.Context) error {
 		return nil

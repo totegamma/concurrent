@@ -313,7 +313,7 @@ func main() {
 	apiV1.GET("/socket", socketHandler.Connect)
 
 	// auth
-	apiV1.GET("/auth/passport/:remote", authHandler.GetPassport, auth.Restrict(auth.ISLOCAL))
+	apiV1.GET("/auth/passport", authHandler.GetPassport, auth.Restrict(auth.ISLOCAL))
 
 	// key
 	apiV1.GET("/key/:id", keyHandler.GetKeyResolution)

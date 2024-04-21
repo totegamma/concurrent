@@ -30,13 +30,14 @@ func (h *handler) GetPassport(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetPassport")
 	defer span.End()
 
-	remote := c.Param("remote")
 	requester, ok := c.Get(core.RequesterIdCtxKey).(string)
 	if !ok {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}
 
-	response, err := h.service.IssuePassport(ctx, requester, remote)
+	keys, ok := c.Get(core.RequesterKeychainKey).([]core.Key)
+
+	response, err := h.service.IssuePassport(ctx, requester, keys)
 	if err != nil {
 		span.RecordError(err)
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": err.Error()})

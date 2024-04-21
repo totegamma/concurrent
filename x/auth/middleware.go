@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
@@ -71,8 +72,15 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 			ccid := ""
 			if passportHeader != "" { // treat as remote user
 				// validate
+
+				passportJson, err := base64.URLEncoding.DecodeString(passportHeader)
+				if err != nil {
+					span.RecordError(errors.Wrap(err, "failed to decode passport"))
+					goto skip
+				}
+
 				var passport core.Passport
-				err = json.Unmarshal([]byte(passportHeader), &passport)
+				err = json.Unmarshal(passportJson, &passport)
 				if err != nil {
 					span.RecordError(errors.Wrap(err, "failed to unmarshal passport"))
 					goto skip

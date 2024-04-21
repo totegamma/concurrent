@@ -3,6 +3,7 @@ package auth
 import (
 	"context"
 	"encoding/base64"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 
@@ -60,15 +61,17 @@ func (s *service) IssuePassport(ctx context.Context, requester string, keys []co
 		return "", err
 	}
 
-	signature, err := util.SignBytes(document, s.config.Concurrent.PrivateKey)
+	signatureBytes, err := util.SignBytes(document, s.config.Concurrent.PrivateKey)
 	if err != nil {
 		span.RecordError(err)
 		return "", err
 	}
 
+	signature := hex.EncodeToString(signatureBytes)
+
 	passport := core.Passport{
 		Document:  string(document),
-		Signature: string(signature),
+		Signature: signature,
 	}
 
 	passportBytes, err := json.Marshal(passport)

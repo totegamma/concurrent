@@ -24,7 +24,6 @@ var tracer = otel.Tracer("client")
 
 type Client interface {
 	Commit(ctx context.Context, domain, body string) (*http.Response, error)
-	ResolveAddress(ctx context.Context, domain, address string) (string, error)
 	GetEntity(ctx context.Context, domain, address string) (core.Entity, error)
 	GetTimeline(ctx context.Context, domain, id string) (core.Timeline, error)
 	GetChunks(ctx context.Context, domain string, timelines []string, queryTime time.Time) (map[string]core.Chunk, error)
@@ -59,41 +58,6 @@ func (c *client) Commit(ctx context.Context, domain, body string) (*http.Respons
 	}
 
 	return resp, nil
-}
-
-func (c *client) ResolveAddress(ctx context.Context, domain, address string) (string, error) {
-	ctx, span := tracer.Start(ctx, "Client.ResolveAddress")
-	defer span.End()
-
-	client := new(http.Client)
-	client.Timeout = 3 * time.Second
-	req, err := http.NewRequest("GET", "https://"+domain+"/api/v1/address/"+address, nil)
-	if err != nil {
-		span.RecordError(err)
-		return "", err
-	}
-
-	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
-
-	resp, err := client.Do(req)
-	if err != nil {
-		span.RecordError(err)
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-
-	var remoteAddress core.ResponseBase[string]
-	json.Unmarshal(body, &remoteAddress)
-
-	if remoteAddress.Status != "ok" {
-		return "", fmt.Errorf("Remote address is not found")
-	}
-
-	targetDomain := remoteAddress.Content
-
-	return targetDomain, nil
 }
 
 func (c *client) GetEntity(ctx context.Context, domain, address string) (core.Entity, error) {

@@ -4,6 +4,7 @@ package entity
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"github.com/pkg/errors"
@@ -52,23 +53,23 @@ func NewService(repository Repository, client client.Client, config util.Config,
 }
 
 // PullEntityFromRemote pulls entity from remote
-func (s *service) PullEntityFromRemote(ctx context.Context, id, hintDomain string) (core.Entity, error) {
+func (s *service) PullEntityFromRemote(ctx context.Context, id, remote string) (core.Entity, error) {
 	ctx, span := tracer.Start(ctx, "RepositoryPullEntityFromRemote")
 	defer span.End()
 
-	targetDomain, err := s.client.ResolveAddress(ctx, hintDomain, id)
+	entity, err := s.client.GetEntity(ctx, remote, id)
 	if err != nil {
 		span.RecordError(err)
 		return core.Entity{}, err
 	}
 
-	entity, err := s.client.GetEntity(ctx, targetDomain, id)
+	signatureBytes, err := hex.DecodeString(entity.AffiliationSignature)
 	if err != nil {
 		span.RecordError(err)
 		return core.Entity{}, err
 	}
 
-	err = util.VerifySignature([]byte(entity.AffiliationDocument), []byte(entity.AffiliationSignature), id)
+	err = util.VerifySignature([]byte(entity.AffiliationDocument), signatureBytes, id)
 	if err != nil {
 		span.RecordError(err)
 		return core.Entity{}, err

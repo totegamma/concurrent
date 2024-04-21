@@ -275,9 +275,6 @@ func main() {
 	apiV1.DELETE("/domain/:id", domainHandler.Delete, auth.Restrict(auth.ISADMIN))
 	apiV1.GET("/domains", domainHandler.List)
 
-	// address
-	apiV1.GET("/address/:id", entityHandler.Resolve)
-
 	// entity
 	apiV1.GET("/entity/:id", entityHandler.Get)
 	apiV1.DELETE("/entity/:id", entityHandler.Delete, auth.Restrict(auth.ISADMIN))

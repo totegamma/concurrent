@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
+	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
@@ -18,7 +19,6 @@ type Handler interface {
 	Get(c echo.Context) error
 	List(c echo.Context) error
 	Delete(c echo.Context) error
-	Resolve(c echo.Context) error
 }
 
 type handler struct {
@@ -37,7 +37,14 @@ func (h handler) Get(c echo.Context) error {
 	defer span.End()
 
 	id := c.Param("id")
-	entity, err := h.service.Get(ctx, id)
+	hint := c.QueryParam("hint")
+	var entity core.Entity
+	var err error
+	if hint == "" {
+		entity, err = h.service.Get(ctx, id)
+	} else {
+		entity, err = h.service.GetWithHint(ctx, id, hint)
+	}
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			span.RecordError(err)

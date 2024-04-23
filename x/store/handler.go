@@ -25,7 +25,7 @@ func NewHandler(service Service) Handler {
 }
 
 func (h *handler) Commit(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "store.handler.Commit")
+	ctx, span := tracer.Start(c.Request().Context(), "Store.Handler.Commit")
 	defer span.End()
 
 	var request core.Commit

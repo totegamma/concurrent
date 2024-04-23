@@ -24,7 +24,7 @@ func NewRepository(db *gorm.DB) Repository {
 
 // Get returns a userkv by ID
 func (r *repository) Get(ctx context.Context, owner, key string) (string, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGet")
+	ctx, span := tracer.Start(ctx, "UserKV.Repository.Get")
 	defer span.End()
 
 	var kv core.UserKV
@@ -37,7 +37,7 @@ func (r *repository) Get(ctx context.Context, owner, key string) (string, error)
 
 // Upsert updates a userkv
 func (r *repository) Upsert(ctx context.Context, owner, key, value string) error {
-	ctx, span := tracer.Start(ctx, "RepositoryUpsert")
+	ctx, span := tracer.Start(ctx, "UserKV.Repository.Upsert")
 	defer span.End()
 
 	kv := &core.UserKV{

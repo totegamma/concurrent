@@ -36,7 +36,7 @@ func NewService(config util.Config, entity entity.Service, domain domain.Service
 
 // GetPassport takes client signed JWT and returns server signed JWT
 func (s *service) IssuePassport(ctx context.Context, requester string, keys []core.Key) (string, error) {
-	ctx, span := tracer.Start(ctx, "ServiceIssueJWT")
+	ctx, span := tracer.Start(ctx, "Auth.Service.IssuePassport")
 	defer span.End()
 
 	entity, err := s.entity.Get(ctx, requester)

@@ -45,7 +45,7 @@ func NewRepository(db *gorm.DB, mc *memcache.Client, schema schema.Service) Repo
 
 // Total returns the total number of messages
 func (r *repository) Count(ctx context.Context) (int64, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryTotal")
+	ctx, span := tracer.Start(ctx, "Message.Repository.Count")
 	defer span.End()
 
 	item, err := r.mc.Get("message_count")
@@ -64,7 +64,7 @@ func (r *repository) Count(ctx context.Context) (int64, error) {
 
 // Create creates new message
 func (r *repository) Create(ctx context.Context, message core.Message) (core.Message, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryCreate")
+	ctx, span := tracer.Start(ctx, "Message.Repository.Create")
 	defer span.End()
 
 	if message.ID == "" {
@@ -99,7 +99,7 @@ func (r *repository) Create(ctx context.Context, message core.Message) (core.Mes
 
 // Get returns a message by ID
 func (r *repository) Get(ctx context.Context, key string) (core.Message, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGet")
+	ctx, span := tracer.Start(ctx, "Message.Repository.Get")
 	defer span.End()
 
 	if len(key) == 27 {
@@ -128,7 +128,7 @@ func (r *repository) Get(ctx context.Context, key string) (core.Message, error) 
 
 // GetWithOwnAssociations returns a message by ID with associations
 func (r *repository) GetWithOwnAssociations(ctx context.Context, key string, ccid string) (core.Message, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGet")
+	ctx, span := tracer.Start(ctx, "Message.Repository.GetWithOwnAssociations")
 	defer span.End()
 
 	if len(key) == 27 {
@@ -166,7 +166,7 @@ func (r *repository) GetWithOwnAssociations(ctx context.Context, key string, cci
 
 // Delete deletes an message
 func (r *repository) Delete(ctx context.Context, id string) (core.Message, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryDelete")
+	ctx, span := tracer.Start(ctx, "Message.Repository.Delete")
 	defer span.End()
 
 	if len(id) == 27 {

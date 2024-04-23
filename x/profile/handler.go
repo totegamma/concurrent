@@ -32,7 +32,7 @@ func NewHandler(service Service) Handler {
 
 // Get returns a profile by id
 func (h handler) Get(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
+	ctx, span := tracer.Start(c.Request().Context(), "Profile.Handler.Get")
 	defer span.End()
 
 	id := c.Param("id")
@@ -52,7 +52,7 @@ func (h handler) Get(c echo.Context) error {
 }
 
 func (h handler) GetBySemanticID(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetBySemanticID")
+	ctx, span := tracer.Start(c.Request().Context(), "Profile.Handler.GetBySemanticID")
 	defer span.End()
 
 	semanticID := c.Param("semanticid")
@@ -75,7 +75,7 @@ func (h handler) GetBySemanticID(c echo.Context) error {
 
 // Query returns a profile by author and schema
 func (h handler) Query(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerQuery")
+	ctx, span := tracer.Start(c.Request().Context(), "Profile.Handler.Query")
 	defer span.End()
 
 	author := c.QueryParam("author")

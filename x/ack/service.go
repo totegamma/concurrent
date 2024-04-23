@@ -40,7 +40,7 @@ func NewService(repository Repository, client client.Client, entity entity.Servi
 
 // Ack creates new Ack
 func (s *service) Ack(ctx context.Context, document string, signature string) error {
-	ctx, span := tracer.Start(ctx, "ServiceAck")
+	ctx, span := tracer.Start(ctx, "Ack.Service.Ack")
 	defer span.End()
 
 	var doc core.AckDocument
@@ -115,7 +115,7 @@ func (s *service) Ack(ctx context.Context, document string, signature string) er
 
 // GetAcker returns acker
 func (s *service) GetAcker(ctx context.Context, user string) ([]core.Ack, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetAcker")
+	ctx, span := tracer.Start(ctx, "Ack.Service.GetAcker")
 	defer span.End()
 
 	return s.repository.GetAcker(ctx, user)
@@ -123,7 +123,7 @@ func (s *service) GetAcker(ctx context.Context, user string) ([]core.Ack, error)
 
 // GetAcking returns acking
 func (s *service) GetAcking(ctx context.Context, user string) ([]core.Ack, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetAcking")
+	ctx, span := tracer.Start(ctx, "Ack.Service.GetAcking")
 	defer span.End()
 
 	return s.repository.GetAcking(ctx, user)

@@ -29,7 +29,7 @@ func NewHandler(service Service) Handler {
 
 // GetSubscription returns a collection by ID
 func (h *handler) GetSubscription(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetSubscription")
+	ctx, span := tracer.Start(c.Request().Context(), "Subscription.Handler.GetSubscription")
 	defer span.End()
 
 	id := c.Param("id")
@@ -44,7 +44,7 @@ func (h *handler) GetSubscription(c echo.Context) error {
 
 // GetOwnSubscriptions
 func (h *handler) GetOwnSubscriptions(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetOwnSubscriptions")
+	ctx, span := tracer.Start(c.Request().Context(), "Subscription.Handler.GetOwnSubscriptions")
 	defer span.End()
 
 	requester, _ := c.Get(core.RequesterIdCtxKey).(string)

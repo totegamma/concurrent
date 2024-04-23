@@ -84,7 +84,7 @@ func NewService(
 
 // Count returns the count number of messages
 func (s *service) Count(ctx context.Context) (int64, error) {
-	ctx, span := tracer.Start(ctx, "ServiceCount")
+	ctx, span := tracer.Start(ctx, "Timeline.Service.Count")
 	defer span.End()
 
 	return s.repository.Count(ctx)
@@ -547,7 +547,7 @@ func (s *service) GetItem(ctx context.Context, timeline string, id string) (core
 
 // Remove removes timeline element by ID
 func (s *service) RemoveItem(ctx context.Context, timeline string, id string) {
-	ctx, span := tracer.Start(ctx, "Timeline.ServiceRemoveItem")
+	ctx, span := tracer.Start(ctx, "Timeline.Service.RemoveItem")
 	defer span.End()
 
 	s.repository.DeleteItem(ctx, timeline, id)

@@ -30,7 +30,7 @@ const (
 
 func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		ctx, span := tracer.Start(c.Request().Context(), "auth.IdentifyIdentity")
+		ctx, span := tracer.Start(c.Request().Context(), "Auth.Service.IdentifyIdentity")
 		defer span.End()
 
 		// # authtoken
@@ -229,7 +229,7 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 
 func ReceiveGatewayAuthPropagation(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
-		ctx, span := tracer.Start(c.Request().Context(), "auth.ReceiveGatewayAuthPropagation")
+		ctx, span := tracer.Start(c.Request().Context(), "Auth.Service.ReceiveGatewayAuthPropagation")
 		defer span.End()
 
 		reqTypeHeader := c.Request().Header.Get(core.RequesterTypeHeader)
@@ -290,7 +290,7 @@ func ReceiveGatewayAuthPropagation(next echo.HandlerFunc) echo.HandlerFunc {
 func Restrict(principal Principal) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			ctx, span := tracer.Start(c.Request().Context(), "auth.Restrict")
+			ctx, span := tracer.Start(c.Request().Context(), "Auth.Service.Restrict")
 			defer span.End()
 
 			requesterType, _ := c.Get(core.RequesterTypeCtxKey).(int)
@@ -339,7 +339,7 @@ func Restrict(principal Principal) echo.MiddlewareFunc {
 func Recaptcha(validator *recaptcha.ReCAPTCHA) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
-			ctx, span := tracer.Start(c.Request().Context(), "middleware.Recaptcha")
+			ctx, span := tracer.Start(c.Request().Context(), "Auth.Service.Recaptcha")
 			defer span.End()
 
 			challenge := c.Request().Header.Get("captcha")

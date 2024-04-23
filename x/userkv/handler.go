@@ -28,7 +28,7 @@ func NewHandler(service Service) Handler {
 
 // Get returns a userkv by ID
 func (h handler) Get(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
+	ctx, span := tracer.Start(c.Request().Context(), "UserKV.Handler.Get")
 	defer span.End()
 
 	requester, ok := c.Get(core.RequesterIdCtxKey).(string)
@@ -46,7 +46,7 @@ func (h handler) Get(c echo.Context) error {
 
 // Upsert updates a userkv
 func (h handler) Upsert(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerUpsert")
+	ctx, span := tracer.Start(c.Request().Context(), "UserKV.Handler.Upsert")
 	defer span.End()
 
 	requester, ok := c.Get(core.RequesterIdCtxKey).(string)

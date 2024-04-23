@@ -26,7 +26,7 @@ func NewHandler(service Service) Handler {
 
 // GetAcking returns acking entities
 func (h handler) GetAcking(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetAcking")
+	ctx, span := tracer.Start(c.Request().Context(), "Ack.Handler.GetAcking")
 	defer span.End()
 
 	id := c.Param("id")
@@ -40,7 +40,7 @@ func (h handler) GetAcking(c echo.Context) error {
 
 // GetAcker returns an acker
 func (h handler) GetAcker(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetAcker")
+	ctx, span := tracer.Start(c.Request().Context(), "Ack.Handler.GetAcker")
 	defer span.End()
 
 	id := c.Param("id")

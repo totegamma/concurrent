@@ -36,7 +36,7 @@ func NewService(repository Repository, entity entity.Service, config util.Config
 
 // EnactKey validates new subkey and save it if valid
 func (s *service) EnactKey(ctx context.Context, payload, signature string) (core.Key, error) {
-	ctx, span := tracer.Start(ctx, "ServiceEnactKey")
+	ctx, span := tracer.Start(ctx, "Key.Service.EnactKey")
 	defer span.End()
 
 	object := core.EnactKey{}
@@ -79,7 +79,7 @@ func (s *service) EnactKey(ctx context.Context, payload, signature string) (core
 
 // RevokeKey validates new subkey and save it if valid
 func (s *service) RevokeKey(ctx context.Context, payload, signature string) (core.Key, error) {
-	ctx, span := tracer.Start(ctx, "ServiceRevokeKey")
+	ctx, span := tracer.Start(ctx, "Key.Service.RevokeKey")
 	defer span.End()
 
 	object := core.RevokeKey{}
@@ -124,7 +124,7 @@ func (s *service) RevokeKey(ctx context.Context, payload, signature string) (cor
 }
 
 func (s *service) ValidateDocument(ctx context.Context, document, signature string, keys []core.Key) error {
-	ctx, span := tracer.Start(ctx, "ServiceValidate")
+	ctx, span := tracer.Start(ctx, "Key.Service.ValidateDocument")
 	defer span.End()
 
 	object := core.DocumentBase[any]{}
@@ -246,7 +246,7 @@ func ValidateKeyResolution(keys []core.Key) (string, error) {
 }
 
 func (s *service) ResolveSubkey(ctx context.Context, keyID string) (string, error) {
-	ctx, span := tracer.Start(ctx, "ServiceIsKeyChainValid")
+	ctx, span := tracer.Start(ctx, "Key.Service.ResolveSubkey")
 	defer span.End()
 
 	rootKey := keyID
@@ -270,7 +270,7 @@ func (s *service) ResolveSubkey(ctx context.Context, keyID string) (string, erro
 }
 
 func (s *service) GetKeyResolution(ctx context.Context, keyID string) ([]core.Key, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetKeyResolution")
+	ctx, span := tracer.Start(ctx, "Key.Service.GetKeyResolution")
 	defer span.End()
 
 	var keys []core.Key
@@ -296,7 +296,7 @@ func (s *service) GetKeyResolution(ctx context.Context, keyID string) ([]core.Ke
 }
 
 func (s *service) GetAllKeys(ctx context.Context, owner string) ([]core.Key, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetAll")
+	ctx, span := tracer.Start(ctx, "Key.Service.GetAllKeys")
 	defer span.End()
 
 	return s.repository.GetAll(ctx, owner)

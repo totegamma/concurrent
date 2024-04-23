@@ -29,7 +29,7 @@ func NewHandler(service Service) Handler {
 
 // Get returns an message by ID
 func (h handler) Get(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
+	ctx, span := tracer.Start(c.Request().Context(), "Message.Handler.Get")
 	defer span.End()
 
 	id := c.Param("id")

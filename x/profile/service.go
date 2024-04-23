@@ -37,21 +37,21 @@ func NewService(repo Repository, key key.Service, semanticid semanticid.Service)
 
 // Count returns the count number of messages
 func (s *service) Count(ctx context.Context) (int64, error) {
-	ctx, span := tracer.Start(ctx, "ServiceCount")
+	ctx, span := tracer.Start(ctx, "Profile.Service.Count")
 	defer span.End()
 
 	return s.repo.Count(ctx)
 }
 
 func (s *service) Get(ctx context.Context, id string) (core.Profile, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGet")
+	ctx, span := tracer.Start(ctx, "Profile.Service.Get")
 	defer span.End()
 
 	return s.repo.Get(ctx, id)
 }
 
 func (s *service) GetBySemanticID(ctx context.Context, semanticID, owner string) (core.Profile, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetBySemanticID")
+	ctx, span := tracer.Start(ctx, "Profile.Service.GetBySemanticID")
 	defer span.End()
 
 	target, err := s.semanticid.Lookup(ctx, semanticID, owner)
@@ -64,7 +64,7 @@ func (s *service) GetBySemanticID(ctx context.Context, semanticID, owner string)
 
 // GetByAuthorAndSchema returns profiles by owner and schema
 func (s *service) GetByAuthorAndSchema(ctx context.Context, owner string, schema string) ([]core.Profile, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetByAuthorAndSchema")
+	ctx, span := tracer.Start(ctx, "Profile.Service.GetByAuthorAndSchema")
 	defer span.End()
 
 	return s.repo.GetByAuthorAndSchema(ctx, owner, schema)
@@ -72,7 +72,7 @@ func (s *service) GetByAuthorAndSchema(ctx context.Context, owner string, schema
 
 // GetByAuthor returns profiles by owner
 func (s *service) GetByAuthor(ctx context.Context, owner string) ([]core.Profile, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetByAuthor")
+	ctx, span := tracer.Start(ctx, "Profile.Service.GetByAuthor")
 	defer span.End()
 
 	return s.repo.GetByAuthor(ctx, owner)
@@ -80,7 +80,7 @@ func (s *service) GetByAuthor(ctx context.Context, owner string) ([]core.Profile
 
 // GetBySchema returns profiles by schema
 func (s *service) GetBySchema(ctx context.Context, schema string) ([]core.Profile, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetBySchema")
+	ctx, span := tracer.Start(ctx, "Profile.Service.GetBySchema")
 	defer span.End()
 
 	return s.repo.GetBySchema(ctx, schema)
@@ -88,7 +88,7 @@ func (s *service) GetBySchema(ctx context.Context, schema string) ([]core.Profil
 
 // Upsert creates new profile if the signature is valid
 func (s *service) Upsert(ctx context.Context, document, signature string) (core.Profile, error) {
-	ctx, span := tracer.Start(ctx, "ServicePutProfile")
+	ctx, span := tracer.Start(ctx, "Profile.Service.Upsert")
 	defer span.End()
 
 	var doc core.UpsertProfile[any]
@@ -150,7 +150,7 @@ func (s *service) Upsert(ctx context.Context, document, signature string) (core.
 
 // Delete deletes profile
 func (s *service) Delete(ctx context.Context, documentStr string) (core.Profile, error) {
-	ctx, span := tracer.Start(ctx, "ServiceDelete")
+	ctx, span := tracer.Start(ctx, "Profile.Service.Delete")
 	defer span.End()
 
 	var document core.DeleteDocument

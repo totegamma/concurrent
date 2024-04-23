@@ -27,7 +27,7 @@ func NewHandler(service Service) Handler {
 // Claim is used for get server signed jwt
 // input user signed jwt
 func (h *handler) GetPassport(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetPassport")
+	ctx, span := tracer.Start(c.Request().Context(), "Auth.Handler.GetPassport")
 	defer span.End()
 
 	requester, ok := c.Get(core.RequesterIdCtxKey).(string)

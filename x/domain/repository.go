@@ -29,7 +29,7 @@ func NewRepository(db *gorm.DB) Repository {
 
 // GetByFQDN returns a host by FQDN
 func (r *repository) GetByFQDN(ctx context.Context, key string) (core.Domain, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetByFQDN")
+	ctx, span := tracer.Start(ctx, "Domain.Repository.GetByFQDN")
 	defer span.End()
 
 	var host core.Domain
@@ -39,7 +39,7 @@ func (r *repository) GetByFQDN(ctx context.Context, key string) (core.Domain, er
 
 // GetByCCID returns a host by CCID
 func (r *repository) GetByCCID(ctx context.Context, ccid string) (core.Domain, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetByCCID")
+	ctx, span := tracer.Start(ctx, "Domain.Repository.GetByCCID")
 	defer span.End()
 
 	var host core.Domain
@@ -49,7 +49,7 @@ func (r *repository) GetByCCID(ctx context.Context, ccid string) (core.Domain, e
 
 // Upsert creates new host
 func (r *repository) Upsert(ctx context.Context, host core.Domain) (core.Domain, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryUpsert")
+	ctx, span := tracer.Start(ctx, "Domain.Repository.Upsert")
 	defer span.End()
 
 	err := r.db.WithContext(ctx).Save(&host).Error
@@ -59,7 +59,7 @@ func (r *repository) Upsert(ctx context.Context, host core.Domain) (core.Domain,
 
 // GetList returns list of schemas by schema
 func (r *repository) GetList(ctx context.Context) ([]core.Domain, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetList")
+	ctx, span := tracer.Start(ctx, "Domain.Repository.GetList")
 	defer span.End()
 
 	var hosts []core.Domain
@@ -69,7 +69,7 @@ func (r *repository) GetList(ctx context.Context) ([]core.Domain, error) {
 
 // Delete deletes a host
 func (r *repository) Delete(ctx context.Context, id string) error {
-	ctx, span := tracer.Start(ctx, "RepositoryDelete")
+	ctx, span := tracer.Start(ctx, "Domain.Repository.Delete")
 	defer span.End()
 
 	return r.db.WithContext(ctx).Delete(&core.Domain{}, "id = ?", id).Error
@@ -77,7 +77,7 @@ func (r *repository) Delete(ctx context.Context, id string) error {
 
 // UpdateScrapeTime updates scrape time
 func (r *repository) UpdateScrapeTime(ctx context.Context, id string, scrapeTime time.Time) error {
-	ctx, span := tracer.Start(ctx, "RepositoryUpdateScrapeTime")
+	ctx, span := tracer.Start(ctx, "Domain.Repository.UpdateScrapeTime")
 	defer span.End()
 
 	return r.db.WithContext(ctx).Model(&core.Domain{}).Where("id = ?", id).Update("last_scraped", scrapeTime).Error
@@ -85,7 +85,7 @@ func (r *repository) UpdateScrapeTime(ctx context.Context, id string, scrapeTime
 
 // Update updates a host
 func (r *repository) Update(ctx context.Context, host core.Domain) error {
-	ctx, span := tracer.Start(ctx, "RepositoryUpdate")
+	ctx, span := tracer.Start(ctx, "Domain.Repository.Update")
 	defer span.End()
 
 	return r.db.WithContext(ctx).Model(&core.Domain{}).Where("id = ?", host.ID).Updates(&host).Error

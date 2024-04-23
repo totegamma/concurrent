@@ -18,7 +18,6 @@ var tracer = otel.Tracer("entity")
 type Handler interface {
 	Get(c echo.Context) error
 	List(c echo.Context) error
-	Delete(c echo.Context) error
 }
 
 type handler struct {
@@ -33,7 +32,7 @@ func NewHandler(service Service, config util.Config) Handler {
 
 // Get returns an entity by ID
 func (h handler) Get(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
+	ctx, span := tracer.Start(c.Request().Context(), "Entity.Handler.Get")
 	defer span.End()
 
 	id := c.Param("id")
@@ -58,7 +57,7 @@ func (h handler) Get(c echo.Context) error {
 
 // List returns a list of entities
 func (h handler) List(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerList")
+	ctx, span := tracer.Start(c.Request().Context(), "Entity.Handler.List")
 	defer span.End()
 
 	entities, err := h.service.List(ctx)
@@ -67,33 +66,4 @@ func (h handler) List(c echo.Context) error {
 		return err
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": entities})
-}
-
-// Delete deletes an entity
-func (h handler) Delete(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerDelete")
-	defer span.End()
-
-	id := c.Param("id")
-	err := h.service.Delete(ctx, id)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
-}
-
-// Resolve returns entity domain affiliation
-func (h handler) Resolve(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerResolve")
-	defer span.End()
-
-	id := c.Param("id")
-	hint := c.QueryParam("hint")
-	entity, err := h.service.GetWithHint(ctx, id, hint)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": entity.Domain})
 }

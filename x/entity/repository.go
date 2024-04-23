@@ -149,7 +149,7 @@ func (r *repository) CreateWithMeta(ctx context.Context, entity core.Entity, met
 
 // GetList returns all entities
 func (r *repository) GetList(ctx context.Context) ([]core.Entity, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetList")
+	ctx, span := tracer.Start(ctx, "Entity.Repository.GetList")
 	defer span.End()
 
 	var entities []core.Entity
@@ -159,7 +159,7 @@ func (r *repository) GetList(ctx context.Context) ([]core.Entity, error) {
 
 // Delete deletes a entity
 func (r *repository) Delete(ctx context.Context, id string) error {
-	ctx, span := tracer.Start(ctx, "RepositoryDelete")
+	ctx, span := tracer.Start(ctx, "Entity.Repository.Delete")
 	defer span.End()
 
 	err := r.db.WithContext(ctx).Delete(&core.Entity{}, "id = ?", id).Error
@@ -172,14 +172,14 @@ func (r *repository) Delete(ctx context.Context, id string) error {
 }
 
 func (r *repository) UpdateScore(ctx context.Context, id string, score int) error {
-	ctx, span := tracer.Start(ctx, "RepositoryUpdateScore")
+	ctx, span := tracer.Start(ctx, "Entity.Repository.UpdateScore")
 	defer span.End()
 
 	return r.db.WithContext(ctx).Model(&core.Entity{}).Where("id = ?", id).Update("score", score).Error
 }
 
 func (r *repository) UpdateTag(ctx context.Context, id, tag string) error {
-	ctx, span := tracer.Start(ctx, "RepositoryUpdateTag")
+	ctx, span := tracer.Start(ctx, "Entity.Repository.UpdateTag")
 	defer span.End()
 
 	return r.db.WithContext(ctx).Model(&core.Entity{}).Where("id = ?", id).Update("tag", tag).Error

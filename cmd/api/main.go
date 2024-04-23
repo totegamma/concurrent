@@ -171,8 +171,6 @@ func main() {
 		&core.Domain{},
 		&core.Entity{},
 		&core.EntityMeta{},
-		&core.Collection{},
-		&core.CollectionItem{},
 		&core.Ack{},
 		&core.Key{},
 		&core.UserKV{},
@@ -205,8 +203,6 @@ func main() {
 	client := client.NewClient()
 
 	agent := concurrent.SetupAgent(db, rdb, mc, client, config)
-
-	collectionHandler := concurrent.SetupCollectionHandler(db, rdb, config)
 
 	socketManager := concurrent.SetupSocketManager(mc, db, rdb, config)
 	socketHandler := concurrent.SetupSocketHandler(rdb, socketManager, config)
@@ -271,13 +267,10 @@ func main() {
 		}})
 	})
 	apiV1.GET("/domain/:id", domainHandler.Get)
-	apiV1.PUT("/domain/:id", domainHandler.Upsert, auth.Restrict(auth.ISADMIN))
-	apiV1.DELETE("/domain/:id", domainHandler.Delete, auth.Restrict(auth.ISADMIN))
 	apiV1.GET("/domains", domainHandler.List)
 
 	// entity
 	apiV1.GET("/entity/:id", entityHandler.Get)
-	apiV1.DELETE("/entity/:id", entityHandler.Delete, auth.Restrict(auth.ISADMIN))
 	apiV1.GET("/entity/:id/acking", ackHandler.GetAcking)
 	apiV1.GET("/entity/:id/acker", ackHandler.GetAcker)
 	apiV1.GET("/entities", entityHandler.List)
@@ -298,7 +291,6 @@ func main() {
 
 	// timeline
 	apiV1.GET("/timeline/:id", timelineHandler.Get)
-	apiV1.DELETE("/timeline/:timeline/:object", timelineHandler.Remove, auth.Restrict(auth.ISLOCAL))
 	apiV1.GET("/timelines", timelineHandler.List)
 	apiV1.GET("/timelines/mine", timelineHandler.ListMine)
 	apiV1.GET("/timelines/recent", timelineHandler.Recent)
@@ -317,23 +309,11 @@ func main() {
 
 	// key
 	apiV1.GET("/key/:id", keyHandler.GetKeyResolution)
-	apiV1.POST("key", keyHandler.UpdateKey, auth.Restrict(auth.ISLOCAL))
 	apiV1.GET("/keys/mine", keyHandler.GetKeyMine, auth.Restrict(auth.ISLOCAL))
 
 	// subscription
 	apiV1.GET("/subscription/:id", subscriptionHandler.GetSubscription)
 	apiV1.GET("/subscriptions/mine", subscriptionHandler.GetOwnSubscriptions, auth.Restrict(auth.ISLOCAL))
-
-	// collection
-	apiV1.POST("/collection", collectionHandler.CreateCollection, auth.Restrict(auth.ISLOCAL))
-	apiV1.GET("/collection/:id", collectionHandler.GetCollection)
-	apiV1.PUT("/collection/:id", collectionHandler.UpdateCollection, auth.Restrict(auth.ISLOCAL))
-	apiV1.DELETE("/collection/:id", collectionHandler.DeleteCollection, auth.Restrict(auth.ISLOCAL))
-
-	apiV1.POST("/collection/:collection", collectionHandler.CreateItem, auth.Restrict(auth.ISLOCAL))
-	apiV1.GET("/collection/:collection/:item", collectionHandler.GetItem)
-	apiV1.PUT("/collection/:collection/:item", collectionHandler.UpdateItem, auth.Restrict(auth.ISLOCAL))
-	apiV1.DELETE("/collection/:collection/:item", collectionHandler.DeleteItem, auth.Restrict(auth.ISLOCAL))
 
 	// misc
 	e.GET("/health", func(c echo.Context) (err error) {

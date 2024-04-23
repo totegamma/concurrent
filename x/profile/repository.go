@@ -49,7 +49,7 @@ func NewRepository(db *gorm.DB, mc *memcache.Client, schema schema.Service) Repo
 
 // Total returns the total number of profiles
 func (r *repository) Count(ctx context.Context) (int64, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryTotal")
+	ctx, span := tracer.Start(ctx, "Profile.Repository.Count")
 	defer span.End()
 
 	item, err := r.mc.Get("profile_count")
@@ -68,7 +68,7 @@ func (r *repository) Count(ctx context.Context) (int64, error) {
 
 // Upsert creates and updates profile
 func (r *repository) Upsert(ctx context.Context, profile core.Profile) (core.Profile, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryUpsert")
+	ctx, span := tracer.Start(ctx, "Profile.Repository.Upsert")
 	defer span.End()
 
 	if profile.ID == "" {
@@ -116,7 +116,7 @@ func (r *repository) Upsert(ctx context.Context, profile core.Profile) (core.Pro
 
 // Get returns a profile by owner and schema
 func (r *repository) GetByAuthorAndSchema(ctx context.Context, owner string, schema string) ([]core.Profile, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetByAuthorAndSchema")
+	ctx, span := tracer.Start(ctx, "Profile.Repository.GetByAuthorAndSchema")
 	defer span.End()
 
 	var profiles []core.Profile
@@ -141,7 +141,7 @@ func (r *repository) GetByAuthorAndSchema(ctx context.Context, owner string, sch
 }
 
 func (r *repository) GetByAuthor(ctx context.Context, owner string) ([]core.Profile, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetByAuthor")
+	ctx, span := tracer.Start(ctx, "Profile.Repository.GetByAuthor")
 	defer span.End()
 
 	var profiles []core.Profile
@@ -166,7 +166,7 @@ func (r *repository) GetByAuthor(ctx context.Context, owner string) ([]core.Prof
 }
 
 func (r *repository) GetBySchema(ctx context.Context, schema string) ([]core.Profile, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetBySchema")
+	ctx, span := tracer.Start(ctx, "Profile.Repository.GetBySchema")
 	defer span.End()
 
 	var profiles []core.Profile
@@ -192,7 +192,7 @@ func (r *repository) GetBySchema(ctx context.Context, schema string) ([]core.Pro
 }
 
 func (r *repository) Delete(ctx context.Context, id string) (core.Profile, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryDelete")
+	ctx, span := tracer.Start(ctx, "Profile.Repository.Delete")
 	defer span.End()
 
 	if len(id) == 27 {
@@ -223,7 +223,7 @@ func (r *repository) Delete(ctx context.Context, id string) (core.Profile, error
 }
 
 func (r *repository) Get(ctx context.Context, id string) (core.Profile, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGet")
+	ctx, span := tracer.Start(ctx, "Profile.Repository.Get")
 	defer span.End()
 
 	if len(id) == 27 {

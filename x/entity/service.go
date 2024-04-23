@@ -54,7 +54,7 @@ func NewService(repository Repository, client client.Client, config util.Config,
 
 // PullEntityFromRemote pulls entity from remote
 func (s *service) PullEntityFromRemote(ctx context.Context, id, remote string) (core.Entity, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryPullEntityFromRemote")
+	ctx, span := tracer.Start(ctx, "Entity.Service.PullEntityFromRemote")
 	defer span.End()
 
 	entity, err := s.client.GetEntity(ctx, remote, id)
@@ -86,14 +86,14 @@ func (s *service) PullEntityFromRemote(ctx context.Context, id, remote string) (
 
 // Total returns the count number of entities
 func (s *service) Count(ctx context.Context) (int64, error) {
-	ctx, span := tracer.Start(ctx, "ServiceCount")
+	ctx, span := tracer.Start(ctx, "Entity.Service.Count")
 	defer span.End()
 
 	return s.repository.Count(ctx)
 }
 
 func (s *service) Affiliation(ctx context.Context, document, signature, option string) (core.Entity, error) {
-	ctx, span := tracer.Start(ctx, "ServiceAffiliation")
+	ctx, span := tracer.Start(ctx, "Entity.Service.Affiliation")
 	defer span.End()
 
 	var doc core.EntityAffiliation
@@ -256,7 +256,7 @@ func (s *service) Affiliation(ctx context.Context, document, signature, option s
 }
 
 func (s *service) Tombstone(ctx context.Context, document, signature string) (core.Entity, error) {
-	ctx, span := tracer.Start(ctx, "ServiceTombstone")
+	ctx, span := tracer.Start(ctx, "Entity.Service.Tombstone")
 	defer span.End()
 
 	var doc core.EntityTombstone
@@ -278,7 +278,7 @@ func (s *service) Tombstone(ctx context.Context, document, signature string) (co
 
 // Get returns entity by ccid
 func (s *service) Get(ctx context.Context, key string) (core.Entity, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGet")
+	ctx, span := tracer.Start(ctx, "Entity.Service.Get")
 	defer span.End()
 
 	entity, err := s.repository.Get(ctx, key)
@@ -292,7 +292,7 @@ func (s *service) Get(ctx context.Context, key string) (core.Entity, error) {
 
 // GetWithHint returns entity by ccid with hint
 func (s *service) GetWithHint(ctx context.Context, ccid, hint string) (core.Entity, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetWithHint")
+	ctx, span := tracer.Start(ctx, "Entity.Service.GetWithHint")
 	defer span.End()
 
 	entity, err := s.repository.Get(ctx, ccid)
@@ -315,7 +315,7 @@ func (s *service) GetWithHint(ctx context.Context, ccid, hint string) (core.Enti
 
 // List returns all entities
 func (s *service) List(ctx context.Context) ([]core.Entity, error) {
-	ctx, span := tracer.Start(ctx, "ServiceList")
+	ctx, span := tracer.Start(ctx, "Entity.Service.List")
 	defer span.End()
 
 	return s.repository.GetList(ctx)
@@ -323,7 +323,7 @@ func (s *service) List(ctx context.Context) ([]core.Entity, error) {
 
 // IsUserExists returns true if user exists
 func (s *service) IsUserExists(ctx context.Context, user string) bool {
-	ctx, span := tracer.Start(ctx, "ServiceIsUserExists")
+	ctx, span := tracer.Start(ctx, "Entity.Service.IsUserExists")
 	defer span.End()
 
 	_, err := s.repository.Get(ctx, user)
@@ -335,7 +335,7 @@ func (s *service) IsUserExists(ctx context.Context, user string) bool {
 
 // UpdateScore updates entity score
 func (s *service) UpdateScore(ctx context.Context, id string, score int) error {
-	ctx, span := tracer.Start(ctx, "ServiceUpdateScore")
+	ctx, span := tracer.Start(ctx, "Entity.Service.UpdateScore")
 	defer span.End()
 
 	return s.repository.UpdateScore(ctx, id, score)
@@ -343,7 +343,7 @@ func (s *service) UpdateScore(ctx context.Context, id string, score int) error {
 
 // UpdateTag updates entity tag
 func (s *service) UpdateTag(ctx context.Context, id, tag string) error {
-	ctx, span := tracer.Start(ctx, "ServiceUpdateTag")
+	ctx, span := tracer.Start(ctx, "Entity.Service.UpdateTag")
 	defer span.End()
 
 	return s.repository.UpdateTag(ctx, id, tag)
@@ -351,7 +351,7 @@ func (s *service) UpdateTag(ctx context.Context, id, tag string) error {
 
 // Delete deletes entity
 func (s *service) Delete(ctx context.Context, id string) error {
-	ctx, span := tracer.Start(ctx, "ServiceDelete")
+	ctx, span := tracer.Start(ctx, "Entity.Service.Delete")
 	defer span.End()
 
 	return s.repository.Delete(ctx, id)

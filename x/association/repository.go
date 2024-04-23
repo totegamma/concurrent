@@ -51,7 +51,7 @@ func NewRepository(db *gorm.DB, mc *memcache.Client, schema schema.Service) Repo
 
 // Total returns the total number of associations
 func (r *repository) Count(ctx context.Context) (int64, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryTotal")
+	ctx, span := tracer.Start(ctx, "Association.Repository.Count")
 	defer span.End()
 
 	item, err := r.mc.Get("association_count")
@@ -70,7 +70,7 @@ func (r *repository) Count(ctx context.Context) (int64, error) {
 
 // Create creates new association
 func (r *repository) Create(ctx context.Context, association core.Association) (core.Association, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryCreate")
+	ctx, span := tracer.Start(ctx, "Association.Repository.Create")
 	defer span.End()
 
 	if association.ID == "" {
@@ -105,7 +105,7 @@ func (r *repository) Create(ctx context.Context, association core.Association) (
 
 // Get returns a Association by ID
 func (r *repository) Get(ctx context.Context, id string) (core.Association, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGet")
+	ctx, span := tracer.Start(ctx, "Association.Repository.Get")
 	defer span.End()
 
 	if len(id) == 27 {
@@ -131,7 +131,7 @@ func (r *repository) Get(ctx context.Context, id string) (core.Association, erro
 
 // GetOwn returns all associations which owned by specified owner
 func (r *repository) GetOwn(ctx context.Context, author string) ([]core.Association, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetOwn")
+	ctx, span := tracer.Start(ctx, "Association.Repository.GetOwn")
 	defer span.End()
 
 	var associations []core.Association
@@ -151,7 +151,7 @@ func (r *repository) GetOwn(ctx context.Context, author string) ([]core.Associat
 
 // Delete deletes a association by ID
 func (r *repository) Delete(ctx context.Context, id string) (core.Association, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryDelete")
+	ctx, span := tracer.Start(ctx, "Association.Repository.Delete")
 	defer span.End()
 
 	if len(id) == 27 {
@@ -181,7 +181,7 @@ func (r *repository) Delete(ctx context.Context, id string) (core.Association, e
 
 // GetByTarget returns all associations which target is specified message
 func (r *repository) GetByTarget(ctx context.Context, targetID string) ([]core.Association, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetByTarget")
+	ctx, span := tracer.Start(ctx, "Association.Repository.GetByTarget")
 	defer span.End()
 
 	var associations []core.Association
@@ -201,7 +201,7 @@ func (r *repository) GetByTarget(ctx context.Context, targetID string) ([]core.A
 
 // GetCountsBySchema returns the number of associations for a given schema
 func (r *repository) GetCountsBySchema(ctx context.Context, messageID string) (map[string]int64, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetCountsBySchema")
+	ctx, span := tracer.Start(ctx, "Association.Repository.GetCountsBySchema")
 	defer span.End()
 
 	var counts []struct {
@@ -228,7 +228,7 @@ func (r *repository) GetCountsBySchema(ctx context.Context, messageID string) (m
 
 // GetOwnByTarget returns all associations which target is specified message and owned by specified owner
 func (r *repository) GetOwnByTarget(ctx context.Context, targetID, author string) ([]core.Association, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetOwnByTarget")
+	ctx, span := tracer.Start(ctx, "Association.Repository.GetOwnByTarget")
 	defer span.End()
 
 	var associations []core.Association
@@ -248,7 +248,7 @@ func (r *repository) GetOwnByTarget(ctx context.Context, targetID, author string
 
 // GetBySchema returns the associations for a given schema
 func (r *repository) GetBySchema(ctx context.Context, messageID, schema string) ([]core.Association, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetBySchema")
+	ctx, span := tracer.Start(ctx, "Association.Repository.GetBySchema")
 	defer span.End()
 
 	schemaID, err := r.schema.UrlToID(ctx, schema)
@@ -273,7 +273,7 @@ func (r *repository) GetBySchema(ctx context.Context, messageID, schema string) 
 
 // GetCountsBySchemaAndVariant returns the number of associations for a given schema and variant
 func (r *repository) GetCountsBySchemaAndVariant(ctx context.Context, messageID, schema string) (map[string]int64, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetCountsBySchemaAndVariant")
+	ctx, span := tracer.Start(ctx, "Association.Repository.GetCountsBySchemaAndVariant")
 	defer span.End()
 
 	var counts []struct {
@@ -301,7 +301,7 @@ func (r *repository) GetCountsBySchemaAndVariant(ctx context.Context, messageID,
 
 // GetBySchemaAndVariant returns the associations for a given schema and variant
 func (r *repository) GetBySchemaAndVariant(ctx context.Context, messageID, schema, variant string) ([]core.Association, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetBySchemaAndVariant")
+	ctx, span := tracer.Start(ctx, "Association.Repository.GetBySchemaAndVariant")
 	defer span.End()
 
 	schemaID, err := r.schema.UrlToID(ctx, schema)

@@ -67,7 +67,7 @@ func NewService(
 
 // Count returns the count number of messages
 func (s *service) Count(ctx context.Context) (int64, error) {
-	ctx, span := tracer.Start(ctx, "ServiceCount")
+	ctx, span := tracer.Start(ctx, "Association.Service.Count")
 	defer span.End()
 
 	return s.repo.Count(ctx)
@@ -77,7 +77,7 @@ func (s *service) Count(ctx context.Context) (int64, error) {
 // If targetType is messages, it also posts the association to the target message's timelines
 // returns the created association
 func (s *service) Create(ctx context.Context, document string, signature string) (core.Association, error) {
-	ctx, span := tracer.Start(ctx, "ServicePostAssociation")
+	ctx, span := tracer.Start(ctx, "Association.Service.Create")
 	defer span.End()
 
 	created := core.Association{}
@@ -263,7 +263,7 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 
 // Get returns an association by ID
 func (s *service) Get(ctx context.Context, id string) (core.Association, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGet")
+	ctx, span := tracer.Start(ctx, "Association.Service.Get")
 	defer span.End()
 
 	return s.repo.Get(ctx, id)
@@ -271,7 +271,7 @@ func (s *service) Get(ctx context.Context, id string) (core.Association, error) 
 
 // GetOwn returns associations by author
 func (s *service) GetOwn(ctx context.Context, author string) ([]core.Association, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetOwn")
+	ctx, span := tracer.Start(ctx, "Association.Service.GetOwn")
 	defer span.End()
 
 	return s.repo.GetOwn(ctx, author)
@@ -279,7 +279,7 @@ func (s *service) GetOwn(ctx context.Context, author string) ([]core.Association
 
 // Delete deletes an association by ID
 func (s *service) Delete(ctx context.Context, document, signature string) (core.Association, error) {
-	ctx, span := tracer.Start(ctx, "ServiceDelete")
+	ctx, span := tracer.Start(ctx, "Association.Service.Delete")
 	defer span.End()
 
 	var doc core.DeleteDocument
@@ -398,7 +398,7 @@ func (s *service) Delete(ctx context.Context, document, signature string) (core.
 
 // GetByTarget returns associations by target
 func (s *service) GetByTarget(ctx context.Context, targetID string) ([]core.Association, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetByTarget")
+	ctx, span := tracer.Start(ctx, "Association.Service.GetByTarget")
 	defer span.End()
 
 	return s.repo.GetByTarget(ctx, targetID)
@@ -406,7 +406,7 @@ func (s *service) GetByTarget(ctx context.Context, targetID string) ([]core.Asso
 
 // GetCountsBySchema returns the number of associations by schema
 func (s *service) GetCountsBySchema(ctx context.Context, messageID string) (map[string]int64, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetCountsBySchema")
+	ctx, span := tracer.Start(ctx, "Association.Service.GetCountsBySchema")
 	defer span.End()
 
 	return s.repo.GetCountsBySchema(ctx, messageID)
@@ -414,7 +414,7 @@ func (s *service) GetCountsBySchema(ctx context.Context, messageID string) (map[
 
 // GetBySchema returns associations by schema and variant
 func (s *service) GetBySchema(ctx context.Context, messageID string, schema string) ([]core.Association, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetBySchema")
+	ctx, span := tracer.Start(ctx, "Association.Service.GetBySchema")
 	defer span.End()
 
 	return s.repo.GetBySchema(ctx, messageID, schema)
@@ -422,7 +422,7 @@ func (s *service) GetBySchema(ctx context.Context, messageID string, schema stri
 
 // GetCountsBySchemaAndVariant returns the number of associations by schema and variant
 func (s *service) GetCountsBySchemaAndVariant(ctx context.Context, messageID string, schema string) (map[string]int64, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetCountsBySchemaAndVariant")
+	ctx, span := tracer.Start(ctx, "Association.Service.GetCountsBySchemaAndVariant")
 	defer span.End()
 
 	return s.repo.GetCountsBySchemaAndVariant(ctx, messageID, schema)
@@ -430,7 +430,7 @@ func (s *service) GetCountsBySchemaAndVariant(ctx context.Context, messageID str
 
 // GetBySchemaAndVariant returns associations by schema and variant
 func (s *service) GetBySchemaAndVariant(ctx context.Context, messageID string, schema string, variant string) ([]core.Association, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetBySchemaAndVariant")
+	ctx, span := tracer.Start(ctx, "Association.Service.GetBySchemaAndVariant")
 	defer span.End()
 
 	return s.repo.GetBySchemaAndVariant(ctx, messageID, schema, variant)
@@ -438,7 +438,7 @@ func (s *service) GetBySchemaAndVariant(ctx context.Context, messageID string, s
 
 // GetOwnByTarget returns associations by target and author
 func (s *service) GetOwnByTarget(ctx context.Context, targetID, author string) ([]core.Association, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetOwnByTarget")
+	ctx, span := tracer.Start(ctx, "Association.Service.GetOwnByTarget")
 	defer span.End()
 
 	return s.repo.GetOwnByTarget(ctx, targetID, author)

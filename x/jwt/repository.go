@@ -22,7 +22,7 @@ func NewRepository(rdb *redis.Client) Repository {
 }
 
 func (r *repository) CheckJTI(ctx context.Context, jti string) (bool, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryCheckJTI")
+	ctx, span := tracer.Start(ctx, "Jwt.Repository.CheckJTI")
 	defer span.End()
 
 	// check if jti exists
@@ -40,7 +40,7 @@ func (r *repository) CheckJTI(ctx context.Context, jti string) (bool, error) {
 }
 
 func (r *repository) InvalidateJTI(ctx context.Context, jti string, exp time.Time) error {
-	ctx, span := tracer.Start(ctx, "RepositoryInvalidateJTI")
+	ctx, span := tracer.Start(ctx, "Jwt.Repository.InvalidateJTI")
 	defer span.End()
 
 	// set jti with expiration

@@ -32,7 +32,7 @@ func NewHandler(service Service) Handler {
 
 // Get returns an association by ID
 func (h handler) Get(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
+	ctx, span := tracer.Start(c.Request().Context(), "Association.Handler.Get")
 	defer span.End()
 	id := c.Param("id")
 
@@ -47,7 +47,7 @@ func (h handler) Get(c echo.Context) error {
 }
 
 func (h handler) GetOwnByTarget(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetOwnByTarget")
+	ctx, span := tracer.Start(c.Request().Context(), "Association.Handler.GetOwnByTarget")
 	defer span.End()
 
 	targetID := c.Param("id")
@@ -62,7 +62,7 @@ func (h handler) GetOwnByTarget(c echo.Context) error {
 }
 
 func (h handler) GetCounts(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetCounts")
+	ctx, span := tracer.Start(c.Request().Context(), "Association.Handler.GetCounts")
 	defer span.End()
 
 	messageID := c.Param("id")
@@ -83,7 +83,7 @@ func (h handler) GetCounts(c echo.Context) error {
 }
 
 func (h handler) GetFiltered(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetFiltered")
+	ctx, span := tracer.Start(c.Request().Context(), "Association.Handler.GetFiltered")
 	defer span.End()
 
 	messageID := c.Param("id")

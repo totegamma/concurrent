@@ -264,9 +264,9 @@ func hasChar(s string, c byte) bool {
 }
 
 func IsCKID(keyID string) bool {
-	return keyID[:3] == "cck" && len(keyID) == 42 && !hasChar(keyID, '.')
+	return len(keyID) == 42 && keyID[:3] == "cck" && !hasChar(keyID, '.')
 }
 
 func IsCCID(keyID string) bool {
-	return keyID[:3] == "con" && len(keyID) == 42 && !hasChar(keyID, '.')
+	return len(keyID) == 42 && keyID[:3] == "con" && !hasChar(keyID, '.')
 }

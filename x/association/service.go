@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"log/slog"
 	"strings"
+	"time"
 
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/x/cdid"
@@ -226,6 +227,11 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 					Document:  document,
 					Signature: signature,
 					Resource:  created,
+					DocumentBase: core.DocumentBase[any]{
+						Signer:   s.config.Concurrent.CCID,
+						Type:     "event",
+						SignedAt: time.Now(),
+					},
 				}
 
 				document, err := json.Marshal(documentObj)

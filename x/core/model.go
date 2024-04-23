@@ -198,10 +198,10 @@ const (
 
 type SubscriptionItem struct {
 	ID           string       `json:"id" gorm:"primaryKey;type:text;"`
+	Subscription string       `json:"subscription" gorm:"primaryKey;type:char(26)"`
 	ResolverType ResolverType `json:"resolverType" gorm:"type:integer"`
 	Entity       *string      `json:"entity" gorm:"type:char(42);"`
 	Domain       *string      `json:"domain" gorm:"type:text;"`
-	Subscription string       `json:"subscription" gorm:"type:char(26)"`
 }
 
 // Event is websocket root packet model

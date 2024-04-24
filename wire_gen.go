@@ -15,7 +15,6 @@ import (
 	"github.com/totegamma/concurrent/x/agent"
 	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/auth"
-	"github.com/totegamma/concurrent/x/collection"
 	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/jwt"
@@ -138,13 +137,6 @@ func SetupUserkvService(db *gorm.DB) userkv.Service {
 	return service
 }
 
-func SetupCollectionHandler(db *gorm.DB, rdb *redis.Client, config util.Config) collection.Handler {
-	repository := collection.NewRepository(db)
-	service := collection.NewService(repository)
-	handler := collection.NewHandler(service)
-	return handler
-}
-
 func SetupSocketManager(mc *memcache.Client, db *gorm.DB, rdb *redis.Client, config util.Config) socket.Manager {
 	manager := socket.NewManager(mc, rdb, config)
 	return manager
@@ -228,6 +220,3 @@ var storeServiceProvider = wire.NewSet(store.NewService, SetupKeyService,
 	SetupAckService,
 	SetupSubscriptionService,
 )
-
-// not implemented
-var collectionHandlerProvider = wire.NewSet(collection.NewHandler, collection.NewService, collection.NewRepository)

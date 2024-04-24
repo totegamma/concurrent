@@ -53,7 +53,12 @@ func (s *service) Ack(ctx context.Context, document string, signature string) er
 	switch doc.Type {
 	case "ack":
 		to, err := s.entity.Get(ctx, doc.To)
-		if err == nil {
+		if err != nil {
+			span.RecordError(err)
+			return err
+		}
+
+		if to.Domain != s.config.Concurrent.FQDN {
 			packet := core.Commit{
 				Document:  document,
 				Signature: signature,
@@ -82,8 +87,12 @@ func (s *service) Ack(ctx context.Context, document string, signature string) er
 		})
 	case "unack":
 		to, err := s.entity.Get(ctx, doc.To)
-		if err == nil {
+		if err != nil {
+			span.RecordError(err)
+			return err
+		}
 
+		if to.Domain != s.config.Concurrent.FQDN {
 			packet := core.Commit{
 				Document:  document,
 				Signature: signature,
@@ -100,8 +109,10 @@ func (s *service) Ack(ctx context.Context, document string, signature string) er
 				span.RecordError(err)
 				return err
 			}
+
 			defer resp.Body.Close()
 		}
+
 		return s.repository.Unack(ctx, &core.Ack{
 			From:      doc.From,
 			To:        doc.To,

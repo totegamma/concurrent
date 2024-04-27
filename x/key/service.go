@@ -210,13 +210,17 @@ func ValidateKeyResolution(keys []core.Key) (string, error) {
 		}
 
 		if key.RevokeSignature != "" {
-			return "", fmt.Errorf("Key %s is revoked", key.ID)
+			return "", fmt.Errorf("Key %s is revoked", key.Parent)
 		}
 
 		var enact core.EnactKey
 		err = json.Unmarshal([]byte(key.EnactDocument), &enact)
 		if err != nil {
 			return "", err
+		}
+
+		if enact.Signer != key.Parent {
+			return "", fmt.Errorf("enact signer is not matched with the parent")
 		}
 
 		if enact.Target != key.ID {

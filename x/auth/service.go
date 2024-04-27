@@ -6,6 +6,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"time"
 
 	"github.com/labstack/echo/v4"
 
@@ -53,6 +54,11 @@ func (s *service) IssuePassport(ctx context.Context, requester string, keys []co
 		Domain: s.config.Concurrent.FQDN,
 		Entity: entity,
 		Keys:   keys,
+		DocumentBase: core.DocumentBase[any]{
+			Signer:   s.config.Concurrent.CCID,
+			Type:     "passport",
+			SignedAt: time.Now(),
+		},
 	}
 
 	document, err := json.Marshal(documentObj)

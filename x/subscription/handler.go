@@ -47,7 +47,7 @@ func (h *handler) GetOwnSubscriptions(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Subscription.Handler.GetOwnSubscriptions")
 	defer span.End()
 
-	requester, _ := c.Get(core.RequesterIdCtxKey).(string)
+	requester, _ := ctx.Value(core.RequesterIdCtxKey).(string)
 
 	data, err := h.service.GetOwnSubscriptions(ctx, requester)
 	if err != nil {

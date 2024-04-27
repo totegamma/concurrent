@@ -52,7 +52,7 @@ func (h handler) GetOwnByTarget(c echo.Context) error {
 
 	targetID := c.Param("id")
 
-	requester, _ := c.Get(core.RequesterIdCtxKey).(string)
+	requester, _ := ctx.Value(core.RequesterIdCtxKey).(string)
 
 	associations, err := h.service.GetOwnByTarget(ctx, targetID, requester)
 	if err != nil {

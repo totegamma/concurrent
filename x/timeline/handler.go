@@ -161,7 +161,7 @@ func (h handler) ListMine(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.ListMine")
 	defer span.End()
 
-	requester, ok := c.Get(core.RequesterIdCtxKey).(string)
+	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
 	if !ok {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}
@@ -193,7 +193,7 @@ func (h handler) Remove(c echo.Context) error {
 		return err
 	}
 
-	requester, ok := c.Get(core.RequesterIdCtxKey).(string)
+	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
 	if !ok {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}

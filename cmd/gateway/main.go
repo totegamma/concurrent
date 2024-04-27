@@ -244,34 +244,35 @@ func main() {
 		}
 
 		handler := func(c echo.Context) error {
+			ctx := c.Request().Context()
 			c.Response().Header().Set("cc-service", service.Name)
 
-			requesterType, ok := c.Get(core.RequesterTypeCtxKey).(int)
+			requesterType, ok := ctx.Value(core.RequesterTypeCtxKey).(int)
 			if ok {
 				c.Request().Header.Set(core.RequesterTypeHeader, strconv.Itoa(requesterType))
 			}
 
-			requesterId, ok := c.Get(core.RequesterIdCtxKey).(string)
+			requesterId, ok := ctx.Value(core.RequesterIdCtxKey).(string)
 			if ok {
 				c.Request().Header.Set(core.RequesterIdHeader, requesterId)
 			}
 
-			requesterTag, ok := c.Get(core.RequesterTagCtxKey).(core.Tags)
+			requesterTag, ok := ctx.Value(core.RequesterTagCtxKey).(core.Tags)
 			if ok {
 				c.Request().Header.Set(core.RequesterTagHeader, requesterTag.ToString())
 			}
 
-			requesterDomain, ok := c.Get(core.RequesterDomainCtxKey).(string)
+			requesterDomain, ok := ctx.Value(core.RequesterDomainCtxKey).(string)
 			if ok {
 				c.Request().Header.Set(core.RequesterDomainHeader, requesterDomain)
 			}
 
-			requesterDomainTags, ok := c.Get(core.RequesterDomainTagsKey).(core.Tags)
+			requesterDomainTags, ok := ctx.Value(core.RequesterDomainTagsKey).(core.Tags)
 			if ok {
 				c.Request().Header.Set(core.RequesterDomainTagsHeader, requesterDomainTags.ToString())
 			}
 
-			requesterKeys, ok := c.Get(core.RequesterKeychainKey).([]core.Key)
+			requesterKeys, ok := ctx.Value(core.RequesterKeychainKey).([]core.Key)
 			if ok {
 				serialized, err := json.Marshal(requesterKeys)
 				if err != nil {
@@ -280,12 +281,12 @@ func main() {
 				c.Request().Header.Set(core.RequesterKeychainHeader, string(serialized))
 			}
 
-			requesterPassport, ok := c.Get(core.RequesterPassportKey).(string)
+			requesterPassport, ok := ctx.Value(core.RequesterPassportKey).(string)
 			if ok {
 				c.Request().Header.Set(core.RequesterPassportHeader, requesterPassport)
 			}
 
-			captchaVerified, ok := c.Get(core.CaptchaVerifiedKey).(bool)
+			captchaVerified, ok := ctx.Value(core.CaptchaVerifiedKey).(bool)
 			if ok && captchaVerified {
 				c.Request().Header.Set(core.CaptchaVerifiedHeader, strconv.FormatBool(captchaVerified))
 			}

@@ -35,19 +35,19 @@ func (m *MockService) EXPECT() *MockServiceMockRecorder {
 	return m.recorder
 }
 
-// EnactKey mocks base method.
-func (m *MockService) EnactKey(ctx context.Context, payload, signature string) (core.Key, error) {
+// Enact mocks base method.
+func (m *MockService) Enact(ctx context.Context, payload, signature string) (core.Key, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "EnactKey", ctx, payload, signature)
+	ret := m.ctrl.Call(m, "Enact", ctx, payload, signature)
 	ret0, _ := ret[0].(core.Key)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// EnactKey indicates an expected call of EnactKey.
-func (mr *MockServiceMockRecorder) EnactKey(ctx, payload, signature interface{}) *gomock.Call {
+// Enact indicates an expected call of Enact.
+func (mr *MockServiceMockRecorder) Enact(ctx, payload, signature interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "EnactKey", reflect.TypeOf((*MockService)(nil).EnactKey), ctx, payload, signature)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Enact", reflect.TypeOf((*MockService)(nil).Enact), ctx, payload, signature)
 }
 
 // GetAllKeys mocks base method.
@@ -95,19 +95,19 @@ func (mr *MockServiceMockRecorder) ResolveSubkey(ctx, keyID interface{}) *gomock
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResolveSubkey", reflect.TypeOf((*MockService)(nil).ResolveSubkey), ctx, keyID)
 }
 
-// RevokeKey mocks base method.
-func (m *MockService) RevokeKey(ctx context.Context, payload, signature string) (core.Key, error) {
+// Revoke mocks base method.
+func (m *MockService) Revoke(ctx context.Context, payload, signature string) (core.Key, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "RevokeKey", ctx, payload, signature)
+	ret := m.ctrl.Call(m, "Revoke", ctx, payload, signature)
 	ret0, _ := ret[0].(core.Key)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// RevokeKey indicates an expected call of RevokeKey.
-func (mr *MockServiceMockRecorder) RevokeKey(ctx, payload, signature interface{}) *gomock.Call {
+// Revoke indicates an expected call of Revoke.
+func (mr *MockServiceMockRecorder) Revoke(ctx, payload, signature interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RevokeKey", reflect.TypeOf((*MockService)(nil).RevokeKey), ctx, payload, signature)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Revoke", reflect.TypeOf((*MockService)(nil).Revoke), ctx, payload, signature)
 }
 
 // ValidateDocument mocks base method.

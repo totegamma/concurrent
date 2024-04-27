@@ -31,7 +31,7 @@ func (h handler) Get(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "UserKV.Handler.Get")
 	defer span.End()
 
-	requester, ok := c.Get(core.RequesterIdCtxKey).(string)
+	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
 	if !ok {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}
@@ -49,7 +49,7 @@ func (h handler) Upsert(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "UserKV.Handler.Upsert")
 	defer span.End()
 
-	requester, ok := c.Get(core.RequesterIdCtxKey).(string)
+	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
 	if !ok {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}

@@ -13,6 +13,7 @@ import (
 
 	"github.com/totegamma/concurrent/x/core"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
 )
 
@@ -48,6 +49,7 @@ func (c *client) Commit(ctx context.Context, domain, body string) (*http.Respons
 	if ok {
 		req.Header.Set(core.RequesterPassportHeader, passport)
 	}
+	span.SetAttributes(attribute.String("passport", passport))
 
 	if err != nil {
 		span.RecordError(err)
@@ -63,6 +65,9 @@ func (c *client) Commit(ctx context.Context, domain, body string) (*http.Respons
 		span.RecordError(err)
 		return &http.Response{}, err
 	}
+
+	respbody, _ := io.ReadAll(resp.Body)
+	span.SetAttributes(attribute.String("response", string(respbody)))
 
 	return resp, nil
 }

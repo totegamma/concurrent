@@ -34,7 +34,7 @@ func (h handler) Get(c echo.Context) error {
 
 	id := c.Param("id")
 
-	requester, ok := c.Get(core.RequesterIdCtxKey).(string)
+	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
 	var message core.Message
 	var err error
 	if ok {

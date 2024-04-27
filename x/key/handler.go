@@ -46,7 +46,7 @@ func (h *handler) GetKeyMine(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Key.Handler.GetKeyMine")
 	defer span.End()
 
-	requester, ok := c.Get(core.RequesterIdCtxKey).(string)
+	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
 	if !ok {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}

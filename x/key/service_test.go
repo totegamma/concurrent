@@ -87,7 +87,7 @@ func TestService(t *testing.T) {
 	assert.NoError(t, err)
 	objSig1Hex := hex.EncodeToString(objSig1)
 
-	created, err := test_service.EnactKey(ctx, objStr1, objSig1Hex)
+	created, err := test_service.Enact(ctx, objStr1, objSig1Hex)
 	if assert.NoError(t, err) {
 		assert.NotNil(t, created)
 		assert.True(t, !created.ValidSince.IsZero())
@@ -132,7 +132,7 @@ func TestService(t *testing.T) {
 	assert.NoError(t, err)
 	objSig2Hex := hex.EncodeToString(objSig2)
 
-	created2, err := test_service.EnactKey(ctx, objStr2, objSig2Hex)
+	created2, err := test_service.Enact(ctx, objStr2, objSig2Hex)
 	if assert.NoError(t, err) {
 		assert.NotNil(t, created2)
 		assert.True(t, !created2.ValidSince.IsZero())
@@ -191,7 +191,7 @@ func TestService(t *testing.T) {
 	assert.NoError(t, err)
 	objSig4Hex := hex.EncodeToString(objSig4)
 
-	_, err = test_service.RevokeKey(ctx, objStr4, objSig4Hex)
+	_, err = test_service.Revoke(ctx, objStr4, objSig4Hex)
 	assert.Error(t, err)
 
 	// Test7. 中間にあるサブキーをルートキーから無効化する
@@ -213,7 +213,7 @@ func TestService(t *testing.T) {
 	objSig5Hex := hex.EncodeToString(objSig5)
 	assert.NoError(t, err)
 
-	revoked, err := test_service.RevokeKey(ctx, objStr5, objSig5Hex)
+	revoked, err := test_service.Revoke(ctx, objStr5, objSig5Hex)
 	if assert.NoError(t, err) {
 		assert.True(t, !revoked.ValidSince.IsZero())
 		assert.True(t, !revoked.ValidUntil.IsZero())

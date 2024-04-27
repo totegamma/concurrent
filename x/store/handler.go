@@ -6,6 +6,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/x/core"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/attribute"
 )
 
 var tracer = otel.Tracer("store")
@@ -27,6 +28,15 @@ func NewHandler(service Service) Handler {
 func (h *handler) Commit(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Store.Handler.Commit")
 	defer span.End()
+
+	passportFromEchoContext, ok := ctx.Value(core.RequesterPassportKey).(string)
+	if ok {
+		span.SetAttributes(attribute.String("passportFromEchoContext", passportFromEchoContext))
+	}
+	passportFromContext, ok := ctx.Value(core.RequesterPassportKey).(string)
+	if ok {
+		span.SetAttributes(attribute.String("passportFromContext", passportFromContext))
+	}
 
 	var request core.Commit
 	err := c.Bind(&request)

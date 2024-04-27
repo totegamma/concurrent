@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
@@ -42,10 +43,8 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 		// リクエストに必要な情報を補完するのに使う。
 		passportHeader := c.Request().Header.Get("passport")
 
-		span.SetAttributes(attribute.String("Authorization", authHeader))
-
 		if passportHeader != "" {
-			c.Set(core.RequesterPassportKey, passportHeader)
+			ctx = context.WithValue(ctx, core.RequesterPassportKey, passportHeader)
 
 			passportJson, err := base64.URLEncoding.DecodeString(passportHeader)
 			if err != nil {
@@ -118,7 +117,7 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				}
 			}
 
-			c.Set(core.RequesterKeychainKey, passportDoc.Keys)
+			ctx = context.WithValue(ctx, core.RequesterKeychainKey, passportDoc.Keys)
 		}
 	skipCheckPassport:
 
@@ -155,18 +154,27 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 			if core.IsCCID(claims.Issuer) {
 				ccid = claims.Issuer
 			} else if core.IsCKID(claims.Issuer) {
-				if providedKeyChain, ok := c.Get(core.RequesterKeychainKey).([]core.Key); ok {
+				if providedKeyChain, ok := ctx.Value(core.RequesterKeychainKey).([]core.Key); ok {
 					ccid, err = key.ValidateKeyResolution(providedKeyChain)
 					if err != nil {
 						span.RecordError(errors.Wrap(err, "failed to validate key resolution"))
 						goto skipCheckAuthorization
 					}
 				} else {
+
+					keys, err := s.key.GetKeyResolution(ctx, claims.Issuer)
+					if err != nil {
+						span.RecordError(errors.Wrap(err, "failed to get key resolution"))
+						goto skipCheckAuthorization
+					}
+					ctx = context.WithValue(ctx, core.RequesterKeychainKey, keys)
+
 					ccid, err = s.key.ResolveSubkey(ctx, claims.Issuer)
 					if err != nil {
 						span.RecordError(errors.Wrap(err, "failed to resolve subkey"))
 						goto skipCheckAuthorization
 					}
+
 				}
 			} else {
 				span.RecordError(fmt.Errorf("invalid issuer"))
@@ -180,7 +188,7 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 			}
 
 			tags := core.ParseTags(entity.Tag)
-			c.Set(core.RequesterTagCtxKey, tags)
+			ctx = context.WithValue(ctx, core.RequesterTagCtxKey, tags)
 
 			if tags.Has("_block") {
 				return c.JSON(http.StatusForbidden, echo.Map{
@@ -190,9 +198,20 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 
 			if entity.Domain == s.config.Concurrent.FQDN {
 				// local user
-				c.Set(core.RequesterIdCtxKey, ccid)
+
+				if passportHeader == "" {
+					passport, err := s.IssuePassport(ctx, ccid, nil)
+					if err == nil {
+						ctx = context.WithValue(ctx, core.RequesterPassportKey, passport)
+
+					} else {
+						span.RecordError(errors.Wrap(err, "failed to issue passport"))
+					}
+				}
+
+				ctx = context.WithValue(ctx, core.RequesterIdCtxKey, ccid)
 				span.SetAttributes(attribute.String("RequesterId", ccid))
-				c.Set(core.RequesterTypeCtxKey, core.LocalUser)
+				ctx = context.WithValue(ctx, core.RequesterTypeCtxKey, core.LocalUser)
 				span.SetAttributes(attribute.String("RequesterType", core.RequesterTypeString(core.LocalUser)))
 			} else {
 
@@ -211,13 +230,13 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				}
 
 				// remote user
-				c.Set(core.RequesterIdCtxKey, ccid)
+				ctx = context.WithValue(ctx, core.RequesterIdCtxKey, ccid)
 				span.SetAttributes(attribute.String("RequesterId", ccid))
-				c.Set(core.RequesterTypeCtxKey, core.RemoteUser)
+				ctx = context.WithValue(ctx, core.RequesterTypeCtxKey, core.RemoteUser)
 				span.SetAttributes(attribute.String("RequesterType", core.RequesterTypeString(core.RemoteUser)))
-				c.Set(core.RequesterDomainCtxKey, entity.Domain)
+				ctx = context.WithValue(ctx, core.RequesterDomainCtxKey, entity.Domain)
 				span.SetAttributes(attribute.String("RequesterDomain", entity.Domain))
-				c.Set(core.RequesterDomainTagsKey, domainTags)
+				ctx = context.WithValue(ctx, core.RequesterDomainTagsKey, domainTags)
 				span.SetAttributes(attribute.String("RequesterDomainTags", domain.Tag))
 			}
 		}
@@ -239,27 +258,28 @@ func ReceiveGatewayAuthPropagation(next echo.HandlerFunc) echo.HandlerFunc {
 		reqKeyHeader := c.Request().Header.Get(core.RequesterKeychainHeader)
 		reqDomainTagsHeader := c.Request().Header.Get(core.RequesterDomainTagsHeader)
 		reqCaptchaVerifiedHeader := c.Request().Header.Get(core.CaptchaVerifiedHeader)
+		reqPassportHeader := c.Request().Header.Get(core.RequesterPassportHeader)
 
 		if reqTypeHeader != "" {
 			reqType, err := strconv.Atoi(reqTypeHeader)
 			if err == nil {
-				c.Set(core.RequesterTypeCtxKey, reqType)
+				ctx = context.WithValue(ctx, core.RequesterTypeCtxKey, reqType)
 				span.SetAttributes(attribute.String("RequesterType", core.RequesterTypeString(reqType)))
 			}
 		}
 
 		if reqIdHeader != "" {
-			c.Set(core.RequesterIdCtxKey, reqIdHeader)
+			ctx = context.WithValue(ctx, core.RequesterIdCtxKey, reqIdHeader)
 			span.SetAttributes(attribute.String("RequesterId", reqIdHeader))
 		}
 
 		if reqTagHeader != "" {
-			c.Set(core.RequesterTagCtxKey, core.ParseTags(reqTagHeader))
+			ctx = context.WithValue(ctx, core.RequesterTagCtxKey, core.ParseTags(reqTagHeader))
 			span.SetAttributes(attribute.String("RequesterTag", reqTagHeader))
 		}
 
 		if reqDomainHeader != "" {
-			c.Set(core.RequesterDomainCtxKey, reqDomainHeader)
+			ctx = context.WithValue(ctx, core.RequesterDomainCtxKey, reqDomainHeader)
 			span.SetAttributes(attribute.String("RequesterDomain", reqDomainHeader))
 		}
 
@@ -267,19 +287,24 @@ func ReceiveGatewayAuthPropagation(next echo.HandlerFunc) echo.HandlerFunc {
 			var keys []core.Key
 			err := json.Unmarshal([]byte(reqKeyHeader), &keys)
 			if err == nil {
-				c.Set(core.RequesterKeychainKey, keys)
+				ctx = context.WithValue(ctx, core.RequesterKeychainKey, keys)
 				span.SetAttributes(attribute.String("RequesterKeychain", reqKeyHeader))
 			}
 		}
 
 		if reqDomainTagsHeader != "" {
-			c.Set(core.RequesterDomainTagsKey, core.ParseTags(reqDomainTagsHeader))
+			ctx = context.WithValue(ctx, core.RequesterDomainTagsKey, core.ParseTags(reqDomainTagsHeader))
 			span.SetAttributes(attribute.String("RequesterDomainTags", reqDomainTagsHeader))
 		}
 
 		if reqCaptchaVerifiedHeader != "" {
-			c.Set(core.CaptchaVerifiedKey, true)
+			ctx = context.WithValue(ctx, core.CaptchaVerifiedKey, true)
 			span.SetAttributes(attribute.String("CaptchaVerified", reqCaptchaVerifiedHeader))
+		}
+
+		if reqPassportHeader != "" {
+			ctx = context.WithValue(ctx, core.RequesterPassportKey, reqPassportHeader)
+			span.SetAttributes(attribute.String("RequesterPassport", reqPassportHeader))
 		}
 
 		c.SetRequest(c.Request().WithContext(ctx))
@@ -293,8 +318,8 @@ func Restrict(principal Principal) echo.MiddlewareFunc {
 			ctx, span := tracer.Start(c.Request().Context(), "Auth.Service.Restrict")
 			defer span.End()
 
-			requesterType, _ := c.Get(core.RequesterTypeCtxKey).(int)
-			requesterTags, _ := c.Get(core.RequesterTagCtxKey).(core.Tags)
+			requesterType, _ := ctx.Value(core.RequesterTypeCtxKey).(int)
+			requesterTags, _ := ctx.Value(core.RequesterTagCtxKey).(core.Tags)
 
 			switch principal {
 			case ISADMIN:
@@ -347,7 +372,7 @@ func Recaptcha(validator *recaptcha.ReCAPTCHA) echo.MiddlewareFunc {
 				err := validator.Verify(challenge)
 				if err == nil {
 					span.AddEvent("captcha verified")
-					c.Set(core.CaptchaVerifiedKey, true)
+					ctx = context.WithValue(ctx, core.CaptchaVerifiedKey, true)
 				} else {
 					span.AddEvent("captcha verification failed")
 				}

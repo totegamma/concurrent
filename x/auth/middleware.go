@@ -200,7 +200,8 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				// local user
 
 				if passportHeader == "" {
-					passport, err := s.IssuePassport(ctx, ccid, nil)
+					keys := ctx.Value(core.RequesterKeychainKey).([]core.Key)
+					passport, err := s.IssuePassport(ctx, ccid, keys)
 					if err == nil {
 						ctx = context.WithValue(ctx, core.RequesterPassportKey, passport)
 

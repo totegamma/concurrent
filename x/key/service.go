@@ -200,7 +200,11 @@ func ValidateKeyResolution(keys []core.Key) (string, error) {
 			return "", fmt.Errorf("Key %s is not a child of %s", key.ID, nextKey)
 		}
 
-		err := util.VerifySignature([]byte(key.EnactDocument), []byte(key.EnactSignature), key.ID)
+		signature, err := hex.DecodeString(key.EnactSignature)
+		if err != nil {
+			return "", err
+		}
+		err = util.VerifySignature([]byte(key.EnactDocument), signature, key.ID)
 		if err != nil {
 			return "", err
 		}

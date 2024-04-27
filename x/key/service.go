@@ -204,13 +204,13 @@ func ValidateKeyResolution(keys []core.Key) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		err = util.VerifySignature([]byte(key.EnactDocument), signature, key.ID)
+		err = util.VerifySignature([]byte(key.EnactDocument), signature, key.Parent)
 		if err != nil {
 			return "", err
 		}
 
 		if key.RevokeSignature != "" {
-			return "", fmt.Errorf("Key %s is revoked", key.Parent)
+			return "", fmt.Errorf("Key %s is revoked", key.ID)
 		}
 
 		var enact core.EnactKey

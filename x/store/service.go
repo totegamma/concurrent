@@ -4,6 +4,9 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
+	"os"
+	"path/filepath"
 
 	"github.com/totegamma/concurrent/x/ack"
 	"github.com/totegamma/concurrent/x/association"
@@ -14,6 +17,7 @@ import (
 	"github.com/totegamma/concurrent/x/profile"
 	"github.com/totegamma/concurrent/x/subscription"
 	"github.com/totegamma/concurrent/x/timeline"
+	"github.com/totegamma/concurrent/x/util"
 )
 
 type Service interface {
@@ -29,6 +33,8 @@ type service struct {
 	timeline     timeline.Service
 	ack          ack.Service
 	subscription subscription.Service
+	storage      *os.File
+	config       util.Config
 }
 
 func NewService(
@@ -40,7 +46,22 @@ func NewService(
 	timeline timeline.Service,
 	ack ack.Service,
 	subscription subscription.Service,
+	config util.Config,
 ) Service {
+
+	err := os.MkdirAll(config.Server.RepositoryPath, 0755)
+	if err != nil {
+		slog.Error("failed to create repository directory:", err)
+		panic(err)
+	}
+
+	logpath := filepath.Join(config.Server.RepositoryPath, "concrnt-all.log")
+	storage, err := os.OpenFile(logpath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		slog.Error("failed to open repository log file:", err)
+		panic(err)
+	}
+
 	return &service{
 		key:          key,
 		entity:       entity,
@@ -50,6 +71,7 @@ func NewService(
 		timeline:     timeline,
 		ack:          ack,
 		subscription: subscription,
+		storage:      storage,
 	}
 }
 
@@ -74,33 +96,35 @@ func (s *service) Commit(ctx context.Context, document string, signature string,
 		return nil, err
 	}
 
+	var result any
+
 	switch base.Type {
 	case "message":
-		return s.message.Create(ctx, document, signature)
+		result, err = s.message.Create(ctx, document, signature)
 	case "association":
-		return s.association.Create(ctx, document, signature)
+		result, err = s.association.Create(ctx, document, signature)
 	case "profile":
-		return s.profile.Upsert(ctx, document, signature)
+		result, err = s.profile.Upsert(ctx, document, signature)
 	case "affiliation":
-		return s.entity.Affiliation(ctx, document, signature, option)
+		result, err = s.entity.Affiliation(ctx, document, signature, option)
 	case "tombstone":
-		return s.entity.Tombstone(ctx, document, signature)
+		result, err = s.entity.Tombstone(ctx, document, signature)
 	case "timeline":
-		return s.timeline.UpsertTimeline(ctx, document, signature)
+		result, err = s.timeline.UpsertTimeline(ctx, document, signature)
 	case "event":
-		return s.timeline.Event(ctx, document, signature)
+		result, err = s.timeline.Event(ctx, document, signature)
 	case "ack", "unack":
-		return nil, s.ack.Ack(ctx, document, signature)
+		result, err = nil, s.ack.Ack(ctx, document, signature)
 	case "enact":
-		return s.key.Enact(ctx, document, signature)
+		result, err = s.key.Enact(ctx, document, signature)
 	case "revoke":
-		return s.key.Revoke(ctx, document, signature)
+		result, err = s.key.Revoke(ctx, document, signature)
 	case "subscription":
-		return s.subscription.CreateSubscription(ctx, document, signature)
+		result, err = s.subscription.CreateSubscription(ctx, document, signature)
 	case "subscribe":
-		return s.subscription.Subscribe(ctx, document, signature)
+		result, err = s.subscription.Subscribe(ctx, document, signature)
 	case "unsubscribe":
-		return s.subscription.Unsubscribe(ctx, document)
+		result, err = s.subscription.Unsubscribe(ctx, document)
 	case "delete":
 		var doc core.DeleteDocument
 		err := json.Unmarshal([]byte(document), &doc)
@@ -110,16 +134,29 @@ func (s *service) Commit(ctx context.Context, document string, signature string,
 		typ := doc.Target[0]
 		switch typ {
 		case 'm': // message
-			return s.message.Delete(ctx, document, signature)
+			result, err = s.message.Delete(ctx, document, signature)
 		case 'a': // association
-			return s.association.Delete(ctx, document, signature)
+			result, err = s.association.Delete(ctx, document, signature)
 		case 'p': // profile
-			return s.profile.Delete(ctx, document)
+			result, err = s.profile.Delete(ctx, document)
 		case 't': // timeline
-			return s.timeline.DeleteTimeline(ctx, document)
+			result, err = s.timeline.DeleteTimeline(ctx, document)
 		default:
-			return nil, fmt.Errorf("unknown document type: %s", string(typ))
+			result, err = nil, fmt.Errorf("unknown document type: %s", string(typ))
 		}
+	default:
+		return nil, fmt.Errorf("unknown document type: %s", base.Type)
 	}
-	return nil, fmt.Errorf("unknown document type: %s", base.Type)
+
+	if err == nil {
+		// save document to history
+		owner := base.Owner
+		if owner == "" {
+			owner = base.Signer
+		}
+
+		_, err = s.storage.WriteString(fmt.Sprintf("%s %s %s\n", owner, document, signature))
+	}
+
+	return result, err
 }

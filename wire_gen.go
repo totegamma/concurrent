@@ -157,7 +157,7 @@ func SetupStoreService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, clie
 	timelineService := SetupTimelineService(db, rdb, mc, client2, manager, config)
 	ackService := SetupAckService(db, rdb, mc, client2, config)
 	subscriptionService := SetupSubscriptionService(db)
-	storeService := store.NewService(service, entityService, messageService, associationService, profileService, timelineService, ackService, subscriptionService)
+	storeService := store.NewService(service, entityService, messageService, associationService, profileService, timelineService, ackService, subscriptionService, config)
 	return storeService
 }
 

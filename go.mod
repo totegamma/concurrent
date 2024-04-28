@@ -19,7 +19,6 @@ require (
 	github.com/prometheus/client_golang v1.18.0
 	github.com/redis/go-redis/extra/redisotel/v9 v9.0.5
 	github.com/redis/go-redis/v9 v9.0.5
-	github.com/rs/xid v1.5.0
 	github.com/stretchr/testify v1.9.0
 	github.com/xinguang/go-recaptcha v1.0.1
 	gitlab.com/yawning/secp256k1-voi v0.0.0-20230925100816-f2616030848b

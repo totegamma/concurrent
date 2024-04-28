@@ -22,7 +22,7 @@ type Server struct {
 	MemcachedAddr  string `yaml:"memcachedAddr"`
 	EnableTrace    bool   `yaml:"enableTrace"`
 	TraceEndpoint  string `yaml:"traceEndpoint"`
-	LogPath        string `yaml:"logPath"`
+	RepositoryPath string `yaml:"repositoryPath"`
 	CaptchaSitekey string `yaml:"captchaSitekey"`
 	CaptchaSecret  string `yaml:"captchaSecret"`
 }

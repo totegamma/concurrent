@@ -315,6 +315,9 @@ func main() {
 	apiV1.GET("/subscription/:id", subscriptionHandler.GetSubscription)
 	apiV1.GET("/subscriptions/mine", subscriptionHandler.GetOwnSubscriptions, auth.Restrict(auth.ISLOCAL))
 
+	// storage
+	apiV1.GET("/repository", storeHandler.Get, auth.Restrict(auth.ISLOCAL))
+
 	// misc
 	e.GET("/health", func(c echo.Context) (err error) {
 		ctx := c.Request().Context()

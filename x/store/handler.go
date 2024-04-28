@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
@@ -13,6 +14,7 @@ var tracer = otel.Tracer("store")
 
 type Handler interface {
 	Commit(c echo.Context) error
+	Get(c echo.Context) error
 }
 
 type handler struct {
@@ -52,4 +54,21 @@ func (h *handler) Commit(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, echo.Map{"content": result})
+}
+
+func (h *handler) Get(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "Store.Handler.Get")
+	defer span.End()
+
+	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Unauthorized"})
+	}
+
+	path := h.service.GetPath(ctx, requester)
+
+	fmt.Printf("path: %s\n", path)
+
+	return c.Attachment(path, "archive.log")
+
 }

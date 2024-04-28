@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"path/filepath"
 
 	"github.com/totegamma/concurrent/x/ack"
 	"github.com/totegamma/concurrent/x/association"
@@ -14,11 +15,13 @@ import (
 	"github.com/totegamma/concurrent/x/profile"
 	"github.com/totegamma/concurrent/x/subscription"
 	"github.com/totegamma/concurrent/x/timeline"
+	"github.com/totegamma/concurrent/x/util"
 )
 
 type Service interface {
 	Commit(ctx context.Context, document, signature, option string) (any, error)
 	Since(ctx context.Context, since string) ([]Entry, error)
+	GetPath(ctx context.Context, id string) string
 }
 
 type service struct {
@@ -31,6 +34,7 @@ type service struct {
 	timeline     timeline.Service
 	ack          ack.Service
 	subscription subscription.Service
+	config       util.Config
 }
 
 func NewService(
@@ -43,6 +47,7 @@ func NewService(
 	timeline timeline.Service,
 	ack ack.Service,
 	subscription subscription.Service,
+	config util.Config,
 ) Service {
 	return &service{
 		repo:         repo,
@@ -54,6 +59,7 @@ func NewService(
 		timeline:     timeline,
 		ack:          ack,
 		subscription: subscription,
+		config:       config,
 	}
 }
 
@@ -158,4 +164,14 @@ func (s *service) Since(ctx context.Context, since string) ([]Entry, error) {
 	}
 
 	return entries, nil
+}
+
+func (s *service) GetPath(ctx context.Context, id string) string {
+	ctx, span := tracer.Start(ctx, "Store.Service.GetPath")
+	defer span.End()
+
+	filename := fmt.Sprintf("%s.log", id)
+	path := filepath.Join(s.config.Server.RepositoryPath, "user", filename)
+
+	return path
 }

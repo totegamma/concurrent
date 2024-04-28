@@ -143,7 +143,7 @@ func (s *service) Commit(ctx context.Context, document string, signature string,
 			owner = base.Signer
 		}
 
-		entry := fmt.Sprintf("%s %s", document, signature)
+		entry := fmt.Sprintf("%s %s", signature, document)
 		err = s.repo.Log(ctx, owner, entry)
 		if err != nil {
 			return nil, err

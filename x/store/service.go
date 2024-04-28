@@ -1,10 +1,13 @@
 package store
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"path/filepath"
+	"strings"
 
 	"github.com/totegamma/concurrent/x/ack"
 	"github.com/totegamma/concurrent/x/association"
@@ -22,6 +25,7 @@ type Service interface {
 	Commit(ctx context.Context, document, signature, option string) (any, error)
 	Since(ctx context.Context, since string) ([]Entry, error)
 	GetPath(ctx context.Context, id string) string
+	Restore(ctx context.Context, archive io.Reader) ([]BatchResult, error)
 }
 
 type service struct {
@@ -174,4 +178,36 @@ func (s *service) GetPath(ctx context.Context, id string) string {
 	path := filepath.Join(s.config.Server.RepositoryPath, "user", filename)
 
 	return path
+}
+
+type BatchResult struct {
+	ID    string
+	Error string
+}
+
+func (s *service) Restore(ctx context.Context, archive io.Reader) ([]BatchResult, error) {
+	ctx, span := tracer.Start(ctx, "Store.Service.Restore")
+	defer span.End()
+
+	results := make([]BatchResult, 0)
+
+	scanner := bufio.NewScanner(archive)
+
+	for scanner.Scan() {
+		job := scanner.Text()
+		split := strings.Split(job, " ")
+		if len(split) < 4 {
+			results = append(results, BatchResult{ID: split[0], Error: "invalid job"})
+			continue
+
+		}
+		// id := split[0]
+		// owner := split[1]
+		signature := split[2]
+		document := strings.Join(split[3:], " ")
+		_, err := s.Commit(ctx, document, signature, "")
+		results = append(results, BatchResult{ID: split[0], Error: fmt.Sprintf("%v", err)})
+	}
+
+	return results, nil
 }

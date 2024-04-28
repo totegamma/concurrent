@@ -15,6 +15,7 @@ var tracer = otel.Tracer("store")
 type Handler interface {
 	Commit(c echo.Context) error
 	Get(c echo.Context) error
+	Post(c echo.Context) error
 }
 
 type handler struct {
@@ -70,5 +71,21 @@ func (h *handler) Get(c echo.Context) error {
 	fmt.Printf("path: %s\n", path)
 
 	return c.Attachment(path, "archive.log")
+}
 
+func (h *handler) Post(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "Store.Handler.Post")
+	defer span.End()
+
+	body := c.Request().Body
+	defer body.Close()
+
+	result, err := h.service.Restore(ctx, body)
+
+	if err != nil {
+		span.RecordError(err)
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{"content": result})
 }

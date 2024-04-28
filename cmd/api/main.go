@@ -317,6 +317,7 @@ func main() {
 
 	// storage
 	apiV1.GET("/repository", storeHandler.Get, auth.Restrict(auth.ISLOCAL))
+	apiV1.POST("/repository", storeHandler.Post, auth.Restrict(auth.ISLOCAL))
 
 	// misc
 	e.GET("/health", func(c echo.Context) (err error) {

@@ -4,9 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
-	"os"
-	"path/filepath"
 
 	"github.com/totegamma/concurrent/x/ack"
 	"github.com/totegamma/concurrent/x/association"
@@ -17,14 +14,15 @@ import (
 	"github.com/totegamma/concurrent/x/profile"
 	"github.com/totegamma/concurrent/x/subscription"
 	"github.com/totegamma/concurrent/x/timeline"
-	"github.com/totegamma/concurrent/x/util"
 )
 
 type Service interface {
 	Commit(ctx context.Context, document, signature, option string) (any, error)
+	Since(ctx context.Context, since string) ([]Entry, error)
 }
 
 type service struct {
+	repo         Repository
 	key          key.Service
 	entity       entity.Service
 	message      message.Service
@@ -33,11 +31,10 @@ type service struct {
 	timeline     timeline.Service
 	ack          ack.Service
 	subscription subscription.Service
-	storage      *os.File
-	config       util.Config
 }
 
 func NewService(
+	repo Repository,
 	key key.Service,
 	entity entity.Service,
 	message message.Service,
@@ -46,23 +43,9 @@ func NewService(
 	timeline timeline.Service,
 	ack ack.Service,
 	subscription subscription.Service,
-	config util.Config,
 ) Service {
-
-	err := os.MkdirAll(config.Server.RepositoryPath, 0755)
-	if err != nil {
-		slog.Error("failed to create repository directory:", err)
-		panic(err)
-	}
-
-	logpath := filepath.Join(config.Server.RepositoryPath, "concrnt-all.log")
-	storage, err := os.OpenFile(logpath, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		slog.Error("failed to open repository log file:", err)
-		panic(err)
-	}
-
 	return &service{
+		repo:         repo,
 		key:          key,
 		entity:       entity,
 		message:      message,
@@ -71,7 +54,6 @@ func NewService(
 		timeline:     timeline,
 		ack:          ack,
 		subscription: subscription,
-		storage:      storage,
 	}
 }
 
@@ -155,8 +137,25 @@ func (s *service) Commit(ctx context.Context, document string, signature string,
 			owner = base.Signer
 		}
 
-		_, err = s.storage.WriteString(fmt.Sprintf("%s %s %s\n", owner, document, signature))
+		entry := fmt.Sprintf("%s %s", document, signature)
+		err = s.repo.Log(ctx, owner, entry)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return result, err
+}
+
+func (s *service) Since(ctx context.Context, since string) ([]Entry, error) {
+	ctx, span := tracer.Start(ctx, "Store.Service.Since")
+	defer span.End()
+
+	entries, err := s.repo.Since(ctx, since)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	return entries, nil
 }

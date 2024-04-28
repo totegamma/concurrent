@@ -2,57 +2,41 @@
 package agent
 
 import (
-	"github.com/gorilla/websocket"
-	"github.com/redis/go-redis/v9"
-	"github.com/totegamma/concurrent/x/domain"
-	"github.com/totegamma/concurrent/x/entity"
-	"github.com/totegamma/concurrent/x/util"
-	"go.opentelemetry.io/otel"
+	"context"
+	"fmt"
 	"log/slog"
-	"sync"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
+
+	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel"
+
+	"github.com/totegamma/concurrent/x/store"
+	"github.com/totegamma/concurrent/x/util"
 )
 
 var tracer = otel.Tracer("agent")
 
-// Agent is the worker that runs scheduled tasks
-// - collect users from other servers
-// - update socket connections
 type Agent interface {
 	Boot()
 }
 
 type agent struct {
-	rdb         *redis.Client
-	config      util.Config
-	domain      domain.Service
-	entity      entity.Service
-	mutex       *sync.Mutex
-	connections map[string]*websocket.Conn
+	rdb    *redis.Client
+	store  store.Service
+	config util.Config
 }
 
 // NewAgent creates a new agent
-func NewAgent(rdb *redis.Client, config util.Config, domain domain.Service, entity entity.Service) Agent {
+func NewAgent(rdb *redis.Client, store store.Service, config util.Config) Agent {
 	return &agent{
 		rdb,
+		store,
 		config,
-		domain,
-		entity,
-		&sync.Mutex{},
-		make(map[string]*websocket.Conn),
 	}
 }
-
-/*
-func (a *agent) collectUsers(ctx context.Context) {
-	hosts, err := a.domain.List(ctx)
-	if err != nil || len(hosts) == 0 {
-		return
-	}
-	host := hosts[rand.Intn(len(hosts))]
-	a.pullRemoteEntities(ctx, host)
-}
-*/
 
 // Boot starts agent
 func (a *agent) Boot() {
@@ -62,115 +46,98 @@ func (a *agent) Boot() {
 		for {
 			select {
 			case <-ticker60.C:
-				// a.collectUsers(ctx)
+				ctx, span := tracer.Start(context.Background(), "Agent.Boot.FlushLog")
+				a.FlushLog(ctx)
+				span.End()
 				break
 			}
 		}
 	}()
 }
 
-/*
-
-type entitiesResponse struct {
-	Status  string        `json:"status"`
-	Content []core.Entity `json:"content"`
-}
-
-// PullRemoteEntities copies remote entities
-func (a *agent) pullRemoteEntities(ctx context.Context, remote core.Domain) error {
-	ctx, span := tracer.Start(ctx, "ServicePullRemoteEntities")
+func (a *agent) FlushLog(ctx context.Context) {
+	ctx, span := tracer.Start(ctx, "Agent.FlushLog")
 	defer span.End()
 
-	requestTime := time.Now()
-	req, err := http.NewRequest("GET", "https://"+remote.ID+"/api/v1/entities?since="+strconv.FormatInt(remote.LastScraped.Unix(), 10), nil) // TODO: add except parameter
+	slog.Info("flush log Start")
+
+	err := os.MkdirAll(a.config.Server.RepositoryPath, 0755)
 	if err != nil {
-		span.RecordError(err)
-		return err
+		slog.Error("failed to create repository directory:", err)
+		panic(err)
 	}
 
-	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
-
-	client := new(http.Client)
-	client.Timeout = 3 * time.Second
-	resp, err := client.Do(req)
+	logpath := filepath.Join(a.config.Server.RepositoryPath, "all.log")
+	storage, err := os.OpenFile(logpath, os.O_APPEND|os.O_CREATE|os.O_RDWR, 0644)
 	if err != nil {
-		span.RecordError(err)
-		return err
+		slog.Error("failed to open repository log file:", err)
+		panic(err)
 	}
-	defer resp.Body.Close()
+	defer storage.Close()
 
-	body, _ := io.ReadAll(resp.Body)
-
-	var remoteEntities entitiesResponse
-	json.Unmarshal(body, &remoteEntities)
-
-	errored := false
-	for _, entity := range remoteEntities.Content {
-
-		err := util.VerifySignature(entity.Payload, entity.ID, entity.Signature)
-		if err != nil {
-			span.RecordError(err)
-			slog.Error(
-				"Invalid signature",
-				slog.String("error", err.Error()),
-				slog.String("module", "agent"),
-			)
-			continue
-		}
-
-		var signedObj core.SignedObject[any] // TODO
-		err = json.Unmarshal([]byte(entity.Payload), &signedObj)
-		if err != nil {
-			span.RecordError(err)
-			slog.Error(
-				"pullRemoteEntities",
-				slog.String("error", err.Error()),
-				slog.String("module", "agent"),
-			)
-			continue
-		}
-
-		existanceAddr, err := a.entity.GetAddress(ctx, entity.ID)
-		if err == nil {
-			// compare signed date
-			if signedObj.SignedAt.Unix() <= existanceAddr.SignedAt.Unix() {
-				continue
-			}
-		}
-
-		existanceEntity, err := a.entity.Get(ctx, entity.ID)
-		if err == nil {
-			if signedObj.SignedAt.Unix() <= existanceEntity.CDate.Unix() {
-				continue
-			}
-		}
-
-		err = a.entity.UpdateAddress(ctx, entity.ID, remote.ID, signedObj.SignedAt)
-
-		if err != nil {
-			span.RecordError(err)
-			slog.Error(
-				"pullRemoteEntities",
-				slog.String("error", err.Error()),
-				slog.String("module", "agent"),
-			)
-			errored = true
-		}
+	// find last log entry
+	stats, err := storage.Stat()
+	if err != nil {
+		slog.Error("failed to stat repository log file:", err)
+		panic(err)
 	}
 
-	if !errored {
-		slog.Info(
-			fmt.Sprintf("[agent] pulled %d entities from %s", len(remoteEntities.Content), remote.ID),
-			slog.String("module", "agent"),
-		)
-		a.domain.UpdateScrapeTime(ctx, remote.ID, requestTime)
-	} else {
-		slog.Error(
-			fmt.Sprintf("[agent] failed to pull entities from %s", remote.ID),
-			slog.String("module", "agent"),
-		)
+	var lastLine string
+	var seeker int64 = stats.Size()
+
+	for {
+		fmt.Println("Seeker: ", seeker)
+		from := seeker - 1024
+		to := seeker
+
+		if from < 0 {
+			from = 0
+		}
+
+		if from == 0 && to == 0 {
+			break
+		}
+
+		buf := make([]byte, to-from)
+		_, err := storage.ReadAt(buf, from)
+		if err != nil {
+			slog.Error("failed to read repository log file:", err)
+			panic(err)
+		}
+
+		// remove trailing newline
+		if buf[len(buf)-1] == '\n' {
+			buf = buf[:len(buf)-1]
+		}
+
+		lines := strings.Split(string(buf), "\n")
+		fmt.Println("lines: ", len(lines))
+		if len(lines) > 1 {
+			fmt.Println("Last line: ", lines[len(lines)-1])
+			lastLine = lines[len(lines)-1] + lastLine
+			break
+		}
+
+		lastLine = string(buf) + lastLine
+
+		seeker = from
 	}
 
-	return nil
+	split := strings.Split(lastLine, " ")
+	lastID := split[0]
+	if len(split) < 2 {
+		slog.Error("no last log entry found")
+		lastID = "0-0"
+	}
+
+	entries, err := a.store.Since(ctx, lastID)
+
+	var log string
+	for _, entry := range entries {
+		log += fmt.Sprintf("%s %s %s\n", entry.ID, entry.Owner, entry.Content)
+	}
+
+	storage.WriteString(log)
+
+	slog.Info(fmt.Sprintf("%d entries flushed", len(entries)))
 }
-*/

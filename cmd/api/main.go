@@ -202,10 +202,10 @@ func main() {
 
 	client := client.NewClient()
 
-	agent := concurrent.SetupAgent(db, rdb, mc, client, config)
-
 	socketManager := concurrent.SetupSocketManager(mc, db, rdb, config)
 	socketHandler := concurrent.SetupSocketHandler(rdb, socketManager, config)
+
+	agent := concurrent.SetupAgent(db, rdb, mc, client, socketManager, config)
 
 	domainService := concurrent.SetupDomainService(db, client, config)
 	domainHandler := domain.NewHandler(domainService, config)

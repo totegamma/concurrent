@@ -116,10 +116,9 @@ func SetupSocketHandler(rdb *redis.Client, manager socket.Manager, config util.C
 	return handler
 }
 
-func SetupAgent(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config util.Config) agent.Agent {
-	service := SetupDomainService(db, client2, config)
-	entityService := SetupEntityService(db, rdb, mc, client2, config)
-	agentAgent := agent.NewAgent(rdb, config, service, entityService)
+func SetupAgent(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, manager socket.Manager, config util.Config) agent.Agent {
+	service := SetupStoreService(db, rdb, mc, client2, manager, config)
+	agentAgent := agent.NewAgent(rdb, service, config)
 	return agentAgent
 }
 
@@ -149,6 +148,7 @@ func SetupSchemaService(db *gorm.DB) schema.Service {
 }
 
 func SetupStoreService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, manager socket.Manager, config util.Config) store.Service {
+	repository := store.NewRepository(rdb)
 	service := SetupKeyService(db, rdb, mc, client2, config)
 	entityService := SetupEntityService(db, rdb, mc, client2, config)
 	messageService := SetupMessageService(db, rdb, mc, client2, manager, config)
@@ -157,7 +157,7 @@ func SetupStoreService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, clie
 	timelineService := SetupTimelineService(db, rdb, mc, client2, manager, config)
 	ackService := SetupAckService(db, rdb, mc, client2, config)
 	subscriptionService := SetupSubscriptionService(db)
-	storeService := store.NewService(service, entityService, messageService, associationService, profileService, timelineService, ackService, subscriptionService, config)
+	storeService := store.NewService(repository, service, entityService, messageService, associationService, profileService, timelineService, ackService, subscriptionService)
 	return storeService
 }
 
@@ -211,7 +211,7 @@ var messageServiceProvider = wire.NewSet(message.NewService, message.NewReposito
 var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupEntityService, SetupTimelineService, SetupMessageService, SetupKeyService, SetupSchemaService)
 
 // Lv6
-var storeServiceProvider = wire.NewSet(store.NewService, SetupKeyService,
+var storeServiceProvider = wire.NewSet(store.NewService, store.NewRepository, SetupKeyService,
 	SetupMessageService,
 	SetupAssociationService,
 	SetupProfileService,
@@ -220,3 +220,6 @@ var storeServiceProvider = wire.NewSet(store.NewService, SetupKeyService,
 	SetupAckService,
 	SetupSubscriptionService,
 )
+
+// Lv7
+var agentServiceProvider = wire.NewSet(agent.NewAgent, SetupStoreService)

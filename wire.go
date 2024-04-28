@@ -58,6 +58,7 @@ var associationServiceProvider = wire.NewSet(association.NewService, association
 // Lv6
 var storeServiceProvider = wire.NewSet(
 	store.NewService,
+	store.NewRepository,
 	SetupKeyService,
 	SetupMessageService,
 	SetupAssociationService,
@@ -67,6 +68,9 @@ var storeServiceProvider = wire.NewSet(
 	SetupAckService,
 	SetupSubscriptionService,
 )
+
+// Lv7
+var agentServiceProvider = wire.NewSet(agent.NewAgent, SetupStoreService)
 
 // -----------
 
@@ -120,8 +124,8 @@ func SetupSocketHandler(rdb *redis.Client, manager socket.Manager, config util.C
 	return nil
 }
 
-func SetupAgent(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, config util.Config) agent.Agent {
-	wire.Build(agent.NewAgent, SetupEntityService, SetupDomainService)
+func SetupAgent(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, manager socket.Manager, config util.Config) agent.Agent {
+	wire.Build(agentServiceProvider)
 	return nil
 }
 

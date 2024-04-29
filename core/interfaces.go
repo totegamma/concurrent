@@ -3,6 +3,7 @@ package core
 
 import (
 	"context"
+	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"io"
 	"time"
@@ -101,6 +102,12 @@ type SemanticIDService interface {
 	Name(ctx context.Context, id, owner, target, document, signature string) (SemanticID, error)
 	Lookup(ctx context.Context, id, owner string) (string, error)
 	Delete(ctx context.Context, id, owner string) error
+}
+
+type SocketManager interface {
+	Subscribe(conn *websocket.Conn, timelines []string)
+	Unsubscribe(conn *websocket.Conn)
+	GetAllRemoteSubs() []string
 }
 
 type StoreService interface {

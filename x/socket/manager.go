@@ -1,5 +1,3 @@
-//go:generate go run go.uber.org/mock/mockgen -source=manager.go -destination=mock/manager.go
-
 package socket
 
 import (
@@ -32,12 +30,6 @@ var (
 	disconnectTimeout = 30 * time.Second
 )
 
-type Manager interface {
-	Subscribe(conn *websocket.Conn, timelines []string)
-	Unsubscribe(conn *websocket.Conn)
-	GetAllRemoteSubs() []string
-}
-
 type manager struct {
 	mc     *memcache.Client
 	rdb    *redis.Client
@@ -48,7 +40,7 @@ type manager struct {
 	remoteConns map[string]*websocket.Conn
 }
 
-func NewManager(mc *memcache.Client, rdb *redis.Client, util util.Config) Manager {
+func NewManager(mc *memcache.Client, rdb *redis.Client, util util.Config) core.SocketManager {
 	newmanager := &manager{
 		mc:          mc,
 		rdb:         rdb,

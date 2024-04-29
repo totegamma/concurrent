@@ -10,6 +10,8 @@ import (
 	"net/http"
 	"sync"
 	"sync/atomic"
+
+	"github.com/totegamma/concurrent/core"
 )
 
 // Handler is the interface for handling websocket
@@ -20,14 +22,14 @@ type Handler interface {
 
 type handler struct {
 	service Service
-	manager Manager
+	manager core.SocketManager
 	rdb     *redis.Client
 	mutex   *sync.Mutex
 	counter int64
 }
 
 // NewHandler creates a new handler
-func NewHandler(service Service, rdb *redis.Client, manager Manager) Handler {
+func NewHandler(service Service, rdb *redis.Client, manager core.SocketManager) Handler {
 	return &handler{
 		service,
 		manager,
@@ -155,4 +157,9 @@ func (h *handler) Connect(c echo.Context) error {
 	close(quit)
 
 	return nil
+}
+
+type Request struct {
+	Type     string   `json:"type"`
+	Channels []string `json:"channels"`
 }

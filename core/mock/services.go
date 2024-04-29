@@ -10,6 +10,7 @@ import (
 	reflect "reflect"
 	time "time"
 
+	websocket "github.com/gorilla/websocket"
 	echo "github.com/labstack/echo/v4"
 	core "github.com/totegamma/concurrent/core"
 	gomock "go.uber.org/mock/gomock"
@@ -1137,6 +1138,67 @@ func (m *MockSemanticIDService) Name(ctx context.Context, id, owner, target, doc
 func (mr *MockSemanticIDServiceMockRecorder) Name(ctx, id, owner, target, document, signature interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Name", reflect.TypeOf((*MockSemanticIDService)(nil).Name), ctx, id, owner, target, document, signature)
+}
+
+// MockSocketManager is a mock of SocketManager interface.
+type MockSocketManager struct {
+	ctrl     *gomock.Controller
+	recorder *MockSocketManagerMockRecorder
+}
+
+// MockSocketManagerMockRecorder is the mock recorder for MockSocketManager.
+type MockSocketManagerMockRecorder struct {
+	mock *MockSocketManager
+}
+
+// NewMockSocketManager creates a new mock instance.
+func NewMockSocketManager(ctrl *gomock.Controller) *MockSocketManager {
+	mock := &MockSocketManager{ctrl: ctrl}
+	mock.recorder = &MockSocketManagerMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockSocketManager) EXPECT() *MockSocketManagerMockRecorder {
+	return m.recorder
+}
+
+// GetAllRemoteSubs mocks base method.
+func (m *MockSocketManager) GetAllRemoteSubs() []string {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetAllRemoteSubs")
+	ret0, _ := ret[0].([]string)
+	return ret0
+}
+
+// GetAllRemoteSubs indicates an expected call of GetAllRemoteSubs.
+func (mr *MockSocketManagerMockRecorder) GetAllRemoteSubs() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAllRemoteSubs", reflect.TypeOf((*MockSocketManager)(nil).GetAllRemoteSubs))
+}
+
+// Subscribe mocks base method.
+func (m *MockSocketManager) Subscribe(conn *websocket.Conn, timelines []string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Subscribe", conn, timelines)
+}
+
+// Subscribe indicates an expected call of Subscribe.
+func (mr *MockSocketManagerMockRecorder) Subscribe(conn, timelines interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Subscribe", reflect.TypeOf((*MockSocketManager)(nil).Subscribe), conn, timelines)
+}
+
+// Unsubscribe mocks base method.
+func (m *MockSocketManager) Unsubscribe(conn *websocket.Conn) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Unsubscribe", conn)
+}
+
+// Unsubscribe indicates an expected call of Unsubscribe.
+func (mr *MockSocketManagerMockRecorder) Unsubscribe(conn interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Unsubscribe", reflect.TypeOf((*MockSocketManager)(nil).Unsubscribe), conn)
 }
 
 // MockStoreService is a mock of StoreService interface.

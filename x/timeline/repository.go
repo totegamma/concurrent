@@ -14,7 +14,6 @@ import (
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/core"
 	"github.com/totegamma/concurrent/util"
-	"github.com/totegamma/concurrent/x/socket"
 	"gorm.io/gorm"
 	"slices"
 )
@@ -53,12 +52,12 @@ type repository struct {
 	mc      *memcache.Client
 	client  client.Client
 	schema  core.SchemaService
-	manager socket.Manager
+	manager core.SocketManager
 	config  util.Config
 }
 
 // NewRepository creates a new timeline repository
-func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, schema core.SchemaService, manager socket.Manager, config util.Config) Repository {
+func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, schema core.SchemaService, manager core.SocketManager, config util.Config) Repository {
 
 	var count int64
 	err := db.Model(&core.Timeline{}).Count(&count).Error

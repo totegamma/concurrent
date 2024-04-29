@@ -14,7 +14,6 @@ import (
 	"github.com/totegamma/concurrent/core/mock"
 	"github.com/totegamma/concurrent/internal/testutil"
 	"github.com/totegamma/concurrent/util"
-	"github.com/totegamma/concurrent/x/socket/mock"
 	"go.uber.org/mock/gomock"
 )
 
@@ -44,7 +43,7 @@ func TestRepository(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockManager := mock_socket.NewMockManager(ctrl)
+	mockManager := mock_core.NewMockSocketManager(ctrl)
 	mockManager.EXPECT().GetAllRemoteSubs().Return([]string{}).AnyTimes()
 
 	mockSchema := mock_core.NewMockSchemaService(ctrl)

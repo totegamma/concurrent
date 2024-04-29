@@ -22,11 +22,11 @@ type Handler interface {
 }
 
 type handler struct {
-	service Service
+	service core.AssociationService
 }
 
 // NewHandler creates a new handler
-func NewHandler(service Service) Handler {
+func NewHandler(service core.AssociationService) Handler {
 	return &handler{service: service}
 }
 

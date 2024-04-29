@@ -16,3 +16,14 @@ type Passport struct {
 	Document  string `json:"document"`
 	Signature string `json:"signature"`
 }
+
+type BatchResult struct {
+	ID    string
+	Error string
+}
+
+type CommitLog struct {
+	ID      string
+	Owner   string
+	Content string
+}

@@ -8,6 +8,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
 
+	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
 )
 
@@ -20,12 +21,12 @@ type Handler interface {
 }
 
 type handler struct {
-	service Service
+	service core.DomainService
 	config  util.Config
 }
 
 // NewHandler creates a new handler
-func NewHandler(service Service, config util.Config) Handler {
+func NewHandler(service core.DomainService, config util.Config) Handler {
 	return &handler{service, config}
 }
 

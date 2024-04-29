@@ -5,7 +5,6 @@ import (
 	"errors"
 
 	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/schema"
 	"gorm.io/gorm"
 )
 
@@ -24,11 +23,11 @@ type Repository interface {
 
 type repository struct {
 	db     *gorm.DB
-	schema schema.Service
+	schema core.SchemaService
 }
 
 // NewRepository creates a new collection repository
-func NewRepository(db *gorm.DB, schema schema.Service) Repository {
+func NewRepository(db *gorm.DB, schema core.SchemaService) Repository {
 	return &repository{db, schema}
 }
 

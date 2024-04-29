@@ -1,4 +1,3 @@
-//go:generate go run go.uber.org/mock/mockgen -source=service.go -destination=mock/service.go
 package domain
 
 import (
@@ -11,17 +10,6 @@ import (
 	"github.com/totegamma/concurrent/x/util"
 )
 
-// Service is the interface for host service
-type Service interface {
-	Upsert(ctx context.Context, host core.Domain) (core.Domain, error)
-	GetByFQDN(ctx context.Context, key string) (core.Domain, error)
-	GetByCCID(ctx context.Context, key string) (core.Domain, error)
-	List(ctx context.Context) ([]core.Domain, error)
-	Delete(ctx context.Context, id string) error
-	Update(ctx context.Context, host core.Domain) error
-	UpdateScrapeTime(ctx context.Context, id string, scrapeTime time.Time) error
-}
-
 type service struct {
 	repository Repository
 	client     client.Client
@@ -29,7 +17,7 @@ type service struct {
 }
 
 // NewService creates a new host service
-func NewService(repository Repository, client client.Client, config util.Config) Service {
+func NewService(repository Repository, client client.Client, config util.Config) core.DomainService {
 	return &service{repository, client, config}
 }
 

@@ -7,28 +7,19 @@ import (
 
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/entity"
-	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/util"
 )
-
-// Service is the interface for entity service
-type Service interface {
-	Ack(ctx context.Context, mode core.CommitMode, document, signature string) error
-	GetAcker(ctx context.Context, key string) ([]core.Ack, error)
-	GetAcking(ctx context.Context, key string) ([]core.Ack, error)
-}
 
 type service struct {
 	repository Repository
 	client     client.Client
-	entity     entity.Service
-	key        key.Service
+	entity     core.EntityService
+	key        core.KeyService
 	config     util.Config
 }
 
 // NewService creates a new entity service
-func NewService(repository Repository, client client.Client, entity entity.Service, key key.Service, config util.Config) Service {
+func NewService(repository Repository, client client.Client, entity core.EntityService, key core.KeyService, config util.Config) core.AckService {
 	return &service{
 		repository,
 		client,

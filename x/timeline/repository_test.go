@@ -12,7 +12,7 @@ import (
 	"github.com/totegamma/concurrent/client/mock"
 	"github.com/totegamma/concurrent/internal/testutil"
 	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/schema/mock"
+	"github.com/totegamma/concurrent/x/core/mock"
 	"github.com/totegamma/concurrent/x/socket/mock"
 	"github.com/totegamma/concurrent/x/util"
 	"go.uber.org/mock/gomock"
@@ -47,7 +47,7 @@ func TestRepository(t *testing.T) {
 	mockManager := mock_socket.NewMockManager(ctrl)
 	mockManager.EXPECT().GetAllRemoteSubs().Return([]string{}).AnyTimes()
 
-	mockSchema := mock_schema.NewMockService(ctrl)
+	mockSchema := mock_core.NewMockSchemaService(ctrl)
 	mockSchema.EXPECT().UrlToID(gomock.Any(), gomock.Any()).Return(uint(0), nil).AnyTimes()
 	mockSchema.EXPECT().IDToUrl(gomock.Any(), gomock.Any()).Return("", nil).AnyTimes()
 

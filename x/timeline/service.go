@@ -1,5 +1,3 @@
-//go:generate go run go.uber.org/mock/mockgen -source=service.go -destination=mock/service.go
-
 package timeline
 
 import (
@@ -16,63 +14,27 @@ import (
 
 	"github.com/totegamma/concurrent/x/cdid"
 	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/domain"
-	"github.com/totegamma/concurrent/x/entity"
-	"github.com/totegamma/concurrent/x/semanticid"
-	"github.com/totegamma/concurrent/x/subscription"
 	"github.com/totegamma/concurrent/x/util"
 )
 
-// Service is the interface for timeline service
-type Service interface {
-	UpsertTimeline(ctx context.Context, mode core.CommitMode, document, signature string) (core.Timeline, error)
-	DeleteTimeline(ctx context.Context, mode core.CommitMode, document string) (core.Timeline, error)
-	Event(ctx context.Context, mode core.CommitMode, document, signature string) (core.Event, error)
-
-	GetRecentItems(ctx context.Context, timelines []string, until time.Time, limit int) ([]core.TimelineItem, error)
-	GetRecentItemsFromSubscription(ctx context.Context, subscription string, until time.Time, limit int) ([]core.TimelineItem, error)
-	GetImmediateItems(ctx context.Context, timelines []string, since time.Time, limit int) ([]core.TimelineItem, error)
-	GetImmediateItemsFromSubscription(ctx context.Context, subscription string, since time.Time, limit int) ([]core.TimelineItem, error)
-	GetItem(ctx context.Context, timeline string, id string) (core.TimelineItem, error)
-	PostItem(ctx context.Context, timeline string, item core.TimelineItem, document, signature string) (core.TimelineItem, error)
-	RemoveItem(ctx context.Context, timeline string, id string)
-
-	PublishEvent(ctx context.Context, event core.Event) error
-
-	GetTimeline(ctx context.Context, key string) (core.Timeline, error)
-
-	HasWriteAccess(ctx context.Context, key string, author string) bool
-	HasReadAccess(ctx context.Context, key string, author string) bool
-
-	ListTimelineBySchema(ctx context.Context, schema string) ([]core.Timeline, error)
-	ListTimelineByAuthor(ctx context.Context, author string) ([]core.Timeline, error)
-
-	GetChunks(ctx context.Context, timelines []string, pivot time.Time) (map[string]core.Chunk, error)
-	GetChunksFromRemote(ctx context.Context, host string, timelines []string, pivot time.Time) (map[string]core.Chunk, error)
-
-	ListTimelineSubscriptions(ctx context.Context) (map[string]int64, error)
-	Count(ctx context.Context) (int64, error)
-	NormalizeTimelineID(ctx context.Context, timeline string) (string, error)
-}
-
 type service struct {
 	repository   Repository
-	entity       entity.Service
-	domain       domain.Service
-	semanticid   semanticid.Service
-	subscription subscription.Service
+	entity       core.EntityService
+	domain       core.DomainService
+	semanticid   core.SemanticIDService
+	subscription core.SubscriptionService
 	config       util.Config
 }
 
 // NewService creates a new service
 func NewService(
 	repository Repository,
-	entity entity.Service,
-	domain domain.Service,
-	semanticid semanticid.Service,
-	subscription subscription.Service,
+	entity core.EntityService,
+	domain core.DomainService,
+	semanticid core.SemanticIDService,
+	subscription core.SubscriptionService,
 	config util.Config,
-) Service {
+) core.TimelineService {
 	return &service{
 		repository,
 		entity,

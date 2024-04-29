@@ -1,21 +1,16 @@
-//go:generate go run go.uber.org/mock/mockgen -source=service.go -destination=mock/service.go
-
 package schema
 
 import (
 	"context"
-)
 
-type Service interface {
-	UrlToID(ctx context.Context, url string) (uint, error)
-	IDToUrl(ctx context.Context, id uint) (string, error)
-}
+	"github.com/totegamma/concurrent/x/core"
+)
 
 type service struct {
 	repo Repository
 }
 
-func NewService(repo Repository) Service {
+func NewService(repo Repository) core.SchemaService {
 	return &service{repo: repo}
 }
 

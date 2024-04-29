@@ -3,11 +3,13 @@ package store
 import (
 	"context"
 	"github.com/redis/go-redis/v9"
+
+	"github.com/totegamma/concurrent/x/core"
 )
 
 type Repository interface {
 	Log(ctx context.Context, owner, entry string) error
-	Since(ctx context.Context, since string) ([]Entry, error)
+	Since(ctx context.Context, since string) ([]core.CommitLog, error)
 }
 
 type repository struct {
@@ -31,13 +33,7 @@ func (r *repository) Log(ctx context.Context, owner, entry string) error {
 	return err
 }
 
-type Entry struct {
-	ID      string
-	Owner   string
-	Content string
-}
-
-func (r *repository) Since(ctx context.Context, since string) ([]Entry, error) {
+func (r *repository) Since(ctx context.Context, since string) ([]core.CommitLog, error) {
 
 	result, err := r.rdb.XRead(ctx, &redis.XReadArgs{
 		Streams: []string{
@@ -52,7 +48,7 @@ func (r *repository) Since(ctx context.Context, since string) ([]Entry, error) {
 		return nil, err
 	}
 
-	var entries []Entry
+	var entries []core.CommitLog
 	for _, messages := range result {
 		for _, message := range messages.Messages {
 
@@ -66,7 +62,7 @@ func (r *repository) Since(ctx context.Context, since string) ([]Entry, error) {
 				continue
 			}
 
-			entries = append(entries, Entry{
+			entries = append(entries, core.CommitLog{
 				ID:      message.ID,
 				Owner:   owner,
 				Content: content,

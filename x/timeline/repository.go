@@ -13,7 +13,6 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/schema"
 	"github.com/totegamma/concurrent/x/socket"
 	"github.com/totegamma/concurrent/x/util"
 	"gorm.io/gorm"
@@ -53,13 +52,13 @@ type repository struct {
 	rdb     *redis.Client
 	mc      *memcache.Client
 	client  client.Client
-	schema  schema.Service
+	schema  core.SchemaService
 	manager socket.Manager
 	config  util.Config
 }
 
 // NewRepository creates a new timeline repository
-func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, schema schema.Service, manager socket.Manager, config util.Config) Repository {
+func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, schema core.SchemaService, manager socket.Manager, config util.Config) Repository {
 
 	var count int64
 	err := db.Model(&core.Timeline{}).Count(&count).Error

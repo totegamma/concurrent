@@ -21,12 +21,12 @@ type Handler interface {
 }
 
 type handler struct {
-	service Service
+	service core.EntityService
 	config  util.Config
 }
 
 // NewHandler creates a new handler
-func NewHandler(service Service, config util.Config) Handler {
+func NewHandler(service core.EntityService, config util.Config) Handler {
 	return &handler{service: service, config: config}
 }
 

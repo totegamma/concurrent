@@ -10,7 +10,6 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/schema"
 )
 
 // Repository is the interface for profile repository
@@ -27,11 +26,11 @@ type Repository interface {
 type repository struct {
 	db     *gorm.DB
 	mc     *memcache.Client
-	schema schema.Service
+	schema core.SchemaService
 }
 
 // NewRepository creates a new profile repository
-func NewRepository(db *gorm.DB, mc *memcache.Client, schema schema.Service) Repository {
+func NewRepository(db *gorm.DB, mc *memcache.Client, schema core.SchemaService) Repository {
 
 	var count int64
 	err := db.Model(&core.Profile{}).Count(&count).Error

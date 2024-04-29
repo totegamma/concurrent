@@ -17,10 +17,8 @@ import (
 	"github.com/totegamma/concurrent/x/util"
 
 	"github.com/totegamma/concurrent/internal/testutil"
-	"github.com/totegamma/concurrent/x/domain/mock"
-	"github.com/totegamma/concurrent/x/entity/mock"
+	"github.com/totegamma/concurrent/x/core/mock"
 	"github.com/totegamma/concurrent/x/jwt"
-	"github.com/totegamma/concurrent/x/key/mock"
 )
 
 const (
@@ -56,13 +54,13 @@ func TestLocalRootSuccess(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockEntity := mock_entity.NewMockService(ctrl)
+	mockEntity := mock_core.NewMockEntityService(ctrl)
 	mockEntity.EXPECT().Get(gomock.Any(), gomock.Any()).Return(core.Entity{
 		ID:     User1ID,
 		Domain: "local.example.com",
 	}, nil).AnyTimes()
-	mockDomain := mock_domain.NewMockService(ctrl)
-	mockKey := mock_key.NewMockService(ctrl)
+	mockDomain := mock_core.NewMockDomainService(ctrl)
+	mockKey := mock_core.NewMockKeyService(ctrl)
 
 	config := util.Config{
 		Concurrent: util.Concurrent{
@@ -109,7 +107,7 @@ func TestRemoteRootSuccess(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockEntity := mock_entity.NewMockService(ctrl)
+	mockEntity := mock_core.NewMockEntityService(ctrl)
 	mockEntity.EXPECT().Affiliation(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(core.Entity{
 		ID:     User1ID,
 		Domain: RemoteDomainFQDN,
@@ -121,13 +119,13 @@ func TestRemoteRootSuccess(t *testing.T) {
 		Domain: RemoteDomainFQDN,
 	}, nil).AnyTimes()
 
-	mockDomain := mock_domain.NewMockService(ctrl)
+	mockDomain := mock_core.NewMockDomainService(ctrl)
 	mockDomain.EXPECT().GetByFQDN(gomock.Any(), RemoteDomainFQDN).Return(core.Domain{
 		ID:   RemoteDomainFQDN,
 		CCID: RemoteDomainCCID,
 	}, nil).Times(2)
 
-	mockKey := mock_key.NewMockService(ctrl)
+	mockKey := mock_core.NewMockKeyService(ctrl)
 
 	config := util.Config{
 		Concurrent: util.Concurrent{

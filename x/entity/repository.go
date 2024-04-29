@@ -7,7 +7,6 @@ import (
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/schema"
 	"gorm.io/gorm"
 )
 
@@ -29,11 +28,11 @@ type Repository interface {
 type repository struct {
 	db     *gorm.DB
 	mc     *memcache.Client
-	schema schema.Service
+	schema core.SchemaService
 }
 
 // NewRepository creates a new host repository
-func NewRepository(db *gorm.DB, mc *memcache.Client, schema schema.Service) Repository {
+func NewRepository(db *gorm.DB, mc *memcache.Client, schema core.SchemaService) Repository {
 
 	var count int64
 	err := db.Model(&core.Entity{}).Count(&count).Error

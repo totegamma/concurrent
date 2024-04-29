@@ -8,30 +8,19 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/labstack/echo/v4"
-
 	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/domain"
-	"github.com/totegamma/concurrent/x/entity"
-	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/util"
 )
 
-// Service is the interface for auth service
-type Service interface {
-	IssuePassport(ctx context.Context, requester string, key []core.Key) (string, error)
-	IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc
-}
-
 type service struct {
 	config util.Config
-	entity entity.Service
-	domain domain.Service
-	key    key.Service
+	entity core.EntityService
+	domain core.DomainService
+	key    core.KeyService
 }
 
 // NewService creates a new auth service
-func NewService(config util.Config, entity entity.Service, domain domain.Service, key key.Service) Service {
+func NewService(config util.Config, entity core.EntityService, domain core.DomainService, key core.KeyService) core.AuthService {
 	return &service{config, entity, domain, key}
 }
 

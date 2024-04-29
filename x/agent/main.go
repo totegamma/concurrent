@@ -13,24 +13,20 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 
-	"github.com/totegamma/concurrent/x/store"
+	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/util"
 )
 
 var tracer = otel.Tracer("agent")
 
-type Agent interface {
-	Boot()
-}
-
 type agent struct {
 	rdb    *redis.Client
-	store  store.Service
+	store  core.StoreService
 	config util.Config
 }
 
 // NewAgent creates a new agent
-func NewAgent(rdb *redis.Client, store store.Service, config util.Config) Agent {
+func NewAgent(rdb *redis.Client, store core.StoreService, config util.Config) core.AgentService {
 	return &agent{
 		rdb,
 		store,

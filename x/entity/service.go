@@ -1,5 +1,3 @@
-//go:generate go run go.uber.org/mock/mockgen -source=service.go -destination=mock/service.go
-
 package entity
 
 import (
@@ -19,22 +17,6 @@ import (
 	"golang.org/x/exp/slices"
 )
 
-// Service is the interface for entity service
-type Service interface {
-	Affiliation(ctx context.Context, mode core.CommitMode, document, signature, meta string) (core.Entity, error)
-	Tombstone(ctx context.Context, mode core.CommitMode, document, signature string) (core.Entity, error)
-
-	Get(ctx context.Context, ccid string) (core.Entity, error)
-	GetWithHint(ctx context.Context, ccid, hint string) (core.Entity, error)
-	List(ctx context.Context) ([]core.Entity, error)
-	UpdateScore(ctx context.Context, id string, score int) error
-	UpdateTag(ctx context.Context, id, tag string) error
-	IsUserExists(ctx context.Context, user string) bool
-	Delete(ctx context.Context, id string) error
-	Count(ctx context.Context) (int64, error)
-	PullEntityFromRemote(ctx context.Context, id, domain string) (core.Entity, error)
-}
-
 type service struct {
 	repository Repository
 	client     client.Client
@@ -43,7 +25,7 @@ type service struct {
 }
 
 // NewService creates a new entity service
-func NewService(repository Repository, client client.Client, config util.Config, jwtService jwt.Service) Service {
+func NewService(repository Repository, client client.Client, config util.Config, jwtService jwt.Service) core.EntityService {
 	return &service{
 		repository,
 		client,

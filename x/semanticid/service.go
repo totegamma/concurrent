@@ -5,17 +5,11 @@ import (
 	"github.com/totegamma/concurrent/x/core"
 )
 
-type Service interface {
-	Name(ctx context.Context, id, owner, target, document, signature string) (core.SemanticID, error)
-	Lookup(ctx context.Context, id, owner string) (string, error)
-	Delete(ctx context.Context, id, owner string) error
-}
-
 type service struct {
 	repo Repository
 }
 
-func NewService(repo Repository) Service {
+func NewService(repo Repository) core.SemanticIDService {
 	return &service{repo}
 }
 

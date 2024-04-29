@@ -1,4 +1,3 @@
-//go:generate go run go.uber.org/mock/mockgen -source=service.go -destination=mock/service.go
 package key
 
 import (
@@ -9,28 +8,17 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/util"
 )
 
-// Service is the interface for auth service
-type Service interface {
-	Enact(ctx context.Context, mode core.CommitMode, payload, signature string) (core.Key, error)
-	Revoke(ctx context.Context, mode core.CommitMode, payload, signature string) (core.Key, error)
-	ValidateDocument(ctx context.Context, document, signature string, keys []core.Key) error
-	ResolveSubkey(ctx context.Context, keyID string) (string, error)
-	GetKeyResolution(ctx context.Context, keyID string) ([]core.Key, error)
-	GetAllKeys(ctx context.Context, owner string) ([]core.Key, error)
-}
-
 type service struct {
 	repository Repository
-	entity     entity.Service
+	entity     core.EntityService
 	config     util.Config
 }
 
 // NewService creates a new auth service
-func NewService(repository Repository, entity entity.Service, config util.Config) Service {
+func NewService(repository Repository, entity core.EntityService, config util.Config) core.KeyService {
 	return &service{repository, entity, config}
 }
 

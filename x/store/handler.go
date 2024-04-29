@@ -19,10 +19,10 @@ type Handler interface {
 }
 
 type handler struct {
-	service Service
+	service core.StoreService
 }
 
-func NewHandler(service Service) Handler {
+func NewHandler(service core.StoreService) Handler {
 	return &handler{
 		service: service,
 	}

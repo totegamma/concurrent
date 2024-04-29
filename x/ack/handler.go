@@ -5,6 +5,8 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"go.opentelemetry.io/otel"
+
+	"github.com/totegamma/concurrent/x/core"
 )
 
 var tracer = otel.Tracer("ack")
@@ -16,11 +18,11 @@ type Handler interface {
 }
 
 type handler struct {
-	service Service
+	service core.AckService
 }
 
 // NewHandler creates a new handler
-func NewHandler(service Service) Handler {
+func NewHandler(service core.AckService) Handler {
 	return &handler{service: service}
 }
 

@@ -17,11 +17,11 @@ type Handler interface {
 }
 
 type handler struct {
-	service Service
+	service core.KeyService
 }
 
 // NewHandler creates a new handler
-func NewHandler(service Service) Handler {
+func NewHandler(service core.KeyService) Handler {
 	return &handler{service}
 }
 

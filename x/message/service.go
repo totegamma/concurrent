@@ -12,33 +12,20 @@ import (
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/x/cdid"
 	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/entity"
-	"github.com/totegamma/concurrent/x/key"
-	"github.com/totegamma/concurrent/x/timeline"
 	"github.com/totegamma/concurrent/x/util"
 )
-
-// Service is the interface for message service
-// Provides methods for message CRUD
-type Service interface {
-	Get(ctx context.Context, id string, requester string) (core.Message, error)
-	GetWithOwnAssociations(ctx context.Context, id string, requester string) (core.Message, error)
-	Create(ctx context.Context, mode core.CommitMode, document string, signature string) (core.Message, error)
-	Delete(ctx context.Context, mode core.CommitMode, document, signature string) (core.Message, error)
-	Count(ctx context.Context) (int64, error)
-}
 
 type service struct {
 	repo     Repository
 	client   client.Client
-	entity   entity.Service
-	timeline timeline.Service
-	key      key.Service
+	entity   core.EntityService
+	timeline core.TimelineService
+	key      core.KeyService
 	config   util.Config
 }
 
 // NewService creates a new message service
-func NewService(repo Repository, client client.Client, entity entity.Service, timeline timeline.Service, key key.Service, config util.Config) Service {
+func NewService(repo Repository, client client.Client, entity core.EntityService, timeline core.TimelineService, key core.KeyService, config util.Config) core.MessageService {
 	return &service{repo, client, entity, timeline, key, config}
 }
 

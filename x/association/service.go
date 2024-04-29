@@ -12,36 +12,16 @@ import (
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/x/cdid"
 	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/entity"
-	"github.com/totegamma/concurrent/x/key"
-	"github.com/totegamma/concurrent/x/message"
-	"github.com/totegamma/concurrent/x/timeline"
 	"github.com/totegamma/concurrent/x/util"
 )
-
-// Service is the interface for association service
-type Service interface {
-	Create(ctx context.Context, mode core.CommitMode, document, signature string) (core.Association, error)
-	Delete(ctx context.Context, mode core.CommitMode, document, signature string) (core.Association, error)
-
-	Get(ctx context.Context, id string) (core.Association, error)
-	GetOwn(ctx context.Context, author string) ([]core.Association, error)
-	GetByTarget(ctx context.Context, targetID string) ([]core.Association, error)
-	GetCountsBySchema(ctx context.Context, messageID string) (map[string]int64, error)
-	GetBySchema(ctx context.Context, messageID string, schema string) ([]core.Association, error)
-	GetCountsBySchemaAndVariant(ctx context.Context, messageID string, schema string) (map[string]int64, error)
-	GetBySchemaAndVariant(ctx context.Context, messageID string, schema string, variant string) ([]core.Association, error)
-	GetOwnByTarget(ctx context.Context, targetID, author string) ([]core.Association, error)
-	Count(ctx context.Context) (int64, error)
-}
 
 type service struct {
 	repo     Repository
 	client   client.Client
-	entity   entity.Service
-	timeline timeline.Service
-	message  message.Service
-	key      key.Service
+	entity   core.EntityService
+	timeline core.TimelineService
+	message  core.MessageService
+	key      core.KeyService
 	config   util.Config
 }
 
@@ -49,12 +29,12 @@ type service struct {
 func NewService(
 	repo Repository,
 	client client.Client,
-	entity entity.Service,
-	timeline timeline.Service,
-	message message.Service,
-	key key.Service,
+	entity core.EntityService,
+	timeline core.TimelineService,
+	message core.MessageService,
+	key core.KeyService,
 	config util.Config,
-) Service {
+) core.AssociationService {
 	return &service{
 		repo,
 		client,

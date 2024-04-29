@@ -12,7 +12,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/totegamma/concurrent/internal/testutil"
 	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/entity/mock"
+	"github.com/totegamma/concurrent/x/core/mock"
 	"github.com/totegamma/concurrent/x/util"
 )
 
@@ -40,7 +40,7 @@ func TestService(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockEntity := mock_entity.NewMockService(ctrl)
+	mockEntity := mock_core.NewMockEntityService(ctrl)
 	mockEntity.EXPECT().Get(gomock.Any(), gomock.Any()).Return(core.Entity{}, nil).AnyTimes()
 	mockEntity.EXPECT().GetWithHint(gomock.Any(), gomock.Any(), gomock.Any()).Return(core.Entity{}, nil).AnyTimes()
 

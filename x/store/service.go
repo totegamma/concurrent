@@ -9,50 +9,35 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/totegamma/concurrent/x/ack"
-	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/entity"
-	"github.com/totegamma/concurrent/x/key"
-	"github.com/totegamma/concurrent/x/message"
-	"github.com/totegamma/concurrent/x/profile"
-	"github.com/totegamma/concurrent/x/subscription"
-	"github.com/totegamma/concurrent/x/timeline"
 	"github.com/totegamma/concurrent/x/util"
 )
 
-type Service interface {
-	Commit(ctx context.Context, mode core.CommitMode, document, signature, option string) (any, error)
-	Since(ctx context.Context, since string) ([]Entry, error)
-	GetPath(ctx context.Context, id string) string
-	Restore(ctx context.Context, archive io.Reader) ([]BatchResult, error)
-}
-
 type service struct {
 	repo         Repository
-	key          key.Service
-	entity       entity.Service
-	message      message.Service
-	association  association.Service
-	profile      profile.Service
-	timeline     timeline.Service
-	ack          ack.Service
-	subscription subscription.Service
+	key          core.KeyService
+	entity       core.EntityService
+	message      core.MessageService
+	association  core.AssociationService
+	profile      core.ProfileService
+	timeline     core.TimelineService
+	ack          core.AckService
+	subscription core.SubscriptionService
 	config       util.Config
 }
 
 func NewService(
 	repo Repository,
-	key key.Service,
-	entity entity.Service,
-	message message.Service,
-	association association.Service,
-	profile profile.Service,
-	timeline timeline.Service,
-	ack ack.Service,
-	subscription subscription.Service,
+	key core.KeyService,
+	entity core.EntityService,
+	message core.MessageService,
+	association core.AssociationService,
+	profile core.ProfileService,
+	timeline core.TimelineService,
+	ack core.AckService,
+	subscription core.SubscriptionService,
 	config util.Config,
-) Service {
+) core.StoreService {
 	return &service{
 		repo:         repo,
 		key:          key,
@@ -161,7 +146,7 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 	return result, err
 }
 
-func (s *service) Since(ctx context.Context, since string) ([]Entry, error) {
+func (s *service) Since(ctx context.Context, since string) ([]core.CommitLog, error) {
 	ctx, span := tracer.Start(ctx, "Store.Service.Since")
 	defer span.End()
 
@@ -184,16 +169,11 @@ func (s *service) GetPath(ctx context.Context, id string) string {
 	return path
 }
 
-type BatchResult struct {
-	ID    string
-	Error string
-}
-
-func (s *service) Restore(ctx context.Context, archive io.Reader) ([]BatchResult, error) {
+func (s *service) Restore(ctx context.Context, archive io.Reader) ([]core.BatchResult, error) {
 	ctx, span := tracer.Start(ctx, "Store.Service.Restore")
 	defer span.End()
 
-	results := make([]BatchResult, 0)
+	results := make([]core.BatchResult, 0)
 
 	scanner := bufio.NewScanner(archive)
 
@@ -201,7 +181,7 @@ func (s *service) Restore(ctx context.Context, archive io.Reader) ([]BatchResult
 		job := scanner.Text()
 		split := strings.Split(job, " ")
 		if len(split) < 4 {
-			results = append(results, BatchResult{ID: split[0], Error: "invalid job"})
+			results = append(results, core.BatchResult{ID: split[0], Error: "invalid job"})
 			continue
 
 		}
@@ -210,7 +190,7 @@ func (s *service) Restore(ctx context.Context, archive io.Reader) ([]BatchResult
 		signature := split[2]
 		document := strings.Join(split[3:], " ")
 		_, err := s.Commit(ctx, core.CommitModeLocalOnlyExec, document, signature, "")
-		results = append(results, BatchResult{ID: split[0], Error: fmt.Sprintf("%v", err)})
+		results = append(results, core.BatchResult{ID: split[0], Error: fmt.Sprintf("%v", err)})
 	}
 
 	return results, nil

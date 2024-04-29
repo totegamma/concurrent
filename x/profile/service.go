@@ -6,33 +6,17 @@ import (
 	"errors"
 	"github.com/totegamma/concurrent/x/cdid"
 	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/key"
-	"github.com/totegamma/concurrent/x/semanticid"
 	"github.com/totegamma/concurrent/x/util"
 )
 
-// Service is the interface for profile service
-type Service interface {
-	Upsert(ctx context.Context, mode core.CommitMode, document, signature string) (core.Profile, error)
-	Delete(ctx context.Context, mode core.CommitMode, document string) (core.Profile, error)
-
-	Count(ctx context.Context) (int64, error)
-	Get(ctx context.Context, id string) (core.Profile, error)
-	GetBySemanticID(ctx context.Context, semanticID, owner string) (core.Profile, error)
-	GetByAuthorAndSchema(ctx context.Context, owner string, schema string) ([]core.Profile, error)
-	GetByAuthor(ctx context.Context, owner string) ([]core.Profile, error)
-	GetBySchema(ctx context.Context, schema string) ([]core.Profile, error)
-}
-
 type service struct {
 	repo       Repository
-	key        key.Service
-	semanticid semanticid.Service
+	semanticid core.SemanticIDService
 }
 
 // NewService creates a new profile service
-func NewService(repo Repository, key key.Service, semanticid semanticid.Service) Service {
-	return &service{repo, key, semanticid}
+func NewService(repo Repository, semanticid core.SemanticIDService) core.ProfileService {
+	return &service{repo, semanticid}
 }
 
 // Count returns the count number of messages

@@ -10,23 +10,12 @@ import (
 	"strings"
 )
 
-// Repository is the interface for collection repository
-type Service interface {
-	CreateSubscription(ctx context.Context, mode core.CommitMode, document, signature string) (core.Subscription, error)
-	Subscribe(ctx context.Context, mode core.CommitMode, document string, signature string) (core.SubscriptionItem, error)
-	Unsubscribe(ctx context.Context, mode core.CommitMode, document string) (core.SubscriptionItem, error)
-
-	GetSubscription(ctx context.Context, id string) (core.Subscription, error)
-	DeleteSubscription(ctx context.Context, id string) error
-	GetOwnSubscriptions(ctx context.Context, owner string) ([]core.Subscription, error)
-}
-
 type service struct {
 	repo Repository
 }
 
 // NewRepository creates a new collection repository
-func NewService(repo Repository) Service {
+func NewService(repo Repository) core.SubscriptionService {
 	return &service{repo: repo}
 }
 

@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/core"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
 )

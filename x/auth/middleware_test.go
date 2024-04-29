@@ -13,11 +13,11 @@ import (
 	"github.com/stretchr/testify/assert"
 	"go.uber.org/mock/gomock"
 
-	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/util"
+	"github.com/totegamma/concurrent/core"
+	"github.com/totegamma/concurrent/util"
 
+	"github.com/totegamma/concurrent/core/mock"
 	"github.com/totegamma/concurrent/internal/testutil"
-	"github.com/totegamma/concurrent/x/core/mock"
 	"github.com/totegamma/concurrent/x/jwt"
 )
 

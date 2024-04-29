@@ -19,7 +19,7 @@ import (
 	"gorm.io/driver/postgres"
 	"gorm.io/gorm"
 
-	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/core"
 )
 
 var (

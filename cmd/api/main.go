@@ -21,10 +21,11 @@ import (
 
 	"github.com/totegamma/concurrent"
 	"github.com/totegamma/concurrent/client"
+	"github.com/totegamma/concurrent/core"
+	"github.com/totegamma/concurrent/util"
 	"github.com/totegamma/concurrent/x/ack"
 	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/auth"
-	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/key"
@@ -34,7 +35,6 @@ import (
 	"github.com/totegamma/concurrent/x/subscription"
 	"github.com/totegamma/concurrent/x/timeline"
 	"github.com/totegamma/concurrent/x/userkv"
-	"github.com/totegamma/concurrent/x/util"
 
 	"github.com/bradfitz/gomemcache/memcache"
 

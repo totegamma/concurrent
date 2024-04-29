@@ -6,7 +6,7 @@ import (
 	"strconv"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/core"
 	"gorm.io/gorm"
 )
 

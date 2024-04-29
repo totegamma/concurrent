@@ -10,7 +10,7 @@ import (
 	reflect "reflect"
 	time "time"
 
-	core "github.com/totegamma/concurrent/x/core"
+	core "github.com/totegamma/concurrent/core"
 	gomock "go.uber.org/mock/gomock"
 )
 

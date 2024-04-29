@@ -11,7 +11,7 @@ import (
 	time "time"
 
 	echo "github.com/labstack/echo/v4"
-	core "github.com/totegamma/concurrent/x/core"
+	core "github.com/totegamma/concurrent/core"
 	gomock "go.uber.org/mock/gomock"
 )
 

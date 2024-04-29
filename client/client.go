@@ -11,7 +11,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/core"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"

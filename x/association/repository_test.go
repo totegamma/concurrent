@@ -7,8 +7,8 @@ import (
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/stretchr/testify/assert"
+	"github.com/totegamma/concurrent/core"
 	"github.com/totegamma/concurrent/internal/testutil"
-	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/schema"
 	"gorm.io/gorm"
 )

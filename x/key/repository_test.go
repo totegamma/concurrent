@@ -3,8 +3,8 @@ package key
 import (
 	"context"
 	"github.com/stretchr/testify/assert"
+	"github.com/totegamma/concurrent/core"
 	"github.com/totegamma/concurrent/internal/testutil"
-	"github.com/totegamma/concurrent/x/core"
 	"testing"
 	"time"
 )

@@ -7,7 +7,7 @@ import (
 	"github.com/bradfitz/gomemcache/memcache"
 	"gorm.io/gorm"
 
-	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/core"
 )
 
 type Repository interface {

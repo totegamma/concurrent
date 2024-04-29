@@ -5,7 +5,7 @@ import (
 	"go.opentelemetry.io/otel"
 	"net/http"
 
-	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/core"
 )
 
 var tracer = otel.Tracer("collection")

@@ -3,7 +3,7 @@ package userkv
 
 import (
 	"context"
-	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/core"
 	"gorm.io/gorm"
 )
 

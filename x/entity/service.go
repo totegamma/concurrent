@@ -11,9 +11,9 @@ import (
 	"time"
 
 	"github.com/totegamma/concurrent/client"
-	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/core"
+	"github.com/totegamma/concurrent/util"
 	"github.com/totegamma/concurrent/x/jwt"
-	"github.com/totegamma/concurrent/x/util"
 	"golang.org/x/exp/slices"
 )
 

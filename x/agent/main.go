@@ -13,8 +13,8 @@ import (
 	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel"
 
-	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/util"
+	"github.com/totegamma/concurrent/core"
+	"github.com/totegamma/concurrent/util"
 )
 
 var tracer = otel.Tracer("agent")

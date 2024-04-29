@@ -25,9 +25,9 @@ import (
 
 	"github.com/totegamma/concurrent"
 	"github.com/totegamma/concurrent/client"
+	"github.com/totegamma/concurrent/core"
+	"github.com/totegamma/concurrent/util"
 	"github.com/totegamma/concurrent/x/auth"
-	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/util"
 
 	"github.com/bradfitz/gomemcache/memcache"
 

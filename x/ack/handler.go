@@ -6,7 +6,7 @@ import (
 	"github.com/labstack/echo/v4"
 	"go.opentelemetry.io/otel"
 
-	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/core"
 )
 
 var tracer = otel.Tracer("ack")

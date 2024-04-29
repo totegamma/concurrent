@@ -9,7 +9,7 @@ import (
 	"github.com/bradfitz/gomemcache/memcache"
 	"gorm.io/gorm"
 
-	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/core"
 )
 
 // Repository is the interface for profile repository

@@ -38,7 +38,6 @@ type AuthService interface {
 	IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc
 }
 
-// Service is the interface for host service
 type DomainService interface {
 	Upsert(ctx context.Context, host Domain) (Domain, error)
 	GetByFQDN(ctx context.Context, key string) (Domain, error)

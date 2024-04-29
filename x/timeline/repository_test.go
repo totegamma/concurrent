@@ -10,11 +10,11 @@ import (
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/stretchr/testify/assert"
 	"github.com/totegamma/concurrent/client/mock"
+	"github.com/totegamma/concurrent/core"
+	"github.com/totegamma/concurrent/core/mock"
 	"github.com/totegamma/concurrent/internal/testutil"
-	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/core/mock"
+	"github.com/totegamma/concurrent/util"
 	"github.com/totegamma/concurrent/x/socket/mock"
-	"github.com/totegamma/concurrent/x/util"
 	"go.uber.org/mock/gomock"
 )
 

@@ -4,7 +4,7 @@ import (
 	"context"
 	"github.com/redis/go-redis/v9"
 
-	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/core"
 )
 
 type Repository interface {

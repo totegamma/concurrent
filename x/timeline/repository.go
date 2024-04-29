@@ -12,9 +12,9 @@ import (
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/client"
-	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/core"
+	"github.com/totegamma/concurrent/util"
 	"github.com/totegamma/concurrent/x/socket"
-	"github.com/totegamma/concurrent/x/util"
 	"gorm.io/gorm"
 	"slices"
 )

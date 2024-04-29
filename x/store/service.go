@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/util"
+	"github.com/totegamma/concurrent/core"
+	"github.com/totegamma/concurrent/util"
 )
 
 type service struct {

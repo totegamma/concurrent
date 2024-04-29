@@ -12,10 +12,10 @@ import (
 	"strings"
 
 	"github.com/labstack/echo/v4"
-	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/core"
+	"github.com/totegamma/concurrent/util"
 	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/key"
-	"github.com/totegamma/concurrent/x/util"
 	"github.com/xinguang/go-recaptcha"
 	"go.opentelemetry.io/otel/attribute"
 )

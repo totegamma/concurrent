@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/labstack/echo/v4"
-	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/core"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"gorm.io/gorm"

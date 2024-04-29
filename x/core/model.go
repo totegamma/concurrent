@@ -17,8 +17,8 @@ type Key struct {
 	Parent          string    `json:"parent" gorm:"type:char(42)"`
 	EnactDocument   string    `json:"enactDocument" gorm:"type:json"`
 	EnactSignature  string    `json:"enactSignature" gorm:"type:char(130)"`
-	RevokeDocument  *string   `json:"revokeDocument" gorm:"type:json;default:'null'"`
-	RevokeSignature *string   `json:"revokeSignature" gorm:"type:char(130);default:'null'"`
+	RevokeDocument  *string   `json:"revokeDocument" gorm:"type:json;default:null"`
+	RevokeSignature *string   `json:"revokeSignature" gorm:"type:char(130);default:null"`
 	ValidSince      time.Time `json:"validSince" gorm:"type:timestamp with time zone"`
 	ValidUntil      time.Time `json:"validUntil" gorm:"type:timestamp with time zone"`
 }

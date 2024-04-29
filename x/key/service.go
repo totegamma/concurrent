@@ -239,7 +239,7 @@ func ValidateKeyResolution(keys []core.Key) (string, error) {
 			}
 		}
 
-		if key.RevokeDocument != "null" {
+		if key.RevokeDocument != nil {
 			return "", fmt.Errorf("Key %s is revoked", key.ID)
 		}
 
@@ -307,5 +307,5 @@ func (s *service) GetAllKeys(ctx context.Context, owner string) ([]core.Key, err
 }
 
 func IsKeyValid(ctx context.Context, key core.Key) bool {
-	return key.RevokeDocument == "null"
+	return key.RevokeDocument == nil
 }

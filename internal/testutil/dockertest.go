@@ -152,7 +152,6 @@ func CreateDB() (*gorm.DB, func()) {
 		&core.Domain{},
 		&core.Entity{},
 		&core.EntityMeta{},
-		&core.Collection{},
 		&core.CollectionItem{},
 		&core.Ack{},
 		&core.Key{},

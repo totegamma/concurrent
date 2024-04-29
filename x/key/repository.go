@@ -84,8 +84,8 @@ func (r *repository) Revoke(ctx context.Context, keyID string, payload string, s
 
 	err := r.db.Model(&core.Key{}).Where("id = ?", keyID).Updates(
 		core.Key{
-			RevokeDocument:  payload,
-			RevokeSignature: signature,
+			RevokeDocument:  &payload,
+			RevokeSignature: &signature,
 			ValidUntil:      signedAt,
 		},
 	).Error

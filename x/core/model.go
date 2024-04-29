@@ -1,8 +1,6 @@
 package core
 
 import (
-	"fmt"
-	"strconv"
 	"time"
 
 	"github.com/lib/pq"
@@ -19,8 +17,8 @@ type Key struct {
 	Parent          string    `json:"parent" gorm:"type:char(42)"`
 	EnactDocument   string    `json:"enactDocument" gorm:"type:json"`
 	EnactSignature  string    `json:"enactSignature" gorm:"type:char(130)"`
-	RevokeDocument  string    `json:"revokeDocument" gorm:"type:json;default:'null'"`
-	RevokeSignature string    `json:"revokeSignature" gorm:"type:char(130)"`
+	RevokeDocument  *string   `json:"revokeDocument" gorm:"type:json;default:'null'"`
+	RevokeSignature *string   `json:"revokeSignature" gorm:"type:char(130);default:'null'"`
 	ValidSince      time.Time `json:"validSince" gorm:"type:timestamp with time zone"`
 	ValidUntil      time.Time `json:"validUntil" gorm:"type:timestamp with time zone"`
 }
@@ -73,10 +71,10 @@ type Entity struct {
 	Tag                  string    `json:"tag" gorm:"type:text;"`
 	Score                int       `json:"score" gorm:"type:integer;default:0"`
 	IsScoreFixed         bool      `json:"isScoreFixed" gorm:"type:boolean;default:false"`
-	AffiliationDocument  string    `json:"affiliationDocument" gorm:"type:json;default:'{}'"`
+	AffiliationDocument  string    `json:"affiliationDocument" gorm:"type:json"`
 	AffiliationSignature string    `json:"affiliationSignature" gorm:"type:char(130)"`
-	TombstoneDocument    *string   `json:"tombstoneDocument" gorm:"type:json;default:'null'"`
-	TombstoneSignature   *string   `json:"tombstoneSignature" gorm:"type:char(130)"`
+	TombstoneDocument    *string   `json:"tombstoneDocument" gorm:"type:json;default:null"`
+	TombstoneSignature   *string   `json:"tombstoneSignature" gorm:"type:char(130);default:null"`
 	CDate                time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 	MDate                time.Time `json:"mdate" gorm:"autoUpdateTime"`
 }
@@ -93,7 +91,7 @@ type EntityMeta struct {
 type Domain struct {
 	ID           string      `json:"fqdn" gorm:"type:text"` // FQDN
 	CCID         string      `json:"ccid" gorm:"type:char(42)"`
-	Tag          string      `json:"tag" gorm:"type:text;default:default"`
+	Tag          string      `json:"tag" gorm:"type:text"`
 	Score        int         `json:"score" gorm:"type:integer;default:0"`
 	Meta         interface{} `json:"meta" gorm:"-"`
 	IsScoreFixed bool        `json:"isScoreFixed" gorm:"type:boolean;default:false"`
@@ -143,33 +141,19 @@ type TimelineItem struct {
 	CDate      time.Time `json:"cdate,omitempty" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 }
 
-// Collection is one of a base object of concurrent
-// mutable
-type Collection struct {
-	ID          string           `json:"id" gorm:"primaryKey;type:char(26);"`
-	Indexable   bool             `json:"indexable" gorm:"type:boolean;default:false"`
-	Author      string           `json:"author" gorm:"type:char(42)"`
-	DomainOwned bool             `json:"domainOwned" gorm:"type:boolean;default:false"`
-	SchemaID    uint             `json:"-"`
-	Schema      string           `json:"schema" gorm:"-"`
-	CDate       time.Time        `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
-	MDate       time.Time        `json:"mdate" gorm:"autoUpdateTime"`
-	Items       []CollectionItem `json:"items" gorm:"foreignKey:Collection"`
-}
-
 // CollectionItem is one of a base object of concurrent
 // mutable
 type CollectionItem struct {
 	ID         string `json:"id" gorm:"primaryKey;type:char(26);"`
 	Collection string `json:"collection" gorm:"type:char(26)"`
-	Document   string `json:"document" gorm:"type:json;default:'{}'"`
+	Document   string `json:"document" gorm:"type:json"`
 	Signature  string `json:"signature" gorm:"type:char(130)"`
 }
 
 type Ack struct {
 	From      string `json:"from" gorm:"primaryKey;type:char(42)"`
 	To        string `json:"to" gorm:"primaryKey;type:char(42)"`
-	Document  string `json:"document" gorm:"type:json;default:'{}'"`
+	Document  string `json:"document" gorm:"type:json"`
 	Signature string `json:"signature" gorm:"type:char(130)"`
 	Valid     bool   `json:"valid" gorm:"type:boolean;default:false"`
 }
@@ -182,7 +166,7 @@ type Subscription struct {
 	DomainOwned bool               `json:"domainOwned" gorm:"type:boolean;default:false"`
 	SchemaID    uint               `json:"-"`
 	Schema      string             `json:"schema" gorm:"-"`
-	Document    string             `json:"document" gorm:"type:json;default:'{}'"`
+	Document    string             `json:"document" gorm:"type:json"`
 	Signature   string             `json:"signature" gorm:"type:char(130)"`
 	Items       []SubscriptionItem `json:"items" gorm:"foreignKey:Subscription"`
 	CDate       time.Time          `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
@@ -222,51 +206,4 @@ type UserKV struct {
 type Chunk struct {
 	Key   string         `json:"key"`
 	Items []TimelineItem `json:"items"`
-}
-
-func Time2Chunk(t time.Time) string {
-	// chunk by 10 minutes
-	return fmt.Sprintf("%d", (t.Unix()/600)*600)
-}
-
-func Chunk2RecentTime(chunk string) time.Time {
-	i, _ := strconv.ParseInt(chunk, 10, 64)
-	return time.Unix(i+600, 0)
-}
-
-func Chunk2ImmediateTime(chunk string) time.Time {
-	i, _ := strconv.ParseInt(chunk, 10, 64)
-	return time.Unix(i, 0)
-}
-
-func TypedIDToType(id string) string {
-	if len(id) != 27 {
-		return ""
-	}
-	prefix := id[0]
-	switch prefix {
-	case 'a':
-		return "association"
-	case 'm':
-		return "message"
-	default:
-		return ""
-	}
-}
-
-func hasChar(s string, c byte) bool {
-	for i := 0; i < len(s); i++ {
-		if s[i] == c {
-			return true
-		}
-	}
-	return false
-}
-
-func IsCKID(keyID string) bool {
-	return len(keyID) == 42 && keyID[:3] == "cck" && !hasChar(keyID, '.')
-}
-
-func IsCCID(keyID string) bool {
-	return len(keyID) == 42 && keyID[:3] == "con" && !hasChar(keyID, '.')
 }

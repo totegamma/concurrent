@@ -27,8 +27,8 @@ func TestRepository(t *testing.T) {
 		Parent:          "con1fk8zlkrfmens3sgj7dzcu3gsw8v9kkysrf8dt5",
 		EnactDocument:   "{}",                                                                                                                                 //TODO: change to real payload
 		EnactSignature:  "8c3e365f8b085d4823eb6c824d0eceeb5a2fc194b4055052260042a3a2d40f88002eb2ccbeac62169f4c579ae1831075e887d6e7a4ac9f0ce6a91306de54ba3301", //TODO: change to real signature
-		RevokeDocument:  "null",
-		RevokeSignature: "",
+		RevokeDocument:  nil,
+		RevokeSignature: nil,
 	}
 
 	created, err := repo.Enact(ctx, newkey)

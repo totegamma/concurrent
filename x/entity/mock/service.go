@@ -36,18 +36,18 @@ func (m *MockService) EXPECT() *MockServiceMockRecorder {
 }
 
 // Affiliation mocks base method.
-func (m *MockService) Affiliation(ctx context.Context, document, signature, meta string) (core.Entity, error) {
+func (m *MockService) Affiliation(ctx context.Context, mode core.CommitMode, document, signature, meta string) (core.Entity, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Affiliation", ctx, document, signature, meta)
+	ret := m.ctrl.Call(m, "Affiliation", ctx, mode, document, signature, meta)
 	ret0, _ := ret[0].(core.Entity)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Affiliation indicates an expected call of Affiliation.
-func (mr *MockServiceMockRecorder) Affiliation(ctx, document, signature, meta interface{}) *gomock.Call {
+func (mr *MockServiceMockRecorder) Affiliation(ctx, mode, document, signature, meta interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Affiliation", reflect.TypeOf((*MockService)(nil).Affiliation), ctx, document, signature, meta)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Affiliation", reflect.TypeOf((*MockService)(nil).Affiliation), ctx, mode, document, signature, meta)
 }
 
 // Count mocks base method.
@@ -154,18 +154,18 @@ func (mr *MockServiceMockRecorder) PullEntityFromRemote(ctx, id, domain interfac
 }
 
 // Tombstone mocks base method.
-func (m *MockService) Tombstone(ctx context.Context, document, signature string) (core.Entity, error) {
+func (m *MockService) Tombstone(ctx context.Context, mode core.CommitMode, document, signature string) (core.Entity, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Tombstone", ctx, document, signature)
+	ret := m.ctrl.Call(m, "Tombstone", ctx, mode, document, signature)
 	ret0, _ := ret[0].(core.Entity)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Tombstone indicates an expected call of Tombstone.
-func (mr *MockServiceMockRecorder) Tombstone(ctx, document, signature interface{}) *gomock.Call {
+func (mr *MockServiceMockRecorder) Tombstone(ctx, mode, document, signature interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Tombstone", reflect.TypeOf((*MockService)(nil).Tombstone), ctx, document, signature)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Tombstone", reflect.TypeOf((*MockService)(nil).Tombstone), ctx, mode, document, signature)
 }
 
 // UpdateScore mocks base method.

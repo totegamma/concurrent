@@ -14,7 +14,7 @@ import (
 
 // Service is the interface for entity service
 type Service interface {
-	Ack(ctx context.Context, from, to string) error
+	Ack(ctx context.Context, mode core.CommitMode, document, signature string) error
 	GetAcker(ctx context.Context, key string) ([]core.Ack, error)
 	GetAcking(ctx context.Context, key string) ([]core.Ack, error)
 }
@@ -39,7 +39,7 @@ func NewService(repository Repository, client client.Client, entity entity.Servi
 }
 
 // Ack creates new Ack
-func (s *service) Ack(ctx context.Context, document string, signature string) error {
+func (s *service) Ack(ctx context.Context, mode core.CommitMode, document string, signature string) error {
 	ctx, span := tracer.Start(ctx, "Ack.Service.Ack")
 	defer span.End()
 

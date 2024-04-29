@@ -23,8 +23,8 @@ import (
 type Service interface {
 	Get(ctx context.Context, id string, requester string) (core.Message, error)
 	GetWithOwnAssociations(ctx context.Context, id string, requester string) (core.Message, error)
-	Create(ctx context.Context, document string, signature string) (core.Message, error)
-	Delete(ctx context.Context, document, signature string) (core.Message, error)
+	Create(ctx context.Context, mode core.CommitMode, document string, signature string) (core.Message, error)
+	Delete(ctx context.Context, mode core.CommitMode, document, signature string) (core.Message, error)
 	Count(ctx context.Context) (int64, error)
 }
 
@@ -108,7 +108,7 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 
 // Create creates a new message
 // It also posts the message to the timelines
-func (s *service) Create(ctx context.Context, document string, signature string) (core.Message, error) {
+func (s *service) Create(ctx context.Context, mode core.CommitMode, document string, signature string) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "Message.Service.Create")
 	defer span.End()
 
@@ -204,22 +204,24 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 					continue
 				}
 
-				// eventを放流
-				event := core.Event{
-					Timeline:  timeline,
-					Item:      posted,
-					Document:  document,
-					Signature: signature,
-				}
+				if mode == core.CommitModeExecute {
+					// eventを放流
+					event := core.Event{
+						Timeline:  timeline,
+						Item:      posted,
+						Document:  document,
+						Signature: signature,
+					}
 
-				err = s.timeline.PublishEvent(ctx, event)
-				if err != nil {
-					slog.ErrorContext(ctx, "failed to publish event", slog.String("error", err.Error()), slog.String("module", "timeline"))
-					span.RecordError(errors.Wrap(err, "failed to publish event"))
-					continue
+					err = s.timeline.PublishEvent(ctx, event)
+					if err != nil {
+						slog.ErrorContext(ctx, "failed to publish event", slog.String("error", err.Error()), slog.String("module", "timeline"))
+						span.RecordError(errors.Wrap(err, "failed to publish event"))
+						continue
+					}
 				}
 			}
-		} else if signer.Domain == s.config.Concurrent.FQDN { // ここでリソースを作成したなら、リモートにもリレー
+		} else if signer.Domain == s.config.Concurrent.FQDN && mode != core.CommitModeLocalOnlyExec { // ここでリソースを作成したなら、リモートにもリレー
 			// remoteならdocumentをリレー
 			packet := core.Commit{
 				Document:  document,
@@ -242,7 +244,7 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 
 // Delete deletes a message by ID
 // It also emits a delete event to the sockets
-func (s *service) Delete(ctx context.Context, document, signature string) (core.Message, error) {
+func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, signature string) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "Message.Service.Delete")
 	defer span.End()
 
@@ -271,16 +273,18 @@ func (s *service) Delete(ctx context.Context, document, signature string) (core.
 		return core.Message{}, err
 	}
 
-	for _, desttimeline := range deleted.Timelines {
-		event := core.Event{
-			Timeline:  desttimeline,
-			Document:  document,
-			Signature: signature,
-		}
-		err := s.timeline.PublishEvent(ctx, event)
-		if err != nil {
-			span.RecordError(err)
-			return deleted, err
+	if mode != core.CommitModeLocalOnlyExec {
+		for _, desttimeline := range deleted.Timelines {
+			event := core.Event{
+				Timeline:  desttimeline,
+				Document:  document,
+				Signature: signature,
+			}
+			err := s.timeline.PublishEvent(ctx, event)
+			if err != nil {
+				span.RecordError(err)
+				return deleted, err
+			}
 		}
 	}
 

@@ -25,6 +25,10 @@ import (
 
 // Service is the interface for timeline service
 type Service interface {
+	UpsertTimeline(ctx context.Context, mode core.CommitMode, document, signature string) (core.Timeline, error)
+	DeleteTimeline(ctx context.Context, mode core.CommitMode, document string) (core.Timeline, error)
+	Event(ctx context.Context, mode core.CommitMode, document, signature string) (core.Event, error)
+
 	GetRecentItems(ctx context.Context, timelines []string, until time.Time, limit int) ([]core.TimelineItem, error)
 	GetRecentItemsFromSubscription(ctx context.Context, subscription string, until time.Time, limit int) ([]core.TimelineItem, error)
 	GetImmediateItems(ctx context.Context, timelines []string, since time.Time, limit int) ([]core.TimelineItem, error)
@@ -33,12 +37,9 @@ type Service interface {
 	PostItem(ctx context.Context, timeline string, item core.TimelineItem, document, signature string) (core.TimelineItem, error)
 	RemoveItem(ctx context.Context, timeline string, id string)
 
-	Event(ctx context.Context, document, signature string) (core.Event, error)
 	PublishEvent(ctx context.Context, event core.Event) error
 
-	UpsertTimeline(ctx context.Context, document, signature string) (core.Timeline, error)
 	GetTimeline(ctx context.Context, key string) (core.Timeline, error)
-	DeleteTimeline(ctx context.Context, document string) (core.Timeline, error)
 
 	HasWriteAccess(ctx context.Context, key string, author string) bool
 	HasReadAccess(ctx context.Context, key string, author string) bool
@@ -392,7 +393,7 @@ func (s *service) PublishEvent(ctx context.Context, event core.Event) error {
 	return s.repository.PublishEvent(ctx, event)
 }
 
-func (s *service) Event(ctx context.Context, document, signature string) (core.Event, error) {
+func (s *service) Event(ctx context.Context, mode core.CommitMode, document, signature string) (core.Event, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.Event")
 	defer span.End()
 
@@ -415,7 +416,7 @@ func (s *service) Event(ctx context.Context, document, signature string) (core.E
 }
 
 // Create updates timeline information
-func (s *service) UpsertTimeline(ctx context.Context, document, signature string) (core.Timeline, error) {
+func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, document, signature string) (core.Timeline, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.UpsertTimline")
 	defer span.End()
 
@@ -554,7 +555,7 @@ func (s *service) RemoveItem(ctx context.Context, timeline string, id string) {
 }
 
 // Delete deletes
-func (s *service) DeleteTimeline(ctx context.Context, document string) (core.Timeline, error) {
+func (s *service) DeleteTimeline(ctx context.Context, mode core.CommitMode, document string) (core.Timeline, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.DeleteTimeline")
 	defer span.End()
 

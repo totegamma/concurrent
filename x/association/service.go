@@ -21,8 +21,8 @@ import (
 
 // Service is the interface for association service
 type Service interface {
-	Create(ctx context.Context, document, signature string) (core.Association, error)
-	Delete(ctx context.Context, document, signature string) (core.Association, error)
+	Create(ctx context.Context, mode core.CommitMode, document, signature string) (core.Association, error)
+	Delete(ctx context.Context, mode core.CommitMode, document, signature string) (core.Association, error)
 
 	Get(ctx context.Context, id string) (core.Association, error)
 	GetOwn(ctx context.Context, author string) ([]core.Association, error)
@@ -77,7 +77,7 @@ func (s *service) Count(ctx context.Context) (int64, error) {
 // PostAssociation creates a new association
 // If targetType is messages, it also posts the association to the target message's timelines
 // returns the created association
-func (s *service) Create(ctx context.Context, document string, signature string) (core.Association, error) {
+func (s *service) Create(ctx context.Context, mode core.CommitMode, document string, signature string) (core.Association, error) {
 	ctx, span := tracer.Start(ctx, "Association.Service.Create")
 	defer span.End()
 
@@ -172,7 +172,7 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 						continue
 					}
 				}
-			} else if owner.Domain == s.config.Concurrent.FQDN { // ここでリソースを作成したなら、リモートにもリレー
+			} else if owner.Domain == s.config.Concurrent.FQDN && mode != core.CommitModeLocalOnlyExec { // ここでリソースを作成したなら、リモートにもリレー
 				// send to remote
 				packet := core.Commit{
 					Document:  document,
@@ -190,76 +190,78 @@ func (s *service) Create(ctx context.Context, document string, signature string)
 
 		// Associationだけの追加対応
 		// メッセージの場合は、ターゲットのタイムラインにも追加する
-		targetMessage, err := s.message.Get(ctx, created.Target, doc.Signer) //NOTE: これはownerのドメインしか実行できない
-		if err != nil {
-			span.RecordError(err)
-			return created, err
-		}
-
-		for _, timeline := range targetMessage.Timelines {
-			normalized, err := s.timeline.NormalizeTimelineID(ctx, timeline)
+		if mode != core.CommitModeLocalOnlyExec {
+			targetMessage, err := s.message.Get(ctx, created.Target, doc.Signer) //NOTE: これはownerのドメインしか実行できない
 			if err != nil {
 				span.RecordError(err)
-				continue
+				return created, err
 			}
-			split := strings.Split(normalized, "@")
-			if len(split) != 2 {
-				span.RecordError(fmt.Errorf("invalid timeline id: %s", normalized))
-				continue
-			}
-			domain := split[1]
-			if domain == s.config.Concurrent.FQDN {
-				event := core.Event{
-					Timeline:  timeline,
-					Document:  document,
-					Signature: signature,
-					Resource:  created,
-				}
-				err := s.timeline.PublishEvent(ctx, event)
-				if err != nil {
-					slog.ErrorContext(ctx, "failed to publish message to Redis", slog.String("error", err.Error()), slog.String("module", "association"))
-					span.RecordError(err)
-					return created, err
-				}
-			} else {
-				documentObj := core.EventDocument{
-					Timeline:  timeline,
-					Document:  document,
-					Signature: signature,
-					Resource:  created,
-					DocumentBase: core.DocumentBase[any]{
-						Signer:   s.config.Concurrent.CCID,
-						Type:     "event",
-						SignedAt: time.Now(),
-					},
-				}
 
-				document, err := json.Marshal(documentObj)
+			for _, timeline := range targetMessage.Timelines {
+				normalized, err := s.timeline.NormalizeTimelineID(ctx, timeline)
 				if err != nil {
 					span.RecordError(err)
-					return created, err
+					continue
 				}
-
-				signatureBytes, err := util.SignBytes([]byte(document), s.config.Concurrent.PrivateKey)
-				if err != nil {
-					span.RecordError(err)
-					return created, err
+				split := strings.Split(normalized, "@")
+				if len(split) != 2 {
+					span.RecordError(fmt.Errorf("invalid timeline id: %s", normalized))
+					continue
 				}
+				domain := split[1]
+				if domain == s.config.Concurrent.FQDN {
+					event := core.Event{
+						Timeline:  timeline,
+						Document:  document,
+						Signature: signature,
+						Resource:  created,
+					}
+					err := s.timeline.PublishEvent(ctx, event)
+					if err != nil {
+						slog.ErrorContext(ctx, "failed to publish message to Redis", slog.String("error", err.Error()), slog.String("module", "association"))
+						span.RecordError(err)
+						return created, err
+					}
+				} else {
+					documentObj := core.EventDocument{
+						Timeline:  timeline,
+						Document:  document,
+						Signature: signature,
+						Resource:  created,
+						DocumentBase: core.DocumentBase[any]{
+							Signer:   s.config.Concurrent.CCID,
+							Type:     "event",
+							SignedAt: time.Now(),
+						},
+					}
 
-				signature := hex.EncodeToString(signatureBytes)
+					document, err := json.Marshal(documentObj)
+					if err != nil {
+						span.RecordError(err)
+						return created, err
+					}
 
-				packetObj := core.Commit{
-					Document:  string(document),
-					Signature: signature,
+					signatureBytes, err := util.SignBytes([]byte(document), s.config.Concurrent.PrivateKey)
+					if err != nil {
+						span.RecordError(err)
+						return created, err
+					}
+
+					signature := hex.EncodeToString(signatureBytes)
+
+					packetObj := core.Commit{
+						Document:  string(document),
+						Signature: signature,
+					}
+
+					packet, err := json.Marshal(packetObj)
+					if err != nil {
+						span.RecordError(err)
+						return created, err
+					}
+
+					s.client.Commit(ctx, domain, string(packet))
 				}
-
-				packet, err := json.Marshal(packetObj)
-				if err != nil {
-					span.RecordError(err)
-					return created, err
-				}
-
-				s.client.Commit(ctx, domain, string(packet))
 			}
 		}
 	}
@@ -284,7 +286,7 @@ func (s *service) GetOwn(ctx context.Context, author string) ([]core.Association
 }
 
 // Delete deletes an association by ID
-func (s *service) Delete(ctx context.Context, document, signature string) (core.Association, error) {
+func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, signature string) (core.Association, error) {
 	ctx, span := tracer.Start(ctx, "Association.Service.Delete")
 	defer span.End()
 
@@ -333,7 +335,7 @@ func (s *service) Delete(ctx context.Context, document, signature string) (core.
 		}
 	}
 
-	if deleted.Target[0] == 'm' { // distribute is needed only when targetType is messages
+	if deleted.Target[0] == 'm' && mode != core.CommitModeLocalOnlyExec { // distribute is needed only when targetType is messages
 		for _, timeline := range targetMessage.Timelines {
 
 			normalized, err := s.timeline.NormalizeTimelineID(ctx, timeline)

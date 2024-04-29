@@ -48,7 +48,7 @@ func (h *handler) Commit(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
 	}
 
-	result, err := h.service.Commit(ctx, request.Document, request.Signature, request.Option)
+	result, err := h.service.Commit(ctx, core.CommitModeExecute, request.Document, request.Signature, request.Option)
 	if err != nil {
 		span.RecordError(err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})

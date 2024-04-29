@@ -110,7 +110,7 @@ func TestRemoteRootSuccess(t *testing.T) {
 	defer ctrl.Finish()
 
 	mockEntity := mock_entity.NewMockService(ctrl)
-	mockEntity.EXPECT().Affiliation(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(core.Entity{
+	mockEntity.EXPECT().Affiliation(gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any(), gomock.Any()).Return(core.Entity{
 		ID:     User1ID,
 		Domain: RemoteDomainFQDN,
 		Score:  0,

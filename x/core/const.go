@@ -22,6 +22,15 @@ const (
 	CaptchaVerifiedHeader     = "cc-captcha-verified"
 )
 
+type CommitMode int
+
+const (
+	CommitModeUnknown CommitMode = iota
+	CommitModeExecute
+	CommitModeDryRun
+	CommitModeLocalOnlyExec
+)
+
 const (
 	Unknown = iota
 	LocalUser

@@ -22,7 +22,7 @@ import (
 )
 
 type Service interface {
-	Commit(ctx context.Context, document, signature, option string) (any, error)
+	Commit(ctx context.Context, mode core.CommitMode, document, signature, option string) (any, error)
 	Since(ctx context.Context, since string) ([]Entry, error)
 	GetPath(ctx context.Context, id string) string
 	Restore(ctx context.Context, archive io.Reader) ([]BatchResult, error)
@@ -67,9 +67,13 @@ func NewService(
 	}
 }
 
-func (s *service) Commit(ctx context.Context, document string, signature string, option string) (any, error) {
+func (s *service) Commit(ctx context.Context, mode core.CommitMode, document string, signature string, option string) (any, error) {
 	ctx, span := tracer.Start(ctx, "Store.Service.Commit")
 	defer span.End()
+
+	if mode == core.CommitModeUnknown {
+		return nil, fmt.Errorf("unknown commit mode")
+	}
 
 	var base core.DocumentBase[any]
 	err := json.Unmarshal([]byte(document), &base)
@@ -92,31 +96,31 @@ func (s *service) Commit(ctx context.Context, document string, signature string,
 
 	switch base.Type {
 	case "message":
-		result, err = s.message.Create(ctx, document, signature)
+		result, err = s.message.Create(ctx, mode, document, signature)
 	case "association":
-		result, err = s.association.Create(ctx, document, signature)
+		result, err = s.association.Create(ctx, mode, document, signature)
 	case "profile":
-		result, err = s.profile.Upsert(ctx, document, signature)
+		result, err = s.profile.Upsert(ctx, mode, document, signature)
 	case "affiliation":
-		result, err = s.entity.Affiliation(ctx, document, signature, option)
+		result, err = s.entity.Affiliation(ctx, mode, document, signature, option)
 	case "tombstone":
-		result, err = s.entity.Tombstone(ctx, document, signature)
+		result, err = s.entity.Tombstone(ctx, mode, document, signature)
 	case "timeline":
-		result, err = s.timeline.UpsertTimeline(ctx, document, signature)
+		result, err = s.timeline.UpsertTimeline(ctx, mode, document, signature)
 	case "event":
-		result, err = s.timeline.Event(ctx, document, signature)
+		result, err = s.timeline.Event(ctx, mode, document, signature)
 	case "ack", "unack":
-		result, err = nil, s.ack.Ack(ctx, document, signature)
+		result, err = nil, s.ack.Ack(ctx, mode, document, signature)
 	case "enact":
-		result, err = s.key.Enact(ctx, document, signature)
+		result, err = s.key.Enact(ctx, mode, document, signature)
 	case "revoke":
-		result, err = s.key.Revoke(ctx, document, signature)
+		result, err = s.key.Revoke(ctx, mode, document, signature)
 	case "subscription":
-		result, err = s.subscription.CreateSubscription(ctx, document, signature)
+		result, err = s.subscription.CreateSubscription(ctx, mode, document, signature)
 	case "subscribe":
-		result, err = s.subscription.Subscribe(ctx, document, signature)
+		result, err = s.subscription.Subscribe(ctx, mode, document, signature)
 	case "unsubscribe":
-		result, err = s.subscription.Unsubscribe(ctx, document)
+		result, err = s.subscription.Unsubscribe(ctx, mode, document)
 	case "delete":
 		var doc core.DeleteDocument
 		err := json.Unmarshal([]byte(document), &doc)
@@ -126,13 +130,13 @@ func (s *service) Commit(ctx context.Context, document string, signature string,
 		typ := doc.Target[0]
 		switch typ {
 		case 'm': // message
-			result, err = s.message.Delete(ctx, document, signature)
+			result, err = s.message.Delete(ctx, mode, document, signature)
 		case 'a': // association
-			result, err = s.association.Delete(ctx, document, signature)
+			result, err = s.association.Delete(ctx, mode, document, signature)
 		case 'p': // profile
-			result, err = s.profile.Delete(ctx, document)
+			result, err = s.profile.Delete(ctx, mode, document)
 		case 't': // timeline
-			result, err = s.timeline.DeleteTimeline(ctx, document)
+			result, err = s.timeline.DeleteTimeline(ctx, mode, document)
 		default:
 			result, err = nil, fmt.Errorf("unknown document type: %s", string(typ))
 		}
@@ -140,7 +144,7 @@ func (s *service) Commit(ctx context.Context, document string, signature string,
 		return nil, fmt.Errorf("unknown document type: %s", base.Type)
 	}
 
-	if err == nil {
+	if err == nil && (mode == core.CommitModeExecute || mode == core.CommitModeLocalOnlyExec) {
 		// save document to history
 		owner := base.Owner
 		if owner == "" {
@@ -205,7 +209,7 @@ func (s *service) Restore(ctx context.Context, archive io.Reader) ([]BatchResult
 		// owner := split[1]
 		signature := split[2]
 		document := strings.Join(split[3:], " ")
-		_, err := s.Commit(ctx, document, signature, "")
+		_, err := s.Commit(ctx, core.CommitModeLocalOnlyExec, document, signature, "")
 		results = append(results, BatchResult{ID: split[0], Error: fmt.Sprintf("%v", err)})
 	}
 

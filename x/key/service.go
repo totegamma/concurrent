@@ -15,8 +15,8 @@ import (
 
 // Service is the interface for auth service
 type Service interface {
-	Enact(ctx context.Context, payload, signature string) (core.Key, error)
-	Revoke(ctx context.Context, payload, signature string) (core.Key, error)
+	Enact(ctx context.Context, mode core.CommitMode, payload, signature string) (core.Key, error)
+	Revoke(ctx context.Context, mode core.CommitMode, payload, signature string) (core.Key, error)
 	ValidateDocument(ctx context.Context, document, signature string, keys []core.Key) error
 	ResolveSubkey(ctx context.Context, keyID string) (string, error)
 	GetKeyResolution(ctx context.Context, keyID string) ([]core.Key, error)
@@ -35,7 +35,7 @@ func NewService(repository Repository, entity entity.Service, config util.Config
 }
 
 // Enact validates new subkey and save it if valid
-func (s *service) Enact(ctx context.Context, payload, signature string) (core.Key, error) {
+func (s *service) Enact(ctx context.Context, mode core.CommitMode, payload, signature string) (core.Key, error) {
 	ctx, span := tracer.Start(ctx, "Key.Service.EnactKey")
 	defer span.End()
 
@@ -78,7 +78,7 @@ func (s *service) Enact(ctx context.Context, payload, signature string) (core.Ke
 }
 
 // Revoke validates new subkey and save it if valid
-func (s *service) Revoke(ctx context.Context, payload, signature string) (core.Key, error) {
+func (s *service) Revoke(ctx context.Context, mode core.CommitMode, payload, signature string) (core.Key, error) {
 	ctx, span := tracer.Start(ctx, "Key.Service.RevokeKey")
 	defer span.End()
 

@@ -36,18 +36,18 @@ func (m *MockService) EXPECT() *MockServiceMockRecorder {
 }
 
 // Enact mocks base method.
-func (m *MockService) Enact(ctx context.Context, payload, signature string) (core.Key, error) {
+func (m *MockService) Enact(ctx context.Context, mode core.CommitMode, payload, signature string) (core.Key, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Enact", ctx, payload, signature)
+	ret := m.ctrl.Call(m, "Enact", ctx, mode, payload, signature)
 	ret0, _ := ret[0].(core.Key)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Enact indicates an expected call of Enact.
-func (mr *MockServiceMockRecorder) Enact(ctx, payload, signature interface{}) *gomock.Call {
+func (mr *MockServiceMockRecorder) Enact(ctx, mode, payload, signature interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Enact", reflect.TypeOf((*MockService)(nil).Enact), ctx, payload, signature)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Enact", reflect.TypeOf((*MockService)(nil).Enact), ctx, mode, payload, signature)
 }
 
 // GetAllKeys mocks base method.
@@ -96,18 +96,18 @@ func (mr *MockServiceMockRecorder) ResolveSubkey(ctx, keyID interface{}) *gomock
 }
 
 // Revoke mocks base method.
-func (m *MockService) Revoke(ctx context.Context, payload, signature string) (core.Key, error) {
+func (m *MockService) Revoke(ctx context.Context, mode core.CommitMode, payload, signature string) (core.Key, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Revoke", ctx, payload, signature)
+	ret := m.ctrl.Call(m, "Revoke", ctx, mode, payload, signature)
 	ret0, _ := ret[0].(core.Key)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Revoke indicates an expected call of Revoke.
-func (mr *MockServiceMockRecorder) Revoke(ctx, payload, signature interface{}) *gomock.Call {
+func (mr *MockServiceMockRecorder) Revoke(ctx, mode, payload, signature interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Revoke", reflect.TypeOf((*MockService)(nil).Revoke), ctx, payload, signature)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Revoke", reflect.TypeOf((*MockService)(nil).Revoke), ctx, mode, payload, signature)
 }
 
 // ValidateDocument mocks base method.

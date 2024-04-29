@@ -21,8 +21,8 @@ import (
 
 // Service is the interface for entity service
 type Service interface {
-	Affiliation(ctx context.Context, document, signature, meta string) (core.Entity, error)
-	Tombstone(ctx context.Context, document, signature string) (core.Entity, error)
+	Affiliation(ctx context.Context, mode core.CommitMode, document, signature, meta string) (core.Entity, error)
+	Tombstone(ctx context.Context, mode core.CommitMode, document, signature string) (core.Entity, error)
 
 	Get(ctx context.Context, ccid string) (core.Entity, error)
 	GetWithHint(ctx context.Context, ccid, hint string) (core.Entity, error)
@@ -75,7 +75,7 @@ func (s *service) PullEntityFromRemote(ctx context.Context, id, remote string) (
 		return core.Entity{}, err
 	}
 
-	created, err := s.Affiliation(ctx, entity.AffiliationDocument, entity.AffiliationSignature, "")
+	created, err := s.Affiliation(ctx, core.CommitModeExecute, entity.AffiliationDocument, entity.AffiliationSignature, "")
 	if err != nil {
 		span.RecordError(err)
 		return core.Entity{}, err
@@ -92,7 +92,7 @@ func (s *service) Count(ctx context.Context) (int64, error) {
 	return s.repository.Count(ctx)
 }
 
-func (s *service) Affiliation(ctx context.Context, document, signature, option string) (core.Entity, error) {
+func (s *service) Affiliation(ctx context.Context, mode core.CommitMode, document, signature, option string) (core.Entity, error) {
 	ctx, span := tracer.Start(ctx, "Entity.Service.Affiliation")
 	defer span.End()
 
@@ -255,7 +255,7 @@ func (s *service) Affiliation(ctx context.Context, document, signature, option s
 	}
 }
 
-func (s *service) Tombstone(ctx context.Context, document, signature string) (core.Entity, error) {
+func (s *service) Tombstone(ctx context.Context, mode core.CommitMode, document, signature string) (core.Entity, error) {
 	ctx, span := tracer.Start(ctx, "Entity.Service.Tombstone")
 	defer span.End()
 

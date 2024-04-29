@@ -13,8 +13,8 @@ import (
 
 // Service is the interface for profile service
 type Service interface {
-	Upsert(ctx context.Context, objectStr string, signature string) (core.Profile, error)
-	Delete(ctx context.Context, document string) (core.Profile, error)
+	Upsert(ctx context.Context, mode core.CommitMode, document, signature string) (core.Profile, error)
+	Delete(ctx context.Context, mode core.CommitMode, document string) (core.Profile, error)
 
 	Count(ctx context.Context) (int64, error)
 	Get(ctx context.Context, id string) (core.Profile, error)
@@ -87,7 +87,7 @@ func (s *service) GetBySchema(ctx context.Context, schema string) ([]core.Profil
 }
 
 // Upsert creates new profile if the signature is valid
-func (s *service) Upsert(ctx context.Context, document, signature string) (core.Profile, error) {
+func (s *service) Upsert(ctx context.Context, mode core.CommitMode, document, signature string) (core.Profile, error) {
 	ctx, span := tracer.Start(ctx, "Profile.Service.Upsert")
 	defer span.End()
 
@@ -149,7 +149,7 @@ func (s *service) Upsert(ctx context.Context, document, signature string) (core.
 }
 
 // Delete deletes profile
-func (s *service) Delete(ctx context.Context, documentStr string) (core.Profile, error) {
+func (s *service) Delete(ctx context.Context, mode core.CommitMode, documentStr string) (core.Profile, error) {
 	ctx, span := tracer.Start(ctx, "Profile.Service.Delete")
 	defer span.End()
 

@@ -102,7 +102,7 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 			}
 
 			entity := passportDoc.Entity
-			updated, err := s.entity.Affiliation(ctx, entity.AffiliationDocument, entity.AffiliationSignature, "")
+			updated, err := s.entity.Affiliation(ctx, core.CommitModeExecute, entity.AffiliationDocument, entity.AffiliationSignature, "")
 			if err != nil {
 				span.RecordError(err)
 				return c.JSON(http.StatusForbidden, echo.Map{

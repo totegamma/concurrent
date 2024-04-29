@@ -52,33 +52,33 @@ func (mr *MockServiceMockRecorder) Count(ctx interface{}) *gomock.Call {
 }
 
 // DeleteTimeline mocks base method.
-func (m *MockService) DeleteTimeline(ctx context.Context, document string) (core.Timeline, error) {
+func (m *MockService) DeleteTimeline(ctx context.Context, mode core.CommitMode, document string) (core.Timeline, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteTimeline", ctx, document)
+	ret := m.ctrl.Call(m, "DeleteTimeline", ctx, mode, document)
 	ret0, _ := ret[0].(core.Timeline)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // DeleteTimeline indicates an expected call of DeleteTimeline.
-func (mr *MockServiceMockRecorder) DeleteTimeline(ctx, document interface{}) *gomock.Call {
+func (mr *MockServiceMockRecorder) DeleteTimeline(ctx, mode, document interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteTimeline", reflect.TypeOf((*MockService)(nil).DeleteTimeline), ctx, document)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteTimeline", reflect.TypeOf((*MockService)(nil).DeleteTimeline), ctx, mode, document)
 }
 
 // Event mocks base method.
-func (m *MockService) Event(ctx context.Context, document, signature string) (core.Event, error) {
+func (m *MockService) Event(ctx context.Context, mode core.CommitMode, document, signature string) (core.Event, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Event", ctx, document, signature)
+	ret := m.ctrl.Call(m, "Event", ctx, mode, document, signature)
 	ret0, _ := ret[0].(core.Event)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Event indicates an expected call of Event.
-func (mr *MockServiceMockRecorder) Event(ctx, document, signature interface{}) *gomock.Call {
+func (mr *MockServiceMockRecorder) Event(ctx, mode, document, signature interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Event", reflect.TypeOf((*MockService)(nil).Event), ctx, document, signature)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Event", reflect.TypeOf((*MockService)(nil).Event), ctx, mode, document, signature)
 }
 
 // GetChunks mocks base method.
@@ -331,16 +331,16 @@ func (mr *MockServiceMockRecorder) RemoveItem(ctx, timeline, id interface{}) *go
 }
 
 // UpsertTimeline mocks base method.
-func (m *MockService) UpsertTimeline(ctx context.Context, document, signature string) (core.Timeline, error) {
+func (m *MockService) UpsertTimeline(ctx context.Context, mode core.CommitMode, document, signature string) (core.Timeline, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "UpsertTimeline", ctx, document, signature)
+	ret := m.ctrl.Call(m, "UpsertTimeline", ctx, mode, document, signature)
 	ret0, _ := ret[0].(core.Timeline)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // UpsertTimeline indicates an expected call of UpsertTimeline.
-func (mr *MockServiceMockRecorder) UpsertTimeline(ctx, document, signature interface{}) *gomock.Call {
+func (mr *MockServiceMockRecorder) UpsertTimeline(ctx, mode, document, signature interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertTimeline", reflect.TypeOf((*MockService)(nil).UpsertTimeline), ctx, document, signature)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertTimeline", reflect.TypeOf((*MockService)(nil).UpsertTimeline), ctx, mode, document, signature)
 }

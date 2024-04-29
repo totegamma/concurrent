@@ -12,14 +12,13 @@ import (
 
 // Repository is the interface for collection repository
 type Service interface {
-	CreateSubscription(ctx context.Context, objectStr string, signature string) (core.Subscription, error)
+	CreateSubscription(ctx context.Context, mode core.CommitMode, document, signature string) (core.Subscription, error)
+	Subscribe(ctx context.Context, mode core.CommitMode, document string, signature string) (core.SubscriptionItem, error)
+	Unsubscribe(ctx context.Context, mode core.CommitMode, document string) (core.SubscriptionItem, error)
+
 	GetSubscription(ctx context.Context, id string) (core.Subscription, error)
-	UpdateSubscription(ctx context.Context, obj core.Subscription) (core.Subscription, error)
 	DeleteSubscription(ctx context.Context, id string) error
 	GetOwnSubscriptions(ctx context.Context, owner string) ([]core.Subscription, error)
-
-	Subscribe(ctx context.Context, document string, signature string) (core.SubscriptionItem, error)
-	Unsubscribe(ctx context.Context, document string) (core.SubscriptionItem, error)
 }
 
 type service struct {
@@ -32,18 +31,18 @@ func NewService(repo Repository) Service {
 }
 
 // CreateSubscription creates new collection
-func (s *service) CreateSubscription(ctx context.Context, objectStr string, signature string) (core.Subscription, error) {
+func (s *service) CreateSubscription(ctx context.Context, mode core.CommitMode, document, signature string) (core.Subscription, error) {
 	ctx, span := tracer.Start(ctx, "Subscription.Service.CreateSubscription")
 	defer span.End()
 
 	var object core.SubscriptionDocument[any]
-	err := json.Unmarshal([]byte(objectStr), &object)
+	err := json.Unmarshal([]byte(document), &object)
 	if err != nil {
 		span.RecordError(err)
 		return core.Subscription{}, err
 	}
 
-	hash := util.GetHash([]byte(objectStr))
+	hash := util.GetHash([]byte(document))
 	hash10 := [10]byte{}
 	copy(hash10[:], hash[:10])
 	signedAt := object.SignedAt
@@ -55,7 +54,7 @@ func (s *service) CreateSubscription(ctx context.Context, objectStr string, sign
 		Indexable:   object.Indexable,
 		DomainOwned: object.DomainOwned,
 		Schema:      object.Schema,
-		Document:    objectStr,
+		Document:    document,
 		Signature:   signature,
 	}
 
@@ -76,14 +75,6 @@ func (s *service) GetSubscription(ctx context.Context, id string) (core.Subscrip
 	return s.repo.GetSubscription(ctx, id)
 }
 
-// UpdateSubscription updates a collection
-func (s *service) UpdateSubscription(ctx context.Context, obj core.Subscription) (core.Subscription, error) {
-	ctx, span := tracer.Start(ctx, "Subscription.Service.UpdateSubscription")
-	defer span.End()
-
-	return s.repo.UpdateSubscription(ctx, obj)
-}
-
 // DeleteSubscription deletes a collection by ID
 func (s *service) DeleteSubscription(ctx context.Context, id string) error {
 	ctx, span := tracer.Start(ctx, "Subscription.Service.DeleteSubscription")
@@ -101,7 +92,7 @@ func (s *service) GetOwnSubscriptions(ctx context.Context, owner string) ([]core
 }
 
 // Subscribe creates new collection item
-func (s *service) Subscribe(ctx context.Context, document string, signature string) (core.SubscriptionItem, error) {
+func (s *service) Subscribe(ctx context.Context, mode core.CommitMode, document, signature string) (core.SubscriptionItem, error) {
 	ctx, span := tracer.Start(ctx, "Subscription.Service.Subscribe")
 	defer span.End()
 
@@ -152,7 +143,7 @@ func (s *service) Subscribe(ctx context.Context, document string, signature stri
 }
 
 // DeleteItem deletes a collection item by ID
-func (s *service) Unsubscribe(ctx context.Context, document string) (core.SubscriptionItem, error) {
+func (s *service) Unsubscribe(ctx context.Context, mode core.CommitMode, document string) (core.SubscriptionItem, error) {
 	ctx, span := tracer.Start(ctx, "Subscription.Service.Unsubscribe")
 	defer span.End()
 

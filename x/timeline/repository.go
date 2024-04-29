@@ -44,6 +44,8 @@ type Repository interface {
 
 	ListTimelineSubscriptions(ctx context.Context) (map[string]int64, error)
 	Count(ctx context.Context) (int64, error)
+
+	Subscribe(ctx context.Context, channels []string, event chan<- core.Event) error
 }
 
 type repository struct {
@@ -621,4 +623,31 @@ func (r *repository) ListTimelineSubscriptions(ctx context.Context) (map[string]
 	}
 
 	return result, nil
+}
+
+func (r *repository) Subscribe(ctx context.Context, channels []string, event chan<- core.Event) error {
+
+	pubsub := r.rdb.Subscribe(ctx, channels...)
+	defer pubsub.Close()
+
+	psch := pubsub.Channel()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case msg := <-psch:
+			var item core.Event
+			err := json.Unmarshal([]byte(msg.Payload), &item)
+			slog.Info("received message(repository)", slog.String("message", msg.Payload))
+			if err != nil {
+				slog.Error(
+					"failed to unmarshal message",
+					slog.String("error", err.Error()),
+				)
+				continue
+			}
+			event <- item
+		}
+	}
 }

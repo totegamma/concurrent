@@ -22,7 +22,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./config:/etc/concurrent/:ro
+      - ./_config:/etc/concurrent/:ro
     networks:
       - external
       - internal
@@ -53,7 +53,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./config:/etc/concurrent/:ro
+      - ./_config:/etc/concurrent/:ro
     networks:
       - external
       - internal

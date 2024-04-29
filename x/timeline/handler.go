@@ -3,11 +3,14 @@ package timeline
 
 import (
 	"errors"
+	"fmt"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/core"
 	"go.opentelemetry.io/otel"
@@ -26,6 +29,7 @@ type Handler interface {
 	ListMine(c echo.Context) error
 	Remove(c echo.Context) error
 	GetChunks(c echo.Context) error
+	Realtime(c echo.Context) error
 }
 
 type handler struct {
@@ -230,4 +234,84 @@ func (h handler) GetChunks(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": chunks})
+}
+
+// ---
+
+var upgrader = websocket.Upgrader{
+	ReadBufferSize:  1024,
+	WriteBufferSize: 1024,
+	CheckOrigin: func(r *http.Request) bool {
+		return true
+	},
+}
+
+type Request struct {
+	Type     string   `json:"type"`
+	Channels []string `json:"channels"`
+}
+
+func (h handler) Realtime(c echo.Context) error {
+	ws, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
+	if err != nil {
+		slog.Error(
+			"Failed to upgrade WebSocket",
+			slog.String("error", err.Error()),
+			slog.String("module", "socket"),
+		)
+	}
+	defer func() {
+		ws.Close()
+	}()
+
+	ctx := c.Request().Context()
+
+	input := make(chan []string)
+	defer close(input)
+	output := make(chan core.Event)
+	defer close(output)
+
+	go h.service.Realtime(ctx, input, output)
+
+	quit := make(chan struct{})
+
+	go func() {
+		for {
+			var req Request
+			err := ws.ReadJSON(&req)
+			if err != nil {
+				slog.ErrorContext(
+					ctx, "Error reading JSON",
+					slog.String("error", err.Error()),
+					slog.String("module", "socket"),
+				)
+				quit <- struct{}{}
+				break
+			}
+
+			input <- req.Channels
+
+			slog.DebugContext(
+				ctx, fmt.Sprintf("Socket subscribe: %s", req.Channels),
+				slog.String("module", "socket"),
+			)
+		}
+	}()
+
+	for {
+		select {
+		case <-quit:
+			return nil
+		case items := <-output:
+			err := ws.WriteJSON(items)
+			if err != nil {
+				slog.ErrorContext(
+					ctx, "Error writing message",
+					slog.String("error", err.Error()),
+					slog.String("module", "socket"),
+				)
+				return nil
+			}
+		}
+	}
 }

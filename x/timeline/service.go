@@ -629,3 +629,27 @@ func (s *service) HasReadAccess(ctx context.Context, timelineID string, userAddr
 		return slices.Contains(timeline.Reader, userAddress)
 	*/
 }
+
+func (s *service) Realtime(ctx context.Context, request <-chan []string, response chan<- core.Event) {
+	var cancel context.CancelFunc
+	events := make(chan core.Event)
+
+	for {
+		select {
+		case timelines := <-request:
+			if cancel != nil {
+				cancel()
+			}
+			var subctx context.Context
+			subctx, cancel = context.WithCancel(ctx)
+			go s.repository.Subscribe(subctx, timelines, events)
+		case event := <-events:
+			response <- event
+		case <-ctx.Done():
+			if cancel != nil {
+				cancel()
+			}
+			return
+		}
+	}
+}

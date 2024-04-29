@@ -156,4 +156,6 @@ type TimelineService interface {
 	ListTimelineSubscriptions(ctx context.Context) (map[string]int64, error)
 	Count(ctx context.Context) (int64, error)
 	NormalizeTimelineID(ctx context.Context, timeline string) (string, error)
+
+	Realtime(ctx context.Context, request <-chan []string, response chan<- Event)
 }

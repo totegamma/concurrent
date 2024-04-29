@@ -179,9 +179,9 @@ services:
   grafana:
     image: grafana/grafana:latest
     volumes:
-      - ./dev/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
-      - ./dev/grafana-dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml
-      - ./dev/dashboards:/etc/grafana/dashboards
+      - ./_dev/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+      - ./_dev/grafana-dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml
+      - ./_dev/dashboards:/etc/grafana/dashboards
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
@@ -199,7 +199,7 @@ services:
       - --web.enable-remote-write-receiver
       - --enable-feature=exemplar-storage
     volumes:
-      - ./dev/prometheus.yaml:/etc/prometheus.yaml
+      - ./_dev/prometheus.yaml:/etc/prometheus.yaml
       - ./_composeData/prometheus:/etc/prometheus
     ports:
       - "9090:9090"
@@ -222,7 +222,7 @@ services:
     image: grafana/tempo:latest
     command: [ "-config.file=/etc/tempo.yaml" ]
     volumes:
-      - ./dev/tempo.yaml:/etc/tempo.yaml
+      - ./_dev/tempo.yaml:/etc/tempo.yaml
       - ./_composeData/tempo:/tmp/tempo
     networks:
       - internal

@@ -49,17 +49,16 @@ type Repository interface {
 }
 
 type repository struct {
-	db      *gorm.DB
-	rdb     *redis.Client
-	mc      *memcache.Client
-	client  client.Client
-	schema  core.SchemaService
-	manager core.SocketManager
-	config  util.Config
+	db     *gorm.DB
+	rdb    *redis.Client
+	mc     *memcache.Client
+	client client.Client
+	schema core.SchemaService
+	config util.Config
 }
 
 // NewRepository creates a new timeline repository
-func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, schema core.SchemaService, manager core.SocketManager, config util.Config) Repository {
+func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, schema core.SchemaService, config util.Config) Repository {
 
 	var count int64
 	err := db.Model(&core.Timeline{}).Count(&count).Error
@@ -72,7 +71,7 @@ func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client c
 
 	mc.Set(&memcache.Item{Key: "timeline_count", Value: []byte(strconv.FormatInt(count, 10))})
 
-	return &repository{db, rdb, mc, client, schema, manager, config}
+	return &repository{db, rdb, mc, client, schema, config}
 }
 
 // Total returns the total number of messages
@@ -171,7 +170,7 @@ func (r *repository) GetChunksFromRemote(ctx context.Context, host string, timel
 		return nil, err
 	}
 
-	currentSubsciptions := r.manager.GetAllRemoteSubs()
+	currentSubsciptions := r.GetCurrentSubs(ctx)
 
 	cacheChunks := make(map[string]core.Chunk)
 	for timelineID, chunk := range chunks {
@@ -650,4 +649,26 @@ func (r *repository) Subscribe(ctx context.Context, channels []string, event cha
 			event <- item
 		}
 	}
+}
+
+func (r *repository) GetCurrentSubs(ctx context.Context) []string {
+
+	query := r.rdb.PubSubChannels(ctx, "*")
+	channels := query.Val()
+
+	uniqueChannelsMap := make(map[string]bool)
+	for _, channel := range channels {
+		uniqueChannelsMap[channel] = true
+	}
+
+	uniqueChannels := make([]string, 0)
+	for channel := range uniqueChannelsMap {
+		split := strings.Split(channel, "@")
+		if len(split) != 2 {
+			continue
+		}
+		uniqueChannels = append(uniqueChannels, channel)
+	}
+
+	return uniqueChannels
 }

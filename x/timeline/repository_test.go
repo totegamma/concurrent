@@ -43,16 +43,13 @@ func TestRepository(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
-	mockManager := mock_core.NewMockSocketManager(ctrl)
-	mockManager.EXPECT().GetAllRemoteSubs().Return([]string{}).AnyTimes()
-
 	mockSchema := mock_core.NewMockSchemaService(ctrl)
 	mockSchema.EXPECT().UrlToID(gomock.Any(), gomock.Any()).Return(uint(0), nil).AnyTimes()
 	mockSchema.EXPECT().IDToUrl(gomock.Any(), gomock.Any()).Return("", nil).AnyTimes()
 
 	mockClient := mock_client.NewMockClient(ctrl)
 
-	repo = NewRepository(db, rdb, mc, mockClient, mockSchema, mockManager, util.Config{})
+	repo = NewRepository(db, rdb, mc, mockClient, mockSchema, util.Config{})
 
 	// :: Timelineを作成 ::
 	timeline := core.Timeline{

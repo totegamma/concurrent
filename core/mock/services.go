@@ -1700,6 +1700,18 @@ func (mr *MockTimelineServiceMockRecorder) PublishEvent(ctx, event interface{}) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PublishEvent", reflect.TypeOf((*MockTimelineService)(nil).PublishEvent), ctx, event)
 }
 
+// Realtime mocks base method.
+func (m *MockTimelineService) Realtime(ctx context.Context, request <-chan []string, response chan<- core.Event) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "Realtime", ctx, request, response)
+}
+
+// Realtime indicates an expected call of Realtime.
+func (mr *MockTimelineServiceMockRecorder) Realtime(ctx, request, response interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Realtime", reflect.TypeOf((*MockTimelineService)(nil).Realtime), ctx, request, response)
+}
+
 // RemoveItem mocks base method.
 func (m *MockTimelineService) RemoveItem(ctx context.Context, timeline, id string) {
 	m.ctrl.T.Helper()

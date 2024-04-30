@@ -202,10 +202,7 @@ func main() {
 
 	client := client.NewClient()
 
-	socketManager := concurrent.SetupSocketManager(mc, db, rdb, config)
-	socketHandler := concurrent.SetupSocketHandler(rdb, socketManager, config)
-
-	agent := concurrent.SetupAgent(db, rdb, mc, client, socketManager, config)
+	agent := concurrent.SetupAgent(db, rdb, mc, client, config)
 
 	domainService := concurrent.SetupDomainService(db, client, config)
 	domainHandler := domain.NewHandler(domainService, config)
@@ -213,16 +210,16 @@ func main() {
 	userKvService := concurrent.SetupUserkvService(db)
 	userkvHandler := userkv.NewHandler(userKvService)
 
-	messageService := concurrent.SetupMessageService(db, rdb, mc, client, socketManager, config)
+	messageService := concurrent.SetupMessageService(db, rdb, mc, client, config)
 	messageHandler := message.NewHandler(messageService)
 
-	associationService := concurrent.SetupAssociationService(db, rdb, mc, client, socketManager, config)
+	associationService := concurrent.SetupAssociationService(db, rdb, mc, client, config)
 	associationHandler := association.NewHandler(associationService)
 
 	profileService := concurrent.SetupProfileService(db, rdb, mc, client, config)
 	profileHandler := profile.NewHandler(profileService)
 
-	timelineService := concurrent.SetupTimelineService(db, rdb, mc, client, socketManager, config)
+	timelineService := concurrent.SetupTimelineService(db, rdb, mc, client, config)
 	timelineHandler := timeline.NewHandler(timelineService)
 
 	entityService := concurrent.SetupEntityService(db, rdb, mc, client, config)
@@ -237,7 +234,7 @@ func main() {
 	ackService := concurrent.SetupAckService(db, rdb, mc, client, config)
 	ackHandler := ack.NewHandler(ackService)
 
-	storeService := concurrent.SetupStoreService(db, rdb, mc, client, socketManager, config)
+	storeService := concurrent.SetupStoreService(db, rdb, mc, client, config)
 	storeHandler := store.NewHandler(storeService)
 
 	subscriptionService := concurrent.SetupSubscriptionService(db)
@@ -302,9 +299,6 @@ func main() {
 	apiV1.GET("/kv/:key", userkvHandler.Get, auth.Restrict(auth.ISLOCAL))
 	apiV1.PUT("/kv/:key", userkvHandler.Upsert, auth.Restrict(auth.ISLOCAL))
 
-	// socket
-	apiV1.GET("/socket", socketHandler.Connect)
-
 	// auth
 	apiV1.GET("/auth/passport", authHandler.GetPassport, auth.Restrict(auth.ISLOCAL))
 
@@ -355,14 +349,6 @@ func main() {
 	)
 	prometheus.MustRegister(resourceCountMetrics)
 
-	var socketConnectionMetrics = prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "cc_socket_connections",
-			Help: "socket connections",
-		},
-	)
-	prometheus.MustRegister(socketConnectionMetrics)
-
 	go func() {
 		for {
 			time.Sleep(15 * time.Second)
@@ -411,9 +397,6 @@ func main() {
 				continue
 			}
 			resourceCountMetrics.WithLabelValues("timeline").Set(float64(count))
-
-			count = socketHandler.CurrentConnectionCount()
-			socketConnectionMetrics.Set(float64(count))
 		}
 	}()
 

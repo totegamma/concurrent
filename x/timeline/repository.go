@@ -630,6 +630,9 @@ func (r *repository) Subscribe(ctx context.Context, channels []string, event cha
 		return nil
 	}
 
+	pubsub := r.rdb.Subscribe(ctx, channels...)
+	defer pubsub.Close()
+
 	chanstr := strings.Join(channels, ",")
 	err := r.rdb.Publish(context.Background(), "concrnt:subscription:updated", chanstr).Err()
 	if err != nil {
@@ -639,9 +642,6 @@ func (r *repository) Subscribe(ctx context.Context, channels []string, event cha
 			slog.String("module", "timeline"),
 		)
 	}
-
-	pubsub := r.rdb.Subscribe(ctx, channels...)
-	defer pubsub.Close()
 
 	psch := pubsub.Channel()
 

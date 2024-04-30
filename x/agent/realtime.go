@@ -142,7 +142,7 @@ func (a *agent) RemoteSubRoutine(ctx context.Context, domain string, timelines [
 		c, _, err := dialer.Dial(u.String(), nil)
 		if err != nil {
 			slog.Error(
-				fmt.Sprintf("fail to dial: %v", err),
+				fmt.Sprintf("fail to dial to %v (%v)", domain, err),
 				slog.String("module", "agent"),
 				slog.String("group", "realtime"),
 			)

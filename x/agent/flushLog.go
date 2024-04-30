@@ -46,7 +46,6 @@ func (a *agent) FlushLog(ctx context.Context) {
 	var seeker int64 = stats.Size()
 
 	for {
-		fmt.Println("Seeker: ", seeker)
 		from := seeker - 1024
 		to := seeker
 
@@ -71,9 +70,7 @@ func (a *agent) FlushLog(ctx context.Context) {
 		}
 
 		lines := strings.Split(string(buf), "\n")
-		fmt.Println("lines: ", len(lines))
 		if len(lines) > 1 {
-			fmt.Println("Last line: ", lines[len(lines)-1])
 			lastLine = lines[len(lines)-1] + lastLine
 			break
 		}

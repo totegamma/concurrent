@@ -352,6 +352,11 @@ func (s *service) PublishEvent(ctx context.Context, event core.Event) error {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.PublishEvent")
 	defer span.End()
 
+	normalized, err := s.NormalizeTimelineID(ctx, event.Timeline)
+	if err == nil {
+		event.Timeline = normalized
+	}
+
 	return s.repository.PublishEvent(ctx, event)
 }
 
@@ -634,16 +639,40 @@ func (s *service) Realtime(ctx context.Context, request <-chan []string, respons
 	var cancel context.CancelFunc
 	events := make(chan core.Event)
 
+	var mapper map[string]string
+
 	for {
 		select {
 		case timelines := <-request:
 			if cancel != nil {
 				cancel()
 			}
+
+			normalized := make([]string, 0)
+			mapper = make(map[string]string)
+			for _, timeline := range timelines {
+				normalizedTimeline, err := s.NormalizeTimelineID(ctx, timeline)
+				if err != nil {
+					slog.WarnContext(
+						ctx,
+						fmt.Sprintf("failed to normalize timeline: %s", timeline),
+						slog.String("module", "timeline"),
+					)
+					continue
+				}
+				normalized = append(normalized, normalizedTimeline)
+				mapper[normalizedTimeline] = timeline
+			}
+
 			var subctx context.Context
 			subctx, cancel = context.WithCancel(ctx)
-			go s.repository.Subscribe(subctx, timelines, events)
+			go s.repository.Subscribe(subctx, normalized, events)
 		case event := <-events:
+			if mapper == nil {
+				slog.WarnContext(ctx, "mapper is nil", slog.String("module", "timeline"))
+				continue
+			}
+			event.Timeline = mapper[event.Timeline]
 			response <- event
 		case <-ctx.Done():
 			if cancel != nil {

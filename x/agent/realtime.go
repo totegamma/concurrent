@@ -430,7 +430,7 @@ func (a *agent) watchEventRoutine(ctx context.Context) {
 			}
 
 			slog.Info(
-				fmt.Sprintf("received message: %s", msg.Payload[:64]),
+				fmt.Sprintf("received message: %s", msg.Payload),
 				slog.String("module", "agent"),
 				slog.String("group", "realtime"),
 			)

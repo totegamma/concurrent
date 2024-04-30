@@ -626,6 +626,20 @@ func (r *repository) ListTimelineSubscriptions(ctx context.Context) (map[string]
 
 func (r *repository) Subscribe(ctx context.Context, channels []string, event chan<- core.Event) error {
 
+	if len(channels) == 0 {
+		return nil
+	}
+
+	chanstr := strings.Join(channels, ",")
+	err := r.rdb.Publish(context.Background(), "concrnt:subscription:updated", chanstr).Err()
+	if err != nil {
+		slog.ErrorContext(
+			ctx, "fail to publish message to Redis",
+			slog.String("error", err.Error()),
+			slog.String("module", "timeline"),
+		)
+	}
+
 	pubsub := r.rdb.Subscribe(ctx, channels...)
 	defer pubsub.Close()
 
@@ -638,7 +652,6 @@ func (r *repository) Subscribe(ctx context.Context, channels []string, event cha
 		case msg := <-psch:
 			var item core.Event
 			err := json.Unmarshal([]byte(msg.Payload), &item)
-			slog.Info("received message(repository)", slog.String("message", msg.Payload))
 			if err != nil {
 				slog.Error(
 					"failed to unmarshal message",

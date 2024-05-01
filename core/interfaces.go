@@ -81,6 +81,10 @@ type MessageService interface {
 	Count(ctx context.Context) (int64, error)
 }
 
+type PolicyService interface {
+	Check(ctx context.Context, policy string, action string, requester, resource, target string) (bool, error)
+}
+
 type ProfileService interface {
 	Upsert(ctx context.Context, mode CommitMode, document, signature string) (Profile, error)
 	Delete(ctx context.Context, mode CommitMode, document string) (Profile, error)

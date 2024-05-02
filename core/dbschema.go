@@ -58,6 +58,9 @@ type Profile struct {
 	Document     string        `json:"document" gorm:"type:json"`
 	Signature    string        `json:"signature" gorm:"type:char(130)"`
 	Associations []Association `json:"associations,omitempty" gorm:"-"`
+	PolicyID     *uint         `json:"-"`
+	Policy       string        `json:"policy,omitempty" gorm:"-"`
+	PolicyParams *string       `json:"policyParams,omitempty" gorm:"type:json"`
 	CDate        time.Time     `json:"cdate" gorm:"->;<-:create;autoCreateTime"`
 	MDate        time.Time     `json:"mdate" gorm:"autoUpdateTime"`
 }
@@ -107,6 +110,9 @@ type Message struct {
 	Author          string         `json:"author" gorm:"type:char(42)"`
 	SchemaID        uint           `json:"-"`
 	Schema          string         `json:"schema" gorm:"-"`
+	PolicyID        *uint          `json:"-"`
+	Policy          string         `json:"policy,omitempty" gorm:"-"`
+	PolicyParams    *string        `json:"policyParams,omitempty" gorm:"type:json"`
 	Document        string         `json:"document" gorm:"type:json"`
 	Signature       string         `json:"signature" gorm:"type:char(130)"`
 	CDate           time.Time      `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
@@ -118,16 +124,19 @@ type Message struct {
 // Timeline is one of a base object of concurrent
 // mutable
 type Timeline struct {
-	ID          string    `json:"id" gorm:"primaryKey;type:char(26);"`
-	Indexable   bool      `json:"indexable" gorm:"type:boolean;default:false"`
-	Author      string    `json:"author" gorm:"type:char(42)"`
-	DomainOwned bool      `json:"domainOwned" gorm:"type:boolean;default:false"`
-	SchemaID    uint      `json:"-"`
-	Schema      string    `json:"schema" gorm:"-"`
-	Document    string    `json:"document" gorm:"type:json"`
-	Signature   string    `json:"signature" gorm:"type:char(130)"`
-	CDate       time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
-	MDate       time.Time `json:"mdate" gorm:"autoUpdateTime"`
+	ID           string    `json:"id" gorm:"primaryKey;type:char(26);"`
+	Indexable    bool      `json:"indexable" gorm:"type:boolean;default:false"`
+	Author       string    `json:"author" gorm:"type:char(42)"`
+	DomainOwned  bool      `json:"domainOwned" gorm:"type:boolean;default:false"`
+	SchemaID     uint      `json:"-"`
+	Schema       string    `json:"schema" gorm:"-"`
+	PolicyID     *uint     `json:"-"`
+	Policy       string    `json:"policy,omitempty" gorm:"-"`
+	PolicyParams *string   `json:"policyParams,omitempty" gorm:"type:json"`
+	Document     string    `json:"document" gorm:"type:json"`
+	Signature    string    `json:"signature" gorm:"type:char(130)"`
+	CDate        time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
+	MDate        time.Time `json:"mdate" gorm:"autoUpdateTime"`
 }
 
 // TimelineItem is one of a base object of concurrent
@@ -140,15 +149,6 @@ type TimelineItem struct {
 	CDate      time.Time `json:"cdate,omitempty" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 }
 
-// CollectionItem is one of a base object of concurrent
-// mutable
-type CollectionItem struct {
-	ID         string `json:"id" gorm:"primaryKey;type:char(26);"`
-	Collection string `json:"collection" gorm:"type:char(26)"`
-	Document   string `json:"document" gorm:"type:json"`
-	Signature  string `json:"signature" gorm:"type:char(130)"`
-}
-
 type Ack struct {
 	From      string `json:"from" gorm:"primaryKey;type:char(42)"`
 	To        string `json:"to" gorm:"primaryKey;type:char(42)"`
@@ -159,17 +159,20 @@ type Ack struct {
 
 // Subscription
 type Subscription struct {
-	ID          string             `json:"id" gorm:"primaryKey;type:char(26)"`
-	Author      string             `json:"author" gorm:"type:char(42);"`
-	Indexable   bool               `json:"indexable" gorm:"type:boolean;default:false"`
-	DomainOwned bool               `json:"domainOwned" gorm:"type:boolean;default:false"`
-	SchemaID    uint               `json:"-"`
-	Schema      string             `json:"schema" gorm:"-"`
-	Document    string             `json:"document" gorm:"type:json"`
-	Signature   string             `json:"signature" gorm:"type:char(130)"`
-	Items       []SubscriptionItem `json:"items" gorm:"foreignKey:Subscription"`
-	CDate       time.Time          `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
-	MDate       time.Time          `json:"mdate" gorm:"autoUpdateTime"`
+	ID           string             `json:"id" gorm:"primaryKey;type:char(26)"`
+	Author       string             `json:"author" gorm:"type:char(42);"`
+	Indexable    bool               `json:"indexable" gorm:"type:boolean;default:false"`
+	DomainOwned  bool               `json:"domainOwned" gorm:"type:boolean;default:false"`
+	SchemaID     uint               `json:"-"`
+	Schema       string             `json:"schema" gorm:"-"`
+	PolicyID     *uint              `json:"-"`
+	Policy       string             `json:"policy,omitempty" gorm:"-"`
+	PolicyParams *string            `json:"policyParams,omitempty" gorm:"type:json"`
+	Document     string             `json:"document" gorm:"type:json"`
+	Signature    string             `json:"signature" gorm:"type:char(130)"`
+	Items        []SubscriptionItem `json:"items" gorm:"foreignKey:Subscription"`
+	CDate        time.Time          `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
+	MDate        time.Time          `json:"mdate" gorm:"autoUpdateTime"`
 }
 
 type ResolverType uint

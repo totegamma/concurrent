@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"context"
 	"github.com/stretchr/testify/assert"
 	"testing"
 
@@ -9,6 +10,7 @@ import (
 )
 
 var s service
+var ctx = context.Background()
 
 func TestMain(m *testing.M) {
 
@@ -22,22 +24,22 @@ func TestMain(m *testing.M) {
 // 1. timelineを作れるのはローカルユーザーか、特定のタグを持つユーザー (Globalレベル想定)
 func TestPolicyTimelineCreatorIsLocalUserOrHasTag(t *testing.T) {
 
-	policy := Policy{
+	policy := core.Policy{
 		Name:    "StreamCreatorIsLocalUserOrHasTag",
 		Version: "2024-05-01",
-		Statement: []Statement{
+		Statements: []core.Statement{
 			{
 				Action: []string{"timeline"},
 				Effect: "allow", // allow: これにマッチしなければ拒否
-				Condition: Expr{
+				Condition: core.Expr{
 					Operator: "Or",
-					Args: []Expr{
+					Args: []core.Expr{
 						{
 							Operator: "IsRequesterLocalUser",
 						},
 						{
 							Operator: "RequesterHasTag",
-							Args: []Expr{
+							Args: []core.Expr{
 								{
 									Operator: "Const",
 									Constant: "timeline_creator",
@@ -50,9 +52,9 @@ func TestPolicyTimelineCreatorIsLocalUserOrHasTag(t *testing.T) {
 		},
 	}
 
-	context := RequestContext{}
+	context := core.RequestContext{}
 
-	canPerform, err := s.Test(policy, context, "timeline")
+	canPerform, err := s.Test(ctx, policy, context, "timeline")
 	assert.NoError(t, err)
 	assert.True(t, canPerform)
 }
@@ -60,16 +62,16 @@ func TestPolicyTimelineCreatorIsLocalUserOrHasTag(t *testing.T) {
 // 2. timelineに投稿・閲覧できるのは特定のユーザー (timelineレベル想定)
 func TestPolicyTimelineLimitAccess(t *testing.T) {
 
-	policy := Policy{
+	policy := core.Policy{
 		Name:    "StreamLimitAccess",
 		Version: "2024-05-01",
-		Statement: []Statement{
+		Statements: []core.Statement{
 			{
 				Action: []string{"distribute", "GET:/message/*"},
 				Effect: "allow",
-				Condition: Expr{
+				Condition: core.Expr{
 					Operator: "Contains",
-					Args: []Expr{
+					Args: []core.Expr{
 						{
 							Operator: "LoadParam",
 							Constant: "allowlist",
@@ -83,7 +85,7 @@ func TestPolicyTimelineLimitAccess(t *testing.T) {
 		},
 	}
 
-	context := RequestContext{
+	context := core.RequestContext{
 		Requester: core.Entity{
 			ID: "user1",
 		},
@@ -92,11 +94,11 @@ func TestPolicyTimelineLimitAccess(t *testing.T) {
 		},
 	}
 
-	canDistribute, err := s.Test(policy, context, "distribute")
+	canDistribute, err := s.Test(ctx, policy, context, "distribute")
 	assert.NoError(t, err)
 	assert.True(t, canDistribute)
 
-	canRead, err := s.Test(policy, context, "GET:/message/msneb1k006zqtpqsg067jyebxtm")
+	canRead, err := s.Test(ctx, policy, context, "GET:/message/msneb1k006zqtpqsg067jyebxtm")
 	assert.NoError(t, err)
 	assert.True(t, canRead)
 }
@@ -104,16 +106,16 @@ func TestPolicyTimelineLimitAccess(t *testing.T) {
 // 3. timelineに投稿できるのは特定のschema (timelineレベル想定)
 func TestPolicyTimelineLimitMessageSchema(t *testing.T) {
 
-	policy := Policy{
+	policy := core.Policy{
 		Name:    "StreamLimitMessageSchema",
 		Version: "2024-05-01",
-		Statement: []Statement{
+		Statements: []core.Statement{
 			{
 				Action: []string{"distribute"},
 				Effect: "allow",
-				Condition: Expr{
+				Condition: core.Expr{
 					Operator: "Contains",
-					Args: []Expr{
+					Args: []core.Expr{
 						{
 							Operator: "LoadParam",
 							Constant: "allowlist",
@@ -134,14 +136,14 @@ func TestPolicyTimelineLimitMessageSchema(t *testing.T) {
 		},
 	}
 
-	context := RequestContext{
+	context := core.RequestContext{
 		Params: map[string]any{
 			"allowlist": []string{"schema1", "schema2"},
 		},
 		Document: document,
 	}
 
-	canPerform, err := s.Test(policy, context, "distribute")
+	canPerform, err := s.Test(ctx, policy, context, "distribute")
 	assert.NoError(t, err)
 	assert.True(t, canPerform)
 }
@@ -149,16 +151,16 @@ func TestPolicyTimelineLimitMessageSchema(t *testing.T) {
 // 4. このメッセージに対してのアクションは特定のスキーマのみ (メッセージレベル想定)
 func TestPolicyMessageLimitAction(t *testing.T) {
 
-	policy := Policy{
+	policy := core.Policy{
 		Name:    "MessageLimitAction",
 		Version: "2024-05-01",
-		Statement: []Statement{
+		Statements: []core.Statement{
 			{
 				Action: []string{"association"},
 				Effect: "allow",
-				Condition: Expr{
+				Condition: core.Expr{
 					Operator: "Contains",
-					Args: []Expr{
+					Args: []core.Expr{
 						{
 							Operator: "LoadParam",
 							Constant: "allowlist",
@@ -179,14 +181,14 @@ func TestPolicyMessageLimitAction(t *testing.T) {
 		},
 	}
 
-	context := RequestContext{
+	context := core.RequestContext{
 		Params: map[string]any{
 			"allowlist": []string{"schema1", "schema2"},
 		},
 		Document: document,
 	}
 
-	canPerform, err := s.Test(policy, context, "association")
+	canPerform, err := s.Test(ctx, policy, context, "association")
 	assert.NoError(t, err)
 	assert.True(t, canPerform)
 }

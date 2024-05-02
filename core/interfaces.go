@@ -82,7 +82,7 @@ type MessageService interface {
 }
 
 type PolicyService interface {
-	Check(ctx context.Context, policy string, action string, requester, resource, target string) (bool, error)
+	Test(ctx context.Context, policy Policy, context RequestContext, action string) (bool, error)
 }
 
 type ProfileService interface {

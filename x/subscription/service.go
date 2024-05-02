@@ -24,8 +24,8 @@ func (s *service) CreateSubscription(ctx context.Context, mode core.CommitMode, 
 	ctx, span := tracer.Start(ctx, "Subscription.Service.CreateSubscription")
 	defer span.End()
 
-	var object core.SubscriptionDocument[any]
-	err := json.Unmarshal([]byte(document), &object)
+	var doc core.SubscriptionDocument[any]
+	err := json.Unmarshal([]byte(document), &doc)
 	if err != nil {
 		span.RecordError(err)
 		return core.Subscription{}, err
@@ -34,17 +34,24 @@ func (s *service) CreateSubscription(ctx context.Context, mode core.CommitMode, 
 	hash := util.GetHash([]byte(document))
 	hash10 := [10]byte{}
 	copy(hash10[:], hash[:10])
-	signedAt := object.SignedAt
+	signedAt := doc.SignedAt
 	id := cdid.New(hash10, signedAt).String()
 
+	var policyparams *string = nil
+	if doc.PolicyParams != "" {
+		policyparams = &doc.PolicyParams
+	}
+
 	subscription := core.Subscription{
-		ID:          id,
-		Author:      object.Signer,
-		Indexable:   object.Indexable,
-		DomainOwned: object.DomainOwned,
-		Schema:      object.Schema,
-		Document:    document,
-		Signature:   signature,
+		ID:           id,
+		Author:       doc.Signer,
+		Indexable:    doc.Indexable,
+		DomainOwned:  doc.DomainOwned,
+		Schema:       doc.Schema,
+		Policy:       doc.Policy,
+		PolicyParams: policyparams,
+		Document:     document,
+		Signature:    signature,
 	}
 
 	created, err := s.repo.CreateSubscription(ctx, subscription)

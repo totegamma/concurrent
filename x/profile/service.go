@@ -107,12 +107,19 @@ func (s *service) Upsert(ctx context.Context, mode core.CommitMode, document, si
 		doc.ID = cdid.New(hash10, doc.SignedAt).String()
 	}
 
+	var policyparams *string = nil
+	if doc.PolicyParams != "" {
+		policyparams = &doc.PolicyParams
+	}
+
 	profile := core.Profile{
-		ID:        doc.ID,
-		Author:    doc.Signer,
-		Schema:    doc.Schema,
-		Document:  document,
-		Signature: signature,
+		ID:           doc.ID,
+		Author:       doc.Signer,
+		Schema:       doc.Schema,
+		Document:     document,
+		Policy:       doc.Policy,
+		PolicyParams: policyparams,
+		Signature:    signature,
 	}
 
 	saved, err := s.repo.Upsert(ctx, profile)

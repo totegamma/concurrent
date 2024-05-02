@@ -29,6 +29,76 @@ type repository struct {
 	schema core.SchemaService
 }
 
+func (r *repository) normalizeDBID(id string) (string, error) {
+
+	normalized := id
+
+	if len(normalized) == 27 {
+		if normalized[0] != 'p' {
+			return "", errors.New("profile id must start with 'p'")
+		}
+		normalized = normalized[1:]
+	}
+
+	if len(normalized) != 26 {
+		return "", errors.New("profile id must be 26 characters long")
+	}
+
+	return normalized, nil
+}
+
+func (r *repository) preProcess(ctx context.Context, profile *core.Profile) error {
+
+	var err error
+	profile.ID, err = r.normalizeDBID(profile.ID)
+	if err != nil {
+		return err
+	}
+
+	if profile.SchemaID == 0 {
+		schemaID, err := r.schema.UrlToID(ctx, profile.Schema)
+		if err != nil {
+			return err
+		}
+		profile.SchemaID = schemaID
+	}
+
+	if profile.PolicyID == 0 && profile.Policy != "" {
+		policyID, err := r.schema.UrlToID(ctx, profile.Policy)
+		if err != nil {
+			return err
+		}
+		profile.PolicyID = policyID
+	}
+
+	return nil
+}
+
+func (r *repository) postProcess(ctx context.Context, profile *core.Profile) error {
+
+	if len(profile.ID) == 26 {
+		profile.ID = "p" + profile.ID
+	}
+
+	if profile.SchemaID != 0 && profile.Schema == "" {
+		schemaUrl, err := r.schema.IDToUrl(ctx, profile.SchemaID)
+		if err != nil {
+			return err
+		}
+		profile.Schema = schemaUrl
+	}
+
+	if profile.PolicyID != 0 && profile.Policy == "" {
+		policyUrl, err := r.schema.IDToUrl(ctx, profile.PolicyID)
+		if err != nil {
+			return err
+		}
+		profile.Policy = policyUrl
+	}
+
+	return nil
+}
+
 // NewRepository creates a new profile repository
 func NewRepository(db *gorm.DB, mc *memcache.Client, schema core.SchemaService) Repository {
 
@@ -70,26 +140,10 @@ func (r *repository) Upsert(ctx context.Context, profile core.Profile) (core.Pro
 	ctx, span := tracer.Start(ctx, "Profile.Repository.Upsert")
 	defer span.End()
 
-	if profile.ID == "" {
-		return profile, errors.New("profile id is required")
-	}
-
-	if len(profile.ID) == 27 {
-		if profile.ID[0] != 'p' {
-			return profile, errors.New("profile id must start with 'p'")
-		}
-		profile.ID = profile.ID[1:]
-	}
-
-	if len(profile.ID) != 26 {
-		return profile, errors.New("profile id must be 26 characters long")
-	}
-
-	schemaID, err := r.schema.UrlToID(ctx, profile.Schema)
+	err := r.preProcess(ctx, &profile)
 	if err != nil {
 		return profile, err
 	}
-	profile.SchemaID = schemaID
 
 	err = r.db.WithContext(ctx).Save(&profile).Error
 	if err != nil {
@@ -108,7 +162,10 @@ func (r *repository) Upsert(ctx context.Context, profile core.Profile) (core.Pro
 
 	r.mc.Set(&memcache.Item{Key: "profile_count", Value: []byte(strconv.FormatInt(count, 10))})
 
-	profile.ID = "p" + profile.ID
+	err = r.postProcess(ctx, &profile)
+	if err != nil {
+		return profile, err
+	}
 
 	return profile, nil
 }
@@ -127,13 +184,10 @@ func (r *repository) GetByAuthorAndSchema(ctx context.Context, owner string, sch
 	}
 
 	for i := range profiles {
-		profiles[i].ID = "p" + profiles[i].ID
-
-		schemaUrl, err := r.schema.IDToUrl(ctx, profiles[i].SchemaID)
+		err := r.postProcess(ctx, &profiles[i])
 		if err != nil {
 			return []core.Profile{}, err
 		}
-		profiles[i].Schema = schemaUrl
 	}
 
 	return profiles, nil
@@ -152,13 +206,10 @@ func (r *repository) GetByAuthor(ctx context.Context, owner string) ([]core.Prof
 	}
 
 	for i := range profiles {
-		profiles[i].ID = "p" + profiles[i].ID
-
-		schemaUrl, err := r.schema.IDToUrl(ctx, profiles[i].SchemaID)
+		err := r.postProcess(ctx, &profiles[i])
 		if err != nil {
 			return []core.Profile{}, err
 		}
-		profiles[i].Schema = schemaUrl
 	}
 
 	return profiles, nil
@@ -177,14 +228,10 @@ func (r *repository) GetBySchema(ctx context.Context, schema string) ([]core.Pro
 	}
 
 	for i := range profiles {
-		profiles[i].ID = "p" + profiles[i].ID
-
-		schemaUrl, err := r.schema.IDToUrl(ctx, profiles[i].SchemaID)
+		err := r.postProcess(ctx, &profiles[i])
 		if err != nil {
 			return []core.Profile{}, err
 		}
-		profiles[i].Schema = schemaUrl
-
 	}
 
 	return profiles, nil
@@ -194,15 +241,9 @@ func (r *repository) Delete(ctx context.Context, id string) (core.Profile, error
 	ctx, span := tracer.Start(ctx, "Profile.Repository.Delete")
 	defer span.End()
 
-	if len(id) == 27 {
-		if id[0] != 'p' {
-			return core.Profile{}, errors.New("profile id must start with 'p'")
-		}
-		id = id[1:]
-	}
-
-	if len(id) != 26 {
-		return core.Profile{}, errors.New("profile id must be 26 characters long")
+	id, err := r.normalizeDBID(id)
+	if err != nil {
+		return core.Profile{}, err
 	}
 
 	var profile core.Profile
@@ -210,13 +251,10 @@ func (r *repository) Delete(ctx context.Context, id string) (core.Profile, error
 		return core.Profile{}, err
 	}
 
-	schemaUrl, err := r.schema.IDToUrl(ctx, profile.SchemaID)
+	err = r.postProcess(ctx, &profile)
 	if err != nil {
 		return core.Profile{}, err
 	}
-	profile.Schema = schemaUrl
-
-	profile.ID = "p" + profile.ID
 
 	return profile, nil
 }
@@ -225,15 +263,9 @@ func (r *repository) Get(ctx context.Context, id string) (core.Profile, error) {
 	ctx, span := tracer.Start(ctx, "Profile.Repository.Get")
 	defer span.End()
 
-	if len(id) == 27 {
-		if id[0] != 'p' {
-			return core.Profile{}, errors.New("profile id must start with 'p'")
-		}
-		id = id[1:]
-	}
-
-	if len(id) != 26 {
-		return core.Profile{}, errors.New("profile id must be 26 characters long")
+	id, err := r.normalizeDBID(id)
+	if err != nil {
+		return core.Profile{}, err
 	}
 
 	var profile core.Profile
@@ -241,13 +273,10 @@ func (r *repository) Get(ctx context.Context, id string) (core.Profile, error) {
 		return core.Profile{}, err
 	}
 
-	schemaUrl, err := r.schema.IDToUrl(ctx, profile.SchemaID)
+	err = r.postProcess(ctx, &profile)
 	if err != nil {
 		return core.Profile{}, err
 	}
-	profile.Schema = schemaUrl
-
-	profile.ID = "p" + profile.ID
 
 	return profile, nil
 }

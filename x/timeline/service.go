@@ -428,14 +428,21 @@ func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, docu
 		}
 	}
 
+	var policyparams *string = nil
+	if doc.PolicyParams != "" {
+		policyparams = &doc.PolicyParams
+	}
+
 	saved, err := s.repository.UpsertTimeline(ctx, core.Timeline{
-		ID:          doc.ID,
-		Indexable:   doc.Indexable,
-		Author:      doc.Signer,
-		DomainOwned: doc.DomainOwned,
-		Schema:      doc.Schema,
-		Document:    document,
-		Signature:   signature,
+		ID:           doc.ID,
+		Indexable:    doc.Indexable,
+		Author:       doc.Signer,
+		DomainOwned:  doc.DomainOwned,
+		Schema:       doc.Schema,
+		Policy:       doc.Policy,
+		PolicyParams: policyparams,
+		Document:     document,
+		Signature:    signature,
 	})
 
 	if err != nil {

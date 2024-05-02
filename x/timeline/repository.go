@@ -74,6 +74,85 @@ func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client c
 	return &repository{db, rdb, mc, client, schema, config}
 }
 
+func (r *repository) normalizeLocalDBID(id string) (string, error) {
+
+	normalized := id
+
+	split := strings.Split(normalized, "@")
+	if len(split) == 2 {
+		normalized = split[0]
+
+		if split[1] != r.config.Concurrent.FQDN {
+			return "", fmt.Errorf("invalid timeline id: %s", id)
+		}
+	}
+
+	if len(normalized) == 27 {
+		if normalized[0] != 't' {
+			return "", fmt.Errorf("timeline id must start with 't'")
+		}
+		normalized = normalized[1:]
+	}
+
+	if len(normalized) != 26 {
+		return "", fmt.Errorf("timeline id must be 26 characters long")
+	}
+
+	return normalized, nil
+}
+
+func (r *repository) preprocess(ctx context.Context, timeline *core.Timeline) error {
+
+	var err error
+	timeline.ID, err = r.normalizeLocalDBID(timeline.ID)
+	if err != nil {
+		return err
+	}
+
+	if timeline.SchemaID == 0 {
+		schemaID, err := r.schema.UrlToID(ctx, timeline.Schema)
+		if err != nil {
+			return err
+		}
+		timeline.SchemaID = schemaID
+	}
+
+	if timeline.PolicyID == 0 && timeline.Policy != "" {
+		policyID, err := r.schema.UrlToID(ctx, timeline.Policy)
+		if err != nil {
+			return err
+		}
+		timeline.PolicyID = policyID
+	}
+
+	return nil
+}
+
+func (r *repository) postprocess(ctx context.Context, timeline *core.Timeline) error {
+
+	if len(timeline.ID) == 26 {
+		timeline.ID = "t" + timeline.ID
+	}
+
+	if timeline.SchemaID != 0 && timeline.Schema == "" {
+		schemaUrl, err := r.schema.IDToUrl(ctx, timeline.SchemaID)
+		if err != nil {
+			return err
+		}
+		timeline.Schema = schemaUrl
+	}
+
+	if timeline.PolicyID != 0 && timeline.Policy == "" {
+		policyUrl, err := r.schema.IDToUrl(ctx, timeline.PolicyID)
+		if err != nil {
+			return err
+		}
+		timeline.Policy = policyUrl
+	}
+
+	return nil
+}
+
 // Total returns the total number of messages
 func (r *repository) Count(ctx context.Context) (int64, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.Count")
@@ -488,27 +567,22 @@ func (r *repository) GetImmediateItems(ctx context.Context, timelineID string, s
 }
 
 // GetTimeline returns a timeline by ID
-func (r *repository) GetTimeline(ctx context.Context, key string) (core.Timeline, error) {
+func (r *repository) GetTimeline(ctx context.Context, id string) (core.Timeline, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.GetTimeline")
 	defer span.End()
 
-	if len(key) == 27 {
-		if key[0] != 't' {
-			return core.Timeline{}, fmt.Errorf("timeline typed-id must start with 't'")
-		}
-		key = key[1:]
+	id, err := r.normalizeLocalDBID(id)
+	if err != nil {
+		return core.Timeline{}, err
 	}
 
 	var timeline core.Timeline
-	err := r.db.WithContext(ctx).First(&timeline, "id = ?", key).Error
+	err = r.db.WithContext(ctx).First(&timeline, "id = ?", id).Error
 
-	schemaUrl, err := r.schema.IDToUrl(ctx, timeline.SchemaID)
+	err = r.postprocess(ctx, &timeline)
 	if err != nil {
-		return timeline, err
+		return core.Timeline{}, err
 	}
-	timeline.Schema = schemaUrl
-
-	timeline.ID = "t" + timeline.ID
 
 	return timeline, err
 }
@@ -518,24 +592,22 @@ func (r *repository) UpsertTimeline(ctx context.Context, timeline core.Timeline)
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.UpsertTimeline")
 	defer span.End()
 
-	if len(timeline.ID) == 27 {
-		if timeline.ID[0] != 't' {
-			return core.Timeline{}, fmt.Errorf("timeline typed-id must start with 't'")
-		}
-		timeline.ID = timeline.ID[1:]
-	}
-
-	schemaID, err := r.schema.UrlToID(ctx, timeline.Schema)
+	err := r.preprocess(ctx, &timeline)
 	if err != nil {
-		return timeline, err
+		return core.Timeline{}, err
 	}
-	timeline.SchemaID = schemaID
 
 	err = r.db.WithContext(ctx).Save(&timeline).Error
+	if err != nil {
+		return core.Timeline{}, err
+	}
+
+	err = r.postprocess(ctx, &timeline)
+	if err != nil {
+		return core.Timeline{}, err
+	}
 
 	r.mc.Increment("timeline_count", 1)
-
-	timeline.ID = "t" + timeline.ID
 
 	return timeline, err
 }
@@ -553,13 +625,11 @@ func (r *repository) ListTimelineBySchema(ctx context.Context, schema string) ([
 	var timelines []core.Timeline
 	err = r.db.WithContext(ctx).Where("schema_id = ? and indexable = true", id).Find(&timelines).Error
 
-	for i, timeline := range timelines {
-		timelines[i].ID = "t" + timeline.ID
-		schemaUrl, err := r.schema.IDToUrl(ctx, timeline.SchemaID)
+	for i := range timelines {
+		err := r.postprocess(ctx, &timelines[i])
 		if err != nil {
-			continue
+			return []core.Timeline{}, err
 		}
-		timelines[i].Schema = schemaUrl
 	}
 
 	return timelines, err
@@ -573,33 +643,34 @@ func (r *repository) ListTimelineByAuthor(ctx context.Context, author string) ([
 	var timelines []core.Timeline
 	err := r.db.WithContext(ctx).Where("Author = ?", author).Find(&timelines).Error
 
-	for i, timeline := range timelines {
-		timelines[i].ID = "t" + timeline.ID
-		schemaUrl, err := r.schema.IDToUrl(ctx, timeline.SchemaID)
+	for i := range timelines {
+		err := r.postprocess(ctx, &timelines[i])
 		if err != nil {
-			continue
+			return []core.Timeline{}, err
 		}
-		timelines[i].Schema = schemaUrl
 	}
 
 	return timelines, err
 }
 
 // Delete deletes a timeline
-func (r *repository) DeleteTimeline(ctx context.Context, timelineID string) error {
+func (r *repository) DeleteTimeline(ctx context.Context, id string) error {
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.DeleteTimeline")
 	defer span.End()
 
-	if len(timelineID) == 27 {
-		if timelineID[0] != 't' {
-			return fmt.Errorf("timeline typed-id must start with 't'")
-		}
-		timelineID = timelineID[1:]
+	id, err := r.normalizeLocalDBID(id)
+	if err != nil {
+		return err
+	}
+
+	err = r.db.WithContext(ctx).Delete(&core.Timeline{}, "id = ?", id).Error
+	if err != nil {
+		return err
 	}
 
 	r.mc.Decrement("timeline_count", 1)
 
-	return r.db.WithContext(ctx).Delete(&core.Timeline{}, "id = ?", timelineID).Error
+	return nil
 }
 
 // List Timeline Subscriptions

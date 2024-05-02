@@ -42,6 +42,76 @@ func NewRepository(db *gorm.DB, mc *memcache.Client, schema core.SchemaService) 
 	return &repository{db, mc, schema}
 }
 
+func (r *repository) normalizeDBID(id string) (string, error) {
+
+	normalized := id
+
+	if len(normalized) == 27 {
+		if normalized[0] != 'm' {
+			return "", errors.New("message id must start with 'm'")
+		}
+		normalized = normalized[1:]
+	}
+
+	if len(normalized) != 26 {
+		return "", errors.New("message id must be 26 characters long")
+	}
+
+	return normalized, nil
+}
+
+func (r *repository) preProcess(ctx context.Context, message *core.Message) error {
+
+	var err error
+	message.ID, err = r.normalizeDBID(message.ID)
+	if err != nil {
+		return err
+	}
+
+	if message.SchemaID == 0 {
+		schemaID, err := r.schema.UrlToID(ctx, message.Schema)
+		if err != nil {
+			return err
+		}
+		message.SchemaID = schemaID
+	}
+
+	if message.PolicyID == 0 && message.Policy != "" {
+		policyID, err := r.schema.UrlToID(ctx, message.Policy)
+		if err != nil {
+			return err
+		}
+		message.PolicyID = policyID
+	}
+
+	return nil
+}
+
+func (r *repository) postProcess(ctx context.Context, message *core.Message) error {
+
+	if len(message.ID) == 26 {
+		message.ID = "m" + message.ID
+	}
+
+	if message.SchemaID != 0 && message.Schema == "" {
+		schemaUrl, err := r.schema.IDToUrl(ctx, message.SchemaID)
+		if err != nil {
+			return err
+		}
+		message.Schema = schemaUrl
+	}
+
+	if message.PolicyID != 0 && message.Policy == "" {
+		policyUrl, err := r.schema.IDToUrl(ctx, message.PolicyID)
+		if err != nil {
+			return err
+		}
+		message.Policy = policyUrl
+	}
+
+	return nil
+}
+
 // Total returns the total number of messages
 func (r *repository) Count(ctx context.Context) (int64, error) {
 	ctx, span := tracer.Start(ctx, "Message.Repository.Count")
@@ -66,89 +136,67 @@ func (r *repository) Create(ctx context.Context, message core.Message) (core.Mes
 	ctx, span := tracer.Start(ctx, "Message.Repository.Create")
 	defer span.End()
 
-	if message.ID == "" {
-		return message, errors.New("message id is required")
-	}
-
-	if len(message.ID) == 27 {
-		if message.ID[0] != 'm' {
-			return message, errors.New("message id must start with 'm'")
-		}
-		message.ID = message.ID[1:]
-	}
-
-	if len(message.ID) != 26 {
-		return message, errors.New("message id must be 26 characters long")
-	}
-
-	schemaID, err := r.schema.UrlToID(ctx, message.Schema)
+	err := r.preProcess(ctx, &message)
 	if err != nil {
-		return message, err
+		return core.Message{}, err
 	}
-	message.SchemaID = schemaID
 
 	err = r.db.WithContext(ctx).Create(&message).Error
+	if err != nil {
+		return core.Message{}, err
+	}
+
+	err = r.postProcess(ctx, &message)
+	if err != nil {
+		return core.Message{}, err
+	}
 
 	r.mc.Increment("message_count", 1)
-
-	message.ID = "m" + message.ID
-
 	return message, err
 }
 
 // Get returns a message by ID
-func (r *repository) Get(ctx context.Context, key string) (core.Message, error) {
+func (r *repository) Get(ctx context.Context, id string) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "Message.Repository.Get")
 	defer span.End()
 
-	if len(key) == 27 {
-		if key[0] != 'm' {
-			return core.Message{}, errors.New("message typed-id must start with 'm'")
-		}
-		key = key[1:]
+	id, err := r.normalizeDBID(id)
+	if err != nil {
+		return core.Message{}, err
 	}
 
 	var message core.Message
-	err := r.db.WithContext(ctx).First(&message, "id = ?", key).Error
+	err = r.db.WithContext(ctx).First(&message, "id = ?", id).Error
 	if err != nil {
 		return message, err
 	}
 
-	schemaUrl, err := r.schema.IDToUrl(ctx, message.SchemaID)
+	err = r.postProcess(ctx, &message)
 	if err != nil {
-		return message, err
+		return core.Message{}, err
 	}
-	message.Schema = schemaUrl
-
-	message.ID = "m" + message.ID
 
 	return message, err
 }
 
 // GetWithOwnAssociations returns a message by ID with associations
-func (r *repository) GetWithOwnAssociations(ctx context.Context, key string, ccid string) (core.Message, error) {
+func (r *repository) GetWithOwnAssociations(ctx context.Context, id string, ccid string) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "Message.Repository.GetWithOwnAssociations")
 	defer span.End()
 
-	if len(key) == 27 {
-		if key[0] != 'm' {
-			return core.Message{}, errors.New("message typed-id must start with 'm'")
-		}
-		key = key[1:]
-	}
+	id, err := r.normalizeDBID(id)
 
 	var message core.Message
-	err := r.db.WithContext(ctx).First(&message, "id = ?", key).Error
+	err = r.db.WithContext(ctx).First(&message, "id = ?", id).Error
 	if err != nil {
 		return message, err
 	}
 
-	schemaUrl, err := r.schema.IDToUrl(ctx, message.SchemaID)
+	err = r.postProcess(ctx, &message)
 	if err != nil {
-		return message, err
+		return core.Message{}, err
 	}
-	message.Schema = schemaUrl
-	message.ID = "m" + message.ID
+
 	r.db.WithContext(ctx).Where("target = ? AND author = ?", message.ID, ccid).Find(&message.OwnAssociations)
 	for i := range message.OwnAssociations {
 		message.OwnAssociations[i].ID = "a" + message.OwnAssociations[i].ID
@@ -168,25 +216,25 @@ func (r *repository) Delete(ctx context.Context, id string) (core.Message, error
 	ctx, span := tracer.Start(ctx, "Message.Repository.Delete")
 	defer span.End()
 
-	if len(id) == 27 {
-		if id[0] != 'm' {
-			return core.Message{}, errors.New("message typed-id must start with 'm'")
-		}
-		id = id[1:]
-	}
+	id, err := r.normalizeDBID(id)
 
 	var deleted core.Message
-	if err := r.db.WithContext(ctx).First(&deleted, "id = ?", id).Error; err != nil {
-		return deleted, err
-	}
-	err := r.db.WithContext(ctx).Where("id = $1", id).Delete(&deleted).Error
+	err = r.db.WithContext(ctx).First(&deleted, "id = ?", id).Error
 	if err != nil {
 		return deleted, err
 	}
 
-	r.mc.Decrement("message_count", 1)
+	err = r.db.WithContext(ctx).Where("id = $1", id).Delete(&deleted).Error
+	if err != nil {
+		return deleted, err
+	}
 
-	deleted.ID = "m" + deleted.ID
+	err = r.postProcess(ctx, &deleted)
+	if err != nil {
+		return core.Message{}, err
+	}
+
+	r.mc.Decrement("message_count", 1)
 
 	return deleted, nil
 }

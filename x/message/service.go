@@ -120,15 +120,22 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 		return core.Message{}, err
 	}
 
+	var policyparams *string = nil
+	if doc.PolicyParams != "" {
+		policyparams = &doc.PolicyParams
+	}
+
 	if signer.Domain == s.config.Concurrent.FQDN { // signerが自ドメイン管轄の場合、リソースを作成
 
 		message := core.Message{
-			ID:        id,
-			Author:    doc.Signer,
-			Schema:    doc.Schema,
-			Document:  document,
-			Signature: signature,
-			Timelines: doc.Timelines,
+			ID:           id,
+			Author:       doc.Signer,
+			Schema:       doc.Schema,
+			Policy:       doc.Policy,
+			PolicyParams: policyparams,
+			Document:     document,
+			Signature:    signature,
+			Timelines:    doc.Timelines,
 		}
 
 		if !doc.SignedAt.IsZero() {

@@ -58,7 +58,7 @@ type Profile struct {
 	Document     string        `json:"document" gorm:"type:json"`
 	Signature    string        `json:"signature" gorm:"type:char(130)"`
 	Associations []Association `json:"associations,omitempty" gorm:"-"`
-	PolicyID     *uint         `json:"-"`
+	PolicyID     uint          `json:"-"`
 	Policy       string        `json:"policy,omitempty" gorm:"-"`
 	PolicyParams *string       `json:"policyParams,omitempty" gorm:"type:json"`
 	CDate        time.Time     `json:"cdate" gorm:"->;<-:create;autoCreateTime"`
@@ -110,7 +110,7 @@ type Message struct {
 	Author          string         `json:"author" gorm:"type:char(42)"`
 	SchemaID        uint           `json:"-"`
 	Schema          string         `json:"schema" gorm:"-"`
-	PolicyID        *uint          `json:"-"`
+	PolicyID        uint           `json:"-"`
 	Policy          string         `json:"policy,omitempty" gorm:"-"`
 	PolicyParams    *string        `json:"policyParams,omitempty" gorm:"type:json"`
 	Document        string         `json:"document" gorm:"type:json"`
@@ -130,7 +130,7 @@ type Timeline struct {
 	DomainOwned  bool      `json:"domainOwned" gorm:"type:boolean;default:false"`
 	SchemaID     uint      `json:"-"`
 	Schema       string    `json:"schema" gorm:"-"`
-	PolicyID     *uint     `json:"-"`
+	PolicyID     uint      `json:"-"`
 	Policy       string    `json:"policy,omitempty" gorm:"-"`
 	PolicyParams *string   `json:"policyParams,omitempty" gorm:"type:json"`
 	Document     string    `json:"document" gorm:"type:json"`
@@ -165,7 +165,7 @@ type Subscription struct {
 	DomainOwned  bool               `json:"domainOwned" gorm:"type:boolean;default:false"`
 	SchemaID     uint               `json:"-"`
 	Schema       string             `json:"schema" gorm:"-"`
-	PolicyID     *uint              `json:"-"`
+	PolicyID     uint               `json:"-"`
 	Policy       string             `json:"policy,omitempty" gorm:"-"`
 	PolicyParams *string            `json:"policyParams,omitempty" gorm:"type:json"`
 	Document     string             `json:"document" gorm:"type:json"`

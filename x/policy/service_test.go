@@ -5,7 +5,19 @@ import (
 	"testing"
 
 	"github.com/totegamma/concurrent/core"
+	"github.com/totegamma/concurrent/util"
 )
+
+var s service
+
+func TestMain(m *testing.M) {
+
+	s = service{
+		config: util.Config{},
+	}
+
+	m.Run()
+}
 
 // 1. timelineを作れるのはローカルユーザーか、特定のタグを持つユーザー (Globalレベル想定)
 func TestPolicyTimelineCreatorIsLocalUserOrHasTag(t *testing.T) {
@@ -18,16 +30,16 @@ func TestPolicyTimelineCreatorIsLocalUserOrHasTag(t *testing.T) {
 				Action: []string{"timeline"},
 				Effect: "allow", // allow: これにマッチしなければ拒否
 				Condition: Expr{
-					Operator: "OR",
+					Operator: "Or",
 					Args: []Expr{
 						{
-							Operator: "IsLocalUser",
+							Operator: "IsRequesterLocalUser",
 						},
 						{
-							Operator: "HasTag",
+							Operator: "RequesterHasTag",
 							Args: []Expr{
 								{
-									Operator: "CONST",
+									Operator: "Const",
 									Constant: "timeline_creator",
 								},
 							},
@@ -40,7 +52,8 @@ func TestPolicyTimelineCreatorIsLocalUserOrHasTag(t *testing.T) {
 
 	context := RequestContext{}
 
-	canPerform := Test(policy, context, "timeline")
+	canPerform, err := s.Test(policy, context, "timeline")
+	assert.NoError(t, err)
 	assert.True(t, canPerform)
 }
 
@@ -55,15 +68,14 @@ func TestPolicyTimelineLimitAccess(t *testing.T) {
 				Action: []string{"distribute", "GET:/message/*"},
 				Effect: "allow",
 				Condition: Expr{
-					Operator: "CONTAINS",
+					Operator: "Contains",
 					Args: []Expr{
 						{
-							Operator: "LOADSTRING",
-							Constant: "requester.ID",
+							Operator: "LoadParam",
+							Constant: "allowlist",
 						},
 						{
-							Operator: "LOADSTRINGARR",
-							Constant: "parameter.allowlist",
+							Operator: "RequesterID",
 						},
 					},
 				},
@@ -80,10 +92,12 @@ func TestPolicyTimelineLimitAccess(t *testing.T) {
 		},
 	}
 
-	canDistribute := Test(policy, context, "distribute")
+	canDistribute, err := s.Test(policy, context, "distribute")
+	assert.NoError(t, err)
 	assert.True(t, canDistribute)
 
-	canRead := Test(policy, context, "GET:/message/*")
+	canRead, err := s.Test(policy, context, "GET:/message/msneb1k006zqtpqsg067jyebxtm")
+	assert.NoError(t, err)
 	assert.True(t, canRead)
 }
 
@@ -98,15 +112,15 @@ func TestPolicyTimelineLimitMessageSchema(t *testing.T) {
 				Action: []string{"distribute"},
 				Effect: "allow",
 				Condition: Expr{
-					Operator: "CONTAINS",
+					Operator: "Contains",
 					Args: []Expr{
 						{
-							Operator: "LOADSTRING",
-							Constant: "resource.schema",
+							Operator: "LoadParam",
+							Constant: "allowlist",
 						},
 						{
-							Operator: "LOADSTRINGARR",
-							Constant: "params.allowlist",
+							Operator: "LoadDocument",
+							Constant: "schema",
 						},
 					},
 				},
@@ -114,13 +128,21 @@ func TestPolicyTimelineLimitMessageSchema(t *testing.T) {
 		},
 	}
 
+	document := core.CreateMessage[any]{
+		DocumentBase: core.DocumentBase[any]{
+			Schema: "schema1",
+		},
+	}
+
 	context := RequestContext{
 		Params: map[string]any{
 			"allowlist": []string{"schema1", "schema2"},
 		},
+		Document: document,
 	}
 
-	canPerform := Test(policy, context, "distribute")
+	canPerform, err := s.Test(policy, context, "distribute")
+	assert.NoError(t, err)
 	assert.True(t, canPerform)
 }
 
@@ -135,15 +157,15 @@ func TestPolicyMessageLimitAction(t *testing.T) {
 				Action: []string{"association"},
 				Effect: "allow",
 				Condition: Expr{
-					Operator: "CONTAINS",
+					Operator: "Contains",
 					Args: []Expr{
 						{
-							Operator: "LOADSTRING",
-							Constant: "resource.schema",
+							Operator: "LoadParam",
+							Constant: "allowlist",
 						},
 						{
-							Operator: "LOADSTRINGARR",
-							Constant: "params.allowlist",
+							Operator: "LoadDocument",
+							Constant: "schema",
 						},
 					},
 				},
@@ -151,12 +173,20 @@ func TestPolicyMessageLimitAction(t *testing.T) {
 		},
 	}
 
+	document := core.CreateAssociation[any]{
+		DocumentBase: core.DocumentBase[any]{
+			Schema: "schema1",
+		},
+	}
+
 	context := RequestContext{
 		Params: map[string]any{
 			"allowlist": []string{"schema1", "schema2"},
 		},
+		Document: document,
 	}
 
-	canPerform := Test(policy, context, "GET:/message/123")
+	canPerform, err := s.Test(policy, context, "association")
+	assert.NoError(t, err)
 	assert.True(t, canPerform)
 }

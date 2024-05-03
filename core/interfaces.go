@@ -126,9 +126,9 @@ type SubscriptionService interface {
 	CreateSubscription(ctx context.Context, mode CommitMode, document, signature string) (Subscription, error)
 	Subscribe(ctx context.Context, mode CommitMode, document string, signature string) (SubscriptionItem, error)
 	Unsubscribe(ctx context.Context, mode CommitMode, document string) (SubscriptionItem, error)
+	DeleteSubscription(ctx context.Context, mode CommitMode, document string) (Subscription, error)
 
 	GetSubscription(ctx context.Context, id string) (Subscription, error)
-	DeleteSubscription(ctx context.Context, id string) error
 	GetOwnSubscriptions(ctx context.Context, owner string) ([]Subscription, error)
 }
 

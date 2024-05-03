@@ -122,6 +122,8 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 			result, err = s.profile.Delete(ctx, mode, document)
 		case 't': // timeline
 			result, err = s.timeline.DeleteTimeline(ctx, mode, document)
+		case 's': // subscription
+			result, err = s.subscription.DeleteSubscription(ctx, mode, document)
 		default:
 			result, err = nil, fmt.Errorf("unknown document type: %s", string(typ))
 		}

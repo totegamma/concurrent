@@ -174,7 +174,22 @@ func (r *repository) DeleteSubscription(ctx context.Context, id string) error {
 	ctx, span := tracer.Start(ctx, "Subscription.Repository.DeleteSubscription")
 	defer span.End()
 
-	return r.db.WithContext(ctx).Delete(&core.Subscription{}, "id = ?", id).Error
+	id, err := r.normalizeDBID(id)
+	if err != nil {
+		return err
+	}
+
+	err = r.db.WithContext(ctx).Where("subscription = ?", id).Delete(&core.SubscriptionItem{}).Error
+	if err != nil {
+		return err
+	}
+
+	err = r.db.WithContext(ctx).Delete(&core.Subscription{}, "id = ?", id).Error
+	if err != nil {
+		return err
+	}
+
+	return nil
 }
 
 // GetOwnSubscriptions returns a list of collections by owner

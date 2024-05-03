@@ -91,11 +91,30 @@ func (s *service) GetSubscription(ctx context.Context, id string) (core.Subscrip
 }
 
 // DeleteSubscription deletes a collection by ID
-func (s *service) DeleteSubscription(ctx context.Context, id string) error {
+func (s *service) DeleteSubscription(ctx context.Context, mode core.CommitMode, document string) (core.Subscription, error) {
 	ctx, span := tracer.Start(ctx, "Subscription.Service.DeleteSubscription")
 	defer span.End()
 
-	return s.repo.DeleteSubscription(ctx, id)
+	var doc core.DeleteDocument
+	err := json.Unmarshal([]byte(document), &doc)
+	if err != nil {
+		span.RecordError(err)
+		return core.Subscription{}, err
+	}
+
+	deleteTarget, err := s.repo.GetSubscription(ctx, doc.Target)
+	if err != nil {
+		span.RecordError(err)
+		return core.Subscription{}, err
+	}
+
+	if deleteTarget.Author != doc.Signer {
+		return core.Subscription{}, errors.New("you are not authorized to perform this action")
+	}
+
+	err = s.repo.DeleteSubscription(ctx, doc.Target)
+
+	return deleteTarget, err
 }
 
 // GetOwnSubscriptions returns all subscriptions owned by the owner

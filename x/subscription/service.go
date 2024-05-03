@@ -54,13 +54,32 @@ func (s *service) CreateSubscription(ctx context.Context, mode core.CommitMode, 
 		Signature:    signature,
 	}
 
-	created, err := s.repo.CreateSubscription(ctx, subscription)
-	if err != nil {
-		span.RecordError(err)
-		return created, err
-	}
+	if doc.ID != "" { // update
+		existance, err := s.repo.GetSubscription(ctx, doc.ID)
+		if err != nil {
+			span.RecordError(err)
+			return core.Subscription{}, err
+		}
 
-	return created, nil
+		subscription.ID = doc.ID
+		subscription.DomainOwned = existance.DomainOwned // make sure the domain owned is immutable
+
+		updated, err := s.repo.UpdateSubscription(ctx, subscription)
+		if err != nil {
+			span.RecordError(err)
+			return updated, err
+		}
+
+		return updated, nil
+	} else { // create
+		created, err := s.repo.CreateSubscription(ctx, subscription)
+		if err != nil {
+			span.RecordError(err)
+			return created, err
+		}
+
+		return created, nil
+	}
 }
 
 // GetSubscription returns a Subscription by ID

@@ -565,6 +565,21 @@ func (mr *MockEntityServiceMockRecorder) Get(ctx, ccid interface{}) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockEntityService)(nil).Get), ctx, ccid)
 }
 
+// GetByAlias mocks base method.
+func (m *MockEntityService) GetByAlias(ctx context.Context, alias string) (core.Entity, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetByAlias", ctx, alias)
+	ret0, _ := ret[0].(core.Entity)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetByAlias indicates an expected call of GetByAlias.
+func (mr *MockEntityServiceMockRecorder) GetByAlias(ctx, alias interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByAlias", reflect.TypeOf((*MockEntityService)(nil).GetByAlias), ctx, alias)
+}
+
 // GetWithHint mocks base method.
 func (m *MockEntityService) GetWithHint(ctx context.Context, ccid, hint string) (core.Entity, error) {
 	m.ctrl.T.Helper()
@@ -875,6 +890,44 @@ func (m *MockMessageService) GetWithOwnAssociations(ctx context.Context, id, req
 func (mr *MockMessageServiceMockRecorder) GetWithOwnAssociations(ctx, id, requester interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetWithOwnAssociations", reflect.TypeOf((*MockMessageService)(nil).GetWithOwnAssociations), ctx, id, requester)
+}
+
+// MockPolicyService is a mock of PolicyService interface.
+type MockPolicyService struct {
+	ctrl     *gomock.Controller
+	recorder *MockPolicyServiceMockRecorder
+}
+
+// MockPolicyServiceMockRecorder is the mock recorder for MockPolicyService.
+type MockPolicyServiceMockRecorder struct {
+	mock *MockPolicyService
+}
+
+// NewMockPolicyService creates a new mock instance.
+func NewMockPolicyService(ctrl *gomock.Controller) *MockPolicyService {
+	mock := &MockPolicyService{ctrl: ctrl}
+	mock.recorder = &MockPolicyServiceMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockPolicyService) EXPECT() *MockPolicyServiceMockRecorder {
+	return m.recorder
+}
+
+// Test mocks base method.
+func (m *MockPolicyService) Test(ctx context.Context, policy core.Policy, context core.RequestContext, action string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Test", ctx, policy, context, action)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Test indicates an expected call of Test.
+func (mr *MockPolicyServiceMockRecorder) Test(ctx, policy, context, action interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Test", reflect.TypeOf((*MockPolicyService)(nil).Test), ctx, policy, context, action)
 }
 
 // MockProfileService is a mock of ProfileService interface.

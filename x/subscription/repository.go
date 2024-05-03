@@ -11,6 +11,7 @@ import (
 // Repository is the interface for collection repository
 type Repository interface {
 	CreateSubscription(ctx context.Context, subscription core.Subscription) (core.Subscription, error)
+	UpdateSubscription(ctx context.Context, subscription core.Subscription) (core.Subscription, error)
 	GetSubscription(ctx context.Context, id string) (core.Subscription, error)
 	DeleteSubscription(ctx context.Context, id string) error
 	GetOwnSubscriptions(ctx context.Context, owner string) ([]core.Subscription, error)
@@ -110,6 +111,28 @@ func (r *repository) CreateSubscription(ctx context.Context, subscription core.S
 	}
 
 	err = r.db.WithContext(ctx).Create(&subscription).Error
+	if err != nil {
+		return subscription, err
+	}
+
+	err = r.postProcess(ctx, &subscription)
+	if err != nil {
+		return subscription, err
+	}
+
+	return subscription, nil
+}
+
+func (r *repository) UpdateSubscription(ctx context.Context, subscription core.Subscription) (core.Subscription, error) {
+	ctx, span := tracer.Start(ctx, "Subscription.Repository.UpdateSubscription")
+	defer span.End()
+
+	err := r.preProcess(ctx, &subscription)
+	if err != nil {
+		return subscription, err
+	}
+
+	err = r.db.WithContext(ctx).Updates(&subscription).Error
 	if err != nil {
 		return subscription, err
 	}

@@ -77,6 +77,7 @@ type Entity struct {
 	AffiliationSignature string    `json:"affiliationSignature" gorm:"type:char(130)"`
 	TombstoneDocument    *string   `json:"tombstoneDocument" gorm:"type:json;default:null"`
 	TombstoneSignature   *string   `json:"tombstoneSignature" gorm:"type:char(130);default:null"`
+	Alias                *string   `json:"alias,omitempty" gorm:"type:text"`
 	CDate                time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 	MDate                time.Time `json:"mdate" gorm:"autoUpdateTime"`
 }

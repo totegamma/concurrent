@@ -13,6 +13,8 @@ import (
 // Repository is the interface for host repository
 type Repository interface {
 	Get(ctx context.Context, key string) (core.Entity, error)
+	GetByAlias(ctx context.Context, alias string) (core.Entity, error)
+	SetAlias(ctx context.Context, id, alias string) error
 	GetMeta(ctx context.Context, key string) (core.EntityMeta, error)
 	Create(ctx context.Context, entity core.Entity) (core.Entity, error)
 	CreateMeta(ctx context.Context, meta core.EntityMeta) (core.EntityMeta, error)
@@ -88,6 +90,22 @@ func (r *repository) Get(ctx context.Context, key string) (core.Entity, error) {
 	var entity core.Entity
 	err := r.db.WithContext(ctx).First(&entity, "id = ?", key).Error
 	return entity, err
+}
+
+func (r *repository) GetByAlias(ctx context.Context, alias string) (core.Entity, error) {
+	ctx, span := tracer.Start(ctx, "Entity.Repository.GetByAlias")
+	defer span.End()
+
+	var entity core.Entity
+	err := r.db.WithContext(ctx).First(&entity, "alias = ?", alias).Error
+	return entity, err
+}
+
+func (r *repository) SetAlias(ctx context.Context, id, alias string) error {
+	ctx, span := tracer.Start(ctx, "Entity.Repository.SetAlias")
+	defer span.End()
+
+	return r.db.WithContext(ctx).Model(&core.Entity{}).Where("id = ?", id).Update("alias", alias).Error
 }
 
 func (r *repository) GetMeta(ctx context.Context, key string) (core.EntityMeta, error) {

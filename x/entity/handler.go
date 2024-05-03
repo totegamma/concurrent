@@ -4,6 +4,7 @@ package entity
 import (
 	"errors"
 	"net/http"
+	"strings"
 
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/core"
@@ -39,6 +40,16 @@ func (h handler) Get(c echo.Context) error {
 	hint := c.QueryParam("hint")
 	var entity core.Entity
 	var err error
+
+	if strings.Contains(id, ".") {
+		entity, err = h.service.GetByAlias(ctx, id)
+		if err != nil {
+			span.RecordError(err)
+			return err
+		}
+		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": entity})
+	}
+
 	if hint == "" {
 		entity, err = h.service.Get(ctx, id)
 	} else {

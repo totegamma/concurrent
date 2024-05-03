@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/pkg/errors"
+	"net"
 	"strconv"
 	"strings"
 	"time"
@@ -287,6 +288,56 @@ func (s *service) GetWithHint(ctx context.Context, ccid, hint string) (core.Enti
 	}
 
 	entity, err = s.PullEntityFromRemote(ctx, ccid, hint)
+	if err != nil {
+		span.RecordError(err)
+		return core.Entity{}, err
+	}
+
+	return entity, nil
+}
+
+func (s *service) GetByAlias(ctx context.Context, alias string) (core.Entity, error) {
+	ctx, span := tracer.Start(ctx, "Entity.Service.GetByAlias")
+	defer span.End()
+
+	entity, err := s.repository.GetByAlias(ctx, alias)
+	if err == nil {
+		return entity, nil
+	}
+
+	txtrecords, _ := net.LookupTXT("_concrnt." + alias)
+
+	var kv = make(map[string]string)
+
+	for _, txt := range txtrecords {
+		split := strings.Split(txt, "=")
+		if len(split) == 2 {
+			kv[split[0]] = split[1]
+		}
+	}
+
+	ccid, ok := kv["ccid"]
+	if !ok {
+		return core.Entity{}, errors.New("ccid not found")
+	}
+
+	entity, err = s.Get(ctx, ccid)
+	if err == nil {
+		err = s.repository.SetAlias(ctx, ccid, alias)
+		if err != nil {
+			span.RecordError(err)
+			return core.Entity{}, err
+		}
+		return entity, nil
+	}
+
+	entity, err = s.PullEntityFromRemote(ctx, ccid, kv["hint"])
+	if err != nil {
+		span.RecordError(err)
+		return core.Entity{}, err
+	}
+
+	err = s.repository.SetAlias(ctx, ccid, alias)
 	if err != nil {
 		span.RecordError(err)
 		return core.Entity{}, err

@@ -55,6 +55,7 @@ type EntityService interface {
 
 	Get(ctx context.Context, ccid string) (Entity, error)
 	GetWithHint(ctx context.Context, ccid, hint string) (Entity, error)
+	GetByAlias(ctx context.Context, alias string) (Entity, error)
 	List(ctx context.Context) ([]Entity, error)
 	UpdateScore(ctx context.Context, id string, score int) error
 	UpdateTag(ctx context.Context, id, tag string) error

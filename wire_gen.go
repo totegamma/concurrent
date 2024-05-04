@@ -99,7 +99,8 @@ func SetupTimelineService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, c
 	domainService := SetupDomainService(db, client2, config)
 	semanticIDService := SetupSemanticidService(db)
 	subscriptionService := SetupSubscriptionService(db)
-	timelineService := timeline.NewService(repository, entityService, domainService, semanticIDService, subscriptionService, config)
+	policyService := SetupPolicyService(rdb, config)
+	timelineService := timeline.NewService(repository, entityService, domainService, semanticIDService, subscriptionService, policyService, config)
 	return timelineService
 }
 
@@ -193,7 +194,7 @@ var subscriptionServiceProvider = wire.NewSet(subscription.NewService, subscript
 // Lv2
 var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository, SetupEntityService)
 
-var timelineServiceProvider = wire.NewSet(timeline.NewService, timeline.NewRepository, SetupEntityService, SetupDomainService, SetupSchemaService, SetupSemanticidService, SetupSubscriptionService)
+var timelineServiceProvider = wire.NewSet(timeline.NewService, timeline.NewRepository, SetupEntityService, SetupDomainService, SetupSchemaService, SetupSemanticidService, SetupSubscriptionService, SetupPolicyService)
 
 // Lv3
 var profileServiceProvider = wire.NewSet(profile.NewService, profile.NewRepository, SetupKeyService, SetupSchemaService, SetupSemanticidService)

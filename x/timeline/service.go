@@ -11,6 +11,7 @@ import (
 
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 
 	"github.com/totegamma/concurrent/cdid"
 	"github.com/totegamma/concurrent/core"
@@ -23,6 +24,7 @@ type service struct {
 	domain       core.DomainService
 	semanticid   core.SemanticIDService
 	subscription core.SubscriptionService
+	policy       core.PolicyService
 	config       util.Config
 }
 
@@ -33,6 +35,7 @@ func NewService(
 	domain core.DomainService,
 	semanticid core.SemanticIDService,
 	subscription core.SubscriptionService,
+	policy core.PolicyService,
 	config util.Config,
 ) core.TimelineService {
 	return &service{
@@ -41,6 +44,7 @@ func NewService(
 		domain,
 		semanticid,
 		subscription,
+		policy,
 		config,
 	}
 }
@@ -310,12 +314,10 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 
 	item.TimelineID = timelineID
 
-	/*
-		author := item.Owner
-		if item.Author != nil {
-			author = *item.Author
-		}
-	*/
+	author := item.Owner
+	if item.Author != nil {
+		author = *item.Author
+	}
 
 	if timelineHost != s.config.Concurrent.FQDN {
 		span.RecordError(fmt.Errorf("Remote timeline is not supported"))
@@ -323,8 +325,88 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 	}
 
 	// check if the user has write access to the timeline
-	/* XXX: implment me
-	if !s.HasWriteAccess(ctx, timelineID, author) {
+
+	tl, err := s.GetTimeline(ctx, timeline)
+	if err != nil {
+		return core.TimelineItem{}, err
+	}
+
+	var writable bool
+
+	if tl.DomainOwned {
+		writable = true
+		if tl.Policy != "" {
+			var params map[string]any
+			if tl.PolicyParams != nil {
+				err := json.Unmarshal([]byte(*tl.PolicyParams), &params)
+				if err != nil {
+					span.SetStatus(codes.Error, err.Error())
+					span.RecordError(err)
+					goto next
+				}
+
+				requesterEntity, err := s.entity.Get(ctx, author)
+				if err != nil {
+					span.RecordError(err)
+					goto next
+				}
+
+				requestContext := core.RequestContext{
+					Self:      tl,
+					Params:    params,
+					Requester: requesterEntity,
+				}
+
+				ok, err := s.policy.TestWithPolicyURL(ctx, tl.Policy, requestContext, "distribute")
+				if err != nil {
+					span.RecordError(err)
+					goto next
+				}
+
+				if !ok {
+					writable = false
+				}
+			}
+		}
+	} else {
+		writable = false
+		if tl.Policy != "" {
+			var params map[string]any
+			if tl.PolicyParams != nil {
+				err := json.Unmarshal([]byte(*tl.PolicyParams), &params)
+				if err != nil {
+					span.SetStatus(codes.Error, err.Error())
+					span.RecordError(err)
+					goto next
+				}
+
+				requesterEntity, err := s.entity.Get(ctx, author)
+				if err != nil {
+					span.RecordError(err)
+					goto next
+				}
+
+				requestContext := core.RequestContext{
+					Self:      tl,
+					Params:    params,
+					Requester: requesterEntity,
+				}
+
+				ok, err := s.policy.TestWithPolicyURL(ctx, tl.Policy, requestContext, "distribute")
+				if err != nil {
+					span.RecordError(err)
+					goto next
+				}
+
+				if ok {
+					writable = true
+				}
+			}
+		}
+	}
+next:
+
+	if !writable {
 		slog.InfoContext(
 			ctx, "failed to post to timeline",
 			slog.String("type", "audit"),
@@ -334,7 +416,6 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 		)
 		return core.TimelineItem{}, fmt.Errorf("You don't have write access to %v", timelineID)
 	}
-	*/
 
 	slog.DebugContext(
 		ctx, fmt.Sprintf("post to local timeline: %v to %v", item.ResourceID, timelineID),

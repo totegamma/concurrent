@@ -127,7 +127,6 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 				continue
 			}
 		}
-		fmt.Printf("params: %v\n", params)
 
 		requestContext := core.RequestContext{
 			Self:      timeline,

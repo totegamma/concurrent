@@ -217,18 +217,31 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 
 	}
 
-	ispublic := true
+	ispublic := false
 	destinations := make(map[string][]string)
-	for _, timeline := range doc.Timelines {
+	for _, timelineID := range doc.Timelines {
 
-		/*
-			ok := s.timeline.HasReadAccess(ctx, timeline, "")
-			if !ok {
-				ispublic = false
+		timeline, err := s.timeline.GetTimelineAutoDomain(ctx, timelineID)
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			continue
+		}
+
+		if timeline.Policy == "" {
+			ispublic = true
+		} else if ispublic == false {
+			ok, err := s.policy.HasNoRulesWithPolicyURL(ctx, timeline.Policy, "GET:/message/")
+			if err != nil {
+				span.SetStatus(codes.Error, err.Error())
+				continue
 			}
-		*/
 
-		normalized, err := s.timeline.NormalizeTimelineID(ctx, timeline)
+			if ok {
+				ispublic = true
+			}
+		}
+
+		normalized, err := s.timeline.NormalizeTimelineID(ctx, timelineID)
 		if err != nil {
 			span.RecordError(errors.Wrap(err, "failed to normalize timeline id"))
 			continue
@@ -243,7 +256,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 		if _, ok := destinations[domain]; !ok {
 			destinations[domain] = []string{}
 		}
-		destinations[domain] = append(destinations[domain], timeline)
+		destinations[domain] = append(destinations[domain], timelineID)
 	}
 
 	sendDocument := ""
@@ -272,8 +285,8 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 					event := core.Event{
 						Timeline:  timeline,
 						Item:      posted,
-						Document:  document,
-						Signature: signature,
+						Document:  sendDocument,
+						Signature: sendSignature,
 					}
 
 					err = s.timeline.PublishEvent(ctx, event)

@@ -240,7 +240,7 @@ func main() {
 	subscriptionService := concurrent.SetupSubscriptionService(db)
 	subscriptionHandler := subscription.NewHandler(subscriptionService)
 
-	apiV1 := e.Group("", auth.ReceiveGatewayAuthPropagation)
+	apiV1 := e.Group("", auth.SetRequestPath, auth.ReceiveGatewayAuthPropagation)
 	// store
 	apiV1.POST("/commit", storeHandler.Commit)
 

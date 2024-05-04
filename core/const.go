@@ -22,6 +22,10 @@ const (
 	CaptchaVerifiedHeader     = "cc-captcha-verified"
 )
 
+const (
+	RequestPathCtxKey = "cc-request-path"
+)
+
 type CommitMode int
 
 const (

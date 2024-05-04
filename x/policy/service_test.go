@@ -90,7 +90,7 @@ func TestPolicyTimelineLimitAccess(t *testing.T) {
 			ID: "user1",
 		},
 		Params: map[string]any{
-			"allowlist": []string{"user1", "user2"},
+			"allowlist": []any{"user1", "user2"},
 		},
 	}
 
@@ -138,7 +138,7 @@ func TestPolicyTimelineLimitMessageSchema(t *testing.T) {
 
 	context := core.RequestContext{
 		Params: map[string]any{
-			"allowlist": []string{"schema1", "schema2"},
+			"allowlist": []any{"schema1", "schema2"},
 		},
 		Document: document,
 	}
@@ -183,7 +183,7 @@ func TestPolicyMessageLimitAction(t *testing.T) {
 
 	context := core.RequestContext{
 		Params: map[string]any{
-			"allowlist": []string{"schema1", "schema2"},
+			"allowlist": []any{"schema1", "schema2"},
 		},
 		Document: document,
 	}

@@ -22,7 +22,7 @@ func NewService(repository Repository) Service {
 
 // CheckJTI checks if jti is valid
 func (s *service) CheckJTI(ctx context.Context, jti string) (bool, error) {
-	ctx, span := tracer.Start(ctx, "ServiceCheckJTI")
+	ctx, span := tracer.Start(ctx, "Jwt.Service.CheckJTI")
 	defer span.End()
 
 	// check if jti exists
@@ -31,7 +31,7 @@ func (s *service) CheckJTI(ctx context.Context, jti string) (bool, error) {
 
 // InvalidateJTI invalidates jti
 func (s *service) InvalidateJTI(ctx context.Context, jti string, exp time.Time) error {
-	ctx, span := tracer.Start(ctx, "ServiceInvalidateJTI")
+	ctx, span := tracer.Start(ctx, "Jwt.Service.InvalidateJTI")
 	defer span.End()
 
 	// invalidate jti

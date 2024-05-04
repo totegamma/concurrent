@@ -8,16 +8,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/ethereum/go-ethereum/crypto"
-	"github.com/totegamma/concurrent/x/util"
-	"golang.org/x/crypto/sha3"
+	"github.com/totegamma/concurrent/util"
 )
 
 // Create creates server signed JWT
 func Create(claims Claims, privatekey string) (string, error) {
 	header := Header{
 		Type:      "JWT",
-		Algorithm: "ECRECOVER",
+		Algorithm: "CONCRNT",
 	}
 	headerStr, err := json.Marshal(header)
 	if err != nil {
@@ -32,19 +30,8 @@ func Create(claims Claims, privatekey string) (string, error) {
 	headerB64 := base64.RawURLEncoding.EncodeToString([]byte(headerStr))
 	payloadB64 := base64.RawURLEncoding.EncodeToString([]byte(payloadStr))
 	target := headerB64 + "." + payloadB64
-	hash := sha3.NewLegacyKeccak256()
-	hash.Write([]byte(target))
-	hashedMessage := hash.Sum(nil)
 
-	serverkey, err := crypto.HexToECDSA(privatekey)
-	if err != nil {
-		return "", err
-	}
-	signatureBytes, err := crypto.Sign([]byte(hashedMessage), serverkey)
-	if err != nil {
-		return "", err
-	}
-
+	signatureBytes, err := util.SignBytes([]byte(target), privatekey)
 	signatureB64 := base64.RawURLEncoding.EncodeToString(signatureBytes)
 
 	return target + "." + signatureB64, nil
@@ -72,7 +59,7 @@ func Validate(jwt string) (Claims, error) {
 	}
 
 	// check jwt type
-	if header.Type != "JWT" || header.Algorithm != "ECRECOVER" {
+	if header.Type != "JWT" || header.Algorithm != "CONCRNT" {
 		return claims, fmt.Errorf("Unsupported JWT type")
 	}
 
@@ -103,7 +90,7 @@ func Validate(jwt string) (Claims, error) {
 		return claims, err
 	}
 
-	err = util.VerifySignatureFromBytes([]byte(split[0]+"."+split[1]), signatureBytes, claims.Issuer)
+	err = util.VerifySignature([]byte(split[0]+"."+split[1]), signatureBytes, claims.Issuer)
 	if err != nil {
 		return claims, err
 	}

@@ -35,30 +35,30 @@ func (m *MockRepository) EXPECT() *MockRepositoryMockRecorder {
 }
 
 // Get mocks base method.
-func (m *MockRepository) Get(ctx context.Context, key string) (string, error) {
+func (m *MockRepository) Get(ctx context.Context, owner, key string) (string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Get", ctx, key)
+	ret := m.ctrl.Call(m, "Get", ctx, owner, key)
 	ret0, _ := ret[0].(string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Get indicates an expected call of Get.
-func (mr *MockRepositoryMockRecorder) Get(ctx, key interface{}) *gomock.Call {
+func (mr *MockRepositoryMockRecorder) Get(ctx, owner, key interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockRepository)(nil).Get), ctx, key)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockRepository)(nil).Get), ctx, owner, key)
 }
 
 // Upsert mocks base method.
-func (m *MockRepository) Upsert(ctx context.Context, key, value string) error {
+func (m *MockRepository) Upsert(ctx context.Context, owner, key, value string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Upsert", ctx, key, value)
+	ret := m.ctrl.Call(m, "Upsert", ctx, owner, key, value)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Upsert indicates an expected call of Upsert.
-func (mr *MockRepositoryMockRecorder) Upsert(ctx, key, value interface{}) *gomock.Call {
+func (mr *MockRepositoryMockRecorder) Upsert(ctx, owner, key, value interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Upsert", reflect.TypeOf((*MockRepository)(nil).Upsert), ctx, key, value)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Upsert", reflect.TypeOf((*MockRepository)(nil).Upsert), ctx, owner, key, value)
 }

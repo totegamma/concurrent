@@ -1,0 +1,40 @@
+# this is example. you must replace ccid and keys before deploy.
+
+server:
+  dsn: "host=db user=postgres password=postgres dbname=concurrent port=5432 sslmode=disable"
+  redisAddr: "redis:6379"
+  memcachedAddr: "memcached:11211"
+  traceEndpoint: "tempo:4318"
+  enableTrace: true
+  repositoryPath: "/var/lib/concurrent"
+  captchaSitekey: "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"
+  captchaSecret: "6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe"
+
+concurrent:
+  # fqdn is instance ID
+  # It is really hard and not recommended to change this value after node started
+  fqdn: con1.kokopi.me
+  # 'open' or 'invite' or 'close'
+  registration: open
+  # server agent account
+  # it is handy to generate these info with concurrent.world devtool
+  dimension: concrnt-devnet
+  privatekey: e8bbdfc18d8de37f716482c3e762f3afb042ca008c3f898c3396c07e394d3fe7
+
+profile:
+  nickname: concurrent-domain
+  description: domain description
+  logo: 'https://concurrent.world/concurrent.png'
+  wordmark: ''
+  themeColor: '#20193b'
+  rules: |
+    - 他のユーザーにリスペクトを持って接しましょう
+      Treat everyone with respect
+    - スパムは禁止です
+      No spamming
+    - 攻撃的なプロフィール名・画像はやめましょう
+      No offensive names and profile pictures
+  tosURL: ''
+  maintainerName: notset
+  maintainerEmail: notset@example.com
+

@@ -2,55 +2,33 @@ package key
 
 import (
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"io"
-	"net/http"
-	"time"
 
-	"go.opentelemetry.io/otel"
-	"go.opentelemetry.io/otel/propagation"
-
-	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/entity"
-	"github.com/totegamma/concurrent/x/util"
+	"github.com/pkg/errors"
+	"github.com/totegamma/concurrent/core"
+	"github.com/totegamma/concurrent/util"
 )
-
-// Service is the interface for auth service
-type Service interface {
-	EnactKey(ctx context.Context, payload, signature string) (core.Key, error)
-	RevokeKey(ctx context.Context, payload, signature string) (core.Key, error)
-	ValidateSignedObject(ctx context.Context, payload, signature string) error
-	ResolveSubkey(ctx context.Context, keyID string) (string, error)
-	ResolveRemoteSubkey(ctx context.Context, keyID, domain string) (string, error)
-	GetKeyResolution(ctx context.Context, keyID string) ([]core.Key, error)
-	GetAllKeys(ctx context.Context, owner string) ([]core.Key, error)
-}
 
 type service struct {
 	repository Repository
-	entity     entity.Service
+	entity     core.EntityService
 	config     util.Config
 }
 
 // NewService creates a new auth service
-func NewService(repository Repository, entity entity.Service, config util.Config) Service {
+func NewService(repository Repository, entity core.EntityService, config util.Config) core.KeyService {
 	return &service{repository, entity, config}
 }
 
-// EnactKey validates new subkey and save it if valid
-func (s *service) EnactKey(ctx context.Context, payload, signature string) (core.Key, error) {
-	ctx, span := tracer.Start(ctx, "ServiceEnactKey")
+// Enact validates new subkey and save it if valid
+func (s *service) Enact(ctx context.Context, mode core.CommitMode, payload, signature string) (core.Key, error) {
+	ctx, span := tracer.Start(ctx, "Key.Service.EnactKey")
 	defer span.End()
 
-	err := s.ValidateSignedObject(ctx, payload, signature)
-	if err != nil {
-		span.RecordError(err)
-		return core.Key{}, err
-	}
-
-	object := core.SignedObject[core.Enact]{}
-	err = json.Unmarshal([]byte(payload), &object)
+	object := core.EnactKey{}
+	err := json.Unmarshal([]byte(payload), &object)
 	if err != nil {
 		span.RecordError(err)
 		return core.Key{}, err
@@ -61,19 +39,19 @@ func (s *service) EnactKey(ctx context.Context, payload, signature string) (core
 		signerKey = object.Signer
 	}
 
-	if object.Signer != object.Body.Root {
+	if object.Signer != object.Root {
 		return core.Key{}, fmt.Errorf("Root is not matched with the signer")
 	}
 
-	if signerKey != object.Body.Parent {
+	if signerKey != object.Parent {
 		return core.Key{}, fmt.Errorf("Parent is not matched with the signer")
 	}
 
 	key := core.Key{
-		ID:             object.Body.CKID,
-		Root:           object.Body.Root,
-		Parent:         object.Body.Parent,
-		EnactPayload:   payload,
+		ID:             object.Target,
+		Root:           object.Root,
+		Parent:         object.Parent,
+		EnactDocument:  payload,
 		EnactSignature: signature,
 		ValidSince:     object.SignedAt,
 	}
@@ -87,19 +65,13 @@ func (s *service) EnactKey(ctx context.Context, payload, signature string) (core
 	return created, nil
 }
 
-// RevokeKey validates new subkey and save it if valid
-func (s *service) RevokeKey(ctx context.Context, payload, signature string) (core.Key, error) {
-	ctx, span := tracer.Start(ctx, "ServiceRevokeKey")
+// Revoke validates new subkey and save it if valid
+func (s *service) Revoke(ctx context.Context, mode core.CommitMode, payload, signature string) (core.Key, error) {
+	ctx, span := tracer.Start(ctx, "Key.Service.RevokeKey")
 	defer span.End()
 
-	err := s.ValidateSignedObject(ctx, payload, signature)
-	if err != nil {
-		span.RecordError(err)
-		return core.Key{}, err
-	}
-
-	object := core.SignedObject[core.Revoke]{}
-	err = json.Unmarshal([]byte(payload), &object)
+	object := core.RevokeKey{}
+	err := json.Unmarshal([]byte(payload), &object)
 	if err != nil {
 		span.RecordError(err)
 		return core.Key{}, err
@@ -109,7 +81,7 @@ func (s *service) RevokeKey(ctx context.Context, payload, signature string) (cor
 		return core.Key{}, fmt.Errorf("Invalid type: %s", object.Type)
 	}
 
-	targetKeyResolution, err := s.GetKeyResolution(ctx, object.Body.CKID)
+	targetKeyResolution, err := s.GetKeyResolution(ctx, object.Target)
 	if err != nil {
 		span.RecordError(err)
 		return core.Key{}, err
@@ -130,7 +102,7 @@ func (s *service) RevokeKey(ctx context.Context, payload, signature string) (cor
 		return core.Key{}, fmt.Errorf("KeyDepth is not enough. target: %d, performer: %d", len(targetKeyResolution), len(performerKeyResolution))
 	}
 
-	revoked, err := s.repository.Revoke(ctx, object.Body.CKID, payload, signature, object.SignedAt)
+	revoked, err := s.repository.Revoke(ctx, object.Target, payload, signature, object.SignedAt)
 	if err != nil {
 		span.RecordError(err)
 		return core.Key{}, err
@@ -139,45 +111,50 @@ func (s *service) RevokeKey(ctx context.Context, payload, signature string) (cor
 	return revoked, nil
 }
 
-func (s *service) ValidateSignedObject(ctx context.Context, payload, signature string) error {
-	ctx, span := tracer.Start(ctx, "ServiceValidate")
+func (s *service) ValidateDocument(ctx context.Context, document, signature string, keys []core.Key) error {
+	ctx, span := tracer.Start(ctx, "Key.Service.ValidateDocument")
 	defer span.End()
 
-	object := core.SignedObject[any]{}
-	err := json.Unmarshal([]byte(payload), &object)
+	object := core.DocumentBase[any]{}
+	err := json.Unmarshal([]byte(document), &object)
 	if err != nil {
 		span.RecordError(err)
-		return err
+		return errors.Wrap(err, "failed to unmarshal payload")
 	}
 
 	// マスターキーの場合: そのまま検証して終了
 	if object.KeyID == "" {
-		err := util.VerifySignature(payload, object.Signer, signature)
+		signatureBytes, err := hex.DecodeString(signature)
 		if err != nil {
 			span.RecordError(err)
-			return err
+			return errors.Wrap(err, "[master] failed to decode signature")
+		}
+		err = util.VerifySignature([]byte(document), signatureBytes, object.Signer)
+		if err != nil {
+			span.RecordError(err)
+			return errors.Wrap(err, "[master] failed to verify signature")
 		}
 	} else { // サブキーの場合: 親キーを取得して検証
 
-		domain, err := s.entity.ResolveHost(ctx, object.Signer, "")
+		signer, err := s.entity.Get(ctx, object.Signer)
 		if err != nil {
 			span.RecordError(err)
-			return err
+			return errors.Wrap(err, "[sub] failed to resolve host")
 		}
 
 		ccid := ""
 
-		if domain == s.config.Concurrent.FQDN {
+		if signer.Domain == s.config.Concurrent.FQDN {
 			ccid, err = s.ResolveSubkey(ctx, object.KeyID)
 			if err != nil {
 				span.RecordError(err)
-				return err
+				return errors.Wrap(err, "[sub] failed to resolve subkey")
 			}
 		} else {
-			ccid, err = s.ResolveRemoteSubkey(ctx, object.KeyID, domain)
+			ccid, err = ValidateKeyResolution(keys)
 			if err != nil {
 				span.RecordError(err)
-				return err
+				return errors.Wrap(err, "[sub] failed to resolve remote subkey")
 			}
 		}
 
@@ -187,92 +164,58 @@ func (s *service) ValidateSignedObject(ctx context.Context, payload, signature s
 			return err
 		}
 
-		err = util.VerifySignature(payload, object.KeyID, signature)
+		signatureBytes, err := hex.DecodeString(signature)
 		if err != nil {
 			span.RecordError(err)
-			return err
+			return errors.Wrap(err, "[sub] failed to decode signature")
+		}
+		err = util.VerifySignature([]byte(document), signatureBytes, object.KeyID)
+		if err != nil {
+			span.RecordError(err)
+			return errors.Wrap(err, "[sub] failed to verify signature")
 		}
 	}
 
 	return nil
 }
 
-type keyResponse struct {
-	Status  string     `json:"status"`
-	Content []core.Key `json:"content"`
-}
+func ValidateKeyResolution(keys []core.Key) (string, error) {
 
-func (s *service) ResolveRemoteSubkey(ctx context.Context, keyID, domain string) (string, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetRemoteKeyResolution")
-	defer span.End()
-
-	resovation, err := s.repository.GetRemoteKeyValidationCache(ctx, keyID)
-	if err == nil {
-		return resovation, nil
-	}
-
-	req, err := http.NewRequest("GET", "https://"+domain+"/api/v1/key/"+keyID, nil)
-	if err != nil {
-		span.RecordError(err)
-		return "", err
-	}
-
-	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
-
-	client := new(http.Client)
-	client.Timeout = 3 * time.Second
-	resp, err := client.Do(req)
-	if err != nil {
-		span.RecordError(err)
-		return "", err
-	}
-	defer resp.Body.Close()
-
-	body, _ := io.ReadAll(resp.Body)
-
-	var remoteKey keyResponse
-	json.Unmarshal(body, &remoteKey)
-
-	keychain := remoteKey.Content
-
-	if len(keychain) == 0 {
-		return "", fmt.Errorf("Key not found")
-	}
-
-	rootKey := ""
-	nextKey := ""
-	for _, key := range keychain {
-
+	var rootKey string
+	var nextKey string
+	for _, key := range keys {
 		if (nextKey != "") && (nextKey != key.ID) {
 			return "", fmt.Errorf("Key %s is not a child of %s", key.ID, nextKey)
 		}
 
-		if IsCCID(key.ID) {
-			break
+		signature, err := hex.DecodeString(key.EnactSignature)
+		if err != nil {
+			return "", err
 		}
-
-		// まず署名を検証
-		err := s.ValidateSignedObject(ctx, key.EnactPayload, key.EnactSignature)
+		err = util.VerifySignature([]byte(key.EnactDocument), signature, key.Parent)
 		if err != nil {
 			return "", err
 		}
 
-		// 署名の内容が正しいか検証
-		var enact core.SignedObject[core.Enact]
-		err = json.Unmarshal([]byte(key.EnactPayload), &enact)
+		var enact core.EnactKey
+		err = json.Unmarshal([]byte(key.EnactDocument), &enact)
 		if err != nil {
 			return "", err
 		}
 
-		if enact.Body.CKID != key.ID {
+		if enact.Signer != key.Parent {
+			return "", fmt.Errorf("enact signer is not matched with the parent")
+		}
+
+		if enact.Target != key.ID {
 			return "", fmt.Errorf("KeyID in payload is not matched with the keyID")
 		}
 
-		if enact.Body.Parent != key.Parent {
+		if enact.Parent != key.Parent {
 			return "", fmt.Errorf("Parent in payload is not matched with the parent")
 		}
 
-		if enact.Body.Root != key.Root {
+		if enact.Root != key.Root {
 			return "", fmt.Errorf("Root in payload is not matched with the root")
 		}
 
@@ -284,20 +227,18 @@ func (s *service) ResolveRemoteSubkey(ctx context.Context, keyID, domain string)
 			}
 		}
 
-		if key.RevokePayload != "null" {
+		if key.RevokeDocument != nil {
 			return "", fmt.Errorf("Key %s is revoked", key.ID)
 		}
 
 		nextKey = key.Parent
 	}
 
-	s.repository.SetRemoteKeyValidationCache(ctx, keyID, rootKey)
-
 	return rootKey, nil
 }
 
 func (s *service) ResolveSubkey(ctx context.Context, keyID string) (string, error) {
-	ctx, span := tracer.Start(ctx, "ServiceIsKeyChainValid")
+	ctx, span := tracer.Start(ctx, "Key.Service.ResolveSubkey")
 	defer span.End()
 
 	rootKey := keyID
@@ -321,13 +262,13 @@ func (s *service) ResolveSubkey(ctx context.Context, keyID string) (string, erro
 }
 
 func (s *service) GetKeyResolution(ctx context.Context, keyID string) ([]core.Key, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetKeyResolution")
+	ctx, span := tracer.Start(ctx, "Key.Service.GetKeyResolution")
 	defer span.End()
 
 	var keys []core.Key
 	var currentDepth = 0
 	for {
-		if IsCCID(keyID) {
+		if core.IsCCID(keyID) {
 			return keys, nil
 		}
 
@@ -347,20 +288,12 @@ func (s *service) GetKeyResolution(ctx context.Context, keyID string) ([]core.Ke
 }
 
 func (s *service) GetAllKeys(ctx context.Context, owner string) ([]core.Key, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetAll")
+	ctx, span := tracer.Start(ctx, "Key.Service.GetAllKeys")
 	defer span.End()
 
 	return s.repository.GetAll(ctx, owner)
 }
 
 func IsKeyValid(ctx context.Context, key core.Key) bool {
-	return key.RevokePayload == "null"
-}
-
-func IsCKID(keyID string) bool {
-	return keyID[:2] == "CK"
-}
-
-func IsCCID(keyID string) bool {
-	return keyID[:2] == "CC"
+	return key.RevokeDocument == nil
 }

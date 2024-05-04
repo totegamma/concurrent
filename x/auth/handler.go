@@ -3,7 +3,7 @@ package auth
 
 import (
 	"github.com/labstack/echo/v4"
-	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/core"
 	"go.opentelemetry.io/otel"
 	"net/http"
 )
@@ -16,27 +16,28 @@ type Handler interface {
 }
 
 type handler struct {
-	service Service
+	service core.AuthService
 }
 
 // NewHandler creates a new handler
-func NewHandler(service Service) Handler {
+func NewHandler(service core.AuthService) Handler {
 	return &handler{service}
 }
 
 // Claim is used for get server signed jwt
 // input user signed jwt
 func (h *handler) GetPassport(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetPassport")
+	ctx, span := tracer.Start(c.Request().Context(), "Auth.Handler.GetPassport")
 	defer span.End()
 
-	remote := c.Param("remote")
-	requester, ok := c.Get(core.RequesterIdCtxKey).(string)
+	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
 	if !ok {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}
 
-	response, err := h.service.IssuePassport(ctx, requester, remote)
+	keys, ok := ctx.Value(core.RequesterKeychainKey).([]core.Key)
+
+	response, err := h.service.IssuePassport(ctx, requester, keys)
 	if err != nil {
 		span.RecordError(err)
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": err.Error()})

@@ -6,7 +6,7 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/core"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
 )
@@ -16,25 +16,23 @@ var tracer = otel.Tracer("association")
 // Handler is the interface for handling HTTP requests
 type Handler interface {
 	Get(c echo.Context) error
-	Post(c echo.Context) error
-	Delete(c echo.Context) error
 	GetFiltered(c echo.Context) error
 	GetCounts(c echo.Context) error
 	GetOwnByTarget(c echo.Context) error
 }
 
 type handler struct {
-	service Service
+	service core.AssociationService
 }
 
 // NewHandler creates a new handler
-func NewHandler(service Service) Handler {
+func NewHandler(service core.AssociationService) Handler {
 	return &handler{service: service}
 }
 
 // Get returns an association by ID
 func (h handler) Get(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerGet")
+	ctx, span := tracer.Start(c.Request().Context(), "Association.Handler.Get")
 	defer span.End()
 	id := c.Param("id")
 
@@ -49,12 +47,12 @@ func (h handler) Get(c echo.Context) error {
 }
 
 func (h handler) GetOwnByTarget(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetOwnByTarget")
+	ctx, span := tracer.Start(c.Request().Context(), "Association.Handler.GetOwnByTarget")
 	defer span.End()
 
 	targetID := c.Param("id")
 
-	requester, _ := c.Get(core.RequesterIdCtxKey).(string)
+	requester, _ := ctx.Value(core.RequesterIdCtxKey).(string)
 
 	associations, err := h.service.GetOwnByTarget(ctx, targetID, requester)
 	if err != nil {
@@ -64,7 +62,7 @@ func (h handler) GetOwnByTarget(c echo.Context) error {
 }
 
 func (h handler) GetCounts(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetCounts")
+	ctx, span := tracer.Start(c.Request().Context(), "Association.Handler.GetCounts")
 	defer span.End()
 
 	messageID := c.Param("id")
@@ -85,7 +83,7 @@ func (h handler) GetCounts(c echo.Context) error {
 }
 
 func (h handler) GetFiltered(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerGetFiltered")
+	ctx, span := tracer.Start(c.Request().Context(), "Association.Handler.GetFiltered")
 	defer span.End()
 
 	messageID := c.Param("id")
@@ -111,38 +109,4 @@ func (h handler) GetFiltered(c echo.Context) error {
 		}
 		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": associations})
 	}
-}
-
-// Post creates a new association
-// returns the created association
-func (h handler) Post(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerPost")
-	defer span.End()
-
-	var request postRequest
-	err := c.Bind(&request)
-	if err != nil {
-		return err
-	}
-	created, err := h.service.PostAssociation(ctx, request.SignedObject, request.Signature, request.Streams, request.TargetType)
-	if err != nil {
-		return err
-	}
-	return c.JSON(http.StatusCreated, echo.Map{"status": "ok", "content": created})
-}
-
-// Delete deletes an association by ID
-// returns the deleted association
-func (h handler) Delete(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "HandlerDelete")
-	defer span.End()
-
-	associationID := c.Param("id")
-	requester, _ := c.Get(core.RequesterIdCtxKey).(string)
-
-	deleted, err := h.service.Delete(ctx, associationID, requester)
-	if err != nil {
-		return err
-	}
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": deleted})
 }

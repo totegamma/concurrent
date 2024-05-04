@@ -13,7 +13,6 @@ export const Entities = forwardRef<HTMLDivElement>((props, ref): JSX.Element => 
     const [selectedEntity, setSelectedEntity] = useState<Entity | null>(null)
     const [newTag, setNewTag] = useState<string>('')
     const [newScore, setNewScore] = useState<number>(0)
-    const [newCerts, setNewCerts] = useState<string>('')
 
     const refresh = () => {
         api.getEntities().then(setEntities)
@@ -59,7 +58,6 @@ export const Entities = forwardRef<HTMLDivElement>((props, ref): JSX.Element => 
                                 onClick={() => {
                                     setNewTag(entity.tag)
                                     setNewScore(entity.score)
-                                    setNewCerts(JSON.stringify(entity.certs, null, 2))
                                     setSelectedEntity(entity)
                                 }}
                             >
@@ -105,16 +103,6 @@ export const Entities = forwardRef<HTMLDivElement>((props, ref): JSX.Element => 
                             setNewScore(Number(e.target.value))
                         }}
                     />
-                    <TextField
-                        multiline
-                        label="new certs"
-                        variant="outlined"
-                        value={newCerts}
-                        sx={{ flexGrow: 1 }}
-                        onChange={(e) => {
-                            setNewCerts(e.target.value)
-                        }}
-                    />
                     <Button
                         variant="contained"
                         onClick={(_) => {
@@ -123,7 +111,6 @@ export const Entities = forwardRef<HTMLDivElement>((props, ref): JSX.Element => 
                                 ...selectedEntity,
                                 tag: newTag,
                                 score: newScore,
-                                certs: JSON.parse(newCerts)
                             }).then(() => {
                                 refresh()
                             })

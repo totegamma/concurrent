@@ -5,38 +5,35 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"strings"
 
-	"github.com/redis/go-redis/v9"
-	"github.com/totegamma/concurrent/x/core"
-	"github.com/totegamma/concurrent/x/key"
-	"github.com/totegamma/concurrent/x/stream"
+	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/codes"
+
+	"github.com/totegamma/concurrent/cdid"
+	"github.com/totegamma/concurrent/client"
+	"github.com/totegamma/concurrent/core"
+	"github.com/totegamma/concurrent/util"
 )
 
-// Service is the interface for message service
-// Provides methods for message CRUD
-type Service interface {
-	Get(ctx context.Context, id string, requester string) (core.Message, error)
-	GetWithOwnAssociations(ctx context.Context, id string, requester string) (core.Message, error)
-	PostMessage(ctx context.Context, objectStr string, signature string, streams []string) (core.Message, error)
-	Delete(ctx context.Context, id string) (core.Message, error)
-	Count(ctx context.Context) (int64, error)
-}
-
 type service struct {
-	rdb    *redis.Client
-	repo   Repository
-	stream stream.Service
-	key    key.Service
+	repo     Repository
+	client   client.Client
+	entity   core.EntityService
+	timeline core.TimelineService
+	key      core.KeyService
+	policy   core.PolicyService
+	config   util.Config
 }
 
 // NewService creates a new message service
-func NewService(rdb *redis.Client, repo Repository, stream stream.Service, key key.Service) Service {
-	return &service{rdb, repo, stream, key}
+func NewService(repo Repository, client client.Client, entity core.EntityService, timeline core.TimelineService, key core.KeyService, policy core.PolicyService, config util.Config) core.MessageService {
+	return &service{repo, client, entity, timeline, key, policy, config}
 }
 
 // Count returns the count number of messages
 func (s *service) Count(ctx context.Context) (int64, error) {
-	ctx, span := tracer.Start(ctx, "ServiceCount")
+	ctx, span := tracer.Start(ctx, "Message.Service.Count")
 	defer span.End()
 
 	return s.repo.Count(ctx)
@@ -44,7 +41,7 @@ func (s *service) Count(ctx context.Context) (int64, error) {
 
 // Get returns a message by ID
 func (s *service) Get(ctx context.Context, id string, requester string) (core.Message, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGet")
+	ctx, span := tracer.Start(ctx, "Message.Service.Get")
 	defer span.End()
 
 	message, err := s.repo.Get(ctx, id)
@@ -53,16 +50,37 @@ func (s *service) Get(ctx context.Context, id string, requester string) (core.Me
 		return core.Message{}, err
 	}
 
-	canRead := true
+	canRead := false
+	for _, timelineID := range message.Timelines {
+		timeline, err := s.timeline.GetTimelineAutoDomain(ctx, timelineID)
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			continue
+		}
 
-	for _, streamID := range message.Streams {
-		ok := s.stream.HasReadAccess(ctx, streamID, requester)
-		if !ok {
-			canRead = false
+		if timeline.Policy == "" {
+			canRead = true
 			break
 		}
-	}
 
+		action, ok := ctx.Value(core.RequestPathCtxKey).(string)
+		if !ok {
+			span.RecordError(fmt.Errorf("action not found"))
+			return core.Message{}, fmt.Errorf("invalid action")
+		}
+
+		ok, err = s.policy.HasNoRulesWithPolicyURL(ctx, timeline.Policy, action)
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			continue
+		}
+
+		if ok {
+			canRead = true
+			break
+		}
+
+	}
 	if !canRead {
 		return core.Message{}, fmt.Errorf("no read access")
 	}
@@ -72,7 +90,7 @@ func (s *service) Get(ctx context.Context, id string, requester string) (core.Me
 
 // GetWithOwnAssociations returns a message by ID with associations
 func (s *service) GetWithOwnAssociations(ctx context.Context, id string, requester string) (core.Message, error) {
-	ctx, span := tracer.Start(ctx, "ServiceGetWithOwnAssociations")
+	ctx, span := tracer.Start(ctx, "Message.Service.GetWithOwnAssociations")
 	defer span.End()
 
 	message, err := s.repo.GetWithOwnAssociations(ctx, id, requester)
@@ -81,16 +99,59 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 		return core.Message{}, err
 	}
 
-	canRead := true
-
-	for _, streamID := range message.Streams {
-		ok := s.stream.HasReadAccess(ctx, streamID, requester)
-		if !ok {
-			canRead = false
-			break
-		}
+	requesterEntity, err := s.entity.Get(ctx, requester)
+	if err != nil {
+		span.RecordError(err)
+		return core.Message{}, err
 	}
 
+	canRead := false
+	for _, timelineID := range message.Timelines {
+		timeline, err := s.timeline.GetTimelineAutoDomain(ctx, timelineID)
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			continue
+		}
+
+		if timeline.Policy == "" {
+			canRead = true
+			break
+		}
+
+		var params map[string]any
+		if timeline.PolicyParams != nil {
+			err := json.Unmarshal([]byte(*timeline.PolicyParams), &params)
+			if err != nil {
+				span.SetStatus(codes.Error, err.Error())
+				span.RecordError(err)
+				continue
+			}
+		}
+
+		requestContext := core.RequestContext{
+			Self:      timeline,
+			Params:    params,
+			Requester: requesterEntity,
+		}
+
+		action, ok := ctx.Value(core.RequestPathCtxKey).(string)
+		if !ok {
+			span.RecordError(fmt.Errorf("action not found"))
+			return core.Message{}, fmt.Errorf("invalid action")
+		}
+
+		ok, err = s.policy.TestWithPolicyURL(ctx, timeline.Policy, requestContext, action)
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			continue
+		}
+
+		if ok {
+			canRead = true
+			break
+		}
+
+	}
 	if !canRead {
 		return core.Message{}, fmt.Errorf("no read access")
 	}
@@ -98,76 +159,188 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 	return message, nil
 }
 
-// PostMessage creates a new message
-// It also posts the message to the streams
-func (s *service) PostMessage(ctx context.Context, objectStr string, signature string, streams []string) (core.Message, error) {
-	ctx, span := tracer.Start(ctx, "ServicePostMessage")
+// Create creates a new message
+// It also posts the message to the timelines
+func (s *service) Create(ctx context.Context, mode core.CommitMode, document string, signature string) (core.Message, error) {
+	ctx, span := tracer.Start(ctx, "Message.Service.Create")
 	defer span.End()
 
-	var object SignedObject
-	err := json.Unmarshal([]byte(objectStr), &object)
+	created := core.Message{}
+
+	var doc core.CreateMessage[any]
+	err := json.Unmarshal([]byte(document), &doc)
+	if err != nil {
+		span.RecordError(err)
+		return created, err
+	}
+
+	hash := util.GetHash([]byte(document))
+	hash10 := [10]byte{}
+	copy(hash10[:], hash[:10])
+	signedAt := doc.SignedAt
+	id := "m" + cdid.New(hash10, signedAt).String()
+
+	signer, err := s.entity.Get(ctx, doc.Signer)
 	if err != nil {
 		span.RecordError(err)
 		return core.Message{}, err
 	}
 
-	err = s.key.ValidateSignedObject(ctx, objectStr, signature)
-	if err != nil {
-		span.RecordError(err)
-		return core.Message{}, err
+	var policyparams *string = nil
+	if doc.PolicyParams != "" {
+		policyparams = &doc.PolicyParams
 	}
 
-	message := core.Message{
-		Author:    object.Signer,
-		Schema:    object.Schema,
-		Payload:   objectStr,
-		Signature: signature,
-		Streams:   streams,
+	if signer.Domain == s.config.Concurrent.FQDN { // signerが自ドメイン管轄の場合、リソースを作成
+
+		message := core.Message{
+			ID:           id,
+			Author:       doc.Signer,
+			Schema:       doc.Schema,
+			Policy:       doc.Policy,
+			PolicyParams: policyparams,
+			Document:     document,
+			Signature:    signature,
+			Timelines:    doc.Timelines,
+		}
+
+		if !doc.SignedAt.IsZero() {
+			message.CDate = doc.SignedAt
+		}
+
+		created, err = s.repo.Create(ctx, message)
+		if err != nil {
+			span.RecordError(err)
+			return message, err
+		}
+
 	}
 
-	if !object.SignedAt.IsZero() {
-		message.CDate = object.SignedAt
+	ispublic := false
+	destinations := make(map[string][]string)
+	for _, timelineID := range doc.Timelines {
+
+		timeline, err := s.timeline.GetTimelineAutoDomain(ctx, timelineID)
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			continue
+		}
+
+		if timeline.Policy == "" {
+			ispublic = true
+		} else if ispublic == false {
+			ok, err := s.policy.HasNoRulesWithPolicyURL(ctx, timeline.Policy, "GET:/message/")
+			if err != nil {
+				span.SetStatus(codes.Error, err.Error())
+				continue
+			}
+
+			if ok {
+				ispublic = true
+			}
+		}
+
+		normalized, err := s.timeline.NormalizeTimelineID(ctx, timelineID)
+		if err != nil {
+			span.RecordError(errors.Wrap(err, "failed to normalize timeline id"))
+			continue
+		}
+		split := strings.Split(normalized, "@")
+		if len(split) != 2 {
+			span.RecordError(fmt.Errorf("invalid timeline id: %s", normalized))
+			continue
+		}
+		domain := split[1]
+
+		if _, ok := destinations[domain]; !ok {
+			destinations[domain] = []string{}
+		}
+		destinations[domain] = append(destinations[domain], timelineID)
 	}
 
-	created, err := s.repo.Create(ctx, message)
-	if err != nil {
-		span.RecordError(err)
-		return message, err
+	sendDocument := ""
+	sendSignature := ""
+	if ispublic {
+		sendDocument = document
+		sendSignature = signature
 	}
 
-	ispublic := true
-	for _, stream := range streams {
-		ok := s.stream.HasReadAccess(ctx, stream, "")
-		if !ok {
-			ispublic = false
-			break
+	for domain, timelines := range destinations {
+		if domain == s.config.Concurrent.FQDN {
+			// localなら、timelineのエントリを生成→Eventを発行
+			for _, timeline := range timelines {
+				posted, err := s.timeline.PostItem(ctx, timeline, core.TimelineItem{
+					ResourceID: id,
+					Owner:      doc.Signer,
+					TimelineID: timeline,
+				}, sendDocument, sendSignature)
+				if err != nil {
+					span.RecordError(errors.Wrap(err, "failed to post item"))
+					continue
+				}
+
+				if mode == core.CommitModeExecute {
+					// eventを放流
+					event := core.Event{
+						Timeline:  timeline,
+						Item:      posted,
+						Document:  sendDocument,
+						Signature: sendSignature,
+					}
+
+					err = s.timeline.PublishEvent(ctx, event)
+					if err != nil {
+						slog.ErrorContext(ctx, "failed to publish event", slog.String("error", err.Error()), slog.String("module", "timeline"))
+						span.RecordError(errors.Wrap(err, "failed to publish event"))
+						continue
+					}
+				}
+			}
+		} else if signer.Domain == s.config.Concurrent.FQDN && mode != core.CommitModeLocalOnlyExec { // ここでリソースを作成したなら、リモートにもリレー
+			// remoteならdocumentをリレー
+			packet := core.Commit{
+				Document:  document,
+				Signature: signature,
+			}
+
+			packetStr, err := json.Marshal(packet)
+			if err != nil {
+				span.RecordError(err)
+				continue
+			}
+			s.client.Commit(ctx, domain, string(packetStr))
 		}
 	}
 
-	var body interface{}
-	if ispublic {
-		body = created
-	}
-
-	for _, stream := range message.Streams {
-		s.stream.PostItem(ctx, stream, core.StreamItem{
-			Type:     "message",
-			ObjectID: created.ID,
-			Owner:    object.Signer,
-			StreamID: stream,
-		}, body)
-	}
+	// TODO: 実際に送信できたstreamの一覧を返すべき
 
 	return created, nil
 }
 
 // Delete deletes a message by ID
 // It also emits a delete event to the sockets
-func (s *service) Delete(ctx context.Context, id string) (core.Message, error) {
-	ctx, span := tracer.Start(ctx, "ServiceDelete")
+func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, signature string) (core.Message, error) {
+	ctx, span := tracer.Start(ctx, "Message.Service.Delete")
 	defer span.End()
 
-	deleted, err := s.repo.Delete(ctx, id)
+	var doc core.DeleteDocument
+	err := json.Unmarshal([]byte(document), &doc)
+	if err != nil {
+		span.RecordError(err)
+		return core.Message{}, err
+	}
+
+	deleteTarget, err := s.repo.Get(ctx, doc.Target)
+	if err != nil {
+		span.RecordError(err)
+		return core.Message{}, err
+	}
+
+	if deleteTarget.Author != doc.Signer {
+		return core.Message{}, fmt.Errorf("you are not authorized to perform this action")
+	}
+
+	deleted, err := s.repo.Delete(ctx, doc.Target)
 	slog.DebugContext(ctx, fmt.Sprintf("deleted: %v", deleted), slog.String("module", "message"))
 
 	if err != nil {
@@ -175,17 +348,18 @@ func (s *service) Delete(ctx context.Context, id string) (core.Message, error) {
 		return core.Message{}, err
 	}
 
-	for _, deststream := range deleted.Streams {
-		jsonstr, _ := json.Marshal(core.Event{
-			Stream: deststream,
-			Type:   "message",
-			Action: "delete",
-			Body:   deleted,
-		})
-		err := s.rdb.Publish(context.Background(), deststream, jsonstr).Err()
-		if err != nil {
-			span.RecordError(err)
-			return deleted, err
+	if mode != core.CommitModeLocalOnlyExec {
+		for _, desttimeline := range deleted.Timelines {
+			event := core.Event{
+				Timeline:  desttimeline,
+				Document:  document,
+				Signature: signature,
+			}
+			err := s.timeline.PublishEvent(ctx, event)
+			if err != nil {
+				span.RecordError(err)
+				return deleted, err
+			}
 		}
 	}
 

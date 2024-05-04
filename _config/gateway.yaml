@@ -1,0 +1,26 @@
+services:
+  - name: webui
+    # host: ccwebui
+    host: host.docker.internal
+    # port: 80
+    port: 5174
+    path: /web
+    preservePath: true
+    injectCors: false
+  - name: concurrent
+    host: ccapi
+    port: 8000
+    path: /api/v1
+    injectCors: true
+  - name: activitypub
+    host: host.docker.internal
+    port: 8070
+    path: /ap
+    preservePath: true
+    injectCors: true
+  - name: webfinger
+    host: host.docker.internal
+    port: 8070
+    path: /.well-known
+    preservePath: true
+    injectCors: true

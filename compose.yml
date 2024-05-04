@@ -1,5 +1,3 @@
-version: "3"
-
 services:
   # main components
   ccgateway:
@@ -10,6 +8,8 @@ services:
     links:
       - db
       - redis
+      - loki
+      - tempo
     depends_on:
       db:
         condition: service_healthy
@@ -17,10 +17,12 @@ services:
         condition: service_healthy
       loki:
         condition: service_started
+      tempo:
+        condition: service_started
     ports:
       - "8080:8080"
     volumes:
-      - ./config:/etc/concurrent/:ro
+      - ./_config:/etc/concurrent/:ro
     networks:
       - external
       - internal
@@ -38,6 +40,7 @@ services:
       - db
       - redis
       - loki
+      - tempo
     depends_on:
       db:
         condition: service_healthy
@@ -45,10 +48,12 @@ services:
         condition: service_healthy
       loki:
         condition: service_started
+      tempo:
+        condition: service_started
     ports:
       - "8000:8000"
     volumes:
-      - ./config:/etc/concurrent/:ro
+      - ./_config:/etc/concurrent/:ro
     networks:
       - external
       - internal
@@ -57,24 +62,24 @@ services:
       options: 
         loki-url: http://localhost:3100/loki/api/v1/push
 
-  ccwebui:
-    build:
-      context: .
-      dockerfile: ./web/Dockerfile
-    restart: always
-    links:
-      - loki
-    depends_on:
-      loki:
-        condition: service_started
-    ports:
-      - "8001:80"
-    networks:
-      - internal
-    logging:
-      driver: loki
-      options: 
-        loki-url: http://localhost:3100/loki/api/v1/push
+        #  ccwebui:
+        #    build:
+        #      context: .
+        #      dockerfile: ./web/Dockerfile
+        #    restart: always
+        #    links:
+        #      - loki
+        #    depends_on:
+        #      loki:
+        #        condition: service_started
+        #    ports:
+        #      - "8001:80"
+        #    networks:
+        #      - internal
+        #    logging:
+        #      driver: loki
+        #      options: 
+        #        loki-url: http://localhost:3100/loki/api/v1/push
 
   db:
     restart: always
@@ -174,9 +179,9 @@ services:
   grafana:
     image: grafana/grafana:latest
     volumes:
-      - ./dev/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
-      - ./dev/grafana-dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml
-      - ./dev/dashboards:/etc/grafana/dashboards
+      - ./_dev/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+      - ./_dev/grafana-dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml
+      - ./_dev/dashboards:/etc/grafana/dashboards
     environment:
       - GF_AUTH_ANONYMOUS_ENABLED=true
       - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
@@ -194,7 +199,7 @@ services:
       - --web.enable-remote-write-receiver
       - --enable-feature=exemplar-storage
     volumes:
-      - ./dev/prometheus.yaml:/etc/prometheus.yaml
+      - ./_dev/prometheus.yaml:/etc/prometheus.yaml
       - ./_composeData/prometheus:/etc/prometheus
     ports:
       - "9090:9090"
@@ -217,7 +222,7 @@ services:
     image: grafana/tempo:latest
     command: [ "-config.file=/etc/tempo.yaml" ]
     volumes:
-      - ./dev/tempo.yaml:/etc/tempo.yaml
+      - ./_dev/tempo.yaml:/etc/tempo.yaml
       - ./_composeData/tempo:/tmp/tempo
     networks:
       - internal

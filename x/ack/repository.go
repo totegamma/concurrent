@@ -5,7 +5,7 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/core"
 )
 
 // Repository is the interface for host repository
@@ -27,7 +27,7 @@ func NewRepository(db *gorm.DB) Repository {
 
 // Ack creates a new ack
 func (r *repository) Ack(ctx context.Context, ack *core.Ack) error {
-	ctx, span := tracer.Start(ctx, "RepositoryAck")
+	ctx, span := tracer.Start(ctx, "Ack.Repository.Ack")
 	defer span.End()
 
 	ack.Valid = true
@@ -37,7 +37,7 @@ func (r *repository) Ack(ctx context.Context, ack *core.Ack) error {
 
 // Unack deletes a ack
 func (r *repository) Unack(ctx context.Context, ack *core.Ack) error {
-	ctx, span := tracer.Start(ctx, "RepositoryUnack")
+	ctx, span := tracer.Start(ctx, "Ack.Repository.Unack")
 	defer span.End()
 
 	ack.Valid = false
@@ -47,7 +47,7 @@ func (r *repository) Unack(ctx context.Context, ack *core.Ack) error {
 
 // GetAcker returns all acks for a entity
 func (r *repository) GetAcker(ctx context.Context, key string) ([]core.Ack, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetAcker")
+	ctx, span := tracer.Start(ctx, "Ack.Repository.GetAcker")
 	defer span.End()
 
 	var acks []core.Ack
@@ -57,7 +57,7 @@ func (r *repository) GetAcker(ctx context.Context, key string) ([]core.Ack, erro
 
 // GetAcking returns all acks for a entity
 func (r *repository) GetAcking(ctx context.Context, key string) ([]core.Ack, error) {
-	ctx, span := tracer.Start(ctx, "RepositoryGetAcking")
+	ctx, span := tracer.Start(ctx, "Ack.Repository.GetAcking")
 	defer span.End()
 
 	var acks []core.Ack

@@ -7,7 +7,7 @@ import (
 	"github.com/bradfitz/gomemcache/memcache"
 	"gorm.io/gorm"
 
-	"github.com/totegamma/concurrent/x/core"
+	"github.com/totegamma/concurrent/core"
 )
 
 type Repository interface {
@@ -29,7 +29,7 @@ func NewRepository(db *gorm.DB, mc *memcache.Client) Repository {
 }
 
 func (r *repository) SetRemoteKeyValidationCache(ctx context.Context, keyID string, resovation string) error {
-	ctx, span := tracer.Start(ctx, "Repository.SetRemoteKeyValidationCache")
+	ctx, span := tracer.Start(ctx, "Key.Repository.SetRemoteKeyValidationCache")
 	defer span.End()
 
 	// TTL 10 minutes
@@ -42,7 +42,7 @@ func (r *repository) SetRemoteKeyValidationCache(ctx context.Context, keyID stri
 }
 
 func (r *repository) GetRemoteKeyValidationCache(ctx context.Context, keyID string) (string, error) {
-	ctx, span := tracer.Start(ctx, "Repository.GetRemoteKeyValidationCache")
+	ctx, span := tracer.Start(ctx, "Key.Repository.GetRemoteKeyValidationCache")
 	defer span.End()
 
 	item, err := r.mc.Get(keyID)
@@ -54,7 +54,7 @@ func (r *repository) GetRemoteKeyValidationCache(ctx context.Context, keyID stri
 }
 
 func (r *repository) Get(ctx context.Context, keyID string) (core.Key, error) {
-	ctx, span := tracer.Start(ctx, "Repository.Get")
+	ctx, span := tracer.Start(ctx, "Key.Repository.Get")
 	defer span.End()
 
 	var key core.Key
@@ -67,7 +67,7 @@ func (r *repository) Get(ctx context.Context, keyID string) (core.Key, error) {
 }
 
 func (r *repository) Enact(ctx context.Context, key core.Key) (core.Key, error) {
-	ctx, span := tracer.Start(ctx, "Repository.Enact")
+	ctx, span := tracer.Start(ctx, "Key.Repository.Enact")
 	defer span.End()
 
 	err := r.db.Create(&key).Error
@@ -79,13 +79,13 @@ func (r *repository) Enact(ctx context.Context, key core.Key) (core.Key, error) 
 }
 
 func (r *repository) Revoke(ctx context.Context, keyID string, payload string, signature string, signedAt time.Time) (core.Key, error) {
-	ctx, span := tracer.Start(ctx, "Repository.Revoke")
+	ctx, span := tracer.Start(ctx, "Key.Repository.Revoke")
 	defer span.End()
 
 	err := r.db.Model(&core.Key{}).Where("id = ?", keyID).Updates(
 		core.Key{
-			RevokePayload:   payload,
-			RevokeSignature: signature,
+			RevokeDocument:  &payload,
+			RevokeSignature: &signature,
 			ValidUntil:      signedAt,
 		},
 	).Error
@@ -103,7 +103,7 @@ func (r *repository) Revoke(ctx context.Context, keyID string, payload string, s
 }
 
 func (r *repository) GetAll(ctx context.Context, owner string) ([]core.Key, error) {
-	ctx, span := tracer.Start(ctx, "Repository.GetAll")
+	ctx, span := tracer.Start(ctx, "Key.Repository.GetAll")
 	defer span.End()
 
 	var keys []core.Key

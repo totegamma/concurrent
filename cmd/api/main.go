@@ -19,18 +19,22 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/prometheus/client_golang/prometheus"
 
+	"github.com/totegamma/concurrent"
+	"github.com/totegamma/concurrent/client"
+	"github.com/totegamma/concurrent/core"
+	"github.com/totegamma/concurrent/util"
 	"github.com/totegamma/concurrent/x/ack"
 	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/auth"
-	"github.com/totegamma/concurrent/x/character"
-	"github.com/totegamma/concurrent/x/core"
 	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
 	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/message"
-	"github.com/totegamma/concurrent/x/stream"
+	"github.com/totegamma/concurrent/x/profile"
+	"github.com/totegamma/concurrent/x/store"
+	"github.com/totegamma/concurrent/x/subscription"
+	"github.com/totegamma/concurrent/x/timeline"
 	"github.com/totegamma/concurrent/x/userkv"
-	"github.com/totegamma/concurrent/x/util"
 
 	"github.com/bradfitz/gomemcache/memcache"
 
@@ -73,7 +77,7 @@ var (
 
 func main() {
 
-	fmt.Fprint(os.Stderr, concurrentBanner)
+	fmt.Fprint(os.Stderr, concurrent.Banner)
 
 	handler := &CustomHandler{Handler: slog.NewJSONHandler(os.Stdout, nil)}
 	slogger := slog.New(handler)
@@ -158,19 +162,21 @@ func main() {
 	// Migrate the schema
 	slog.Info("start migrate")
 	db.AutoMigrate(
+		&core.Schema{},
 		&core.Message{},
-		&core.Character{},
+		&core.Profile{},
 		&core.Association{},
-		&core.Stream{},
-		&core.StreamItem{},
+		&core.Timeline{},
+		&core.TimelineItem{},
 		&core.Domain{},
 		&core.Entity{},
 		&core.EntityMeta{},
-		&core.Address{},
-		&core.Collection{},
-		&core.CollectionItem{},
 		&core.Ack{},
 		&core.Key{},
+		&core.UserKV{},
+		&core.Subscription{},
+		&core.SubscriptionItem{},
+		&core.SemanticID{},
 	)
 
 	rdb := redis.NewClient(&redis.Options{
@@ -194,145 +200,121 @@ func main() {
 	mc := memcache.New(config.Server.MemcachedAddr)
 	defer mc.Close()
 
-	agent := SetupAgent(db, rdb, mc, config)
+	client := client.NewClient()
 
-	collectionHandler := SetupCollectionHandler(db, rdb, config)
+	agent := concurrent.SetupAgent(db, rdb, mc, client, config)
 
-	socketManager := SetupSocketManager(mc, db, rdb, config)
-	socketHandler := SetupSocketHandler(rdb, socketManager, config)
-
-	domainService := SetupDomainService(db, config)
+	domainService := concurrent.SetupDomainService(db, client, config)
 	domainHandler := domain.NewHandler(domainService, config)
 
-	userKvService := SetupUserkvService(rdb)
+	userKvService := concurrent.SetupUserkvService(db)
 	userkvHandler := userkv.NewHandler(userKvService)
 
-	messageService := SetupMessageService(db, rdb, mc, socketManager, config)
+	messageService := concurrent.SetupMessageService(db, rdb, mc, client, config)
 	messageHandler := message.NewHandler(messageService)
 
-	associationService := SetupAssociationService(db, rdb, mc, socketManager, config)
+	associationService := concurrent.SetupAssociationService(db, rdb, mc, client, config)
 	associationHandler := association.NewHandler(associationService)
 
-	characterService := SetupCharacterService(db, rdb, mc, config)
-	characterHandler := character.NewHandler(characterService)
+	profileService := concurrent.SetupProfileService(db, rdb, mc, client, config)
+	profileHandler := profile.NewHandler(profileService)
 
-	streamService := SetupStreamService(db, rdb, mc, socketManager, config)
-	streamHandler := stream.NewHandler(streamService)
+	timelineService := concurrent.SetupTimelineService(db, rdb, mc, client, config)
+	timelineHandler := timeline.NewHandler(timelineService)
 
-	entityService := SetupEntityService(db, rdb, mc, config)
+	entityService := concurrent.SetupEntityService(db, rdb, mc, client, config)
 	entityHandler := entity.NewHandler(entityService, config)
 
-	authService := SetupAuthService(db, rdb, mc, config)
+	authService := concurrent.SetupAuthService(db, rdb, mc, client, config)
 	authHandler := auth.NewHandler(authService)
 
-	keyService := SetupKeyService(db, rdb, mc, config)
+	keyService := concurrent.SetupKeyService(db, rdb, mc, client, config)
 	keyHandler := key.NewHandler(keyService)
 
-	ackService := SetupAckService(db, rdb, mc, config)
+	ackService := concurrent.SetupAckService(db, rdb, mc, client, config)
 	ackHandler := ack.NewHandler(ackService)
 
-	apiV1 := e.Group("", auth.ReceiveGatewayAuthPropagation)
+	storeService := concurrent.SetupStoreService(db, rdb, mc, client, config)
+	storeHandler := store.NewHandler(storeService)
+
+	subscriptionService := concurrent.SetupSubscriptionService(db)
+	subscriptionHandler := subscription.NewHandler(subscriptionService)
+
+	apiV1 := e.Group("", auth.SetRequestPath, auth.ReceiveGatewayAuthPropagation)
+	// store
+	apiV1.POST("/commit", storeHandler.Commit)
+
 	// domain
-	apiV1.GET("/domain", domainHandler.Profile)
+	apiV1.GET("/domain", func(c echo.Context) error {
+		meta := config.Profile
+		meta.Registration = config.Concurrent.Registration
+		meta.Version = version
+		meta.BuildInfo = util.BuildInfo{
+			BuildTime:    buildTime,
+			BuildMachine: buildMachine,
+			GoVersion:    goVersion,
+		}
+		meta.SiteKey = config.Server.CaptchaSitekey
+
+		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": core.Domain{
+			ID:        config.Concurrent.FQDN,
+			CCID:      config.Concurrent.CCID,
+			Dimension: config.Concurrent.Dimension,
+			Meta:      meta,
+		}})
+	})
 	apiV1.GET("/domain/:id", domainHandler.Get)
-	apiV1.POST("/domain/:id", domainHandler.SayHello, auth.Restrict(auth.ISADMIN))
-	apiV1.PUT("/domain/:id", domainHandler.Upsert, auth.Restrict(auth.ISADMIN))
-	apiV1.DELETE("/domain/:id", domainHandler.Delete, auth.Restrict(auth.ISADMIN))
 	apiV1.GET("/domains", domainHandler.List)
 
-	apiV1.POST("/domains/hello", domainHandler.Hello)
-
-	// address
-	apiV1.GET("/address/:id", entityHandler.Resolve)
-
 	// entity
-	apiV1.POST("/entity", entityHandler.Register)
 	apiV1.GET("/entity/:id", entityHandler.Get)
-	apiV1.PUT("/entity/:id", entityHandler.Update, auth.Restrict(auth.ISADMIN))
-	apiV1.DELETE("/entity/:id", entityHandler.Delete, auth.Restrict(auth.ISADMIN))
 	apiV1.GET("/entity/:id/acking", ackHandler.GetAcking)
 	apiV1.GET("/entity/:id/acker", ackHandler.GetAcker)
 	apiV1.GET("/entities", entityHandler.List)
-	apiV1.POST("/entities/ack", ackHandler.Ack, auth.Restrict(auth.ISLOCAL))
-	apiV1.POST("/entities/checkpoint/ack", ackHandler.Ack, auth.Restrict(auth.ISUNITED))
-
-	apiV1.PUT("/tmp/entity/:id", entityHandler.UpdateRegistration, auth.Restrict(auth.ISLOCAL)) // NOTE: for migration. Remove later
-
-	apiV1.POST("/admin/entity", entityHandler.Create, auth.Restrict(auth.ISADMIN))
 
 	// message
-	apiV1.POST("/message", messageHandler.Post, auth.Restrict(auth.ISLOCAL))
 	apiV1.GET("/message/:id", messageHandler.Get)
-	apiV1.DELETE("/message/:id", messageHandler.Delete, auth.Restrict(auth.ISLOCAL))
 	apiV1.GET("/message/:id/associations", associationHandler.GetFiltered)
 	apiV1.GET("/message/:id/associationcounts", associationHandler.GetCounts)
 	apiV1.GET("/message/:id/associations/mine", associationHandler.GetOwnByTarget, auth.Restrict(auth.ISKNOWN))
 
 	// association
-	apiV1.POST("/association", associationHandler.Post, auth.Restrict(auth.ISKNOWN))
 	apiV1.GET("/association/:id", associationHandler.Get)
-	apiV1.DELETE("/association/:id", associationHandler.Delete, auth.Restrict(auth.ISKNOWN))
 
-	// character
-	apiV1.PUT("/character", characterHandler.Put, auth.Restrict(auth.ISLOCAL))
-	apiV1.GET("/character/:id", characterHandler.Get)
-	apiV1.GET("/characters", characterHandler.Query)
-	apiV1.DELETE("/character/:id", characterHandler.Delete, auth.Restrict(auth.ISLOCAL))
+	// profile
+	apiV1.GET("/profile/:id", profileHandler.Get)
+	apiV1.GET("/profile/:owner/:semanticid", profileHandler.GetBySemanticID)
+	apiV1.GET("/profiles", profileHandler.Query)
 
-	// stream
-	apiV1.POST("/stream", streamHandler.Create, auth.Restrict(auth.ISLOCAL))
-	apiV1.GET("/stream/:id", streamHandler.Get)
-	apiV1.PUT("/stream/:id", streamHandler.Update, auth.Restrict(auth.ISLOCAL))
-	apiV1.DELETE("/stream/:id", streamHandler.Delete, auth.Restrict(auth.ISLOCAL))
-	apiV1.DELETE("/stream/:stream/:object", streamHandler.Remove, auth.Restrict(auth.ISLOCAL))
-	apiV1.GET("/streams", streamHandler.List)
-	apiV1.GET("/streams/mine", streamHandler.ListMine)
-	apiV1.GET("/streams/recent", streamHandler.Recent)
-	apiV1.GET("/streams/range", streamHandler.Range)
-	apiV1.GET("/streams/chunks", streamHandler.GetChunks)
-	apiV1.POST("/streams/checkpoint", streamHandler.Checkpoint, auth.Restrict(auth.ISUNITED))      // OLD API Remove for next release
-	apiV1.POST("/streams/checkpoint/item", streamHandler.Checkpoint, auth.Restrict(auth.ISUNITED)) // NEW API will be used for next release
-	apiV1.POST("/streams/checkpoint/event", streamHandler.EventCheckpoint, auth.Restrict(auth.ISUNITED))
+	// timeline
+	apiV1.GET("/timeline/:id", timelineHandler.Get)
+	apiV1.GET("/timelines", timelineHandler.List)
+	apiV1.GET("/timelines/mine", timelineHandler.ListMine)
+	apiV1.GET("/timelines/recent", timelineHandler.Recent)
+	apiV1.GET("/timelines/range", timelineHandler.Range)
+	apiV1.GET("/timelines/chunks", timelineHandler.GetChunks)
+	apiV1.GET("/timelines/realtime", timelineHandler.Realtime)
 
 	// userkv
 	apiV1.GET("/kv/:key", userkvHandler.Get, auth.Restrict(auth.ISLOCAL))
 	apiV1.PUT("/kv/:key", userkvHandler.Upsert, auth.Restrict(auth.ISLOCAL))
 
-	// socket
-	apiV1.GET("/socket", socketHandler.Connect)
-
 	// auth
-	apiV1.GET("/auth/passport/:remote", authHandler.GetPassport, auth.Restrict(auth.ISLOCAL))
+	apiV1.GET("/auth/passport", authHandler.GetPassport, auth.Restrict(auth.ISLOCAL))
 
 	// key
 	apiV1.GET("/key/:id", keyHandler.GetKeyResolution)
-	apiV1.POST("key", keyHandler.UpdateKey, auth.Restrict(auth.ISLOCAL))
 	apiV1.GET("/keys/mine", keyHandler.GetKeyMine, auth.Restrict(auth.ISLOCAL))
 
-	// collection
-	apiV1.POST("/collection", collectionHandler.CreateCollection, auth.Restrict(auth.ISLOCAL))
-	apiV1.GET("/collection/:id", collectionHandler.GetCollection)
-	apiV1.PUT("/collection/:id", collectionHandler.UpdateCollection, auth.Restrict(auth.ISLOCAL))
-	apiV1.DELETE("/collection/:id", collectionHandler.DeleteCollection, auth.Restrict(auth.ISLOCAL))
+	// subscription
+	apiV1.GET("/subscription/:id", subscriptionHandler.GetSubscription)
+	apiV1.GET("/subscriptions/mine", subscriptionHandler.GetOwnSubscriptions, auth.Restrict(auth.ISLOCAL))
 
-	apiV1.POST("/collection/:collection", collectionHandler.CreateItem, auth.Restrict(auth.ISLOCAL))
-	apiV1.GET("/collection/:collection/:item", collectionHandler.GetItem)
-	apiV1.PUT("/collection/:collection/:item", collectionHandler.UpdateItem, auth.Restrict(auth.ISLOCAL))
-	apiV1.DELETE("/collection/:collection/:item", collectionHandler.DeleteItem, auth.Restrict(auth.ISLOCAL))
+	// storage
+	apiV1.GET("/repository", storeHandler.Get, auth.Restrict(auth.ISLOCAL))
+	apiV1.POST("/repository", storeHandler.Post, auth.Restrict(auth.ISLOCAL))
 
 	// misc
-	apiV1.GET("/profile", func(c echo.Context) error {
-		profile := config.Profile
-		profile.Registration = config.Concurrent.Registration
-		profile.Version = version
-		profile.BuildInfo = util.BuildInfo{
-			BuildTime:    buildTime,
-			BuildMachine: buildMachine,
-			GoVersion:    goVersion,
-		}
-		profile.SiteKey = config.Server.CaptchaSitekey
-		return c.JSON(http.StatusOK, profile)
-	})
 	e.GET("/health", func(c echo.Context) (err error) {
 		ctx := c.Request().Context()
 
@@ -349,14 +331,14 @@ func main() {
 		return c.String(http.StatusOK, "ok")
 	})
 
-	var streamSubscriptionMetrics = prometheus.NewGaugeVec(
+	var timelineSubscriptionMetrics = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
-			Name: "cc_stream_subscriptions",
-			Help: "stream subscriptions",
+			Name: "cc_timeline_subscriptions",
+			Help: "timeline subscriptions",
 		},
-		[]string{"stream"},
+		[]string{"timeline"},
 	)
-	prometheus.MustRegister(streamSubscriptionMetrics)
+	prometheus.MustRegister(timelineSubscriptionMetrics)
 
 	var resourceCountMetrics = prometheus.NewGaugeVec(
 		prometheus.GaugeOpts{
@@ -367,26 +349,18 @@ func main() {
 	)
 	prometheus.MustRegister(resourceCountMetrics)
 
-	var socketConnectionMetrics = prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "cc_socket_connections",
-			Help: "socket connections",
-		},
-	)
-	prometheus.MustRegister(socketConnectionMetrics)
-
 	go func() {
 		for {
 			time.Sleep(15 * time.Second)
 			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 			defer cancel()
-			subscriptions, err := streamService.ListStreamSubscriptions(ctx)
+			subscriptions, err := timelineService.ListTimelineSubscriptions(ctx)
 			if err != nil {
-				slog.Error(fmt.Sprintf("failed to list stream subscriptions: %v", err))
+				slog.Error(fmt.Sprintf("failed to list timeline subscriptions: %v", err))
 				continue
 			}
-			for stream, count := range subscriptions {
-				streamSubscriptionMetrics.WithLabelValues(stream).Set(float64(count))
+			for timeline, count := range subscriptions {
+				timelineSubscriptionMetrics.WithLabelValues(timeline).Set(float64(count))
 			}
 
 			count, err := messageService.Count(ctx)
@@ -403,12 +377,12 @@ func main() {
 			}
 			resourceCountMetrics.WithLabelValues("entity").Set(float64(count))
 
-			count, err = characterService.Count(ctx)
+			count, err = profileService.Count(ctx)
 			if err != nil {
-				slog.Error(fmt.Sprintf("failed to count characters: %v", err))
+				slog.Error(fmt.Sprintf("failed to count profiles: %v", err))
 				continue
 			}
-			resourceCountMetrics.WithLabelValues("character").Set(float64(count))
+			resourceCountMetrics.WithLabelValues("profile").Set(float64(count))
 
 			count, err = associationService.Count(ctx)
 			if err != nil {
@@ -417,15 +391,12 @@ func main() {
 			}
 			resourceCountMetrics.WithLabelValues("association").Set(float64(count))
 
-			count, err = streamService.Count(ctx)
+			count, err = timelineService.Count(ctx)
 			if err != nil {
-				slog.Error(fmt.Sprintf("failed to count streams: %v", err))
+				slog.Error(fmt.Sprintf("failed to count timelines: %v", err))
 				continue
 			}
-			resourceCountMetrics.WithLabelValues("stream").Set(float64(count))
-
-			count = socketHandler.CurrentConnectionCount()
-			socketConnectionMetrics.Set(float64(count))
+			resourceCountMetrics.WithLabelValues("timeline").Set(float64(count))
 		}
 	}()
 

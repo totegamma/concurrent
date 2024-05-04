@@ -333,6 +333,11 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 
 	var writable bool
 
+	if tl.Author == author {
+		writable = true
+		goto skipAuth
+	}
+
 	if tl.DomainOwned {
 		writable = true
 		if tl.Policy != "" {
@@ -342,13 +347,13 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 				if err != nil {
 					span.SetStatus(codes.Error, err.Error())
 					span.RecordError(err)
-					goto next
+					goto skipAuth
 				}
 
 				requesterEntity, err := s.entity.Get(ctx, author)
 				if err != nil {
 					span.RecordError(err)
-					goto next
+					goto skipAuth
 				}
 
 				requestContext := core.RequestContext{
@@ -360,7 +365,7 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 				ok, err := s.policy.TestWithPolicyURL(ctx, tl.Policy, requestContext, "distribute")
 				if err != nil {
 					span.RecordError(err)
-					goto next
+					goto skipAuth
 				}
 
 				if !ok {
@@ -377,13 +382,13 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 				if err != nil {
 					span.SetStatus(codes.Error, err.Error())
 					span.RecordError(err)
-					goto next
+					goto skipAuth
 				}
 
 				requesterEntity, err := s.entity.Get(ctx, author)
 				if err != nil {
 					span.RecordError(err)
-					goto next
+					goto skipAuth
 				}
 
 				requestContext := core.RequestContext{
@@ -395,7 +400,7 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 				ok, err := s.policy.TestWithPolicyURL(ctx, tl.Policy, requestContext, "distribute")
 				if err != nil {
 					span.RecordError(err)
-					goto next
+					goto skipAuth
 				}
 
 				if ok {
@@ -404,7 +409,7 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 			}
 		}
 	}
-next:
+skipAuth:
 
 	if !writable {
 		slog.InfoContext(

@@ -219,8 +219,13 @@ func (r *repository) GetBySchema(ctx context.Context, schema string) ([]core.Pro
 	ctx, span := tracer.Start(ctx, "Profile.Repository.GetBySchema")
 	defer span.End()
 
+    schemaID, err := r.schema.UrlToID(ctx, schema)
+    if err != nil {
+        return []core.Profile{}, err
+    }
+
 	var profiles []core.Profile
-	if err := r.db.WithContext(ctx).Where("schema = $1", schema).Find(&profiles).Error; err != nil {
+	if err := r.db.WithContext(ctx).Where("schema_id = $1", schemaID).Find(&profiles).Error; err != nil {
 		return []core.Profile{}, err
 	}
 	if profiles == nil {

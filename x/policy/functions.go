@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"encoding/json"
 	"fmt"
 	"reflect"
 	"regexp"
@@ -9,6 +10,11 @@ import (
 
 	"github.com/totegamma/concurrent/core"
 )
+
+func debugPrint(comment string, v interface{}) {
+	b, _ := json.MarshalIndent(v, "", "  ")
+	fmt.Println(comment, string(b))
+}
 
 func structToMap(obj any) map[string]any {
 	result := make(map[string]any)
@@ -70,124 +76,245 @@ func isActionMatch(action string, statementAction string) bool {
 	return match
 }
 
-func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (any, error) {
-	switch expr.Operator {
+func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.EvalResult, error) {
 
+	defer func() {
+		if r := recover(); r != nil {
+			fmt.Printf("recovered from: %v\n", r)
+			fmt.Printf("while evaluating: %v\n", expr.Operator)
+			debugPrint("expr", expr)
+			debugPrint("requestCtx", requestCtx)
+		}
+	}()
+
+	switch expr.Operator {
 	case "And":
+		args := make([]core.EvalResult, 0)
 		for _, arg := range expr.Args {
 			eval, err := s.eval(arg, requestCtx)
 			if err != nil {
-				return nil, err
+				return core.EvalResult{
+					Operator: "And",
+					Args:     args,
+					Error:    err.Error(),
+				}, err
 			}
-			rhs, ok := eval.(bool)
+			args = append(args, eval)
+			rhs, ok := eval.Result.(bool)
+
 			if !ok {
-				return nil, fmt.Errorf("bad argument type for AND. Expected bool but got %s\n", reflect.TypeOf(eval).String())
+				err := fmt.Errorf("bad argument type for AND. Expected bool but got %s\n", reflect.TypeOf(eval.Result))
+				return core.EvalResult{
+					Operator: "And",
+					Args:     args,
+					Error:    err.Error(),
+				}, err
 			}
 
 			if !rhs {
-				return false, nil
+				return core.EvalResult{
+					Operator: "And",
+					Args:     args,
+					Result:   false,
+				}, nil
 			}
 		}
-		return true, nil
+		return core.EvalResult{
+			Operator: "And",
+			Args:     args,
+			Result:   true,
+		}, nil
 
 	case "Or":
+		args := make([]core.EvalResult, 0)
 		for _, arg := range expr.Args {
 			eval, err := s.eval(arg, requestCtx)
 			if err != nil {
-				return nil, err
+				return core.EvalResult{
+					Operator: "Or",
+					Args:     args,
+					Error:    err.Error(),
+				}, err
 			}
-			rhs, ok := eval.(bool)
+			rhs, ok := eval.Result.(bool)
 			if !ok {
-				return nil, fmt.Errorf("bad argument type for OR. Expected bool but got %s\n", reflect.TypeOf(eval).String())
+				err := fmt.Errorf("bad argument type for OR. Expected bool but got %s\n", reflect.TypeOf(eval.Result))
+				return core.EvalResult{
+					Operator: "Or",
+					Args:     args,
+					Error:    err.Error(),
+				}, err
 			}
 
 			if rhs {
-				return true, nil
+				return core.EvalResult{
+					Operator: "Or",
+					Args:     args,
+					Result:   true,
+				}, nil
 			}
 		}
-		return false, nil
+		return core.EvalResult{
+			Operator: "Or",
+			Args:     args,
+			Result:   false,
+		}, nil
 
 	case "Const":
-		return expr.Constant, nil
+		return core.EvalResult{
+			Operator: "Const",
+			Result:   expr.Constant,
+		}, nil
 
 	case "Contains":
 		if len(expr.Args) != 2 {
-			return nil, fmt.Errorf("bad argument length for CONTAINS. Expected 2 but got %d\n", len(expr.Args))
+			err := fmt.Errorf("bad argument length for CONTAINS. Expected 2 but got %d\n", len(expr.Args))
+			return core.EvalResult{
+				Operator: "Contains",
+				Error:    err.Error(),
+			}, err
 		}
 
 		arg0_raw, err := s.eval(expr.Args[0], requestCtx)
 		if err != nil {
-			return nil, err
+			return core.EvalResult{
+				Operator: "Contains",
+				Args:     []core.EvalResult{arg0_raw},
+				Error:    err.Error(),
+			}, err
 		}
 
-		arg0, ok := arg0_raw.([]string)
+		arg0, ok := arg0_raw.Result.([]any)
 		if !ok {
-			return nil, fmt.Errorf("bad argument type for CONTAINS. Expected []string but got %s\n", reflect.TypeOf(arg0_raw).String())
+			err := fmt.Errorf("bad argument type for CONTAINS. Expected []any but got %s\n", reflect.TypeOf(arg0_raw.Result))
+			return core.EvalResult{
+				Operator: "Contains",
+				Args:     []core.EvalResult{arg0_raw},
+				Error:    err.Error(),
+			}, err
 		}
 
 		arg1_raw, err := s.eval(expr.Args[1], requestCtx)
 		if err != nil {
-			return nil, err
+			return core.EvalResult{
+				Operator: "Contains",
+				Args:     []core.EvalResult{arg0_raw, arg1_raw},
+				Error:    err.Error(),
+			}, err
 		}
 
-		arg1, ok := arg1_raw.(string)
+		arg1, ok := arg1_raw.Result.(any)
 		if !ok {
-			return nil, fmt.Errorf("bad argument type for CONTAINS. Expected string but got %s\n", reflect.TypeOf(arg1_raw).String())
+			err := fmt.Errorf("bad argument type for CONTAINS. Expected any but got %s\n", reflect.TypeOf(arg1_raw.Result))
+			return core.EvalResult{
+				Operator: "Contains",
+				Args:     []core.EvalResult{arg0_raw, arg1_raw},
+				Error:    err.Error(),
+			}, err
 		}
 
-		return slices.Contains(arg0, arg1), nil
+		return core.EvalResult{
+			Operator: "Contains",
+			Args:     []core.EvalResult{arg0_raw, arg1_raw},
+			Result:   slices.Contains(arg0, arg1),
+		}, nil
 
 	case "LoadParam":
 		key, ok := expr.Constant.(string)
 		if !ok {
-			return nil, fmt.Errorf("bad argument type for LoadParam. Expected string but got %s\n", reflect.TypeOf(expr.Constant).String())
+			err := fmt.Errorf("bad argument type for LoadParam. Expected string but got %s\n", reflect.TypeOf(expr.Constant))
+			return core.EvalResult{
+				Operator: "LoadParam",
+				Error:    err.Error(),
+			}, err
 		}
 
 		value, ok := resolveDotNotation(requestCtx.Params, key)
 		if !ok {
-			return nil, fmt.Errorf("key not found: %s\n", key)
+			err := fmt.Errorf("key not found: %s\n", key)
+			return core.EvalResult{
+				Operator: "LoadParam",
+				Error:    err.Error(),
+			}, err
 		}
 
-		return value, nil
+		return core.EvalResult{
+			Operator: "LoadParam",
+			Result:   value,
+		}, nil
 
 	case "LoadDocument":
 		key, ok := expr.Constant.(string)
 		if !ok {
-			return nil, fmt.Errorf("bad argument type for LoadDocument. Expected string but got %s\n", reflect.TypeOf(expr.Constant).String())
+			err := fmt.Errorf("bad argument type for LoadDocument. Expected string but got %s\n", reflect.TypeOf(expr.Constant))
+			return core.EvalResult{
+				Operator: "LoadDocument",
+				Error:    err.Error(),
+			}, err
 		}
 
 		mappedDocument := structToMap(requestCtx.Document)
 		value, ok := resolveDotNotation(mappedDocument, key)
 		if !ok {
-			return nil, fmt.Errorf("key not found: %s\n", key)
+			err := fmt.Errorf("key not found: %s\n", key)
+			return core.EvalResult{
+				Operator: "LoadDocument",
+				Error:    err.Error(),
+			}, err
 		}
 
-		return value, nil
+		return core.EvalResult{
+			Operator: "LoadDocument",
+			Result:   value,
+		}, nil
 
 	case "IsRequesterLocalUser":
 		domain := requestCtx.Requester.Domain
-		return domain == s.config.Concurrent.FQDN, nil
+		return core.EvalResult{
+			Operator: "IsRequesterLocalUser",
+			Result:   domain == s.config.Concurrent.FQDN,
+		}, nil
 
 	case "IsRequesterRemoteUser":
 		domain := requestCtx.Requester.Domain
-		return domain != s.config.Concurrent.FQDN, nil
+		return core.EvalResult{
+			Operator: "IsRequesterRemoteUser",
+			Result:   domain != s.config.Concurrent.FQDN,
+		}, nil
 
 	case "IsRequesterGuestUser":
-		return requestCtx.Requester.ID == "", nil
+		return core.EvalResult{
+			Operator: "IsRequesterGuestUser",
+			Result:   requestCtx.Requester.ID == "",
+		}, nil
 
 	case "RequesterHasTag":
 		target, ok := expr.Constant.(string)
 		if !ok {
-			return nil, fmt.Errorf("bad argument type for RequesterHasTag. Expected string but got %s\n", reflect.TypeOf(expr.Constant).String())
+			err := fmt.Errorf("bad argument type for RequesterHasTag. Expected string but got %s\n", reflect.TypeOf(expr.Constant))
+			return core.EvalResult{
+				Operator: "RequesterHasTag",
+				Error:    err.Error(),
+			}, err
 		}
 
 		tags := core.ParseTags(requestCtx.Requester.Tag)
-		return tags.Has(target), nil
+		return core.EvalResult{
+			Operator: "RequesterHasTag",
+			Result:   tags.Has(target),
+		}, nil
 
 	case "RequesterID":
-		return requestCtx.Requester.ID, nil
+		return core.EvalResult{
+			Operator: "RequesterID",
+			Result:   requestCtx.Requester.ID,
+		}, nil
 
 	default:
-		return nil, fmt.Errorf("unknown operator: %s\n", expr.Operator)
+		err := fmt.Errorf("unknown operator: %s\n", expr.Operator)
+		return core.EvalResult{
+			Operator: expr.Operator,
+			Error:    err.Error(),
+		}, err
 	}
 }

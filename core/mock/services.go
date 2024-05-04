@@ -915,6 +915,36 @@ func (m *MockPolicyService) EXPECT() *MockPolicyServiceMockRecorder {
 	return m.recorder
 }
 
+// HasNoRules mocks base method.
+func (m *MockPolicyService) HasNoRules(ctx context.Context, policy core.Policy, action string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasNoRules", ctx, policy, action)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HasNoRules indicates an expected call of HasNoRules.
+func (mr *MockPolicyServiceMockRecorder) HasNoRules(ctx, policy, action interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasNoRules", reflect.TypeOf((*MockPolicyService)(nil).HasNoRules), ctx, policy, action)
+}
+
+// HasNoRulesWithPolicyURL mocks base method.
+func (m *MockPolicyService) HasNoRulesWithPolicyURL(ctx context.Context, url, action string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "HasNoRulesWithPolicyURL", ctx, url, action)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// HasNoRulesWithPolicyURL indicates an expected call of HasNoRulesWithPolicyURL.
+func (mr *MockPolicyServiceMockRecorder) HasNoRulesWithPolicyURL(ctx, url, action interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasNoRulesWithPolicyURL", reflect.TypeOf((*MockPolicyService)(nil).HasNoRulesWithPolicyURL), ctx, url, action)
+}
+
 // Test mocks base method.
 func (m *MockPolicyService) Test(ctx context.Context, policy core.Policy, context core.RequestContext, action string) (bool, error) {
 	m.ctrl.T.Helper()
@@ -928,6 +958,21 @@ func (m *MockPolicyService) Test(ctx context.Context, policy core.Policy, contex
 func (mr *MockPolicyServiceMockRecorder) Test(ctx, policy, context, action interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Test", reflect.TypeOf((*MockPolicyService)(nil).Test), ctx, policy, context, action)
+}
+
+// TestWithPolicyURL mocks base method.
+func (m *MockPolicyService) TestWithPolicyURL(ctx context.Context, url string, context core.RequestContext, action string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "TestWithPolicyURL", ctx, url, context, action)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// TestWithPolicyURL indicates an expected call of TestWithPolicyURL.
+func (mr *MockPolicyServiceMockRecorder) TestWithPolicyURL(ctx, url, context, action interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "TestWithPolicyURL", reflect.TypeOf((*MockPolicyService)(nil).TestWithPolicyURL), ctx, url, context, action)
 }
 
 // MockProfileService is a mock of ProfileService interface.
@@ -1375,17 +1420,18 @@ func (mr *MockSubscriptionServiceMockRecorder) CreateSubscription(ctx, mode, doc
 }
 
 // DeleteSubscription mocks base method.
-func (m *MockSubscriptionService) DeleteSubscription(ctx context.Context, id string) error {
+func (m *MockSubscriptionService) DeleteSubscription(ctx context.Context, mode core.CommitMode, document string) (core.Subscription, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "DeleteSubscription", ctx, id)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret := m.ctrl.Call(m, "DeleteSubscription", ctx, mode, document)
+	ret0, _ := ret[0].(core.Subscription)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // DeleteSubscription indicates an expected call of DeleteSubscription.
-func (mr *MockSubscriptionServiceMockRecorder) DeleteSubscription(ctx, id interface{}) *gomock.Call {
+func (mr *MockSubscriptionServiceMockRecorder) DeleteSubscription(ctx, mode, document interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteSubscription", reflect.TypeOf((*MockSubscriptionService)(nil).DeleteSubscription), ctx, id)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteSubscription", reflect.TypeOf((*MockSubscriptionService)(nil).DeleteSubscription), ctx, mode, document)
 }
 
 // GetOwnSubscriptions mocks base method.
@@ -1636,32 +1682,19 @@ func (mr *MockTimelineServiceMockRecorder) GetTimeline(ctx, key interface{}) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTimeline", reflect.TypeOf((*MockTimelineService)(nil).GetTimeline), ctx, key)
 }
 
-// HasReadAccess mocks base method.
-func (m *MockTimelineService) HasReadAccess(ctx context.Context, key, author string) bool {
+// GetTimelineAutoDomain mocks base method.
+func (m *MockTimelineService) GetTimelineAutoDomain(ctx context.Context, timelineID string) (core.Timeline, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HasReadAccess", ctx, key, author)
-	ret0, _ := ret[0].(bool)
-	return ret0
+	ret := m.ctrl.Call(m, "GetTimelineAutoDomain", ctx, timelineID)
+	ret0, _ := ret[0].(core.Timeline)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
-// HasReadAccess indicates an expected call of HasReadAccess.
-func (mr *MockTimelineServiceMockRecorder) HasReadAccess(ctx, key, author interface{}) *gomock.Call {
+// GetTimelineAutoDomain indicates an expected call of GetTimelineAutoDomain.
+func (mr *MockTimelineServiceMockRecorder) GetTimelineAutoDomain(ctx, timelineID interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasReadAccess", reflect.TypeOf((*MockTimelineService)(nil).HasReadAccess), ctx, key, author)
-}
-
-// HasWriteAccess mocks base method.
-func (m *MockTimelineService) HasWriteAccess(ctx context.Context, key, author string) bool {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HasWriteAccess", ctx, key, author)
-	ret0, _ := ret[0].(bool)
-	return ret0
-}
-
-// HasWriteAccess indicates an expected call of HasWriteAccess.
-func (mr *MockTimelineServiceMockRecorder) HasWriteAccess(ctx, key, author interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasWriteAccess", reflect.TypeOf((*MockTimelineService)(nil).HasWriteAccess), ctx, key, author)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTimelineAutoDomain", reflect.TypeOf((*MockTimelineService)(nil).GetTimelineAutoDomain), ctx, timelineID)
 }
 
 // ListTimelineByAuthor mocks base method.

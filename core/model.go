@@ -30,7 +30,7 @@ type Policy struct {
 }
 
 type Statement struct {
-	Action    []string `json:"action"`
+	Actions   []string `json:"actions"`
 	Effect    string   `json:"effect"`
 	Condition Expr     `json:"condition"`
 }
@@ -38,5 +38,12 @@ type Statement struct {
 type Expr struct {
 	Operator string `json:"op"`
 	Args     []Expr `json:"args"`
-	Constant any    `json:"constant"`
+	Constant any    `json:"const"`
+}
+
+type EvalResult struct {
+	Operator string       `json:"op"`
+	Args     []EvalResult `json:"args"`
+	Result   any          `json:"result"`
+	Error    string       `json:"error"`
 }

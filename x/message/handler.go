@@ -43,7 +43,7 @@ func (h handler) Get(c echo.Context) error {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return c.JSON(http.StatusNotFound, echo.Map{"error": "Message not found"})
 			}
-			return err
+			return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 		}
 	} else {
 		message, err = h.service.Get(ctx, id, "")
@@ -51,7 +51,7 @@ func (h handler) Get(c echo.Context) error {
 			if errors.Is(err, gorm.ErrRecordNotFound) {
 				return c.JSON(http.StatusNotFound, echo.Map{"error": "Message not found"})
 			}
-			return err
+			return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 		}
 	}
 	return c.JSON(http.StatusOK, echo.Map{

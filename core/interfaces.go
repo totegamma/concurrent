@@ -84,6 +84,9 @@ type MessageService interface {
 
 type PolicyService interface {
 	Test(ctx context.Context, policy Policy, context RequestContext, action string) (bool, error)
+	TestWithPolicyURL(ctx context.Context, url string, context RequestContext, action string) (bool, error)
+	HasNoRules(ctx context.Context, policy Policy, action string) (bool, error)
+	HasNoRulesWithPolicyURL(ctx context.Context, url string, action string) (bool, error)
 }
 
 type ProfileService interface {
@@ -148,9 +151,7 @@ type TimelineService interface {
 	PublishEvent(ctx context.Context, event Event) error
 
 	GetTimeline(ctx context.Context, key string) (Timeline, error)
-
-	HasWriteAccess(ctx context.Context, key string, author string) bool
-	HasReadAccess(ctx context.Context, key string, author string) bool
+	GetTimelineAutoDomain(ctx context.Context, timelineID string) (Timeline, error)
 
 	ListTimelineBySchema(ctx context.Context, schema string) ([]Timeline, error)
 	ListTimelineByAuthor(ctx context.Context, author string) ([]Timeline, error)

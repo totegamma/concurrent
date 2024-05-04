@@ -29,8 +29,8 @@ func TestPolicyTimelineCreatorIsLocalUserOrHasTag(t *testing.T) {
 		Version: "2024-05-01",
 		Statements: []core.Statement{
 			{
-				Action: []string{"timeline"},
-				Effect: "allow", // allow: これにマッチしなければ拒否
+				Actions: []string{"timeline"},
+				Effect:  "allow", // allow: これにマッチしなければ拒否
 				Condition: core.Expr{
 					Operator: "Or",
 					Args: []core.Expr{
@@ -67,8 +67,8 @@ func TestPolicyTimelineLimitAccess(t *testing.T) {
 		Version: "2024-05-01",
 		Statements: []core.Statement{
 			{
-				Action: []string{"distribute", "GET:/message/*"},
-				Effect: "allow",
+				Actions: []string{"distribute", "GET:/message/*"},
+				Effect:  "allow",
 				Condition: core.Expr{
 					Operator: "Contains",
 					Args: []core.Expr{
@@ -111,8 +111,8 @@ func TestPolicyTimelineLimitMessageSchema(t *testing.T) {
 		Version: "2024-05-01",
 		Statements: []core.Statement{
 			{
-				Action: []string{"distribute"},
-				Effect: "allow",
+				Actions: []string{"distribute"},
+				Effect:  "allow",
 				Condition: core.Expr{
 					Operator: "Contains",
 					Args: []core.Expr{
@@ -156,8 +156,8 @@ func TestPolicyMessageLimitAction(t *testing.T) {
 		Version: "2024-05-01",
 		Statements: []core.Statement{
 			{
-				Action: []string{"association"},
-				Effect: "allow",
+				Actions: []string{"association"},
+				Effect:  "allow",
 				Condition: core.Expr{
 					Operator: "Contains",
 					Args: []core.Expr{

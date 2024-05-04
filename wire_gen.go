@@ -22,6 +22,7 @@ import (
 	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/message"
+	"github.com/totegamma/concurrent/x/policy"
 	"github.com/totegamma/concurrent/x/profile"
 	"github.com/totegamma/concurrent/x/schema"
 	"github.com/totegamma/concurrent/x/semanticid"
@@ -33,6 +34,12 @@ import (
 )
 
 // Injectors from wire.go:
+
+func SetupPolicyService(rdb *redis.Client, config util.Config) core.PolicyService {
+	repository := policy.NewRepository(rdb)
+	policyService := policy.NewService(repository, config)
+	return policyService
+}
 
 func SetupJwtService(rdb *redis.Client) jwt.Service {
 	repository := jwt.NewRepository(rdb)
@@ -61,7 +68,8 @@ func SetupMessageService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, cl
 	entityService := SetupEntityService(db, rdb, mc, client2, config)
 	timelineService := SetupTimelineService(db, rdb, mc, client2, config)
 	keyService := SetupKeyService(db, rdb, mc, client2, config)
-	messageService := message.NewService(repository, client2, entityService, timelineService, keyService, config)
+	policyService := SetupPolicyService(rdb, config)
+	messageService := message.NewService(repository, client2, entityService, timelineService, keyService, policyService, config)
 	return messageService
 }
 
@@ -175,6 +183,8 @@ var semanticidServiceProvider = wire.NewSet(semanticid.NewService, semanticid.Ne
 
 var userKvServiceProvider = wire.NewSet(userkv.NewService, userkv.NewRepository)
 
+var policyServiceProvider = wire.NewSet(policy.NewService, policy.NewRepository)
+
 // Lv1
 var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService, SetupSchemaService)
 
@@ -193,7 +203,7 @@ var authServiceProvider = wire.NewSet(auth.NewService, SetupEntityService, Setup
 var ackServiceProvider = wire.NewSet(ack.NewService, ack.NewRepository, SetupEntityService, SetupKeyService)
 
 // Lv4
-var messageServiceProvider = wire.NewSet(message.NewService, message.NewRepository, SetupEntityService, SetupTimelineService, SetupKeyService, SetupSchemaService)
+var messageServiceProvider = wire.NewSet(message.NewService, message.NewRepository, SetupEntityService, SetupTimelineService, SetupKeyService, SetupPolicyService, SetupSchemaService)
 
 // Lv5
 var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupEntityService, SetupTimelineService, SetupMessageService, SetupKeyService, SetupSchemaService)

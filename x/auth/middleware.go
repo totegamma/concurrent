@@ -325,7 +325,7 @@ func SetRequestPath(next echo.HandlerFunc) echo.HandlerFunc {
 		method := c.Request().Method
 		path := method + ":" + url.Path
 
-		ctx = context.WithValue(ctx, core.RequestPathCtxKey, c.Path())
+		ctx = context.WithValue(ctx, core.RequestPathCtxKey, path)
 		span.SetAttributes(attribute.String("RequestPath", path))
 
 		c.SetRequest(c.Request().WithContext(ctx))

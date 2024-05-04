@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/codes"
 
 	"github.com/totegamma/concurrent/cdid"
 	"github.com/totegamma/concurrent/client"
@@ -21,12 +22,13 @@ type service struct {
 	entity   core.EntityService
 	timeline core.TimelineService
 	key      core.KeyService
+	policy   core.PolicyService
 	config   util.Config
 }
 
 // NewService creates a new message service
-func NewService(repo Repository, client client.Client, entity core.EntityService, timeline core.TimelineService, key core.KeyService, config util.Config) core.MessageService {
-	return &service{repo, client, entity, timeline, key, config}
+func NewService(repo Repository, client client.Client, entity core.EntityService, timeline core.TimelineService, key core.KeyService, policy core.PolicyService, config util.Config) core.MessageService {
+	return &service{repo, client, entity, timeline, key, policy, config}
 }
 
 // Count returns the count number of messages
@@ -48,16 +50,37 @@ func (s *service) Get(ctx context.Context, id string, requester string) (core.Me
 		return core.Message{}, err
 	}
 
-	canRead := true
-
+	canRead := false
 	for _, timelineID := range message.Timelines {
-		ok := s.timeline.HasReadAccess(ctx, timelineID, requester)
-		if !ok {
-			canRead = false
+		timeline, err := s.timeline.GetTimelineAutoDomain(ctx, timelineID)
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			continue
+		}
+
+		if timeline.Policy == "" {
+			canRead = true
 			break
 		}
-	}
 
+		action, ok := ctx.Value(core.RequestPathCtxKey).(string)
+		if !ok {
+			span.RecordError(fmt.Errorf("action not found"))
+			return core.Message{}, fmt.Errorf("invalid action")
+		}
+
+		ok, err = s.policy.HasNoRulesWithPolicyURL(ctx, timeline.Policy, action)
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			continue
+		}
+
+		if ok {
+			canRead = true
+			break
+		}
+
+	}
 	if !canRead {
 		return core.Message{}, fmt.Errorf("no read access")
 	}
@@ -76,16 +99,60 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 		return core.Message{}, err
 	}
 
-	canRead := true
-
-	for _, timelineID := range message.Timelines {
-		ok := s.timeline.HasReadAccess(ctx, timelineID, requester)
-		if !ok {
-			canRead = false
-			break
-		}
+	requesterEntity, err := s.entity.Get(ctx, requester)
+	if err != nil {
+		span.RecordError(err)
+		return core.Message{}, err
 	}
 
+	canRead := false
+	for _, timelineID := range message.Timelines {
+		timeline, err := s.timeline.GetTimelineAutoDomain(ctx, timelineID)
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			continue
+		}
+
+		if timeline.Policy == "" {
+			canRead = true
+			break
+		}
+
+		var params map[string]any
+		if timeline.PolicyParams != nil {
+			err := json.Unmarshal([]byte(*timeline.PolicyParams), &params)
+			if err != nil {
+				span.SetStatus(codes.Error, err.Error())
+				span.RecordError(err)
+				continue
+			}
+		}
+		fmt.Printf("params: %v\n", params)
+
+		requestContext := core.RequestContext{
+			Self:      timeline,
+			Params:    params,
+			Requester: requesterEntity,
+		}
+
+		action, ok := ctx.Value(core.RequestPathCtxKey).(string)
+		if !ok {
+			span.RecordError(fmt.Errorf("action not found"))
+			return core.Message{}, fmt.Errorf("invalid action")
+		}
+
+		ok, err = s.policy.TestWithPolicyURL(ctx, timeline.Policy, requestContext, action)
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			continue
+		}
+
+		if ok {
+			canRead = true
+			break
+		}
+
+	}
 	if !canRead {
 		return core.Message{}, fmt.Errorf("no read access")
 	}
@@ -154,10 +221,12 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 	destinations := make(map[string][]string)
 	for _, timeline := range doc.Timelines {
 
-		ok := s.timeline.HasReadAccess(ctx, timeline, "")
-		if !ok {
-			ispublic = false
-		}
+		/*
+			ok := s.timeline.HasReadAccess(ctx, timeline, "")
+			if !ok {
+				ispublic = false
+			}
+		*/
 
 		normalized, err := s.timeline.NormalizeTimelineID(ctx, timeline)
 		if err != nil {

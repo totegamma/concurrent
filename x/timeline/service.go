@@ -310,10 +310,12 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 
 	item.TimelineID = timelineID
 
-	author := item.Owner
-	if item.Author != nil {
-		author = *item.Author
-	}
+	/*
+		author := item.Owner
+		if item.Author != nil {
+			author = *item.Author
+		}
+	*/
 
 	if timelineHost != s.config.Concurrent.FQDN {
 		span.RecordError(fmt.Errorf("Remote timeline is not supported"))
@@ -321,6 +323,7 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 	}
 
 	// check if the user has write access to the timeline
+	/* XXX: implment me
 	if !s.HasWriteAccess(ctx, timelineID, author) {
 		slog.InfoContext(
 			ctx, "failed to post to timeline",
@@ -331,6 +334,7 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 		)
 		return core.TimelineItem{}, fmt.Errorf("You don't have write access to %v", timelineID)
 	}
+	*/
 
 	slog.DebugContext(
 		ctx, fmt.Sprintf("post to local timeline: %v to %v", item.ResourceID, timelineID),
@@ -566,14 +570,19 @@ func (s *service) ListTimelineSubscriptions(ctx context.Context) (map[string]int
 	return s.repository.ListTimelineSubscriptions(ctx)
 }
 
-func (s *service) getTimelineAutoDomain(ctx context.Context, timelineID string) (core.Timeline, error) {
+func (s *service) GetTimelineAutoDomain(ctx context.Context, timelineID string) (core.Timeline, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.getTimelineAutoDomain")
 	defer span.End()
 
-	key := timelineID
+	normalized, err := s.NormalizeTimelineID(ctx, timelineID)
+	if err != nil {
+		return core.Timeline{}, err
+	}
+
+	key := normalized
 	host := s.config.Concurrent.FQDN
 
-	split := strings.Split(timelineID, "@")
+	split := strings.Split(normalized, "@")
 	if len(split) > 1 {
 		key = split[0]
 		host = split[1]
@@ -584,62 +593,6 @@ func (s *service) getTimelineAutoDomain(ctx context.Context, timelineID string) 
 	} else {
 		return s.repository.GetTimelineFromRemote(ctx, host, key)
 	}
-}
-
-func (s *service) HasWriteAccess(ctx context.Context, timelineID string, userAddress string) bool {
-	ctx, span := tracer.Start(ctx, "Timeline.Service.HasWriteAccess")
-	defer span.End()
-
-	return true
-
-	/*
-		timeline, err := s.getTimelineAutoDomain(ctx, timelineID)
-		if err != nil {
-			return false
-		}
-
-		if timeline.Author == userAddress {
-			return true
-		}
-
-		if len(timeline.Writer) == 0 {
-			return true
-		}
-
-		return slices.Contains(timeline.Writer, userAddress)
-	*/
-}
-
-func (s *service) HasReadAccess(ctx context.Context, timelineID string, userAddress string) bool {
-	ctx, span := tracer.Start(ctx, "Timeline.Service.HasReadAccess")
-	defer span.End()
-
-	return true
-
-	/*
-		span.SetAttributes(attribute.String("timeline", timelineID))
-		span.SetAttributes(attribute.String("user", userAddress))
-
-		timeline, err := s.getTimelineAutoDomain(ctx, timelineID)
-		if err != nil {
-			span.AddEvent("timeline not found")
-			return false
-		}
-
-		span.SetAttributes(attribute.StringSlice("reader", timeline.Reader))
-
-		if timeline.Author == userAddress {
-			span.AddEvent("author has read access")
-			return true
-		}
-
-		if len(timeline.Reader) == 0 {
-			span.AddEvent("no reader")
-			return true
-		}
-
-		return slices.Contains(timeline.Reader, userAddress)
-	*/
 }
 
 func (s *service) Realtime(ctx context.Context, request <-chan []string, response chan<- core.Event) {

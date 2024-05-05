@@ -204,10 +204,6 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 			Timelines:    doc.Timelines,
 		}
 
-		if !doc.SignedAt.IsZero() {
-			message.CDate = doc.SignedAt
-		}
-
 		created, err = s.repo.Create(ctx, message)
 		if err != nil {
 			span.RecordError(err)
@@ -269,11 +265,18 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 		if domain == s.config.Concurrent.FQDN {
 			// localなら、timelineのエントリを生成→Eventを発行
 			for _, timeline := range timelines {
-				posted, err := s.timeline.PostItem(ctx, timeline, core.TimelineItem{
+
+				timelineItem := core.TimelineItem{
 					ResourceID: id,
 					Owner:      doc.Signer,
 					TimelineID: timeline,
-				}, sendDocument, sendSignature)
+				}
+
+				if !doc.SignedAt.IsZero() {
+					timelineItem.CDate = doc.SignedAt
+				}
+
+				posted, err := s.timeline.PostItem(ctx, timeline, timelineItem, sendDocument, sendSignature)
 				if err != nil {
 					span.RecordError(errors.Wrap(err, "failed to post item"))
 					continue

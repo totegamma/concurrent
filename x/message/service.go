@@ -16,6 +16,7 @@ import (
 // Provides methods for message CRUD
 type Service interface {
 	Get(ctx context.Context, id string, requester string) (core.Message, error)
+	GetByOwner(ctx context.Context, owner string) ([]core.Message, error)
 	GetWithOwnAssociations(ctx context.Context, id string, requester string) (core.Message, error)
 	PostMessage(ctx context.Context, objectStr string, signature string, streams []string) (core.Message, error)
 	Delete(ctx context.Context, id string) (core.Message, error)
@@ -68,6 +69,14 @@ func (s *service) Get(ctx context.Context, id string, requester string) (core.Me
 	}
 
 	return message, nil
+}
+
+// GetByOwner returns messages by owner
+func (s *service) GetByOwner(ctx context.Context, owner string) ([]core.Message, error) {
+	ctx, span := tracer.Start(ctx, "ServiceGetByOwner")
+	defer span.End()
+
+	return s.repo.GetByOwner(ctx, owner)
 }
 
 // GetWithOwnAssociations returns a message by ID with associations

@@ -13,6 +13,7 @@ import (
 type Repository interface {
 	Create(ctx context.Context, message core.Message) (core.Message, error)
 	Get(ctx context.Context, key string) (core.Message, error)
+	GetByOwner(ctx context.Context, key string) ([]core.Message, error)
 	GetWithAssociations(ctx context.Context, key string) (core.Message, error)
 	GetWithOwnAssociations(ctx context.Context, key string, ccid string) (core.Message, error)
 	Delete(ctx context.Context, key string) (core.Message, error)
@@ -80,6 +81,16 @@ func (r *repository) Get(ctx context.Context, key string) (core.Message, error) 
 	var message core.Message
 	err := r.db.WithContext(ctx).First(&message, "id = ?", key).Error
 	return message, err
+}
+
+// GetByOwner returns a message by Owner
+func (r *repository) GetByOwner(ctx context.Context, key string) ([]core.Message, error) {
+	ctx, span := tracer.Start(ctx, "RepositoryGetByOwner")
+	defer span.End()
+
+	var messages []core.Message
+	err := r.db.WithContext(ctx).Where("author = ?", key).Find(&messages).Error
+	return messages, err
 }
 
 // GetWithOwnAssociations returns a message by ID with associations

@@ -267,6 +267,7 @@ func main() {
 	apiV1.GET("/message/:id/associations", associationHandler.GetFiltered)
 	apiV1.GET("/message/:id/associationcounts", associationHandler.GetCounts)
 	apiV1.GET("/message/:id/associations/mine", associationHandler.GetOwnByTarget, auth.Restrict(auth.ISKNOWN))
+	apiV1.GET("/messages/mine", messageHandler.GetOwn, auth.Restrict(auth.ISKNOWN))
 
 	// association
 	apiV1.POST("/association", associationHandler.Post, auth.Restrict(auth.ISKNOWN))

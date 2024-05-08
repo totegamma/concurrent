@@ -339,6 +339,14 @@ func main() {
 		return c.JSON(http.StatusOK, services)
 	}, cors)
 
+	e.GET("/tos", func(c echo.Context) (err error) {
+		return c.File("/etc/concurrent/tos.txt")
+	}, cors)
+
+	e.GET("/code-of-conduct", func(c echo.Context) (err error) {
+		return c.File("/etc/concurrent/code-of-conduct.txt")
+	}, cors)
+
 	e.GET("/health", func(c echo.Context) (err error) {
 		ctx := c.Request().Context()
 

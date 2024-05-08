@@ -66,7 +66,7 @@ func (a *agent) createInsufficientSubs(ctx context.Context) {
 		}
 		domain := split[1]
 
-		if domain == a.config.Concurrent.FQDN {
+		if domain == a.config.FQDN {
 			continue
 		}
 

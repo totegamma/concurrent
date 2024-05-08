@@ -13,7 +13,6 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/util"
 	"gorm.io/gorm"
 	"slices"
 )
@@ -54,11 +53,11 @@ type repository struct {
 	mc     *memcache.Client
 	client client.Client
 	schema core.SchemaService
-	config util.Config
+	config core.Config
 }
 
 // NewRepository creates a new timeline repository
-func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, schema core.SchemaService, config util.Config) Repository {
+func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, schema core.SchemaService, config core.Config) Repository {
 
 	var count int64
 	err := db.Model(&core.Timeline{}).Count(&count).Error
@@ -82,7 +81,7 @@ func (r *repository) normalizeLocalDBID(id string) (string, error) {
 	if len(split) == 2 {
 		normalized = split[0]
 
-		if split[1] != r.config.Concurrent.FQDN {
+		if split[1] != r.config.FQDN {
 			return "", fmt.Errorf("invalid timeline id: %s", id)
 		}
 	}
@@ -393,7 +392,7 @@ func (r *repository) GetChunksFromDB(ctx context.Context, timelines []string, ch
 
 		// append domain to timelineID
 		for i, item := range items {
-			items[i].TimelineID = item.TimelineID + "@" + r.config.Concurrent.FQDN
+			items[i].TimelineID = item.TimelineID + "@" + r.config.FQDN
 		}
 
 		result[timeline] = core.Chunk{
@@ -496,7 +495,7 @@ func (r *repository) CreateItem(ctx context.Context, item core.TimelineItem) (co
 		return item, err
 	}
 
-	timelineID := "t" + item.TimelineID + "@" + r.config.Concurrent.FQDN
+	timelineID := "t" + item.TimelineID + "@" + r.config.FQDN
 
 	json, err := json.Marshal(item)
 	if err != nil {

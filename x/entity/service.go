@@ -21,12 +21,12 @@ import (
 type service struct {
 	repository Repository
 	client     client.Client
-	config     util.Config
+	config     core.Config
 	jwtService jwt.Service
 }
 
 // NewService creates a new entity service
-func NewService(repository Repository, client client.Client, config util.Config, jwtService jwt.Service) core.EntityService {
+func NewService(repository Repository, client client.Client, config core.Config, jwtService jwt.Service) core.EntityService {
 	return &service{
 		repository,
 		client,
@@ -100,8 +100,8 @@ func (s *service) Affiliation(ctx context.Context, mode core.CommitMode, documen
 		}
 	}
 
-	if doc.Domain == s.config.Concurrent.FQDN {
-		if s.config.Profile.SiteKey != "" {
+	if doc.Domain == s.config.FQDN {
+		if s.config.SiteKey != "" {
 			captchaVerified, ok := ctx.Value(core.CaptchaVerifiedKey).(bool)
 			if !ok || !captchaVerified {
 				return core.Entity{}, errors.New("Captcha verification failed")
@@ -115,7 +115,7 @@ func (s *service) Affiliation(ctx context.Context, mode core.CommitMode, documen
 			return core.Entity{}, errors.Wrap(err, "Failed to unmarshal option")
 		}
 
-		switch s.config.Concurrent.Registration {
+		switch s.config.Registration {
 		case "open":
 			entity, _, err := s.repository.CreateWithMeta(
 				ctx,

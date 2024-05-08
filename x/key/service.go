@@ -14,11 +14,11 @@ import (
 type service struct {
 	repository Repository
 	entity     core.EntityService
-	config     util.Config
+	config     core.Config
 }
 
 // NewService creates a new auth service
-func NewService(repository Repository, entity core.EntityService, config util.Config) core.KeyService {
+func NewService(repository Repository, entity core.EntityService, config core.Config) core.KeyService {
 	return &service{repository, entity, config}
 }
 
@@ -144,7 +144,7 @@ func (s *service) ValidateDocument(ctx context.Context, document, signature stri
 
 		ccid := ""
 
-		if signer.Domain == s.config.Concurrent.FQDN {
+		if signer.Domain == s.config.FQDN {
 			ccid, err = s.ResolveSubkey(ctx, object.KeyID)
 			if err != nil {
 				span.RecordError(err)

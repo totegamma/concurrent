@@ -13,7 +13,6 @@ import (
 	"github.com/totegamma/concurrent/core"
 	"github.com/totegamma/concurrent/core/mock"
 	"github.com/totegamma/concurrent/internal/testutil"
-	"github.com/totegamma/concurrent/util"
 	"go.uber.org/mock/gomock"
 )
 
@@ -49,7 +48,7 @@ func TestRepository(t *testing.T) {
 
 	mockClient := mock_client.NewMockClient(ctrl)
 
-	repo = NewRepository(db, rdb, mc, mockClient, mockSchema, util.Config{})
+	repo = NewRepository(db, rdb, mc, mockClient, mockSchema, core.Config{})
 
 	// :: Timelineを作成 ::
 	timeline := core.Timeline{

@@ -88,7 +88,7 @@ func main() {
 	e := echo.New()
 	e.HidePort = true
 	e.HideBanner = true
-	config := util.Config{}
+	config := Config{}
 	configPath := os.Getenv("CONCURRENT_CONFIG")
 	if configPath == "" {
 		configPath = "/etc/concurrent/config.yaml"
@@ -99,7 +99,9 @@ func main() {
 		slog.Error("Failed to load config: ", err)
 	}
 
-	slog.Info(fmt.Sprintf("Config loaded! I am: %s", config.Concurrent.CCID))
+	conconf := util.SetupConfig(config.Concurrent)
+
+	slog.Info(fmt.Sprintf("Config loaded! I am: %s", conconf.CCID))
 
 	if config.Server.EnableTrace {
 		cleanup, err := setupTraceProvider(config.Server.TraceEndpoint, config.Concurrent.FQDN+"/ccapi", version)
@@ -202,39 +204,39 @@ func main() {
 
 	client := client.NewClient()
 
-	agent := concurrent.SetupAgent(db, rdb, mc, client, config)
+	agent := concurrent.SetupAgent(db, rdb, mc, client, conconf, config.Server.RepositoryPath)
 
-	domainService := concurrent.SetupDomainService(db, client, config)
-	domainHandler := domain.NewHandler(domainService, config)
+	domainService := concurrent.SetupDomainService(db, client, conconf)
+	domainHandler := domain.NewHandler(domainService)
 
 	userKvService := concurrent.SetupUserkvService(db)
 	userkvHandler := userkv.NewHandler(userKvService)
 
-	messageService := concurrent.SetupMessageService(db, rdb, mc, client, config)
+	messageService := concurrent.SetupMessageService(db, rdb, mc, client, conconf)
 	messageHandler := message.NewHandler(messageService)
 
-	associationService := concurrent.SetupAssociationService(db, rdb, mc, client, config)
+	associationService := concurrent.SetupAssociationService(db, rdb, mc, client, conconf)
 	associationHandler := association.NewHandler(associationService)
 
-	profileService := concurrent.SetupProfileService(db, rdb, mc, client, config)
+	profileService := concurrent.SetupProfileService(db, rdb, mc, client, conconf)
 	profileHandler := profile.NewHandler(profileService)
 
-	timelineService := concurrent.SetupTimelineService(db, rdb, mc, client, config)
+	timelineService := concurrent.SetupTimelineService(db, rdb, mc, client, conconf)
 	timelineHandler := timeline.NewHandler(timelineService)
 
-	entityService := concurrent.SetupEntityService(db, rdb, mc, client, config)
-	entityHandler := entity.NewHandler(entityService, config)
+	entityService := concurrent.SetupEntityService(db, rdb, mc, client, conconf)
+	entityHandler := entity.NewHandler(entityService)
 
-	authService := concurrent.SetupAuthService(db, rdb, mc, client, config)
+	authService := concurrent.SetupAuthService(db, rdb, mc, client, conconf)
 	authHandler := auth.NewHandler(authService)
 
-	keyService := concurrent.SetupKeyService(db, rdb, mc, client, config)
+	keyService := concurrent.SetupKeyService(db, rdb, mc, client, conconf)
 	keyHandler := key.NewHandler(keyService)
 
-	ackService := concurrent.SetupAckService(db, rdb, mc, client, config)
+	ackService := concurrent.SetupAckService(db, rdb, mc, client, conconf)
 	ackHandler := ack.NewHandler(ackService)
 
-	storeService := concurrent.SetupStoreService(db, rdb, mc, client, config)
+	storeService := concurrent.SetupStoreService(db, rdb, mc, client, conconf, config.Server.RepositoryPath)
 	storeHandler := store.NewHandler(storeService)
 
 	subscriptionService := concurrent.SetupSubscriptionService(db)
@@ -249,7 +251,7 @@ func main() {
 		meta := config.Profile
 		meta.Registration = config.Concurrent.Registration
 		meta.Version = version
-		meta.BuildInfo = util.BuildInfo{
+		meta.BuildInfo = BuildInfo{
 			BuildTime:    buildTime,
 			BuildMachine: buildMachine,
 			GoVersion:    goVersion,
@@ -257,9 +259,9 @@ func main() {
 		meta.SiteKey = config.Server.CaptchaSitekey
 
 		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": core.Domain{
-			ID:        config.Concurrent.FQDN,
-			CCID:      config.Concurrent.CCID,
-			Dimension: config.Concurrent.Dimension,
+			ID:        conconf.FQDN,
+			CCID:      conconf.CCID,
+			Dimension: conconf.Dimension,
 			Meta:      meta,
 		}})
 	})

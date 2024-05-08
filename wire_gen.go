@@ -12,7 +12,6 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/util"
 	"github.com/totegamma/concurrent/x/ack"
 	"github.com/totegamma/concurrent/x/agent"
 	"github.com/totegamma/concurrent/x/association"
@@ -35,7 +34,7 @@ import (
 
 // Injectors from wire.go:
 
-func SetupPolicyService(rdb *redis.Client, config util.Config) core.PolicyService {
+func SetupPolicyService(rdb *redis.Client, config core.Config) core.PolicyService {
 	repository := policy.NewRepository(rdb)
 	policyService := policy.NewService(repository, config)
 	return policyService
@@ -47,7 +46,7 @@ func SetupJwtService(rdb *redis.Client) jwt.Service {
 	return service
 }
 
-func SetupAckService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config util.Config) core.AckService {
+func SetupAckService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config core.Config) core.AckService {
 	repository := ack.NewRepository(db)
 	entityService := SetupEntityService(db, rdb, mc, client2, config)
 	keyService := SetupKeyService(db, rdb, mc, client2, config)
@@ -55,14 +54,14 @@ func SetupAckService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client
 	return ackService
 }
 
-func SetupKeyService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config util.Config) core.KeyService {
+func SetupKeyService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config core.Config) core.KeyService {
 	repository := key.NewRepository(db, mc)
 	entityService := SetupEntityService(db, rdb, mc, client2, config)
 	keyService := key.NewService(repository, entityService, config)
 	return keyService
 }
 
-func SetupMessageService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config util.Config) core.MessageService {
+func SetupMessageService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config core.Config) core.MessageService {
 	schemaService := SetupSchemaService(db)
 	repository := message.NewRepository(db, mc, schemaService)
 	entityService := SetupEntityService(db, rdb, mc, client2, config)
@@ -73,7 +72,7 @@ func SetupMessageService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, cl
 	return messageService
 }
 
-func SetupProfileService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config util.Config) core.ProfileService {
+func SetupProfileService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config core.Config) core.ProfileService {
 	schemaService := SetupSchemaService(db)
 	repository := profile.NewRepository(db, mc, schemaService)
 	semanticIDService := SetupSemanticidService(db)
@@ -81,7 +80,7 @@ func SetupProfileService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, cl
 	return profileService
 }
 
-func SetupAssociationService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config util.Config) core.AssociationService {
+func SetupAssociationService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config core.Config) core.AssociationService {
 	schemaService := SetupSchemaService(db)
 	repository := association.NewRepository(db, mc, schemaService)
 	entityService := SetupEntityService(db, rdb, mc, client2, config)
@@ -92,7 +91,7 @@ func SetupAssociationService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client
 	return associationService
 }
 
-func SetupTimelineService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config util.Config) core.TimelineService {
+func SetupTimelineService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config core.Config) core.TimelineService {
 	schemaService := SetupSchemaService(db)
 	repository := timeline.NewRepository(db, rdb, mc, client2, schemaService, config)
 	entityService := SetupEntityService(db, rdb, mc, client2, config)
@@ -104,13 +103,13 @@ func SetupTimelineService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, c
 	return timelineService
 }
 
-func SetupDomainService(db *gorm.DB, client2 client.Client, config util.Config) core.DomainService {
+func SetupDomainService(db *gorm.DB, client2 client.Client, config core.Config) core.DomainService {
 	repository := domain.NewRepository(db)
 	domainService := domain.NewService(repository, client2, config)
 	return domainService
 }
 
-func SetupEntityService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config util.Config) core.EntityService {
+func SetupEntityService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config core.Config) core.EntityService {
 	schemaService := SetupSchemaService(db)
 	repository := entity.NewRepository(db, mc, schemaService)
 	service := SetupJwtService(rdb)
@@ -118,13 +117,13 @@ func SetupEntityService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, cli
 	return entityService
 }
 
-func SetupAgent(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config util.Config) core.AgentService {
-	storeService := SetupStoreService(db, rdb, mc, client2, config)
-	agentService := agent.NewAgent(mc, rdb, storeService, config)
+func SetupAgent(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config core.Config, repositoryPath string) core.AgentService {
+	storeService := SetupStoreService(db, rdb, mc, client2, config, repositoryPath)
+	agentService := agent.NewAgent(mc, rdb, storeService, config, repositoryPath)
 	return agentService
 }
 
-func SetupAuthService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config util.Config) core.AuthService {
+func SetupAuthService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config core.Config) core.AuthService {
 	entityService := SetupEntityService(db, rdb, mc, client2, config)
 	domainService := SetupDomainService(db, client2, config)
 	keyService := SetupKeyService(db, rdb, mc, client2, config)
@@ -144,7 +143,7 @@ func SetupSchemaService(db *gorm.DB) core.SchemaService {
 	return schemaService
 }
 
-func SetupStoreService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config util.Config) core.StoreService {
+func SetupStoreService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config core.Config, repositoryPath string) core.StoreService {
 	repository := store.NewRepository(rdb)
 	keyService := SetupKeyService(db, rdb, mc, client2, config)
 	entityService := SetupEntityService(db, rdb, mc, client2, config)
@@ -154,7 +153,7 @@ func SetupStoreService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, clie
 	timelineService := SetupTimelineService(db, rdb, mc, client2, config)
 	ackService := SetupAckService(db, rdb, mc, client2, config)
 	subscriptionService := SetupSubscriptionService(db)
-	storeService := store.NewService(repository, keyService, entityService, messageService, associationService, profileService, timelineService, ackService, subscriptionService, config)
+	storeService := store.NewService(repository, keyService, entityService, messageService, associationService, profileService, timelineService, ackService, subscriptionService, config, repositoryPath)
 	return storeService
 }
 

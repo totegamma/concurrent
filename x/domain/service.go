@@ -7,17 +7,16 @@ import (
 
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/util"
 )
 
 type service struct {
 	repository Repository
 	client     client.Client
-	config     util.Config
+	config     core.Config
 }
 
 // NewService creates a new host service
-func NewService(repository Repository, client client.Client, config util.Config) core.DomainService {
+func NewService(repository Repository, client client.Client, config core.Config) core.DomainService {
 	return &service{repository, client, config}
 }
 
@@ -36,7 +35,7 @@ func (s *service) GetByFQDN(ctx context.Context, fqdn string) (core.Domain, erro
 
 	domain, err := s.repository.GetByFQDN(ctx, fqdn)
 	if err == nil {
-		if domain.Dimension != s.config.Concurrent.Dimension {
+		if domain.Dimension != s.config.Dimension {
 			return core.Domain{}, fmt.Errorf("domain is not in the same dimension")
 		}
 		return domain, nil
@@ -52,7 +51,7 @@ func (s *service) GetByFQDN(ctx context.Context, fqdn string) (core.Domain, erro
 		return core.Domain{}, err
 	}
 
-	if domain.Dimension != s.config.Concurrent.Dimension {
+	if domain.Dimension != s.config.Dimension {
 		return core.Domain{}, fmt.Errorf("domain is not in the same dimension")
 	}
 

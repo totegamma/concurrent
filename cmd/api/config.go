@@ -1,19 +1,17 @@
-package util
+package main
 
 import (
-	"encoding/hex"
+	"github.com/go-yaml/yaml"
+	"github.com/totegamma/concurrent/core"
 	"log"
 	"os"
-
-	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
-	"github.com/go-yaml/yaml"
 )
 
 // Config is Concurrent base configuration
 type Config struct {
-	Server     Server     `yaml:"server"`
-	Concurrent Concurrent `yaml:"concurrent"`
-	Profile    Profile    `yaml:"profile"`
+	Server     Server           `yaml:"server"`
+	Concurrent core.ConfigInput `yaml:"concurrent"`
+	Profile    Profile          `yaml:"profile"`
 }
 
 type Server struct {
@@ -25,17 +23,6 @@ type Server struct {
 	RepositoryPath string `yaml:"repositoryPath"`
 	CaptchaSitekey string `yaml:"captchaSitekey"`
 	CaptchaSecret  string `yaml:"captchaSecret"`
-}
-
-type Concurrent struct {
-	FQDN         string `yaml:"fqdn"`
-	PrivateKey   string `yaml:"privatekey"`
-	Registration string `yaml:"registration"` // open, invite, close
-	Dimension    string `yaml:"dimension"`
-
-	// internal generated
-	CCID      string `yaml:"ccid"`
-	PublicKey string `yaml:"publickey"`
 }
 
 type BuildInfo struct {
@@ -76,26 +63,6 @@ func (c *Config) Load(path string) error {
 		log.Fatal("failed to load configuration file:", err)
 		return err
 	}
-
-	privKeyBytes, err := hex.DecodeString(c.Concurrent.PrivateKey)
-	if err != nil {
-		log.Fatal("failed to decode private key:", err)
-		return err
-	}
-
-	privKey := secp256k1.PrivKey{
-		Key: privKeyBytes,
-	}
-
-	pubkey := privKey.PubKey()
-
-	addr, err := PubkeyBytesToAddr(pubkey.Bytes(), "con")
-	if err != nil {
-		log.Fatal("failed to convert pubkey to address:", err)
-		return err
-	}
-
-	c.Concurrent.CCID = addr
 
 	return nil
 }

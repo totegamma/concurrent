@@ -62,10 +62,8 @@ func TestLocalRootSuccess(t *testing.T) {
 	mockDomain := mock_core.NewMockDomainService(ctrl)
 	mockKey := mock_core.NewMockKeyService(ctrl)
 
-	config := util.Config{
-		Concurrent: util.Concurrent{
-			FQDN: "local.example.com",
-		},
+	config := core.Config{
+		FQDN: "local.example.com",
 	}
 
 	service := NewService(config, mockEntity, mockDomain, mockKey)
@@ -127,10 +125,8 @@ func TestRemoteRootSuccess(t *testing.T) {
 
 	mockKey := mock_core.NewMockKeyService(ctrl)
 
-	config := util.Config{
-		Concurrent: util.Concurrent{
-			FQDN: "local.example.com",
-		},
+	config := core.Config{
+		FQDN: "local.example.com",
 	}
 
 	service := NewService(config, mockEntity, mockDomain, mockKey)

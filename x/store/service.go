@@ -10,20 +10,20 @@ import (
 	"strings"
 
 	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/util"
 )
 
 type service struct {
-	repo         Repository
-	key          core.KeyService
-	entity       core.EntityService
-	message      core.MessageService
-	association  core.AssociationService
-	profile      core.ProfileService
-	timeline     core.TimelineService
-	ack          core.AckService
-	subscription core.SubscriptionService
-	config       util.Config
+	repo           Repository
+	key            core.KeyService
+	entity         core.EntityService
+	message        core.MessageService
+	association    core.AssociationService
+	profile        core.ProfileService
+	timeline       core.TimelineService
+	ack            core.AckService
+	subscription   core.SubscriptionService
+	config         core.Config
+	repositoryPath string
 }
 
 func NewService(
@@ -36,19 +36,21 @@ func NewService(
 	timeline core.TimelineService,
 	ack core.AckService,
 	subscription core.SubscriptionService,
-	config util.Config,
+	config core.Config,
+	repositoryPath string,
 ) core.StoreService {
 	return &service{
-		repo:         repo,
-		key:          key,
-		entity:       entity,
-		message:      message,
-		association:  association,
-		profile:      profile,
-		timeline:     timeline,
-		ack:          ack,
-		subscription: subscription,
-		config:       config,
+		repo:           repo,
+		key:            key,
+		entity:         entity,
+		message:        message,
+		association:    association,
+		profile:        profile,
+		timeline:       timeline,
+		ack:            ack,
+		subscription:   subscription,
+		config:         config,
+		repositoryPath: repositoryPath,
 	}
 }
 
@@ -166,7 +168,7 @@ func (s *service) GetPath(ctx context.Context, id string) string {
 	defer span.End()
 
 	filename := fmt.Sprintf("%s.log", id)
-	path := filepath.Join(s.config.Server.RepositoryPath, "user", filename)
+	path := filepath.Join(s.repositoryPath, "user", filename)
 
 	return path
 }

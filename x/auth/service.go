@@ -13,14 +13,14 @@ import (
 )
 
 type service struct {
-	config util.Config
+	config core.Config
 	entity core.EntityService
 	domain core.DomainService
 	key    core.KeyService
 }
 
 // NewService creates a new auth service
-func NewService(config util.Config, entity core.EntityService, domain core.DomainService, key core.KeyService) core.AuthService {
+func NewService(config core.Config, entity core.EntityService, domain core.DomainService, key core.KeyService) core.AuthService {
 	return &service{config, entity, domain, key}
 }
 
@@ -35,16 +35,16 @@ func (s *service) IssuePassport(ctx context.Context, requester string, keys []co
 		return "", err
 	}
 
-	if entity.Domain != s.config.Concurrent.FQDN {
+	if entity.Domain != s.config.FQDN {
 		return "", fmt.Errorf("You are not a local entity")
 	}
 
 	documentObj := core.PassportDocument{
-		Domain: s.config.Concurrent.FQDN,
+		Domain: s.config.FQDN,
 		Entity: entity,
 		Keys:   keys,
 		DocumentBase: core.DocumentBase[any]{
-			Signer:   s.config.Concurrent.CCID,
+			Signer:   s.config.CCID,
 			Type:     "passport",
 			SignedAt: time.Now(),
 		},
@@ -56,7 +56,7 @@ func (s *service) IssuePassport(ctx context.Context, requester string, keys []co
 		return "", err
 	}
 
-	signatureBytes, err := util.SignBytes(document, s.config.Concurrent.PrivateKey)
+	signatureBytes, err := util.SignBytes(document, s.config.PrivateKey)
 	if err != nil {
 		span.RecordError(err)
 		return "", err

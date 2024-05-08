@@ -22,7 +22,7 @@ type service struct {
 	timeline core.TimelineService
 	message  core.MessageService
 	key      core.KeyService
-	config   util.Config
+	config   core.Config
 }
 
 // NewService creates a new association service
@@ -33,7 +33,7 @@ func NewService(
 	timeline core.TimelineService,
 	message core.MessageService,
 	key core.KeyService,
-	config util.Config,
+	config core.Config,
 ) core.AssociationService {
 	return &service{
 		repo,
@@ -82,7 +82,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 		return created, err
 	}
 
-	if owner.Domain == s.config.Concurrent.FQDN { // signerが自ドメイン管轄の場合、リソースを作成
+	if owner.Domain == s.config.FQDN { // signerが自ドメイン管轄の場合、リソースを作成
 		association := core.Association{
 			ID:        id,
 			Author:    doc.Signer,
@@ -124,7 +124,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 		}
 
 		for domain, timelines := range destinations {
-			if domain == s.config.Concurrent.FQDN {
+			if domain == s.config.FQDN {
 				// localなら、timelineのエントリを生成→Eventを発行
 				for _, timeline := range timelines {
 					posted, err := s.timeline.PostItem(ctx, timeline, core.TimelineItem{
@@ -152,7 +152,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 						continue
 					}
 				}
-			} else if owner.Domain == s.config.Concurrent.FQDN && mode != core.CommitModeLocalOnlyExec { // ここでリソースを作成したなら、リモートにもリレー
+			} else if owner.Domain == s.config.FQDN && mode != core.CommitModeLocalOnlyExec { // ここでリソースを作成したなら、リモートにもリレー
 				// send to remote
 				packet := core.Commit{
 					Document:  document,
@@ -189,7 +189,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 					continue
 				}
 				domain := split[1]
-				if domain == s.config.Concurrent.FQDN {
+				if domain == s.config.FQDN {
 					event := core.Event{
 						Timeline:  timeline,
 						Document:  document,
@@ -209,7 +209,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 						Signature: signature,
 						Resource:  created,
 						DocumentBase: core.DocumentBase[any]{
-							Signer:   s.config.Concurrent.CCID,
+							Signer:   s.config.CCID,
 							Type:     "event",
 							SignedAt: time.Now(),
 						},
@@ -221,7 +221,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 						return created, err
 					}
 
-					signatureBytes, err := util.SignBytes([]byte(document), s.config.Concurrent.PrivateKey)
+					signatureBytes, err := util.SignBytes([]byte(document), s.config.PrivateKey)
 					if err != nil {
 						span.RecordError(err)
 						return created, err
@@ -330,7 +330,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 			}
 			domain := split[1]
 
-			if domain == s.config.Concurrent.FQDN {
+			if domain == s.config.FQDN {
 				event := core.Event{
 					Timeline:  timeline,
 					Document:  document,
@@ -357,7 +357,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 					return deleted, err
 				}
 
-				signatureBytes, err := util.SignBytes([]byte(document), s.config.Concurrent.PrivateKey)
+				signatureBytes, err := util.SignBytes([]byte(document), s.config.PrivateKey)
 				if err != nil {
 					span.RecordError(err)
 					return deleted, err

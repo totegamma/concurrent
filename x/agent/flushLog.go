@@ -16,7 +16,7 @@ func (a *agent) FlushLog(ctx context.Context) {
 
 	slog.Info("flush log Start")
 
-	allPath := filepath.Join(a.config.Server.RepositoryPath, "/all")
+	allPath := filepath.Join(a.repositoryPath, "/all")
 
 	err := os.MkdirAll(allPath, 0755)
 	if err != nil {
@@ -98,7 +98,7 @@ func (a *agent) FlushLog(ctx context.Context) {
 
 	// flush to each user log
 
-	userlogPath := filepath.Join(a.config.Server.RepositoryPath, "/user")
+	userlogPath := filepath.Join(a.repositoryPath, "/user")
 	err = os.MkdirAll(userlogPath, 0755)
 	if err != nil {
 		slog.Error("failed to create repository directory:", err)

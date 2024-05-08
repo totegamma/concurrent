@@ -7,7 +7,6 @@ import (
 
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/util"
 )
 
 type service struct {
@@ -15,11 +14,11 @@ type service struct {
 	client     client.Client
 	entity     core.EntityService
 	key        core.KeyService
-	config     util.Config
+	config     core.Config
 }
 
 // NewService creates a new entity service
-func NewService(repository Repository, client client.Client, entity core.EntityService, key core.KeyService, config util.Config) core.AckService {
+func NewService(repository Repository, client client.Client, entity core.EntityService, key core.KeyService, config core.Config) core.AckService {
 	return &service{
 		repository,
 		client,
@@ -49,7 +48,7 @@ func (s *service) Ack(ctx context.Context, mode core.CommitMode, document string
 			return err
 		}
 
-		if to.Domain != s.config.Concurrent.FQDN {
+		if to.Domain != s.config.FQDN {
 			packet := core.Commit{
 				Document:  document,
 				Signature: signature,
@@ -83,7 +82,7 @@ func (s *service) Ack(ctx context.Context, mode core.CommitMode, document string
 			return err
 		}
 
-		if to.Domain != s.config.Concurrent.FQDN {
+		if to.Domain != s.config.FQDN {
 			packet := core.Commit{
 				Document:  document,
 				Signature: signature,

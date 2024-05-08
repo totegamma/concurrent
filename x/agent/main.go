@@ -11,25 +11,26 @@ import (
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/util"
 )
 
 var tracer = otel.Tracer("agent")
 
 type agent struct {
-	mc     *memcache.Client
-	rdb    *redis.Client
-	store  core.StoreService
-	config util.Config
+	mc             *memcache.Client
+	rdb            *redis.Client
+	store          core.StoreService
+	config         core.Config
+	repositoryPath string
 }
 
 // NewAgent creates a new agent
-func NewAgent(mc *memcache.Client, rdb *redis.Client, store core.StoreService, config util.Config) core.AgentService {
+func NewAgent(mc *memcache.Client, rdb *redis.Client, store core.StoreService, config core.Config, repositoryPath string) core.AgentService {
 	return &agent{
 		mc,
 		rdb,
 		store,
 		config,
+		repositoryPath,
 	}
 }
 

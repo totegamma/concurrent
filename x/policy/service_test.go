@@ -6,7 +6,6 @@ import (
 	"testing"
 
 	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/util"
 )
 
 var s service
@@ -15,7 +14,7 @@ var ctx = context.Background()
 func TestMain(m *testing.M) {
 
 	s = service{
-		config: util.Config{},
+		config: core.Config{},
 	}
 
 	m.Run()

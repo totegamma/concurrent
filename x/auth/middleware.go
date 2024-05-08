@@ -66,7 +66,7 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				goto skipCheckPassport
 			}
 
-			if passportDoc.Domain == s.config.Concurrent.FQDN {
+			if passportDoc.Domain == s.config.FQDN {
 				span.RecordError(fmt.Errorf("do not use passport for local user"))
 				goto skipCheckPassport
 			}
@@ -140,7 +140,7 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				goto skipCheckAuthorization
 			}
 
-			if claims.Audience != s.config.Concurrent.FQDN {
+			if claims.Audience != s.config.FQDN {
 				span.RecordError(fmt.Errorf("jwt is not for this domain"))
 				goto skipCheckAuthorization
 			}
@@ -196,7 +196,7 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				})
 			}
 
-			if entity.Domain == s.config.Concurrent.FQDN {
+			if entity.Domain == s.config.FQDN {
 				// local user
 
 				if passportHeader == "" {

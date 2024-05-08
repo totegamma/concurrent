@@ -58,7 +58,7 @@ func main() {
 	e := echo.New()
 
 	// Configファイルの読み込み
-	config := util.Config{}
+	config := Config{}
 	configPath := os.Getenv("CONCURRENT_CONFIG")
 	if configPath == "" {
 		configPath = "/etc/concurrent/config.yaml"
@@ -67,6 +67,8 @@ func main() {
 	if err != nil {
 		e.Logger.Fatal(err)
 	}
+
+	conconf := util.SetupConfig(config.Concurrent)
 
 	gwConf := GatewayConfig{}
 	gwConfPath := os.Getenv("GATEWAY_CONFIG")
@@ -79,7 +81,7 @@ func main() {
 	}
 
 	log.Print("Concurrent ", version, " starting...")
-	log.Print("Config loaded! I am: ", config.Concurrent.CCID)
+	log.Print("Config loaded! I am: ", conconf.CCID)
 
 	// Echoの設定
 	e.HidePort = true
@@ -206,7 +208,7 @@ func main() {
 	defer mc.Close()
 
 	client := client.NewClient()
-	authService := concurrent.SetupAuthService(db, rdb, mc, client, config)
+	authService := concurrent.SetupAuthService(db, rdb, mc, client, conconf)
 
 	e.Use(authService.IdentifyIdentity)
 
@@ -313,7 +315,7 @@ func main() {
 		You might looking for <a href="https://concurrent.world">concurrent.world</a>.<br>
 		This domain is currently registration: `+config.Concurrent.Registration+`<br>
 		<h2>Information</h2>
-		CDID: `+config.Concurrent.CCID+`
+		CDID: `+conconf.CCID+`
 		<h2>Services</h2>
 		<ul>
 		`+func() string {

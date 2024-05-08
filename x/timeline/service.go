@@ -25,7 +25,7 @@ type service struct {
 	semanticid   core.SemanticIDService
 	subscription core.SubscriptionService
 	policy       core.PolicyService
-	config       util.Config
+	config       core.Config
 }
 
 // NewService creates a new service
@@ -36,7 +36,7 @@ func NewService(
 	semanticid core.SemanticIDService,
 	subscription core.SubscriptionService,
 	policy core.PolicyService,
-	config util.Config,
+	config core.Config,
 ) core.TimelineService {
 	return &service{
 		repository,
@@ -74,7 +74,7 @@ func (s *service) NormalizeTimelineID(ctx context.Context, timeline string) (str
 
 	split := strings.Split(timeline, "@")
 	id := split[0]
-	domain := s.config.Concurrent.FQDN
+	domain := s.config.FQDN
 	if len(split) == 2 {
 		if core.IsCCID(split[1]) {
 			entity, err := s.entity.Get(ctx, split[1])
@@ -89,7 +89,7 @@ func (s *service) NormalizeTimelineID(ctx context.Context, timeline string) (str
 		}
 	}
 
-	if !cdid.IsSeemsCDID(id, 't') && domain == s.config.Concurrent.FQDN && core.IsCCID(split[1]) {
+	if !cdid.IsSeemsCDID(id, 't') && domain == s.config.FQDN && core.IsCCID(split[1]) {
 		target, err := s.semanticid.Lookup(ctx, id, split[1])
 		if err != nil {
 			span.SetAttributes(attribute.String("timeline", timeline))
@@ -203,7 +203,7 @@ func (s *service) GetRecentItems(ctx context.Context, timelines []string, until 
 	}
 
 	for host, timelines := range buckets {
-		if host == s.config.Concurrent.FQDN {
+		if host == s.config.FQDN {
 			chunks, err := s.repository.GetChunksFromDB(ctx, timelines, untilChunk)
 			if err != nil {
 				slog.ErrorContext(ctx, "failed to get chunks from db", slog.String("error", err.Error()), slog.String("module", "timeline"))
@@ -303,7 +303,7 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 		timelineHost = requester.Domain
 	}
 
-	if !cdid.IsSeemsCDID(timelineID, 't') && timelineHost == s.config.Concurrent.FQDN && core.IsCCID(query[1]) {
+	if !cdid.IsSeemsCDID(timelineID, 't') && timelineHost == s.config.FQDN && core.IsCCID(query[1]) {
 		target, err := s.semanticid.Lookup(ctx, timelineID, query[1])
 		if err != nil {
 			span.RecordError(err)
@@ -319,7 +319,7 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 		author = *item.Author
 	}
 
-	if timelineHost != s.config.Concurrent.FQDN {
+	if timelineHost != s.config.FQDN {
 		span.RecordError(fmt.Errorf("Remote timeline is not supported"))
 		return core.TimelineItem{}, fmt.Errorf("Program error: remote timeline is not supported")
 	}
@@ -511,7 +511,7 @@ func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, docu
 	} else {
 		split := strings.Split(doc.ID, "@")
 		if len(split) == 2 {
-			if split[1] != s.config.Concurrent.FQDN {
+			if split[1] != s.config.FQDN {
 				return core.Timeline{}, fmt.Errorf("This timeline is not owned by this domain")
 			}
 			doc.ID = split[0]
@@ -546,7 +546,7 @@ func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, docu
 		}
 	}
 
-	saved.ID = saved.ID + "@" + s.config.Concurrent.FQDN
+	saved.ID = saved.ID + "@" + s.config.FQDN
 
 	return saved, err
 }
@@ -558,7 +558,7 @@ func (s *service) GetTimeline(ctx context.Context, key string) (core.Timeline, e
 
 	split := strings.Split(key, "@")
 	if len(split) == 2 {
-		if split[1] == s.config.Concurrent.FQDN {
+		if split[1] == s.config.FQDN {
 			return s.repository.GetTimeline(ctx, split[0])
 		} else {
 			if cdid.IsSeemsCDID(split[0], 't') {
@@ -585,7 +585,7 @@ func (s *service) ListTimelineBySchema(ctx context.Context, schema string) ([]co
 
 	timelines, err := s.repository.ListTimelineBySchema(ctx, schema)
 	for i := 0; i < len(timelines); i++ {
-		timelines[i].ID = timelines[i].ID + "@" + s.config.Concurrent.FQDN
+		timelines[i].ID = timelines[i].ID + "@" + s.config.FQDN
 	}
 	return timelines, err
 }
@@ -597,7 +597,7 @@ func (s *service) ListTimelineByAuthor(ctx context.Context, author string) ([]co
 
 	timelines, err := s.repository.ListTimelineByAuthor(ctx, author)
 	for i := 0; i < len(timelines); i++ {
-		timelines[i].ID = timelines[i].ID + "@" + s.config.Concurrent.FQDN
+		timelines[i].ID = timelines[i].ID + "@" + s.config.FQDN
 	}
 	return timelines, err
 }
@@ -666,7 +666,7 @@ func (s *service) GetTimelineAutoDomain(ctx context.Context, timelineID string) 
 	}
 
 	key := normalized
-	host := s.config.Concurrent.FQDN
+	host := s.config.FQDN
 
 	split := strings.Split(normalized, "@")
 	if len(split) > 1 {
@@ -674,7 +674,7 @@ func (s *service) GetTimelineAutoDomain(ctx context.Context, timelineID string) 
 		host = split[1]
 	}
 
-	if host == s.config.Concurrent.FQDN {
+	if host == s.config.FQDN {
 		return s.repository.GetTimeline(ctx, key)
 	} else {
 		return s.repository.GetTimelineFromRemote(ctx, host, key)

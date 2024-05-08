@@ -47,3 +47,20 @@ type EvalResult struct {
 	Result   any          `json:"result"`
 	Error    string       `json:"error"`
 }
+
+type Config struct {
+	FQDN         string `yaml:"fqdn"`
+	PrivateKey   string `yaml:"privatekey"`
+	Registration string `yaml:"registration"` // open, invite, close
+	SiteKey      string `yaml:"sitekey"`
+	Dimension    string `yaml:"dimension"`
+	CCID         string `yaml:"ccid"`
+}
+
+type ConfigInput struct {
+	FQDN         string `yaml:"fqdn"`
+	PrivateKey   string `yaml:"privatekey"`
+	Registration string `yaml:"registration"` // open, invite, close
+	SiteKey      string `yaml:"sitekey"`
+	Dimension    string `yaml:"dimension"`
+}

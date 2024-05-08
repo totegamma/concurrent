@@ -9,7 +9,6 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/util"
 )
 
 var tracer = otel.Tracer("domain")
@@ -22,12 +21,11 @@ type Handler interface {
 
 type handler struct {
 	service core.DomainService
-	config  util.Config
 }
 
 // NewHandler creates a new handler
-func NewHandler(service core.DomainService, config util.Config) Handler {
-	return &handler{service, config}
+func NewHandler(service core.DomainService) Handler {
+	return &handler{service}
 }
 
 // Get returns a host by ID

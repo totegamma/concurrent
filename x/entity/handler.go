@@ -8,7 +8,6 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/util"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
 )
@@ -23,12 +22,11 @@ type Handler interface {
 
 type handler struct {
 	service core.EntityService
-	config  util.Config
 }
 
 // NewHandler creates a new handler
-func NewHandler(service core.EntityService, config util.Config) Handler {
-	return &handler{service: service, config: config}
+func NewHandler(service core.EntityService) Handler {
+	return &handler{service: service}
 }
 
 // Get returns an entity by ID

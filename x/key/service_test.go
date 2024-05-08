@@ -45,7 +45,7 @@ func TestService(t *testing.T) {
 	mockEntity.EXPECT().GetWithHint(gomock.Any(), gomock.Any(), gomock.Any()).Return(core.Entity{}, nil).AnyTimes()
 
 	test_repo := NewRepository(db, mc)
-	test_service := NewService(test_repo, mockEntity, util.Config{})
+	test_service := NewService(test_repo, mockEntity, core.Config{})
 
 	// Test1. 登録してないサブキーで署名されたオブジェクトを検証する
 	payload0 := core.DocumentBase[any]{

@@ -23,11 +23,11 @@ type service struct {
 	timeline core.TimelineService
 	key      core.KeyService
 	policy   core.PolicyService
-	config   util.Config
+	config   core.Config
 }
 
 // NewService creates a new message service
-func NewService(repo Repository, client client.Client, entity core.EntityService, timeline core.TimelineService, key core.KeyService, policy core.PolicyService, config util.Config) core.MessageService {
+func NewService(repo Repository, client client.Client, entity core.EntityService, timeline core.TimelineService, key core.KeyService, policy core.PolicyService, config core.Config) core.MessageService {
 	return &service{repo, client, entity, timeline, key, policy, config}
 }
 
@@ -191,7 +191,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 		policyparams = &doc.PolicyParams
 	}
 
-	if signer.Domain == s.config.Concurrent.FQDN { // signerが自ドメイン管轄の場合、リソースを作成
+	if signer.Domain == s.config.FQDN { // signerが自ドメイン管轄の場合、リソースを作成
 
 		message := core.Message{
 			ID:           id,
@@ -262,7 +262,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 	}
 
 	for domain, timelines := range destinations {
-		if domain == s.config.Concurrent.FQDN {
+		if domain == s.config.FQDN {
 			// localなら、timelineのエントリを生成→Eventを発行
 			for _, timeline := range timelines {
 
@@ -299,7 +299,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 					}
 				}
 			}
-		} else if signer.Domain == s.config.Concurrent.FQDN && mode != core.CommitModeLocalOnlyExec { // ここでリソースを作成したなら、リモートにもリレー
+		} else if signer.Domain == s.config.FQDN && mode != core.CommitModeLocalOnlyExec { // ここでリソースを作成したなら、リモートにもリレー
 			// remoteならdocumentをリレー
 			packet := core.Commit{
 				Document:  document,

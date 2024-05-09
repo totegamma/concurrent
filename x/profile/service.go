@@ -75,7 +75,7 @@ func (s *service) Upsert(ctx context.Context, mode core.CommitMode, document, si
 	ctx, span := tracer.Start(ctx, "Profile.Service.Upsert")
 	defer span.End()
 
-	var doc core.UpsertProfile[any]
+	var doc core.ProfileDocument[any]
 	err := json.Unmarshal([]byte(document), &doc)
 	if err != nil {
 		span.RecordError(err)

@@ -27,7 +27,7 @@ func (s *service) Enact(ctx context.Context, mode core.CommitMode, payload, sign
 	ctx, span := tracer.Start(ctx, "Key.Service.EnactKey")
 	defer span.End()
 
-	object := core.EnactKey{}
+	object := core.EnactDocument{}
 	err := json.Unmarshal([]byte(payload), &object)
 	if err != nil {
 		span.RecordError(err)
@@ -70,7 +70,7 @@ func (s *service) Revoke(ctx context.Context, mode core.CommitMode, payload, sig
 	ctx, span := tracer.Start(ctx, "Key.Service.RevokeKey")
 	defer span.End()
 
-	object := core.RevokeKey{}
+	object := core.RevokeDocument{}
 	err := json.Unmarshal([]byte(payload), &object)
 	if err != nil {
 		span.RecordError(err)
@@ -197,7 +197,7 @@ func ValidateKeyResolution(keys []core.Key) (string, error) {
 			return "", err
 		}
 
-		var enact core.EnactKey
+		var enact core.EnactDocument
 		err = json.Unmarshal([]byte(key.EnactDocument), &enact)
 		if err != nil {
 			return "", err

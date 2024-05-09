@@ -26,6 +26,7 @@ var tracer = otel.Tracer("client")
 type Client interface {
 	Commit(ctx context.Context, domain, body string) (*http.Response, error)
 	GetEntity(ctx context.Context, domain, address string) (core.Entity, error)
+	GetMessage(ctx context.Context, domain, id string) (core.Message, error)
 	GetTimeline(ctx context.Context, domain, id string) (core.Timeline, error)
 	GetChunks(ctx context.Context, domain string, timelines []string, queryTime time.Time) (map[string]core.Chunk, error)
 	GetKey(ctx context.Context, domain, id string) ([]core.Key, error)
@@ -107,6 +108,43 @@ func (c *client) GetEntity(ctx context.Context, domain, address string) (core.En
 	}
 
 	return remoteEntity.Content, nil
+}
+
+func (c *client) GetMessage(ctx context.Context, domain, id string) (core.Message, error) {
+	ctx, span := tracer.Start(ctx, "Client.GetMessage")
+	defer span.End()
+
+	req, err := http.NewRequest("GET", "https://"+domain+"/api/v1/message/"+id, nil)
+	if err != nil {
+		span.RecordError(err)
+		return core.Message{}, err
+	}
+
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+
+	client := new(http.Client)
+	client.Timeout = 3 * time.Second
+	resp, err := client.Do(req)
+	if err != nil {
+		span.RecordError(err)
+		return core.Message{}, err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+
+	var remoteMessage core.ResponseBase[core.Message]
+	err = json.Unmarshal(body, &remoteMessage)
+	if err != nil {
+		span.RecordError(err)
+		return core.Message{}, err
+	}
+
+	if remoteMessage.Status != "ok" {
+		return core.Message{}, fmt.Errorf("Remote message is not found")
+	}
+
+	return remoteMessage.Content, nil
 }
 
 func (c *client) GetTimeline(ctx context.Context, domain, id string) (core.Timeline, error) {

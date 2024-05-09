@@ -68,7 +68,7 @@ func TestService(t *testing.T) {
 	assert.Error(t, err) // まだKeyChainが存在しないのでエラーになる
 
 	// Test2. サブキーを新しく登録する
-	payload1 := core.EnactKey{
+	payload1 := core.EnactDocument{
 		DocumentBase: core.DocumentBase[any]{
 			Signer:   RootKey,
 			Type:     "enact",
@@ -112,7 +112,7 @@ func TestService(t *testing.T) {
 
 	// Test4. サブキーのサブキーを新しく登録する
 
-	payload2 := core.EnactKey{
+	payload2 := core.EnactDocument{
 		DocumentBase: core.DocumentBase[any]{
 			Signer:   RootKey,
 			Type:     "enact",
@@ -173,7 +173,7 @@ func TestService(t *testing.T) {
 
 	// Test6. 中間のサブキーをその子キーから無効化してみようとする(失敗する)
 
-	payload4 := core.RevokeKey{
+	payload4 := core.RevokeDocument{
 		DocumentBase: core.DocumentBase[any]{
 			Signer:   RootKey,
 			Type:     "revoke",
@@ -196,7 +196,7 @@ func TestService(t *testing.T) {
 
 	// Test7. 中間にあるサブキーをルートキーから無効化する
 
-	payload5 := core.RevokeKey{
+	payload5 := core.RevokeDocument{
 		DocumentBase: core.DocumentBase[any]{
 			Signer:   RootKey,
 			Type:     "revoke",

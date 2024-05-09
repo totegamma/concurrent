@@ -129,7 +129,7 @@ func TestPolicyTimelineLimitMessageSchema(t *testing.T) {
 		},
 	}
 
-	document := core.CreateMessage[any]{
+	document := core.MessageDocument[any]{
 		DocumentBase: core.DocumentBase[any]{
 			Schema: "schema1",
 		},
@@ -174,7 +174,7 @@ func TestPolicyMessageLimitAction(t *testing.T) {
 		},
 	}
 
-	document := core.CreateAssociation[any]{
+	document := core.AssociationDocument[any]{
 		DocumentBase: core.DocumentBase[any]{
 			Schema: "schema1",
 		},

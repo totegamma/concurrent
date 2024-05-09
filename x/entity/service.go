@@ -79,7 +79,7 @@ func (s *service) Affiliation(ctx context.Context, mode core.CommitMode, documen
 	ctx, span := tracer.Start(ctx, "Entity.Service.Affiliation")
 	defer span.End()
 
-	var doc core.EntityAffiliation
+	var doc core.AffiliationDocument
 	err := json.Unmarshal([]byte(document), &doc)
 	if err != nil {
 		span.RecordError(err)
@@ -88,7 +88,7 @@ func (s *service) Affiliation(ctx context.Context, mode core.CommitMode, documen
 
 	existence, exists := s.repository.Get(ctx, doc.Signer)
 	if exists == nil {
-		var existenceAffiliation core.EntityAffiliation
+		var existenceAffiliation core.AffiliationDocument
 		err = json.Unmarshal([]byte(existence.AffiliationDocument), &existenceAffiliation)
 		if err != nil {
 			span.RecordError(err)
@@ -242,7 +242,7 @@ func (s *service) Tombstone(ctx context.Context, mode core.CommitMode, document,
 	ctx, span := tracer.Start(ctx, "Entity.Service.Tombstone")
 	defer span.End()
 
-	var doc core.EntityTombstone
+	var doc core.TombstoneDocument
 	err := json.Unmarshal([]byte(document), &doc)
 	if err != nil {
 		span.RecordError(err)

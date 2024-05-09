@@ -63,7 +63,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 
 	created := core.Association{}
 
-	var doc core.CreateAssociation[any]
+	var doc core.AssociationDocument[any]
 	err := json.Unmarshal([]byte(document), &doc)
 	if err != nil {
 		span.RecordError(err)

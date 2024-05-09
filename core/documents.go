@@ -21,18 +21,14 @@ type DocumentBase[T any] struct {
 }
 
 // entity
-type EntityAffiliation struct { // type: affiliation
+type AffiliationDocument struct { // type: affiliation
 	Domain string `json:"domain"`
 	DocumentBase[any]
 }
 
-type EntityTombstone struct { // type: tombstone
+type TombstoneDocument struct { // type: tombstone
 	Reason string `json:"reason"`
 	DocumentBase[any]
-}
-
-type ExtensionDocument[T any] struct { // type: extension
-	DocumentBase[T]
 }
 
 // ack
@@ -49,7 +45,7 @@ type UnackDocument struct { // type: unack
 }
 
 // message
-type CreateMessage[T any] struct { // type: message
+type MessageDocument[T any] struct { // type: message
 	DocumentBase[T]
 	Timelines []string `json:"timelines"`
 }
@@ -60,7 +56,7 @@ type DeleteDocument struct { // type: delete
 }
 
 // association
-type CreateAssociation[T any] struct { // type: association
+type AssociationDocument[T any] struct { // type: association
 	DocumentBase[T]
 	Timelines []string `json:"timelines"`
 	Variant   string   `json:"variant"`
@@ -68,19 +64,19 @@ type CreateAssociation[T any] struct { // type: association
 }
 
 // profile
-type UpsertProfile[T any] struct { // type: profile
+type ProfileDocument[T any] struct { // type: profile
 	DocumentBase[T]
 }
 
 // key
-type EnactKey struct { // type: enact
+type EnactDocument struct { // type: enact
 	DocumentBase[any]
 	Target string `json:"target"`
 	Root   string `json:"root"`
 	Parent string `json:"parent"`
 }
 
-type RevokeKey struct { // type: revoke
+type RevokeDocument struct { // type: revoke
 	DocumentBase[any]
 	Target string `json:"target"`
 }

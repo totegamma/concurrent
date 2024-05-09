@@ -167,7 +167,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 
 	created := core.Message{}
 
-	var doc core.CreateMessage[any]
+	var doc core.MessageDocument[any]
 	err := json.Unmarshal([]byte(document), &doc)
 	if err != nil {
 		span.RecordError(err)

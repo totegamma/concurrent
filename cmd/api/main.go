@@ -83,15 +83,15 @@ func main() {
 	slogger := slog.New(handler)
 	slog.SetDefault(slogger)
 
-	slog.Info(fmt.Sprintf("Concurrent %s starting...", version))
+	slog.Info(fmt.Sprintf("Concrnt %s starting...", version))
 
 	e := echo.New()
 	e.HidePort = true
 	e.HideBanner = true
 	config := Config{}
-	configPath := os.Getenv("CONCURRENT_CONFIG")
+	configPath := os.Getenv("CONCRNT_CONFIG")
 	if configPath == "" {
-		configPath = "/etc/concurrent/config.yaml"
+		configPath = "/etc/concrnt/config/config.yaml"
 	}
 
 	err := config.Load(configPath)

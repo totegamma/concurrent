@@ -27,14 +27,6 @@ profile:
   logo: 'https://concurrent.world/concurrent.png'
   wordmark: ''
   themeColor: '#20193b'
-  rules: |
-    - 他のユーザーにリスペクトを持って接しましょう
-      Treat everyone with respect
-    - スパムは禁止です
-      No spamming
-    - 攻撃的なプロフィール名・画像はやめましょう
-      No offensive names and profile pictures
-  tosURL: ''
   maintainerName: notset
   maintainerEmail: notset@example.com
 

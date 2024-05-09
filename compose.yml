@@ -22,7 +22,7 @@ services:
     ports:
       - "8080:8080"
     volumes:
-      - ./_config:/etc/concurrent/:ro
+      - ./_etc:/etc/concrnt/:ro
     networks:
       - external
       - internal
@@ -53,7 +53,7 @@ services:
     ports:
       - "8000:8000"
     volumes:
-      - ./_config:/etc/concurrent/:ro
+      - ./_etc:/etc/concrnt/:ro
     networks:
       - external
       - internal
@@ -62,24 +62,24 @@ services:
       options: 
         loki-url: http://localhost:3100/loki/api/v1/push
 
-        #  ccwebui:
-        #    build:
-        #      context: .
-        #      dockerfile: ./web/Dockerfile
-        #    restart: always
-        #    links:
-        #      - loki
-        #    depends_on:
-        #      loki:
-        #        condition: service_started
-        #    ports:
-        #      - "8001:80"
-        #    networks:
-        #      - internal
-        #    logging:
-        #      driver: loki
-        #      options: 
-        #        loki-url: http://localhost:3100/loki/api/v1/push
+  ccwebui:
+    build:
+      context: .
+      dockerfile: ./web/Dockerfile
+    restart: always
+    links:
+      - loki
+    depends_on:
+      loki:
+        condition: service_started
+    ports:
+      - "8001:80"
+    networks:
+      - internal
+    logging:
+      driver: loki
+      options: 
+        loki-url: http://localhost:3100/loki/api/v1/push
 
   db:
     restart: always

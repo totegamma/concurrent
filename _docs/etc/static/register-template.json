@@ -1,0 +1,27 @@
+{
+    "type": "object",
+    "properties": {
+        "name": {
+            "type": "string",
+            "title": "名前",
+            "description": "ご連絡が必要になった場合に用いる宛名　ハンドルネーム推奨"
+        },
+        "email": {
+            "type": "string",
+            "title": "メールアドレス",
+            "description": "最終的なご連絡先"
+        },
+        "social": {
+            "type": "string",
+            "title": "その他連絡先",
+            "description": "TwitterやMisskeyやMastodonなど"
+        },
+        "consent": {
+            "type": "boolean",
+            "title": "利用規約・行動規範およびプライバシーポリシーに同意します",
+            "default": null,
+            "enum": [null, true]
+        }
+    },
+    "required": ["name", "email", "consent"]
+}

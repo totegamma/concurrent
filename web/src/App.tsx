@@ -56,7 +56,7 @@ function App(): JSX.Element {
                         fontSize='20px'
                         fontWeight='bold'
                     >
-                        Concurrent Domain
+                        Concrnt Domain
                     </Typography>
                     <Typography
                         fontSize='30px'

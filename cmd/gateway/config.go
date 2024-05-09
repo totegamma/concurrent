@@ -37,8 +37,6 @@ type Profile struct {
 	Logo            string `yaml:"logo" json:"logo"`
 	WordMark        string `yaml:"wordmark" json:"wordmark"`
 	ThemeColor      string `yaml:"themeColor" json:"themeColor"`
-	Rules           string `yaml:"rules" json:"rules"`
-	TosURL          string `yaml:"tosURL" json:"tosURL"`
 	MaintainerName  string `yaml:"maintainerName" json:"maintainerName"`
 	MaintainerEmail string `yaml:"maintainerEmail" json:"maintainerEmail"`
 

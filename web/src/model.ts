@@ -5,8 +5,6 @@ export interface DomainProfile {
   logo: string
   wordmark: string
   themeColor: string
-  rules: string
-  tosURL: string
   maintainerName: string
   maintainerURL: string
   registration: string

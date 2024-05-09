@@ -59,9 +59,9 @@ func main() {
 
 	// Configファイルの読み込み
 	config := Config{}
-	configPath := os.Getenv("CONCURRENT_CONFIG")
+	configPath := os.Getenv("CONCRNT_CONFIG")
 	if configPath == "" {
-		configPath = "/etc/concurrent/config.yaml"
+		configPath = "/etc/concrnt/config/config.yaml"
 	}
 	err := config.Load(configPath)
 	if err != nil {
@@ -73,14 +73,14 @@ func main() {
 	gwConf := GatewayConfig{}
 	gwConfPath := os.Getenv("GATEWAY_CONFIG")
 	if gwConfPath == "" {
-		gwConfPath = "/etc/concurrent/gateway.yaml"
+		gwConfPath = "/etc/concrnt/config/gateway.yaml"
 	}
 	err = gwConf.Load(gwConfPath)
 	if err != nil {
 		e.Logger.Fatal(err)
 	}
 
-	log.Print("Concurrent ", version, " starting...")
+	log.Print("Concrnt ", version, " starting...")
 	log.Print("Config loaded! I am: ", conconf.CCID)
 
 	// Echoの設定
@@ -342,11 +342,15 @@ func main() {
 	}, cors)
 
 	e.GET("/tos", func(c echo.Context) (err error) {
-		return c.File("/etc/concurrent/tos.txt")
+		return c.File("/etc/concrnt/static/tos.txt")
 	}, cors)
 
 	e.GET("/code-of-conduct", func(c echo.Context) (err error) {
-		return c.File("/etc/concurrent/code-of-conduct.txt")
+		return c.File("/etc/concrnt/static/code-of-conduct.txt")
+	}, cors)
+
+	e.GET("/register-template", func(c echo.Context) (err error) {
+		return c.File("/etc/concrnt/static/register-template.json")
 	}, cors)
 
 	e.GET("/health", func(c echo.Context) (err error) {

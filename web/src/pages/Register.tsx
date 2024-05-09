@@ -3,22 +3,10 @@ import type { RJSFSchema } from '@rjsf/utils'
 import Form from '@rjsf/mui'
 import validator from '@rjsf/validator-ajv8'
 import { useSearchParams } from 'react-router-dom'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { DomainProfile } from '../model'
 import { useApi } from '../context/apiContext'
 import ReCAPTCHA from "react-google-recaptcha";
-
-const schema: RJSFSchema = {
-    description: '情報はトラブル対応や本人確認にのみ用いられ、このホストの管理人以外には公開されません。',
-    type: 'object',
-    required: ['name', 'email', 'consent'],
-    properties: {
-        name: { type: 'string', title: '名前', description: 'ご連絡が必要になった場合に用いる宛名　ハンドルネーム推奨' },
-        email: { type: 'string', title: 'メールアドレス', description: '最終的なご連絡先' },
-        social: { type: 'string', title: 'その他連絡先', description: 'TwitterやMisskeyやMastodonなどの連絡先' },
-        consent: { type: 'boolean', title: 'ルールを理解しました', default: null, enum: [null, true]}
-    },
-}
 
 export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Element => {
 
@@ -31,6 +19,10 @@ export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Elemen
     const [captcha, setCaptcha] = useState<string>("")
     const [formData, setFormData] = useState<any>({})
 
+    const [codeofconduct, setCodeofconduct] = useState<string | undefined>(undefined)
+    const [tos, setTos] = useState<string | undefined>(undefined)
+    const [schema, setSchema] = useState<RJSFSchema | undefined>(undefined)
+
     const encodedregistration = searchParams.get('registration')
     const registration = encodedregistration ? atob(encodedregistration.replace('-', '+').replace('_', '/')) : null
     const signature = searchParams.get('signature')
@@ -40,6 +32,51 @@ export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Elemen
         const signedObj = JSON.parse(registration)
         ccaddr = signedObj.signer
     }
+
+    useEffect(() => {
+        fetch(`/tos`, {
+            method: 'GET',
+        }).then(response => {
+            if (response.ok) {
+                return response.text()
+            } else {
+                throw new Error('Something went wrong')
+            }
+        }).then(data => {
+            setTos(data)
+        }).catch(error => {
+            console.log(error)
+        })
+
+        fetch(`/register-template`, {
+            method: 'GET',
+        }).then(response => {
+            if (response.ok) {
+                return response.json()
+            } else {
+                throw new Error('Something went wrong')
+            }
+        }).then(data => {
+            setSchema(data)
+        }).catch(error => {
+            console.log(error)
+        })
+
+        fetch(`/code-of-conduct`, {
+            method: 'GET',
+        }).then(response => {
+            if (response.ok) {
+                return response.text()
+            } else {
+                throw new Error('Something went wrong')
+            }
+        }).then(data => {
+            setCodeofconduct(data)
+        }).catch(error => {
+            console.log(error)
+        })
+
+    }, [])
 
     console.log('registration', registration)
     console.log('signature', signature)
@@ -67,7 +104,7 @@ export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Elemen
         })
     }
 
-    if (!profile) return <>Loading...</>
+    if (!profile || !schema) return <>Loading...</>
 
     return (
         <>
@@ -89,15 +126,42 @@ export const Register = ({profile}: {profile: DomainProfile | null}): JSX.Elemen
                     <Typography>{profile.description}</Typography>
                 </Box>
                 <Box>
-                    <Typography variant="h5">Rules</Typography>
+                    <Typography variant="h5">行動規範</Typography>
                     <Paper
                         variant="outlined"
                         sx={{
                             px: '20px',
+                            maxHeight: '500px',
+                            overflowY: 'auto',
                         }}
                     >
-                        <pre>
-                            {profile.rules}
+                        <pre
+                            style={{
+                                whiteSpace: 'pre-wrap',
+                                wordWrap: 'break-word',
+                            }}
+                        >
+                            {codeofconduct}
+                        </pre>
+                    </Paper>
+                </Box>
+                <Box>
+                    <Typography variant="h5">利用規約およびプライバシーポリシー</Typography>
+                    <Paper
+                        variant="outlined"
+                        sx={{
+                            px: '20px',
+                            maxHeight: '400px',
+                            overflowY: 'auto',
+                        }}
+                    >
+                        <pre
+                            style={{
+                                whiteSpace: 'pre-wrap',
+                                wordWrap: 'break-word',
+                            }}
+                        >
+                            {tos}
                         </pre>
                     </Paper>
                 </Box>

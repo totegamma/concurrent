@@ -112,6 +112,21 @@ func (mr *MockClientMockRecorder) GetKey(ctx, domain, id interface{}) *gomock.Ca
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKey", reflect.TypeOf((*MockClient)(nil).GetKey), ctx, domain, id)
 }
 
+// GetMessage mocks base method.
+func (m *MockClient) GetMessage(ctx context.Context, domain, id string) (core.Message, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetMessage", ctx, domain, id)
+	ret0, _ := ret[0].(core.Message)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetMessage indicates an expected call of GetMessage.
+func (mr *MockClientMockRecorder) GetMessage(ctx, domain, id interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMessage", reflect.TypeOf((*MockClient)(nil).GetMessage), ctx, domain, id)
+}
+
 // GetTimeline mocks base method.
 func (m *MockClient) GetTimeline(ctx context.Context, domain, id string) (core.Timeline, error) {
 	m.ctrl.T.Helper()

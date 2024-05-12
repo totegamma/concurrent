@@ -26,7 +26,6 @@ import (
 	"github.com/totegamma/concurrent"
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/util"
 	"github.com/totegamma/concurrent/x/auth"
 
 	"github.com/bradfitz/gomemcache/memcache"
@@ -68,7 +67,7 @@ func main() {
 		e.Logger.Fatal(err)
 	}
 
-	conconf := util.SetupConfig(config.Concurrent)
+	conconf := core.SetupConfig(config.Concurrent)
 
 	gwConf := GatewayConfig{}
 	gwConfPath := os.Getenv("GATEWAY_CONFIG")

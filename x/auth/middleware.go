@@ -13,7 +13,6 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/util"
 	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/key"
 	"github.com/xinguang/go-recaptcha"
@@ -82,7 +81,7 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				span.RecordError(errors.Wrap(err, "failed to decode signature"))
 				goto skipCheckPassport
 			}
-			err = util.VerifySignature([]byte(passport.Document), signatureBytes, domain.CCID)
+			err = core.VerifySignature([]byte(passport.Document), signatureBytes, domain.CCID)
 			if err != nil { // TODO: this is misbehaving. should be logged to audit
 				span.RecordError(errors.Wrap(err, "failed to verify signature of passport"))
 				goto skipCheckPassport

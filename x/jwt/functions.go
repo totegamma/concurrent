@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/totegamma/concurrent/util"
+    "github.com/totegamma/concurrent/core"
 )
 
 // Create creates server signed JWT
@@ -31,7 +31,7 @@ func Create(claims Claims, privatekey string) (string, error) {
 	payloadB64 := base64.RawURLEncoding.EncodeToString([]byte(payloadStr))
 	target := headerB64 + "." + payloadB64
 
-	signatureBytes, err := util.SignBytes([]byte(target), privatekey)
+	signatureBytes, err := core.SignBytes([]byte(target), privatekey)
 	signatureB64 := base64.RawURLEncoding.EncodeToString(signatureBytes)
 
 	return target + "." + signatureB64, nil
@@ -90,7 +90,7 @@ func Validate(jwt string) (Claims, error) {
 		return claims, err
 	}
 
-	err = util.VerifySignature([]byte(split[0]+"."+split[1]), signatureBytes, claims.Issuer)
+	err = core.VerifySignature([]byte(split[0]+"."+split[1]), signatureBytes, claims.Issuer)
 	if err != nil {
 		return claims, err
 	}

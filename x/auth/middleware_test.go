@@ -14,7 +14,6 @@ import (
 	"go.uber.org/mock/gomock"
 
 	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/util"
 
 	"github.com/totegamma/concurrent/core/mock"
 	"github.com/totegamma/concurrent/internal/testutil"
@@ -154,7 +153,7 @@ func TestRemoteRootSuccess(t *testing.T) {
 	}
 
 	passportDocJson, _ := json.Marshal(passportDoc)
-	signatureBytes, _ := util.SignBytes(passportDocJson, RemoteDomainPriv)
+	signatureBytes, _ := core.SignBytes(passportDocJson, RemoteDomainPriv)
 	signature := hex.EncodeToString(signatureBytes)
 
 	fmt.Println("signature: ", signature)

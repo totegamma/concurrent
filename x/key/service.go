@@ -8,7 +8,6 @@ import (
 
 	"github.com/pkg/errors"
 	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/util"
 )
 
 type service struct {
@@ -129,7 +128,7 @@ func (s *service) ValidateDocument(ctx context.Context, document, signature stri
 			span.RecordError(err)
 			return errors.Wrap(err, "[master] failed to decode signature")
 		}
-		err = util.VerifySignature([]byte(document), signatureBytes, object.Signer)
+		err = core.VerifySignature([]byte(document), signatureBytes, object.Signer)
 		if err != nil {
 			span.RecordError(err)
 			return errors.Wrap(err, "[master] failed to verify signature")
@@ -169,7 +168,7 @@ func (s *service) ValidateDocument(ctx context.Context, document, signature stri
 			span.RecordError(err)
 			return errors.Wrap(err, "[sub] failed to decode signature")
 		}
-		err = util.VerifySignature([]byte(document), signatureBytes, object.KeyID)
+		err = core.VerifySignature([]byte(document), signatureBytes, object.KeyID)
 		if err != nil {
 			span.RecordError(err)
 			return errors.Wrap(err, "[sub] failed to verify signature")
@@ -192,7 +191,7 @@ func ValidateKeyResolution(keys []core.Key) (string, error) {
 		if err != nil {
 			return "", err
 		}
-		err = util.VerifySignature([]byte(key.EnactDocument), signature, key.Parent)
+		err = core.VerifySignature([]byte(key.EnactDocument), signature, key.Parent)
 		if err != nil {
 			return "", err
 		}

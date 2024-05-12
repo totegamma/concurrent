@@ -13,7 +13,6 @@ import (
 	"github.com/totegamma/concurrent/cdid"
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/util"
 )
 
 type service struct {
@@ -174,7 +173,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 		return created, err
 	}
 
-	hash := util.GetHash([]byte(document))
+	hash := core.GetHash([]byte(document))
 	hash10 := [10]byte{}
 	copy(hash10[:], hash[:10])
 	signedAt := doc.SignedAt

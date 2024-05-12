@@ -13,7 +13,6 @@ import (
 
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/util"
 	"github.com/totegamma/concurrent/x/jwt"
 	"golang.org/x/exp/slices"
 )
@@ -52,7 +51,7 @@ func (s *service) PullEntityFromRemote(ctx context.Context, id, remote string) (
 		return core.Entity{}, err
 	}
 
-	err = util.VerifySignature([]byte(entity.AffiliationDocument), signatureBytes, id)
+	err = core.VerifySignature([]byte(entity.AffiliationDocument), signatureBytes, id)
 	if err != nil {
 		span.RecordError(err)
 		return core.Entity{}, err

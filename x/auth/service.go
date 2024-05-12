@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/util"
 )
 
 type service struct {
@@ -56,7 +55,7 @@ func (s *service) IssuePassport(ctx context.Context, requester string, keys []co
 		return "", err
 	}
 
-	signatureBytes, err := util.SignBytes(document, s.config.PrivateKey)
+	signatureBytes, err := core.SignBytes(document, s.config.PrivateKey)
 	if err != nil {
 		span.RecordError(err)
 		return "", err

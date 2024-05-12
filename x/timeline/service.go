@@ -15,7 +15,6 @@ import (
 
 	"github.com/totegamma/concurrent/cdid"
 	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/util"
 )
 
 type service struct {
@@ -503,7 +502,7 @@ func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, docu
 	}
 
 	if doc.ID == "" {
-		hash := util.GetHash([]byte(document))
+		hash := core.GetHash([]byte(document))
 		hash10 := [10]byte{}
 		copy(hash10[:], hash[:10])
 		signedAt := doc.SignedAt

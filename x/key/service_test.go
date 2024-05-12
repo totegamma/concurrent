@@ -13,7 +13,6 @@ import (
 	"github.com/totegamma/concurrent/core"
 	"github.com/totegamma/concurrent/core/mock"
 	"github.com/totegamma/concurrent/internal/testutil"
-	"github.com/totegamma/concurrent/util"
 )
 
 const (
@@ -59,7 +58,7 @@ func TestService(t *testing.T) {
 	assert.NoError(t, err)
 
 	objStr0 := string(objb0)
-	objSig0, err := util.SignBytes(objb0, SubPriv1)
+	objSig0, err := core.SignBytes(objb0, SubPriv1)
 	assert.NoError(t, err)
 
 	objSig0Hex := hex.EncodeToString(objSig0)
@@ -83,7 +82,7 @@ func TestService(t *testing.T) {
 	assert.NoError(t, err)
 
 	objStr1 := string(objb1)
-	objSig1, err := util.SignBytes(objb1, RootPriv)
+	objSig1, err := core.SignBytes(objb1, RootPriv)
 	assert.NoError(t, err)
 	objSig1Hex := hex.EncodeToString(objSig1)
 
@@ -128,7 +127,7 @@ func TestService(t *testing.T) {
 	assert.NoError(t, err)
 
 	objStr2 := string(objb2)
-	objSig2, err := util.SignBytes(objb2, SubPriv1)
+	objSig2, err := core.SignBytes(objb2, SubPriv1)
 	assert.NoError(t, err)
 	objSig2Hex := hex.EncodeToString(objSig2)
 
@@ -164,7 +163,7 @@ func TestService(t *testing.T) {
 	assert.NoError(t, err)
 
 	objStr3 := string(objb3)
-	objSig3, err := util.SignBytes(objb3, SubPriv2)
+	objSig3, err := core.SignBytes(objb3, SubPriv2)
 	assert.NoError(t, err)
 	objSig3Hex := hex.EncodeToString(objSig3)
 
@@ -187,7 +186,7 @@ func TestService(t *testing.T) {
 	assert.NoError(t, err)
 
 	objStr4 := string(objb4)
-	objSig4, err := util.SignBytes(objb4, RootPriv)
+	objSig4, err := core.SignBytes(objb4, RootPriv)
 	assert.NoError(t, err)
 	objSig4Hex := hex.EncodeToString(objSig4)
 
@@ -209,7 +208,7 @@ func TestService(t *testing.T) {
 	assert.NoError(t, err)
 
 	objStr5 := string(objb5)
-	objSig5, err := util.SignBytes(objb5, RootPriv)
+	objSig5, err := core.SignBytes(objb5, RootPriv)
 	objSig5Hex := hex.EncodeToString(objSig5)
 	assert.NoError(t, err)
 

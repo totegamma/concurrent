@@ -22,7 +22,6 @@ import (
 	"github.com/totegamma/concurrent"
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/util"
 	"github.com/totegamma/concurrent/x/ack"
 	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/auth"
@@ -99,7 +98,7 @@ func main() {
 		slog.Error("Failed to load config: ", err)
 	}
 
-	conconf := util.SetupConfig(config.Concurrent)
+	conconf := core.SetupConfig(config.Concurrent)
 
 	slog.Info(fmt.Sprintf("Config loaded! I am: %s", conconf.CCID))
 

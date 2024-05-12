@@ -1,4 +1,4 @@
-package util
+package core
 
 import (
 	"encoding/hex"
@@ -9,8 +9,6 @@ import (
 	"github.com/pkg/errors"
 	"gitlab.com/yawning/secp256k1-voi/secec"
 	"golang.org/x/crypto/sha3"
-
-	"github.com/totegamma/concurrent/core"
 )
 
 func GetHash(bytes []byte) []byte {
@@ -91,11 +89,10 @@ func PubkeyToAddr(pubkeyHex string, hrp string) (string, error) {
 	return PubkeyBytesToAddr(pubKeyBytes, hrp)
 }
 
-func SetupConfig(base core.ConfigInput) core.Config {
-
-	privKeyBytes, err := hex.DecodeString(base.PrivateKey)
+func PrivKeyToAddr(privKeyHex string, hrp string) (string, error) {
+	privKeyBytes, err := hex.DecodeString(privKeyHex)
 	if err != nil {
-		panic(err)
+		return "", errors.Wrap(err, "failed to decode private key")
 	}
 
 	privKey := secp256k1.PrivKey{
@@ -104,12 +101,17 @@ func SetupConfig(base core.ConfigInput) core.Config {
 
 	pubkey := privKey.PubKey()
 
-	addr, err := PubkeyBytesToAddr(pubkey.Bytes(), "con")
+	return PubkeyBytesToAddr(pubkey.Bytes(), hrp)
+}
+
+func SetupConfig(base ConfigInput) Config {
+
+	addr, err := PrivKeyToAddr(base.PrivateKey, "con")
 	if err != nil {
 		panic(err)
 	}
 
-	return core.Config{
+	return Config{
 		FQDN:         base.FQDN,
 		PrivateKey:   base.PrivateKey,
 		Registration: base.Registration,

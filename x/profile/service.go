@@ -6,7 +6,6 @@ import (
 	"errors"
 	"github.com/totegamma/concurrent/cdid"
 	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/util"
 )
 
 type service struct {
@@ -101,7 +100,7 @@ func (s *service) Upsert(ctx context.Context, mode core.CommitMode, document, si
 	}
 
 	if doc.ID == "" {
-		hash := util.GetHash([]byte(document))
+		hash := core.GetHash([]byte(document))
 		hash10 := [10]byte{}
 		copy(hash10[:], hash[:10])
 		doc.ID = cdid.New(hash10, doc.SignedAt).String()

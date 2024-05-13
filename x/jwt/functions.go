@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-    "github.com/totegamma/concurrent/core"
+	"github.com/totegamma/concurrent/core"
 )
 
 // Create creates server signed JWT

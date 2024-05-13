@@ -27,6 +27,7 @@ type Client interface {
 	Commit(ctx context.Context, domain, body string) (*http.Response, error)
 	GetEntity(ctx context.Context, domain, address string) (core.Entity, error)
 	GetMessage(ctx context.Context, domain, id string) (core.Message, error)
+	GetProfile(ctx context.Context, domain, address string) (core.Profile, error)
 	GetTimeline(ctx context.Context, domain, id string) (core.Timeline, error)
 	GetChunks(ctx context.Context, domain string, timelines []string, queryTime time.Time) (map[string]core.Chunk, error)
 	GetKey(ctx context.Context, domain, id string) ([]core.Key, error)
@@ -145,6 +146,43 @@ func (c *client) GetMessage(ctx context.Context, domain, id string) (core.Messag
 	}
 
 	return remoteMessage.Content, nil
+}
+
+func (c *client) GetProfile(ctx context.Context, domain, id string) (core.Profile, error) {
+	ctx, span := tracer.Start(ctx, "Client.GetProfile")
+	defer span.End()
+
+	req, err := http.NewRequest("GET", "https://"+domain+"/api/v1/profile/"+id, nil)
+	if err != nil {
+		span.RecordError(err)
+		return core.Profile{}, err
+	}
+
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+
+	client := new(http.Client)
+	client.Timeout = 3 * time.Second
+	resp, err := client.Do(req)
+	if err != nil {
+		span.RecordError(err)
+		return core.Profile{}, err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+
+	var remoteProfile core.ResponseBase[core.Profile]
+	err = json.Unmarshal(body, &remoteProfile)
+	if err != nil {
+		span.RecordError(err)
+		return core.Profile{}, err
+	}
+
+	if remoteProfile.Status != "ok" {
+		return core.Profile{}, fmt.Errorf("Remote profile is not found")
+	}
+
+	return remoteProfile.Content, nil
 }
 
 func (c *client) GetTimeline(ctx context.Context, domain, id string) (core.Timeline, error) {

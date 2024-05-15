@@ -24,7 +24,7 @@ const (
 var tracer = otel.Tracer("client")
 
 type Client interface {
-	Commit(ctx context.Context, domain, body string) (*http.Response, error)
+	Commit(ctx context.Context, domain, body string, response any) (*http.Response, error)
 	GetEntity(ctx context.Context, domain, address string) (core.Entity, error)
 	GetMessage(ctx context.Context, domain, id string) (core.Message, error)
 	GetProfile(ctx context.Context, domain, address string) (core.Profile, error)
@@ -40,7 +40,7 @@ func NewClient() Client {
 	return &client{}
 }
 
-func (c *client) Commit(ctx context.Context, domain, body string) (*http.Response, error) {
+func (c *client) Commit(ctx context.Context, domain, body string, response any) (*http.Response, error) {
 	ctx, span := tracer.Start(ctx, "Client.Commit")
 	defer span.End()
 
@@ -68,8 +68,14 @@ func (c *client) Commit(ctx context.Context, domain, body string) (*http.Respons
 		return &http.Response{}, err
 	}
 
-	respbody, _ := io.ReadAll(resp.Body)
-	span.SetAttributes(attribute.String("response", string(respbody)))
+	if response != nil {
+		respbody, _ := io.ReadAll(resp.Body)
+		err = json.Unmarshal(respbody, response)
+		if err != nil {
+			span.RecordError(err)
+			return &http.Response{}, err
+		}
+	}
 
 	return resp, nil
 }

@@ -163,7 +163,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 					span.RecordError(err)
 					continue
 				}
-				s.client.Commit(ctx, domain, string(packetStr))
+				s.client.Commit(ctx, domain, string(packetStr), nil)
 			}
 		}
 
@@ -239,7 +239,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 						return created, err
 					}
 
-					s.client.Commit(ctx, domain, string(packet))
+					s.client.Commit(ctx, domain, string(packet), nil)
 				}
 			}
 		}
@@ -375,7 +375,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 					return deleted, err
 				}
 
-				s.client.Commit(ctx, domain, string(packet))
+				s.client.Commit(ctx, domain, string(packet), nil)
 			}
 		}
 	}

@@ -310,7 +310,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 				span.RecordError(err)
 				continue
 			}
-			s.client.Commit(ctx, domain, string(packetStr))
+			s.client.Commit(ctx, domain, string(packetStr), nil)
 		}
 	}
 

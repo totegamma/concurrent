@@ -38,18 +38,18 @@ func (m *MockClient) EXPECT() *MockClientMockRecorder {
 }
 
 // Commit mocks base method.
-func (m *MockClient) Commit(ctx context.Context, domain, body string) (*http.Response, error) {
+func (m *MockClient) Commit(ctx context.Context, domain, body string, response any) (*http.Response, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Commit", ctx, domain, body)
+	ret := m.ctrl.Call(m, "Commit", ctx, domain, body, response)
 	ret0, _ := ret[0].(*http.Response)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Commit indicates an expected call of Commit.
-func (mr *MockClientMockRecorder) Commit(ctx, domain, body interface{}) *gomock.Call {
+func (mr *MockClientMockRecorder) Commit(ctx, domain, body, response interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Commit", reflect.TypeOf((*MockClient)(nil).Commit), ctx, domain, body)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Commit", reflect.TypeOf((*MockClient)(nil).Commit), ctx, domain, body, response)
 }
 
 // GetChunks mocks base method.
@@ -125,6 +125,21 @@ func (m *MockClient) GetMessage(ctx context.Context, domain, id string) (core.Me
 func (mr *MockClientMockRecorder) GetMessage(ctx, domain, id interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMessage", reflect.TypeOf((*MockClient)(nil).GetMessage), ctx, domain, id)
+}
+
+// GetProfile mocks base method.
+func (m *MockClient) GetProfile(ctx context.Context, domain, address string) (core.Profile, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetProfile", ctx, domain, address)
+	ret0, _ := ret[0].(core.Profile)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetProfile indicates an expected call of GetProfile.
+func (mr *MockClientMockRecorder) GetProfile(ctx, domain, address interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetProfile", reflect.TypeOf((*MockClient)(nil).GetProfile), ctx, domain, address)
 }
 
 // GetTimeline mocks base method.

@@ -508,7 +508,11 @@ func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, docu
 		signedAt := doc.SignedAt
 		doc.ID = cdid.New(hash10, signedAt).String()
 	} else {
-		split := strings.Split(doc.ID, "@")
+		id, err := s.NormalizeTimelineID(ctx, doc.ID)
+		if err != nil {
+			return core.Timeline{}, err
+		}
+		split := strings.Split(id, "@")
 		if len(split) == 2 {
 			if split[1] != s.config.FQDN {
 				return core.Timeline{}, fmt.Errorf("This timeline is not owned by this domain")

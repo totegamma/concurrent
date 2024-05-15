@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"reflect"
 	"strings"
 	"time"
 
@@ -45,6 +46,10 @@ func (c *client) Commit(ctx context.Context, domain, body string, response any) 
 	defer span.End()
 
 	req, err := http.NewRequest("POST", "https://"+domain+"/api/v1/commit", bytes.NewBuffer([]byte(body)))
+	if err != nil {
+		span.RecordError(err)
+		return &http.Response{}, err
+	}
 	req.Header.Set("Content-Type", "application/json")
 
 	passport, ok := ctx.Value(core.RequesterPassportKey).(string)
@@ -68,9 +73,9 @@ func (c *client) Commit(ctx context.Context, domain, body string, response any) 
 		return &http.Response{}, err
 	}
 
-	if response != nil {
+	if response != nil && !reflect.ValueOf(response).IsNil() {
 		respbody, _ := io.ReadAll(resp.Body)
-		err = json.Unmarshal(respbody, response)
+		err = json.Unmarshal(respbody, &response)
 		if err != nil {
 			span.RecordError(err)
 			return &http.Response{}, err

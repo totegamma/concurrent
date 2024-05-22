@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"reflect"
 	"strings"
@@ -28,6 +29,7 @@ type Client interface {
 	Commit(ctx context.Context, domain, body string, response any) (*http.Response, error)
 	GetEntity(ctx context.Context, domain, address string) (core.Entity, error)
 	GetMessage(ctx context.Context, domain, id string) (core.Message, error)
+	GetAssociation(ctx context.Context, domain, id string) (core.Association, error)
 	GetProfile(ctx context.Context, domain, address string) (core.Profile, error)
 	GetTimeline(ctx context.Context, domain, id string) (core.Timeline, error)
 	GetChunks(ctx context.Context, domain string, timelines []string, queryTime time.Time) (map[string]core.Chunk, error)
@@ -116,6 +118,7 @@ func (c *client) GetEntity(ctx context.Context, domain, address string) (core.En
 	}
 
 	if remoteEntity.Status != "ok" {
+		log.Printf("error: %v", string(body))
 		return core.Entity{}, fmt.Errorf("Remote entity is not found")
 	}
 
@@ -153,10 +156,49 @@ func (c *client) GetMessage(ctx context.Context, domain, id string) (core.Messag
 	}
 
 	if remoteMessage.Status != "ok" {
+		log.Printf("error: %v", string(body))
 		return core.Message{}, fmt.Errorf("Remote message is not found")
 	}
 
 	return remoteMessage.Content, nil
+}
+
+func (c *client) GetAssociation(ctx context.Context, domain, id string) (core.Association, error) {
+	ctx, span := tracer.Start(ctx, "Client.GetAssociation")
+	defer span.End()
+
+	req, err := http.NewRequest("GET", "https://"+domain+"/api/v1/association/"+id, nil)
+	if err != nil {
+		span.RecordError(err)
+		return core.Association{}, err
+	}
+
+	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
+
+	client := new(http.Client)
+	client.Timeout = 3 * time.Second
+	resp, err := client.Do(req)
+	if err != nil {
+		span.RecordError(err)
+		return core.Association{}, err
+	}
+	defer resp.Body.Close()
+
+	body, _ := io.ReadAll(resp.Body)
+
+	var remoteAssociation core.ResponseBase[core.Association]
+	err = json.Unmarshal(body, &remoteAssociation)
+	if err != nil {
+		span.RecordError(err)
+		return core.Association{}, err
+	}
+
+	if remoteAssociation.Status != "ok" {
+		log.Printf("error: %v", string(body))
+		return core.Association{}, fmt.Errorf("Remote association is not found")
+	}
+
+	return remoteAssociation.Content, nil
 }
 
 func (c *client) GetProfile(ctx context.Context, domain, id string) (core.Profile, error) {
@@ -190,6 +232,7 @@ func (c *client) GetProfile(ctx context.Context, domain, id string) (core.Profil
 	}
 
 	if remoteProfile.Status != "ok" {
+		log.Printf("error: %v", string(body))
 		return core.Profile{}, fmt.Errorf("Remote profile is not found")
 	}
 
@@ -229,6 +272,7 @@ func (c *client) GetTimeline(ctx context.Context, domain, id string) (core.Timel
 	}
 
 	if timelineResp.Status != "ok" {
+		log.Printf("error: %v", string(body))
 		return core.Timeline{}, fmt.Errorf("Remote timeline is not found")
 	}
 
@@ -270,6 +314,7 @@ func (c *client) GetChunks(ctx context.Context, domain string, timelines []strin
 	}
 
 	if chunkResp.Status != "ok" {
+		log.Printf("error: %v", string(body))
 		return nil, fmt.Errorf("Remote chunks are not found")
 	}
 

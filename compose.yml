@@ -30,6 +30,8 @@ services:
       driver: loki
       options: 
         loki-url: http://localhost:3100/loki/api/v1/push
+    extra_hosts:
+      - "host.docker.internal:172.29.253.172"
 
   ccapi:
     build:
@@ -220,12 +222,15 @@ services:
 
   tempo:
     image: grafana/tempo:latest
+    ports:
+      - "4318:4318"
     command: [ "-config.file=/etc/tempo.yaml" ]
     volumes:
       - ./_dev/tempo.yaml:/etc/tempo.yaml
       - ./_composeData/tempo:/tmp/tempo
     networks:
       - internal
+      - external
 
 networks:
   external:

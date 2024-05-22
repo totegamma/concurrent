@@ -68,7 +68,26 @@ func (s *service) Get(ctx context.Context, id string, requester string) (core.Me
 			return core.Message{}, fmt.Errorf("invalid action")
 		}
 
-		ok, err = s.policy.HasNoRulesWithPolicyURL(ctx, timeline.Policy, action)
+		//ok, err = s.policy.HasNoRulesWithPolicyURL(ctx, timeline.Policy, action)
+		var params map[string]any = make(map[string]any)
+		if timeline.PolicyParams != nil {
+			err := json.Unmarshal([]byte(*timeline.PolicyParams), &params)
+			if err != nil {
+				span.SetStatus(codes.Error, err.Error())
+				span.RecordError(err)
+				continue
+			}
+		}
+
+		ok, err = s.policy.TestWithPolicyURL(
+			ctx,
+			timeline.Policy,
+			core.RequestContext{
+				Self:   timeline,
+				Params: params,
+			},
+			action,
+		)
 		if err != nil {
 			span.SetStatus(codes.Error, err.Error())
 			continue
@@ -117,7 +136,7 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 			break
 		}
 
-		var params map[string]any
+		var params map[string]any = make(map[string]any)
 		if timeline.PolicyParams != nil {
 			err := json.Unmarshal([]byte(*timeline.PolicyParams), &params)
 			if err != nil {

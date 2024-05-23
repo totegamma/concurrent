@@ -63,6 +63,7 @@ func TestRepository(t *testing.T) {
 		Target:    messageID,
 		Document:  "{}",
 		Variant:   "",
+		Unique:    "0",
 		Signature: "DUMMY",
 	}
 	_, err = repo.Create(ctx, like)
@@ -75,6 +76,7 @@ func TestRepository(t *testing.T) {
 		Target:    messageID,
 		Document:  "{}",
 		Variant:   "smile",
+		Unique:    "1",
 		Signature: "DUMMY",
 	}
 	_, err = repo.Create(ctx, emoji1)
@@ -87,6 +89,7 @@ func TestRepository(t *testing.T) {
 		Target:    messageID,
 		Document:  "{}",
 		Variant:   "ultrafastpolar",
+		Unique:    "2",
 		Signature: "DUMMY",
 	}
 	_, err = repo.Create(ctx, emoji2)
@@ -99,6 +102,7 @@ func TestRepository(t *testing.T) {
 		Target:    messageID,
 		Document:  "{}",
 		Variant:   "ultrafastpolar",
+		Unique:    "3",
 		Signature: "DUMMY",
 	}
 	_, err = repo.Create(ctx, emoji3)

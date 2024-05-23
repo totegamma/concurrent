@@ -57,6 +57,11 @@ func (s *service) Get(ctx context.Context, id string, requester string) (core.Me
 			continue
 		}
 
+		if timeline.Author == requester { // 自分のタイムラインなら読める
+			canRead = true
+			break
+		}
+
 		if timeline.Policy == "" {
 			canRead = true
 			break

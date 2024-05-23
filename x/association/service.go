@@ -81,6 +81,16 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 		return created, err
 	}
 
+	bodyStr, err := json.Marshal(doc.Body)
+	if err != nil {
+		span.RecordError(err)
+		return created, err
+	}
+
+	uniqueKey := doc.Signer + doc.Schema + doc.Target + doc.Variant + string(bodyStr)
+	uniqueHash := core.GetHash([]byte(uniqueKey))
+	unique := hex.EncodeToString(uniqueHash[:16])
+
 	if owner.Domain == s.config.FQDN { // signerが自ドメイン管轄の場合、リソースを作成
 		association := core.Association{
 			ID:        id,
@@ -92,6 +102,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 			Signature: signature,
 			Timelines: doc.Timelines,
 			Variant:   doc.Variant,
+			Unique:    unique,
 		}
 
 		created, err = s.repo.Create(ctx, association)

@@ -36,12 +36,13 @@ type SemanticID struct {
 // immutable
 type Association struct {
 	ID        string         `json:"id" gorm:"primaryKey;type:char(26)"`
-	Author    string         `json:"author" gorm:"type:char(42);uniqueIndex:uniq_association"`
-	Owner     string         `json:"owner" gorm:"type:char(42);"`
-	SchemaID  uint           `json:"-" gorm:"uniqueIndex:uniq_association"`
+	Author    string         `json:"author" gorm:"type:char(42)"`
+	Owner     string         `json:"owner" gorm:"type:char(42)"`
+	SchemaID  uint           `json:"-"`
 	Schema    string         `json:"schema" gorm:"-"`
-	Target    string         `json:"target" gorm:"type:char(27);uniqueIndex:uniq_association"`
-	Variant   string         `json:"variant" gorm:"type:text;uniqueIndex:uniq_association"`
+	Target    string         `json:"target" gorm:"type:char(27)"`
+	Variant   string         `json:"variant" gorm:"type:text"`
+	Unique    string         `json:"unique" gorm:"type:char(32);uniqueIndex:uniq_association"`
 	Document  string         `json:"document" gorm:"type:json"`
 	Signature string         `json:"signature" gorm:"type:char(130)"`
 	CDate     time.Time      `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`

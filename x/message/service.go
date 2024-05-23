@@ -73,7 +73,6 @@ func (s *service) Get(ctx context.Context, id string, requester string) (core.Me
 			return core.Message{}, fmt.Errorf("invalid action")
 		}
 
-		//ok, err = s.policy.HasNoRulesWithPolicyURL(ctx, timeline.Policy, action)
 		var params map[string]any = make(map[string]any)
 		if timeline.PolicyParams != nil {
 			err := json.Unmarshal([]byte(*timeline.PolicyParams), &params)
@@ -253,9 +252,29 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 		if timeline.Policy == "" {
 			ispublic = true
 		} else if ispublic == false {
-			ok, err := s.policy.HasNoRulesWithPolicyURL(ctx, timeline.Policy, "GET:/message/")
+
+			var params map[string]any = make(map[string]any)
+			if timeline.PolicyParams != nil {
+				err := json.Unmarshal([]byte(*timeline.PolicyParams), &params)
+				if err != nil {
+					span.SetStatus(codes.Error, err.Error())
+					span.RecordError(err)
+					continue
+				}
+			}
+
+			ok, err := s.policy.TestWithPolicyURL(
+				ctx,
+				timeline.Policy,
+				core.RequestContext{
+					Self:   timeline,
+					Params: params,
+				},
+				"GET:/message/",
+			)
 			if err != nil {
 				span.SetStatus(codes.Error, err.Error())
+				span.RecordError(err)
 				continue
 			}
 
@@ -374,9 +393,58 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 	deleted, err := s.repo.Delete(ctx, doc.Target)
 	slog.DebugContext(ctx, fmt.Sprintf("deleted: %v", deleted), slog.String("module", "message"))
 
+	ispublic := false
+	for _, timelineID := range deleted.Timelines {
+		timeline, err := s.timeline.GetTimelineAutoDomain(ctx, timelineID)
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			continue
+		}
+
+		if timeline.Policy == "" {
+			ispublic = true
+			break
+		}
+
+		var params map[string]any = make(map[string]any)
+		if timeline.PolicyParams != nil {
+			err := json.Unmarshal([]byte(*timeline.PolicyParams), &params)
+			if err != nil {
+				span.SetStatus(codes.Error, err.Error())
+				span.RecordError(err)
+				continue
+			}
+		}
+
+		ok, err := s.policy.TestWithPolicyURL(
+			ctx,
+			timeline.Policy,
+			core.RequestContext{
+				Self:   timeline,
+				Params: params,
+			},
+			"GET:/message/",
+		)
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			span.RecordError(err)
+			continue
+		}
+
+		if ok {
+			ispublic = true
+			break
+		}
+	}
+
 	if err != nil {
 		span.RecordError(err)
 		return core.Message{}, err
+	}
+
+	var publicResource *core.Message = nil
+	if ispublic {
+		publicResource = &deleted
 	}
 
 	if mode != core.CommitModeLocalOnlyExec {
@@ -385,6 +453,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 				Timeline:  desttimeline,
 				Document:  document,
 				Signature: signature,
+				Resource:  publicResource,
 			}
 			err := s.timeline.PublishEvent(ctx, event)
 			if err != nil {

@@ -86,30 +86,6 @@ func (s service) Test(ctx context.Context, policy core.Policy, context core.Requ
 	return false, nil
 }
 
-func (s service) HasNoRulesWithPolicyURL(ctx context.Context, url string, action string) (bool, error) {
-	ctx, span := tracer.Start(ctx, "Policy.Service.HasNoRulesWithPolicyURL")
-	defer span.End()
-
-	policy, err := s.repository.Get(ctx, url)
-	if err != nil {
-		span.SetStatus(codes.Error, err.Error())
-		return false, err
-	}
-
-	return s.HasNoRules(ctx, policy, action)
-}
-
-func (s service) HasNoRules(ctx context.Context, policy core.Policy, action string) (bool, error) {
-	for _, statement := range policy.Statements {
-		for _, a := range statement.Actions {
-			if isActionMatch(action, a) {
-				return false, nil
-			}
-		}
-	}
-	return true, nil
-}
-
 func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.EvalResult, error) {
 
 	defer func() {

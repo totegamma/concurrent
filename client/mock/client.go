@@ -52,6 +52,21 @@ func (mr *MockClientMockRecorder) Commit(ctx, domain, body, response interface{}
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Commit", reflect.TypeOf((*MockClient)(nil).Commit), ctx, domain, body, response)
 }
 
+// GetAssociation mocks base method.
+func (m *MockClient) GetAssociation(ctx context.Context, domain, id string) (core.Association, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetAssociation", ctx, domain, id)
+	ret0, _ := ret[0].(core.Association)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetAssociation indicates an expected call of GetAssociation.
+func (mr *MockClientMockRecorder) GetAssociation(ctx, domain, id interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAssociation", reflect.TypeOf((*MockClient)(nil).GetAssociation), ctx, domain, id)
+}
+
 // GetChunks mocks base method.
 func (m *MockClient) GetChunks(ctx context.Context, domain string, timelines []string, queryTime time.Time) (map[string]core.Chunk, error) {
 	m.ctrl.T.Helper()

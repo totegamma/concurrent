@@ -305,6 +305,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 			Timeline:  posted,
 			Document:  document,
 			Signature: signature,
+			Resource:  deleted,
 		}
 		err := s.timeline.PublishEvent(ctx, event)
 		if err != nil {

@@ -915,36 +915,6 @@ func (m *MockPolicyService) EXPECT() *MockPolicyServiceMockRecorder {
 	return m.recorder
 }
 
-// HasNoRules mocks base method.
-func (m *MockPolicyService) HasNoRules(ctx context.Context, policy core.Policy, action string) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HasNoRules", ctx, policy, action)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// HasNoRules indicates an expected call of HasNoRules.
-func (mr *MockPolicyServiceMockRecorder) HasNoRules(ctx, policy, action interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasNoRules", reflect.TypeOf((*MockPolicyService)(nil).HasNoRules), ctx, policy, action)
-}
-
-// HasNoRulesWithPolicyURL mocks base method.
-func (m *MockPolicyService) HasNoRulesWithPolicyURL(ctx context.Context, url, action string) (bool, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "HasNoRulesWithPolicyURL", ctx, url, action)
-	ret0, _ := ret[0].(bool)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// HasNoRulesWithPolicyURL indicates an expected call of HasNoRulesWithPolicyURL.
-func (mr *MockPolicyServiceMockRecorder) HasNoRulesWithPolicyURL(ctx, url, action interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "HasNoRulesWithPolicyURL", reflect.TypeOf((*MockPolicyService)(nil).HasNoRulesWithPolicyURL), ctx, url, action)
-}
-
 // Test mocks base method.
 func (m *MockPolicyService) Test(ctx context.Context, policy core.Policy, context core.RequestContext, action string) (bool, error) {
 	m.ctrl.T.Helper()

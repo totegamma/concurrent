@@ -19,6 +19,7 @@ type service struct {
 	repo     Repository
 	client   client.Client
 	entity   core.EntityService
+	domain   core.DomainService
 	timeline core.TimelineService
 	key      core.KeyService
 	policy   core.PolicyService
@@ -26,8 +27,26 @@ type service struct {
 }
 
 // NewService creates a new message service
-func NewService(repo Repository, client client.Client, entity core.EntityService, timeline core.TimelineService, key core.KeyService, policy core.PolicyService, config core.Config) core.MessageService {
-	return &service{repo, client, entity, timeline, key, policy, config}
+func NewService(
+	repo Repository,
+	client client.Client,
+	entity core.EntityService,
+	domain core.DomainService,
+	timeline core.TimelineService,
+	key core.KeyService,
+	policy core.PolicyService,
+	config core.Config,
+) core.MessageService {
+	return &service{
+		repo,
+		client,
+		entity,
+		domain,
+		timeline,
+		key,
+		policy,
+		config,
+	}
 }
 
 // Count returns the count number of messages
@@ -358,6 +377,13 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 				span.RecordError(err)
 				continue
 			}
+
+			_, err = s.domain.GetByFQDN(ctx, domain)
+			if err != nil {
+				span.RecordError(err)
+				continue
+			}
+
 			s.client.Commit(ctx, domain, string(packetStr), nil)
 		}
 	}

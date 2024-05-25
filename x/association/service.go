@@ -18,6 +18,7 @@ type service struct {
 	repo     Repository
 	client   client.Client
 	entity   core.EntityService
+	domain   core.DomainService
 	timeline core.TimelineService
 	message  core.MessageService
 	key      core.KeyService
@@ -29,6 +30,7 @@ func NewService(
 	repo Repository,
 	client client.Client,
 	entity core.EntityService,
+	domain core.DomainService,
 	timeline core.TimelineService,
 	message core.MessageService,
 	key core.KeyService,
@@ -38,6 +40,7 @@ func NewService(
 		repo,
 		client,
 		entity,
+		domain,
 		timeline,
 		message,
 		key,
@@ -174,6 +177,13 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 					span.RecordError(err)
 					continue
 				}
+
+				_, err = s.domain.GetByFQDN(ctx, domain)
+				if err != nil {
+					span.RecordError(err)
+					continue
+				}
+
 				s.client.Commit(ctx, domain, string(packetStr), nil)
 			}
 		}

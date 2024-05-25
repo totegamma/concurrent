@@ -67,7 +67,7 @@ func main() {
 		e.Logger.Fatal(err)
 	}
 
-	conconf := core.SetupConfig(config.Concurrent)
+	conconf := core.SetupConfig(config.Concrnt)
 
 	gwConf := GatewayConfig{}
 	gwConfPath := os.Getenv("GATEWAY_CONFIG")
@@ -79,8 +79,8 @@ func main() {
 		e.Logger.Fatal(err)
 	}
 
-	log.Print("Concrnt ", version, " starting...")
-	log.Print("Config loaded! I am: ", conconf.CCID)
+	log.Printf("Concrnt %s starting...", version)
+	log.Printf("Config loaded! I am: %s @ %s", conconf.CCID, conconf.FQDN)
 
 	// Echoの設定
 	e.HidePort = true
@@ -89,7 +89,7 @@ func main() {
 	e.Use(middleware.Recover())
 
 	if config.Server.EnableTrace {
-		cleanup, err := setupTraceProvider(config.Server.TraceEndpoint, config.Concurrent.FQDN+"/ccgateway", version)
+		cleanup, err := setupTraceProvider(config.Server.TraceEndpoint, config.Concrnt.FQDN+"/ccgateway", version)
 		if err != nil {
 			panic(err)
 		}
@@ -100,7 +100,7 @@ func main() {
 				return c.Path() == "/metrics" || c.Path() == "/health"
 			},
 		)
-		e.Use(otelecho.Middleware(config.Concurrent.FQDN, skipper))
+		e.Use(otelecho.Middleware(config.Concrnt.FQDN, skipper))
 
 		e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 			return func(c echo.Context) error {
@@ -309,10 +309,10 @@ func main() {
 		<link rel="icon" href="`+config.Profile.Logo+`">
 	</head>
 	<body>
-		<h1>Concurrent Domain - `+config.Concurrent.FQDN+`</h1>
+		<h1>Concurrent Domain - `+config.Concrnt.FQDN+`</h1>
 		Yay! You're on ccgateway!<br>
 		You might looking for <a href="https://concurrent.world">concurrent.world</a>.<br>
-		This domain is currently registration: `+config.Concurrent.Registration+`<br>
+		This domain is currently registration: `+config.Concrnt.Registration+`<br>
 		<h2>Information</h2>
 		CDID: `+conconf.CCID+`
 		<h2>Services</h2>

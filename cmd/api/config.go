@@ -7,11 +7,10 @@ import (
 	"os"
 )
 
-// Config is Concurrent base configuration
 type Config struct {
-	Server     Server           `yaml:"server"`
-	Concurrent core.ConfigInput `yaml:"concurrent"`
-	Profile    Profile          `yaml:"profile"`
+	Server  Server           `yaml:"server"`
+	Concrnt core.ConfigInput `yaml:"concrnt"`
+	Profile Profile          `yaml:"profile"`
 }
 
 type Server struct {
@@ -47,7 +46,7 @@ type Profile struct {
 	SiteKey      string    `yaml:"captchaSiteKey" json:"captchaSiteKey"`
 }
 
-// Load loads concurrent config from given path
+// Load loads config from given path
 func (c *Config) Load(path string) error {
 	f, err := os.Open(path)
 	if err != nil {

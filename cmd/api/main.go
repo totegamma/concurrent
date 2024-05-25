@@ -98,12 +98,12 @@ func main() {
 		slog.Error("Failed to load config: ", err)
 	}
 
-	conconf := core.SetupConfig(config.Concurrent)
+	conconf := core.SetupConfig(config.Concrnt)
 
 	slog.Info(fmt.Sprintf("Config loaded! I am: %s", conconf.CCID))
 
 	if config.Server.EnableTrace {
-		cleanup, err := setupTraceProvider(config.Server.TraceEndpoint, config.Concurrent.FQDN+"/ccapi", version)
+		cleanup, err := setupTraceProvider(config.Server.TraceEndpoint, config.Concrnt.FQDN+"/ccapi", version)
 		if err != nil {
 			panic(err)
 		}
@@ -248,7 +248,7 @@ func main() {
 	// domain
 	apiV1.GET("/domain", func(c echo.Context) error {
 		meta := config.Profile
-		meta.Registration = config.Concurrent.Registration
+		meta.Registration = config.Concrnt.Registration
 		meta.Version = version
 		meta.BuildInfo = BuildInfo{
 			BuildTime:    buildTime,

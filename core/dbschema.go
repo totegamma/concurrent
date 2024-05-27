@@ -84,9 +84,9 @@ type Entity struct {
 }
 
 type EntityMeta struct {
-	ID        string  `json:"ccid" gorm:"type:char(42)"`
-	Inviter   *string `json:"inviter" gorm:"type:char(42)"`
-	Info      string  `json:"info" gorm:"type:json;default:'null'"`
+	ID      string  `json:"ccid" gorm:"type:char(42)"`
+	Inviter *string `json:"inviter" gorm:"type:char(42)"`
+	Info    string  `json:"info" gorm:"type:json;default:'null'"`
 }
 
 // Domain is one of a concurrent base object

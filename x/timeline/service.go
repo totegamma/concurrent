@@ -171,12 +171,27 @@ func (s *service) GetRecentItems(ctx context.Context, timelines []string, until 
 	ctx, span := tracer.Start(ctx, "Timeline.Service.GetRecentItems")
 	defer span.End()
 
+	var domainMap = make(map[string][]string)
+
 	// normalize timelineID and validate
 	for i, timeline := range timelines {
 		normalized, err := s.NormalizeTimelineID(ctx, timeline)
 		if err != nil {
 			continue
 		}
+
+		split := strings.Split(normalized, "@")
+		if len(split) == 2 {
+			if _, ok := domainMap[split[1]]; !ok {
+				domainMap[split[1]] = make([]string, 0)
+			}
+			if split[1] == s.config.FQDN {
+				domainMap[split[1]] = append(domainMap[split[1]], split[0])
+			} else {
+				domainMap[split[1]] = append(domainMap[split[1]], timeline)
+			}
+		}
+
 		timelines[i] = normalized
 	}
 
@@ -189,19 +204,7 @@ func (s *service) GetRecentItems(ctx context.Context, timelines []string, until 
 		return nil, err
 	}
 
-	// if not found in cache, get from remote by host
-	buckets := make(map[string][]string)
-	for _, timeline := range timelines {
-		if _, ok := items[timeline]; !ok {
-			split := strings.Split(timeline, "@")
-			if len(split) != 2 {
-				continue
-			}
-			buckets[split[1]] = append(buckets[split[1]], split[0])
-		}
-	}
-
-	for host, timelines := range buckets {
+	for host, timelines := range domainMap {
 		if host == s.config.FQDN {
 			chunks, err := s.repository.GetChunksFromDB(ctx, timelines, untilChunk)
 			if err != nil {

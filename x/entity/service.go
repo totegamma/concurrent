@@ -149,7 +149,7 @@ func (s *service) Affiliation(ctx context.Context, mode core.CommitMode, documen
 				span.RecordError(err)
 				return core.Entity{}, err
 			}
-			if claims.Subject != "CONCURRENT_INVITE" {
+			if claims.Subject != "CONCRNT_INVITE" {
 				return core.Entity{}, fmt.Errorf("invalid invitation code")
 			}
 
@@ -158,7 +158,7 @@ func (s *service) Affiliation(ctx context.Context, mode core.CommitMode, documen
 				span.RecordError(err)
 				return core.Entity{}, err
 			}
-			if !ok {
+			if ok {
 				return core.Entity{}, fmt.Errorf("token is already used")
 			}
 

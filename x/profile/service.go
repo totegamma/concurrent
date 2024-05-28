@@ -10,12 +10,13 @@ import (
 
 type service struct {
 	repo       Repository
+	entity     core.EntityService
 	semanticid core.SemanticIDService
 }
 
 // NewService creates a new profile service
-func NewService(repo Repository, semanticid core.SemanticIDService) core.ProfileService {
-	return &service{repo, semanticid}
+func NewService(repo Repository, entity core.EntityService, semanticid core.SemanticIDService) core.ProfileService {
+	return &service{repo, entity, semanticid}
 }
 
 // Count returns the count number of messages
@@ -36,6 +37,14 @@ func (s *service) Get(ctx context.Context, id string) (core.Profile, error) {
 func (s *service) GetBySemanticID(ctx context.Context, semanticID, owner string) (core.Profile, error) {
 	ctx, span := tracer.Start(ctx, "Profile.Service.GetBySemanticID")
 	defer span.End()
+
+	if !core.IsCCID(owner) {
+		ownerentity, err := s.entity.GetByAlias(ctx, owner)
+		if err != nil {
+			return core.Profile{}, err
+		}
+		owner = ownerentity.ID
+	}
 
 	target, err := s.semanticid.Lookup(ctx, semanticID, owner)
 	if err != nil {

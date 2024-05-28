@@ -116,6 +116,13 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				}
 			}
 
+			if updated.Alias != entity.Alias {
+				_, err := s.entity.GetByAlias(ctx, *entity.Alias)
+				if err != nil {
+					span.RecordError(errors.Wrap(err, "failed to get entity by alias"))
+				}
+			}
+
 			ctx = context.WithValue(ctx, core.RequesterKeychainKey, passportDoc.Keys)
 		}
 	skipCheckPassport:

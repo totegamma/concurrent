@@ -76,8 +76,9 @@ func SetupMessageService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, cl
 func SetupProfileService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config core.Config) core.ProfileService {
 	schemaService := SetupSchemaService(db)
 	repository := profile.NewRepository(db, mc, schemaService)
+	entityService := SetupEntityService(db, rdb, mc, client2, config)
 	semanticIDService := SetupSemanticidService(db)
-	profileService := profile.NewService(repository, semanticIDService)
+	profileService := profile.NewService(repository, entityService, semanticIDService)
 	return profileService
 }
 
@@ -198,7 +199,7 @@ var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository, SetupEnt
 var timelineServiceProvider = wire.NewSet(timeline.NewService, timeline.NewRepository, SetupEntityService, SetupDomainService, SetupSchemaService, SetupSemanticidService, SetupSubscriptionService, SetupPolicyService)
 
 // Lv3
-var profileServiceProvider = wire.NewSet(profile.NewService, profile.NewRepository, SetupKeyService, SetupSchemaService, SetupSemanticidService)
+var profileServiceProvider = wire.NewSet(profile.NewService, profile.NewRepository, SetupEntityService, SetupKeyService, SetupSchemaService, SetupSemanticidService)
 
 var authServiceProvider = wire.NewSet(auth.NewService, SetupEntityService, SetupDomainService, SetupKeyService)
 

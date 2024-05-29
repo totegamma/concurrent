@@ -6,19 +6,17 @@ import (
 	"encoding/json"
 	"fmt"
 
-	"github.com/pkg/errors"
 	"github.com/totegamma/concurrent/core"
 )
 
 type service struct {
 	repository Repository
-	entity     core.EntityService
 	config     core.Config
 }
 
 // NewService creates a new auth service
-func NewService(repository Repository, entity core.EntityService, config core.Config) core.KeyService {
-	return &service{repository, entity, config}
+func NewService(repository Repository, config core.Config) core.KeyService {
+	return &service{repository, config}
 }
 
 // Enact validates new subkey and save it if valid
@@ -110,74 +108,6 @@ func (s *service) Revoke(ctx context.Context, mode core.CommitMode, payload, sig
 	return revoked, nil
 }
 
-func (s *service) ValidateDocument(ctx context.Context, document, signature string, keys []core.Key) error {
-	ctx, span := tracer.Start(ctx, "Key.Service.ValidateDocument")
-	defer span.End()
-
-	object := core.DocumentBase[any]{}
-	err := json.Unmarshal([]byte(document), &object)
-	if err != nil {
-		span.RecordError(err)
-		return errors.Wrap(err, "failed to unmarshal payload")
-	}
-
-	// マスターキーの場合: そのまま検証して終了
-	if object.KeyID == "" {
-		signatureBytes, err := hex.DecodeString(signature)
-		if err != nil {
-			span.RecordError(err)
-			return errors.Wrap(err, "[master] failed to decode signature")
-		}
-		err = core.VerifySignature([]byte(document), signatureBytes, object.Signer)
-		if err != nil {
-			span.RecordError(err)
-			return errors.Wrap(err, "[master] failed to verify signature")
-		}
-	} else { // サブキーの場合: 親キーを取得して検証
-
-		signer, err := s.entity.Get(ctx, object.Signer)
-		if err != nil {
-			span.RecordError(err)
-			return errors.Wrap(err, "[sub] failed to resolve host")
-		}
-
-		ccid := ""
-
-		if signer.Domain == s.config.FQDN {
-			ccid, err = s.ResolveSubkey(ctx, object.KeyID)
-			if err != nil {
-				span.RecordError(err)
-				return errors.Wrap(err, "[sub] failed to resolve subkey")
-			}
-		} else {
-			ccid, err = ValidateKeyResolution(keys)
-			if err != nil {
-				span.RecordError(err)
-				return errors.Wrap(err, "[sub] failed to resolve remote subkey")
-			}
-		}
-
-		if ccid != object.Signer {
-			err := fmt.Errorf("Signer is not matched with the resolved signer")
-			span.RecordError(err)
-			return err
-		}
-
-		signatureBytes, err := hex.DecodeString(signature)
-		if err != nil {
-			span.RecordError(err)
-			return errors.Wrap(err, "[sub] failed to decode signature")
-		}
-		err = core.VerifySignature([]byte(document), signatureBytes, object.KeyID)
-		if err != nil {
-			span.RecordError(err)
-			return errors.Wrap(err, "[sub] failed to verify signature")
-		}
-	}
-
-	return nil
-}
-
 func ValidateKeyResolution(keys []core.Key) (string, error) {
 
 	var rootKey string
@@ -202,15 +132,15 @@ func ValidateKeyResolution(keys []core.Key) (string, error) {
 			return "", err
 		}
 
-        if core.IsCCID(key.Parent) {
-            if enact.Signer != key.Parent {
-                return "", fmt.Errorf("enact signer is not matched with the parent")
-            }
-        } else {
-            if enact.KeyID != key.Parent {
-                return "", fmt.Errorf("enact keyID is not matched with the parent")
-            }
-        }
+		if core.IsCCID(key.Parent) {
+			if enact.Signer != key.Parent {
+				return "", fmt.Errorf("enact signer is not matched with the parent")
+			}
+		} else {
+			if enact.KeyID != key.Parent {
+				return "", fmt.Errorf("enact keyID is not matched with the parent")
+			}
+		}
 
 		if enact.Target != key.ID {
 			return "", fmt.Errorf("KeyID in payload is not matched with the keyID")

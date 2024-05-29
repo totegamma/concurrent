@@ -68,7 +68,6 @@ type EntityService interface {
 type KeyService interface {
 	Enact(ctx context.Context, mode CommitMode, payload, signature string) (Key, error)
 	Revoke(ctx context.Context, mode CommitMode, payload, signature string) (Key, error)
-	ValidateDocument(ctx context.Context, document, signature string, keys []Key) error
 	ResolveSubkey(ctx context.Context, keyID string) (string, error)
 	GetKeyResolution(ctx context.Context, keyID string) ([]Key, error)
 	GetAllKeys(ctx context.Context, owner string) ([]Key, error)
@@ -121,6 +120,7 @@ type StoreService interface {
 	Since(ctx context.Context, since string) ([]CommitLog, error)
 	GetPath(ctx context.Context, id string) string
 	Restore(ctx context.Context, archive io.Reader) ([]BatchResult, error)
+	ValidateDocument(ctx context.Context, document, signature string, keys []Key) error
 }
 
 type SubscriptionService interface {

@@ -780,20 +780,6 @@ func (mr *MockKeyServiceMockRecorder) Revoke(ctx, mode, payload, signature inter
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Revoke", reflect.TypeOf((*MockKeyService)(nil).Revoke), ctx, mode, payload, signature)
 }
 
-// ValidateDocument mocks base method.
-func (m *MockKeyService) ValidateDocument(ctx context.Context, document, signature string, keys []core.Key) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ValidateDocument", ctx, document, signature, keys)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// ValidateDocument indicates an expected call of ValidateDocument.
-func (mr *MockKeyServiceMockRecorder) ValidateDocument(ctx, document, signature, keys interface{}) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateDocument", reflect.TypeOf((*MockKeyService)(nil).ValidateDocument), ctx, document, signature, keys)
-}
-
 // MockMessageService is a mock of MessageService interface.
 type MockMessageService struct {
 	ctrl     *gomock.Controller
@@ -1349,6 +1335,20 @@ func (m *MockStoreService) Since(ctx context.Context, since string) ([]core.Comm
 func (mr *MockStoreServiceMockRecorder) Since(ctx, since interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Since", reflect.TypeOf((*MockStoreService)(nil).Since), ctx, since)
+}
+
+// ValidateDocument mocks base method.
+func (m *MockStoreService) ValidateDocument(ctx context.Context, document, signature string, keys []core.Key) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ValidateDocument", ctx, document, signature, keys)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ValidateDocument indicates an expected call of ValidateDocument.
+func (mr *MockStoreServiceMockRecorder) ValidateDocument(ctx, document, signature, keys interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ValidateDocument", reflect.TypeOf((*MockStoreService)(nil).ValidateDocument), ctx, document, signature, keys)
 }
 
 // MockSubscriptionService is a mock of SubscriptionService interface.

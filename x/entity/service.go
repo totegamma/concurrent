@@ -21,15 +21,17 @@ type service struct {
 	repository Repository
 	client     client.Client
 	config     core.Config
+	key        core.KeyService
 	jwtService jwt.Service
 }
 
 // NewService creates a new entity service
-func NewService(repository Repository, client client.Client, config core.Config, jwtService jwt.Service) core.EntityService {
+func NewService(repository Repository, client client.Client, config core.Config, key core.KeyService, jwtService jwt.Service) core.EntityService {
 	return &service{
 		repository,
 		client,
 		config,
+		key,
 		jwtService,
 	}
 }
@@ -162,7 +164,16 @@ func (s *service) Affiliation(ctx context.Context, mode core.CommitMode, documen
 				return core.Entity{}, fmt.Errorf("token is already used")
 			}
 
-			inviter, err := s.repository.Get(ctx, claims.Issuer)
+			inviterccid := claims.Issuer
+			if core.IsCKID(inviterccid) {
+				inviterccid, err = s.key.ResolveSubkey(ctx, inviterccid)
+				if err != nil {
+					span.RecordError(err)
+					return core.Entity{}, err
+				}
+			}
+
+			inviter, err := s.repository.Get(ctx, inviterccid)
 			if err != nil {
 				span.RecordError(err)
 				return core.Entity{}, err

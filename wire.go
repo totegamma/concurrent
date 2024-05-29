@@ -37,13 +37,13 @@ var domainServiceProvider = wire.NewSet(domain.NewService, domain.NewRepository)
 var semanticidServiceProvider = wire.NewSet(semanticid.NewService, semanticid.NewRepository)
 var userKvServiceProvider = wire.NewSet(userkv.NewService, userkv.NewRepository)
 var policyServiceProvider = wire.NewSet(policy.NewService, policy.NewRepository)
+var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository)
 
 // Lv1
-var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService, SetupSchemaService)
+var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService, SetupSchemaService, SetupKeyService)
 var subscriptionServiceProvider = wire.NewSet(subscription.NewService, subscription.NewRepository, SetupSchemaService)
 
 // Lv2
-var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository, SetupEntityService)
 var timelineServiceProvider = wire.NewSet(timeline.NewService, timeline.NewRepository, SetupEntityService, SetupDomainService, SetupSchemaService, SetupSemanticidService, SetupSubscriptionService, SetupPolicyService)
 
 // Lv3

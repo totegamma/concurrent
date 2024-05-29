@@ -3,13 +3,17 @@ package store
 import (
 	"bufio"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"io"
 	"path/filepath"
 	"strings"
 
+	"github.com/pkg/errors"
+
 	"github.com/totegamma/concurrent/core"
+	"github.com/totegamma/concurrent/x/key"
 )
 
 type service struct {
@@ -73,7 +77,7 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 		keys = []core.Key{}
 	}
 
-	err = s.key.ValidateDocument(ctx, document, signature, keys)
+	err = s.ValidateDocument(ctx, document, signature, keys)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -198,4 +202,72 @@ func (s *service) Restore(ctx context.Context, archive io.Reader) ([]core.BatchR
 	}
 
 	return results, nil
+}
+
+func (s *service) ValidateDocument(ctx context.Context, document, signature string, keys []core.Key) error {
+	ctx, span := tracer.Start(ctx, "Key.Service.ValidateDocument")
+	defer span.End()
+
+	object := core.DocumentBase[any]{}
+	err := json.Unmarshal([]byte(document), &object)
+	if err != nil {
+		span.RecordError(err)
+		return errors.Wrap(err, "failed to unmarshal payload")
+	}
+
+	// マスターキーの場合: そのまま検証して終了
+	if object.KeyID == "" {
+		signatureBytes, err := hex.DecodeString(signature)
+		if err != nil {
+			span.RecordError(err)
+			return errors.Wrap(err, "[master] failed to decode signature")
+		}
+		err = core.VerifySignature([]byte(document), signatureBytes, object.Signer)
+		if err != nil {
+			span.RecordError(err)
+			return errors.Wrap(err, "[master] failed to verify signature")
+		}
+	} else { // サブキーの場合: 親キーを取得して検証
+
+		signer, err := s.entity.Get(ctx, object.Signer)
+		if err != nil {
+			span.RecordError(err)
+			return errors.Wrap(err, "[sub] failed to resolve host")
+		}
+
+		ccid := ""
+
+		if signer.Domain == s.config.FQDN {
+			ccid, err = s.key.ResolveSubkey(ctx, object.KeyID)
+			if err != nil {
+				span.RecordError(err)
+				return errors.Wrap(err, "[sub] failed to resolve subkey")
+			}
+		} else {
+			ccid, err = key.ValidateKeyResolution(keys)
+			if err != nil {
+				span.RecordError(err)
+				return errors.Wrap(err, "[sub] failed to resolve remote subkey")
+			}
+		}
+
+		if ccid != object.Signer {
+			err := fmt.Errorf("Signer is not matched with the resolved signer")
+			span.RecordError(err)
+			return err
+		}
+
+		signatureBytes, err := hex.DecodeString(signature)
+		if err != nil {
+			span.RecordError(err)
+			return errors.Wrap(err, "[sub] failed to decode signature")
+		}
+		err = core.VerifySignature([]byte(document), signatureBytes, object.KeyID)
+		if err != nil {
+			span.RecordError(err)
+			return errors.Wrap(err, "[sub] failed to verify signature")
+		}
+	}
+
+	return nil
 }

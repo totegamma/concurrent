@@ -56,8 +56,7 @@ func SetupAckService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client
 
 func SetupKeyService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config core.Config) core.KeyService {
 	repository := key.NewRepository(db, mc)
-	entityService := SetupEntityService(db, rdb, mc, client2, config)
-	keyService := key.NewService(repository, entityService, config)
+	keyService := key.NewService(repository, config)
 	return keyService
 }
 
@@ -115,8 +114,9 @@ func SetupDomainService(db *gorm.DB, client2 client.Client, config core.Config) 
 func SetupEntityService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config core.Config) core.EntityService {
 	schemaService := SetupSchemaService(db)
 	repository := entity.NewRepository(db, mc, schemaService)
+	keyService := SetupKeyService(db, rdb, mc, client2, config)
 	service := SetupJwtService(rdb)
-	entityService := entity.NewService(repository, client2, config, service)
+	entityService := entity.NewService(repository, client2, config, keyService, service)
 	return entityService
 }
 
@@ -188,14 +188,14 @@ var userKvServiceProvider = wire.NewSet(userkv.NewService, userkv.NewRepository)
 
 var policyServiceProvider = wire.NewSet(policy.NewService, policy.NewRepository)
 
+var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository)
+
 // Lv1
-var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService, SetupSchemaService)
+var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService, SetupSchemaService, SetupKeyService)
 
 var subscriptionServiceProvider = wire.NewSet(subscription.NewService, subscription.NewRepository, SetupSchemaService)
 
 // Lv2
-var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository, SetupEntityService)
-
 var timelineServiceProvider = wire.NewSet(timeline.NewService, timeline.NewRepository, SetupEntityService, SetupDomainService, SetupSchemaService, SetupSemanticidService, SetupSubscriptionService, SetupPolicyService)
 
 // Lv3

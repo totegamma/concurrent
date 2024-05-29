@@ -202,9 +202,15 @@ func ValidateKeyResolution(keys []core.Key) (string, error) {
 			return "", err
 		}
 
-		if enact.Signer != key.Parent {
-			return "", fmt.Errorf("enact signer is not matched with the parent")
-		}
+        if core.IsCCID(key.Parent) {
+            if enact.Signer != key.Parent {
+                return "", fmt.Errorf("enact signer is not matched with the parent")
+            }
+        } else {
+            if enact.KeyID != key.Parent {
+                return "", fmt.Errorf("enact keyID is not matched with the parent")
+            }
+        }
 
 		if enact.Target != key.ID {
 			return "", fmt.Errorf("KeyID in payload is not matched with the keyID")

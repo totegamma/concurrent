@@ -17,6 +17,7 @@ import (
 	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
+	"github.com/totegamma/concurrent/x/job"
 	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/message"
@@ -38,6 +39,7 @@ var semanticidServiceProvider = wire.NewSet(semanticid.NewService, semanticid.Ne
 var userKvServiceProvider = wire.NewSet(userkv.NewService, userkv.NewRepository)
 var policyServiceProvider = wire.NewSet(policy.NewService, policy.NewRepository)
 var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository)
+var jobServiceProvider = wire.NewSet(job.NewService, job.NewRepository)
 
 // Lv1
 var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService, SetupSchemaService, SetupKeyService)
@@ -83,6 +85,11 @@ func SetupPolicyService(rdb *redis.Client, config core.Config) core.PolicyServic
 
 func SetupJwtService(rdb *redis.Client) jwt.Service {
 	wire.Build(jwtServiceProvider)
+	return nil
+}
+
+func SetupJobService(db *gorm.DB) core.JobService {
+	wire.Build(jobServiceProvider)
 	return nil
 }
 

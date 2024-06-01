@@ -163,3 +163,8 @@ type TimelineService interface {
 
 	Realtime(ctx context.Context, request <-chan []string, response chan<- Event)
 }
+
+type JobService interface {
+	List(ctx context.Context, requester string) ([]Job, error)
+	Create(ctx context.Context, requester, typ, payload string, scheduled time.Time) (Job, error)
+}

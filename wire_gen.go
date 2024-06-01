@@ -18,6 +18,7 @@ import (
 	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
+	"github.com/totegamma/concurrent/x/job"
 	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/message"
@@ -44,6 +45,12 @@ func SetupJwtService(rdb *redis.Client) jwt.Service {
 	repository := jwt.NewRepository(rdb)
 	service := jwt.NewService(repository)
 	return service
+}
+
+func SetupJobService(db *gorm.DB) core.JobService {
+	repository := job.NewRepository(db)
+	jobService := job.NewService(repository)
+	return jobService
 }
 
 func SetupAckService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config core.Config) core.AckService {
@@ -189,6 +196,8 @@ var userKvServiceProvider = wire.NewSet(userkv.NewService, userkv.NewRepository)
 var policyServiceProvider = wire.NewSet(policy.NewService, policy.NewRepository)
 
 var keyServiceProvider = wire.NewSet(key.NewService, key.NewRepository)
+
+var jobServiceProvider = wire.NewSet(job.NewService, job.NewRepository)
 
 // Lv1
 var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService, SetupSchemaService, SetupKeyService)

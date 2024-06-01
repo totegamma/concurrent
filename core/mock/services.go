@@ -1794,3 +1794,56 @@ func (mr *MockTimelineServiceMockRecorder) UpsertTimeline(ctx, mode, document, s
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertTimeline", reflect.TypeOf((*MockTimelineService)(nil).UpsertTimeline), ctx, mode, document, signature)
 }
+
+// MockJobService is a mock of JobService interface.
+type MockJobService struct {
+	ctrl     *gomock.Controller
+	recorder *MockJobServiceMockRecorder
+}
+
+// MockJobServiceMockRecorder is the mock recorder for MockJobService.
+type MockJobServiceMockRecorder struct {
+	mock *MockJobService
+}
+
+// NewMockJobService creates a new mock instance.
+func NewMockJobService(ctrl *gomock.Controller) *MockJobService {
+	mock := &MockJobService{ctrl: ctrl}
+	mock.recorder = &MockJobServiceMockRecorder{mock}
+	return mock
+}
+
+// EXPECT returns an object that allows the caller to indicate expected use.
+func (m *MockJobService) EXPECT() *MockJobServiceMockRecorder {
+	return m.recorder
+}
+
+// Create mocks base method.
+func (m *MockJobService) Create(ctx context.Context, requester, typ, payload string, scheduled time.Time) (core.Job, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Create", ctx, requester, typ, payload, scheduled)
+	ret0, _ := ret[0].(core.Job)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Create indicates an expected call of Create.
+func (mr *MockJobServiceMockRecorder) Create(ctx, requester, typ, payload, scheduled interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockJobService)(nil).Create), ctx, requester, typ, payload, scheduled)
+}
+
+// List mocks base method.
+func (m *MockJobService) List(ctx context.Context, requester string) ([]core.Job, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "List", ctx, requester)
+	ret0, _ := ret[0].([]core.Job)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// List indicates an expected call of List.
+func (mr *MockJobServiceMockRecorder) List(ctx, requester interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "List", reflect.TypeOf((*MockJobService)(nil).List), ctx, requester)
+}

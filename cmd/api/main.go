@@ -27,6 +27,7 @@ import (
 	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/domain"
 	"github.com/totegamma/concurrent/x/entity"
+	"github.com/totegamma/concurrent/x/job"
 	"github.com/totegamma/concurrent/x/key"
 	"github.com/totegamma/concurrent/x/message"
 	"github.com/totegamma/concurrent/x/profile"
@@ -178,6 +179,7 @@ func main() {
 		&core.Subscription{},
 		&core.SubscriptionItem{},
 		&core.SemanticID{},
+		&core.Job{},
 	)
 
 	rdb := redis.NewClient(&redis.Options{
@@ -240,6 +242,9 @@ func main() {
 
 	subscriptionService := concurrent.SetupSubscriptionService(db)
 	subscriptionHandler := subscription.NewHandler(subscriptionService)
+
+	jobService := concurrent.SetupJobService(db)
+	jobHandler := job.NewHandler(jobService)
 
 	apiV1 := e.Group("", auth.SetRequestPath, auth.ReceiveGatewayAuthPropagation)
 	// store
@@ -314,6 +319,10 @@ func main() {
 	// storage
 	apiV1.GET("/repository", storeHandler.Get, auth.Restrict(auth.ISLOCAL))
 	apiV1.POST("/repository", storeHandler.Post, auth.Restrict(auth.ISLOCAL))
+
+	// job
+	apiV1.GET("/jobs", jobHandler.List, auth.Restrict(auth.ISLOCAL))
+	apiV1.POST("/jobs", jobHandler.Create, auth.Restrict(auth.ISLOCAL))
 
 	// misc
 	e.GET("/health", func(c echo.Context) (err error) {

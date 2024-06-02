@@ -16,6 +16,7 @@ type Repository interface {
 	Get(ctx context.Context, key string) (core.Message, error)
 	GetWithOwnAssociations(ctx context.Context, key string, ccid string) (core.Message, error)
 	Delete(ctx context.Context, key string) (core.Message, error)
+	Clean(ctx context.Context, ccid string) error
 	Count(ctx context.Context) (int64, error)
 }
 
@@ -237,4 +238,16 @@ func (r *repository) Delete(ctx context.Context, id string) (core.Message, error
 	r.mc.Decrement("message_count", 1)
 
 	return deleted, nil
+}
+
+func (r *repository) Clean(ctx context.Context, ccid string) error {
+	ctx, span := tracer.Start(ctx, "Message.Repository.Clean")
+	defer span.End()
+
+	err := r.db.WithContext(ctx).Where("author = ?", ccid).Delete(&core.Message{}).Error
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

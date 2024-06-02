@@ -26,6 +26,7 @@ type service struct {
 	timeline       core.TimelineService
 	ack            core.AckService
 	subscription   core.SubscriptionService
+	semanticID     core.SemanticIDService
 	config         core.Config
 	repositoryPath string
 }
@@ -40,6 +41,7 @@ func NewService(
 	timeline core.TimelineService,
 	ack core.AckService,
 	subscription core.SubscriptionService,
+	semanticID core.SemanticIDService,
 	config core.Config,
 	repositoryPath string,
 ) core.StoreService {
@@ -53,6 +55,7 @@ func NewService(
 		timeline:       timeline,
 		ack:            ack,
 		subscription:   subscription,
+		semanticID:     semanticID,
 		config:         config,
 		repositoryPath: repositoryPath,
 	}
@@ -267,6 +270,62 @@ func (s *service) ValidateDocument(ctx context.Context, document, signature stri
 			span.RecordError(err)
 			return errors.Wrap(err, "[sub] failed to verify signature")
 		}
+	}
+
+	return nil
+}
+
+func (s *service) CleanUserAllData(ctx context.Context, target string) error {
+	ctx, span := tracer.Start(ctx, "Store.Service.CleanUserAllData")
+	defer span.End()
+
+	var err error
+	err = s.entity.Clean(ctx, target)
+	if err != nil {
+		span.RecordError(errors.Wrap(err, "failed to clean entity"))
+		return err
+	}
+
+	err = s.profile.Clean(ctx, target)
+	if err != nil {
+		span.RecordError(errors.Wrap(err, "failed to clean profile"))
+		return err
+	}
+
+	err = s.message.Clean(ctx, target)
+	if err != nil {
+		span.RecordError(errors.Wrap(err, "failed to clean message"))
+		return err
+	}
+
+	err = s.association.Clean(ctx, target)
+	if err != nil {
+		span.RecordError(errors.Wrap(err, "failed to clean association"))
+		return err
+	}
+
+	err = s.timeline.Clean(ctx, target)
+	if err != nil {
+		span.RecordError(errors.Wrap(err, "failed to clean timeline"))
+		return err
+	}
+
+	err = s.subscription.Clean(ctx, target)
+	if err != nil {
+		span.RecordError(errors.Wrap(err, "failed to clean subscription"))
+		return err
+	}
+
+	err = s.semanticID.Clean(ctx, target)
+	if err != nil {
+		span.RecordError(errors.Wrap(err, "failed to clean semanticID"))
+		return err
+	}
+
+	err = s.key.Clean(ctx, target)
+	if err != nil {
+		span.RecordError(errors.Wrap(err, "failed to clean key"))
+		return err
 	}
 
 	return nil

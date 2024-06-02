@@ -19,16 +19,25 @@ type agent struct {
 	mc             *memcache.Client
 	rdb            *redis.Client
 	store          core.StoreService
+	job            core.JobService
 	config         core.Config
 	repositoryPath string
 }
 
 // NewAgent creates a new agent
-func NewAgent(mc *memcache.Client, rdb *redis.Client, store core.StoreService, config core.Config, repositoryPath string) core.AgentService {
+func NewAgent(
+	mc *memcache.Client,
+	rdb *redis.Client,
+	store core.StoreService,
+	job core.JobService,
+	config core.Config,
+	repositoryPath string,
+) core.AgentService {
 	return &agent{
 		mc,
 		rdb,
 		store,
+		job,
 		config,
 		repositoryPath,
 	}
@@ -44,11 +53,11 @@ func (a *agent) Boot() {
 	go a.chunkUpdaterRoutine(ctx)
 	go a.connectionKeeperRoutine(ctx)
 
-	ticker60 := time.NewTicker(60 * time.Second)
+	ticker60A := time.NewTicker(60 * time.Second)
 	go func() {
 		for {
 			select {
-			case <-ticker60.C:
+			case <-ticker60A.C:
 				ctx, span := tracer.Start(context.Background(), "Agent.Boot.FlushLog")
 				a.FlushLog(ctx)
 				span.End()
@@ -56,4 +65,18 @@ func (a *agent) Boot() {
 			}
 		}
 	}()
+
+	ticker60B := time.NewTicker(60 * time.Second)
+	go func() {
+		for {
+			select {
+			case <-ticker60B.C:
+				ctx, span := tracer.Start(context.Background(), "Agent.Boot.DispatchJobs")
+				a.dispatchJobs(ctx)
+				span.End()
+				break
+			}
+		}
+	}()
+
 }

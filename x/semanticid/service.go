@@ -50,3 +50,10 @@ func (s *service) Delete(ctx context.Context, id, owner string) error {
 
 	return s.repo.Delete(ctx, id, owner)
 }
+
+func (s *service) Clean(ctx context.Context, ccid string) error {
+	ctx, span := tracer.Start(ctx, "SemanticID.Service.Clean")
+	defer span.End()
+
+	return s.repo.Clean(ctx, ccid)
+}

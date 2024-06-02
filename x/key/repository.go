@@ -17,6 +17,7 @@ type Repository interface {
 	GetAll(ctx context.Context, owner string) ([]core.Key, error)
 	SetRemoteKeyValidationCache(ctx context.Context, keyID string, resovation string) error
 	GetRemoteKeyValidationCache(ctx context.Context, keyID string) (string, error)
+	Clean(ctx context.Context, ccid string) error
 }
 
 type repository struct {
@@ -113,4 +114,16 @@ func (r *repository) GetAll(ctx context.Context, owner string) ([]core.Key, erro
 	}
 
 	return keys, nil
+}
+
+func (r *repository) Clean(ctx context.Context, ccid string) error {
+	ctx, span := tracer.Start(ctx, "Key.Repository.Clean")
+	defer span.End()
+
+	err := r.db.Where("root = ?", ccid).Delete(&core.Key{}).Error
+	if err != nil {
+		return err
+	}
+
+	return nil
 }

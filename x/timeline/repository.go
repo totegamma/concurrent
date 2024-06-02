@@ -662,6 +662,12 @@ func (r *repository) DeleteTimeline(ctx context.Context, id string) error {
 		return err
 	}
 
+	// delete items
+	err = r.db.WithContext(ctx).Delete(&core.TimelineItem{}, "timeline_id = ?", id).Error
+	if err != nil {
+		return err
+	}
+
 	err = r.db.WithContext(ctx).Delete(&core.Timeline{}, "id = ?", id).Error
 	if err != nil {
 		return err

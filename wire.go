@@ -71,10 +71,11 @@ var storeServiceProvider = wire.NewSet(
 	SetupTimelineService,
 	SetupAckService,
 	SetupSubscriptionService,
+	SetupSemanticidService,
 )
 
 // Lv7
-var agentServiceProvider = wire.NewSet(agent.NewAgent, SetupStoreService)
+var agentServiceProvider = wire.NewSet(agent.NewAgent, SetupStoreService, SetupJobService)
 
 // -----------
 

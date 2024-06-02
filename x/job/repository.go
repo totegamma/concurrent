@@ -51,7 +51,7 @@ func (r *repository) Enqueue(ctx context.Context, author, typ, payload string, s
 		Status:    "pending",
 	}
 
-	if err := r.db.Create(&job).Error; err != nil {
+	if err := r.db.WithContext(ctx).Create(&job).Error; err != nil {
 		return core.Job{}, err
 	}
 
@@ -62,29 +62,34 @@ func (r *repository) Dequeue(ctx context.Context) (*core.Job, error) {
 	ctx, span := tracer.Start(ctx, "Job.Repository.Dequeue")
 	defer span.End()
 
-	tx := r.db.Begin()
+	tx := r.db.WithContext(ctx).Begin()
 	if tx.Error != nil {
+		span.RecordError(tx.Error)
 		return nil, tx.Error
 	}
 
 	var job core.Job
-	err := tx.Model(&core.Job{}).
+	err := tx.WithContext(ctx).
+		Model(&core.Job{}).
 		Where("status = 'pending' AND scheduled <= ?", time.Now()).
 		Order("scheduled ASC").
 		First(&job).Error
 
 	if err != nil {
+		span.RecordError(err)
 		tx.Rollback()
 		return nil, err
 	}
 
 	job.Status = "running"
-	if tx.Save(&job).Error != nil {
+	job.TraceID = span.SpanContext().TraceID().String()
+	if tx.WithContext(ctx).Save(&job).Error != nil {
+		span.RecordError(err)
 		tx.Rollback()
 		return nil, err
 	}
 
-	tx.Commit()
+	tx.WithContext(ctx).Commit()
 
 	return &job, nil
 }
@@ -94,7 +99,7 @@ func (r *repository) Complete(ctx context.Context, id, status, result string) (c
 	defer span.End()
 
 	var job core.Job
-	err := r.db.Where("id = ?", id).First(&job).Error
+	err := r.db.WithContext(ctx).Where("id = ?", id).First(&job).Error
 	if err != nil {
 		return core.Job{}, err
 	}
@@ -102,7 +107,7 @@ func (r *repository) Complete(ctx context.Context, id, status, result string) (c
 	job.Status = status
 	job.Result = result
 
-	if err := r.db.Save(&job).Error; err != nil {
+	if err := r.db.WithContext(ctx).Save(&job).Error; err != nil {
 		return core.Job{}, err
 	}
 
@@ -114,14 +119,14 @@ func (r *repository) Cancel(ctx context.Context, id string) (core.Job, error) {
 	defer span.End()
 
 	var job core.Job
-	err := r.db.Where("id = ?", id).First(&job).Error
+	err := r.db.WithContext(ctx).Where("id = ?", id).First(&job).Error
 	if err != nil {
 		return core.Job{}, err
 	}
 
 	job.Status = "canceled"
 
-	if err := r.db.Save(&job).Error; err != nil {
+	if err := r.db.WithContext(ctx).Save(&job).Error; err != nil {
 		return core.Job{}, err
 	}
 
@@ -133,7 +138,7 @@ func (r *repository) Clean(ctx context.Context, olderThan time.Time) ([]core.Job
 	defer span.End()
 
 	var jobs []core.Job
-	err := r.db.Where("scheduled < ? AND (status = 'completed' OR status = 'failed' OR status = 'canceled')", olderThan).Find(&jobs).Error
+	err := r.db.WithContext(ctx).Where("scheduled < ? AND (status = 'completed' OR status = 'failed' OR status = 'canceled')", olderThan).Find(&jobs).Error
 	if err != nil {
 		return nil, err
 	}

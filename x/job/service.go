@@ -50,3 +50,39 @@ func (s *service) Create(ctx context.Context, requester, typ, payload string, sc
 
 	return job, nil
 }
+
+func (s *service) Dequeue(ctx context.Context) (*core.Job, error) {
+	ctx, span := tracer.Start(ctx, "Job.Service.Dequeue")
+	defer span.End()
+
+	job, err := s.repo.Dequeue(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	return job, nil
+}
+
+func (s *service) Complete(ctx context.Context, id, status, result string) (core.Job, error) {
+	ctx, span := tracer.Start(ctx, "Job.Service.Complete")
+	defer span.End()
+
+	job, err := s.repo.Complete(ctx, id, status, result)
+	if err != nil {
+		return core.Job{}, err
+	}
+
+	return job, nil
+}
+
+func (s *service) Cancel(ctx context.Context, id string) (core.Job, error) {
+	ctx, span := tracer.Start(ctx, "Job.Service.Cancel")
+	defer span.End()
+
+	job, err := s.repo.Cancel(ctx, id)
+	if err != nil {
+		return core.Job{}, err
+	}
+
+	return job, nil
+}

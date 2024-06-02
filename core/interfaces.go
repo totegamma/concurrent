@@ -23,6 +23,7 @@ type AssociationService interface {
 	Create(ctx context.Context, mode CommitMode, document, signature string) (Association, error)
 	Delete(ctx context.Context, mode CommitMode, document, signature string) (Association, error)
 
+	Clean(ctx context.Context, ccid string) error
 	Get(ctx context.Context, id string) (Association, error)
 	GetOwn(ctx context.Context, author string) ([]Association, error)
 	GetByTarget(ctx context.Context, targetID string) ([]Association, error)
@@ -53,6 +54,7 @@ type EntityService interface {
 	Affiliation(ctx context.Context, mode CommitMode, document, signature, meta string) (Entity, error)
 	Tombstone(ctx context.Context, mode CommitMode, document, signature string) (Entity, error)
 
+	Clean(ctx context.Context, ccid string) error
 	Get(ctx context.Context, ccid string) (Entity, error)
 	GetWithHint(ctx context.Context, ccid, hint string) (Entity, error)
 	GetByAlias(ctx context.Context, alias string) (Entity, error)
@@ -68,6 +70,7 @@ type EntityService interface {
 type KeyService interface {
 	Enact(ctx context.Context, mode CommitMode, payload, signature string) (Key, error)
 	Revoke(ctx context.Context, mode CommitMode, payload, signature string) (Key, error)
+	Clean(ctx context.Context, ccid string) error
 	ResolveSubkey(ctx context.Context, keyID string) (string, error)
 	GetKeyResolution(ctx context.Context, keyID string) ([]Key, error)
 	GetAllKeys(ctx context.Context, owner string) ([]Key, error)
@@ -76,6 +79,7 @@ type KeyService interface {
 type MessageService interface {
 	Get(ctx context.Context, id string, requester string) (Message, error)
 	GetWithOwnAssociations(ctx context.Context, id string, requester string) (Message, error)
+	Clean(ctx context.Context, ccid string) error
 	Create(ctx context.Context, mode CommitMode, document string, signature string) (Message, error)
 	Delete(ctx context.Context, mode CommitMode, document, signature string) (Message, error)
 	Count(ctx context.Context) (int64, error)
@@ -90,6 +94,7 @@ type ProfileService interface {
 	Upsert(ctx context.Context, mode CommitMode, document, signature string) (Profile, error)
 	Delete(ctx context.Context, mode CommitMode, document string) (Profile, error)
 
+	Clean(ctx context.Context, ccid string) error
 	Count(ctx context.Context) (int64, error)
 	Get(ctx context.Context, id string) (Profile, error)
 	GetBySemanticID(ctx context.Context, semanticID, owner string) (Profile, error)
@@ -107,6 +112,7 @@ type SemanticIDService interface {
 	Name(ctx context.Context, id, owner, target, document, signature string) (SemanticID, error)
 	Lookup(ctx context.Context, id, owner string) (string, error)
 	Delete(ctx context.Context, id, owner string) error
+	Clean(ctx context.Context, ccid string) error
 }
 
 type SocketManager interface {
@@ -121,6 +127,7 @@ type StoreService interface {
 	GetPath(ctx context.Context, id string) string
 	Restore(ctx context.Context, archive io.Reader) ([]BatchResult, error)
 	ValidateDocument(ctx context.Context, document, signature string, keys []Key) error
+	CleanUserAllData(ctx context.Context, target string) error
 }
 
 type SubscriptionService interface {
@@ -128,6 +135,7 @@ type SubscriptionService interface {
 	Subscribe(ctx context.Context, mode CommitMode, document string, signature string) (SubscriptionItem, error)
 	Unsubscribe(ctx context.Context, mode CommitMode, document string) (SubscriptionItem, error)
 	DeleteSubscription(ctx context.Context, mode CommitMode, document string) (Subscription, error)
+	Clean(ctx context.Context, ccid string) error
 
 	GetSubscription(ctx context.Context, id string) (Subscription, error)
 	GetOwnSubscriptions(ctx context.Context, owner string) ([]Subscription, error)
@@ -137,6 +145,8 @@ type TimelineService interface {
 	UpsertTimeline(ctx context.Context, mode CommitMode, document, signature string) (Timeline, error)
 	DeleteTimeline(ctx context.Context, mode CommitMode, document string) (Timeline, error)
 	Event(ctx context.Context, mode CommitMode, document, signature string) (Event, error)
+
+	Clean(ctx context.Context, ccid string) error
 
 	GetRecentItems(ctx context.Context, timelines []string, until time.Time, limit int) ([]TimelineItem, error)
 	GetRecentItemsFromSubscription(ctx context.Context, subscription string, until time.Time, limit int) ([]TimelineItem, error)
@@ -167,4 +177,7 @@ type TimelineService interface {
 type JobService interface {
 	List(ctx context.Context, requester string) ([]Job, error)
 	Create(ctx context.Context, requester, typ, payload string, scheduled time.Time) (Job, error)
+	Dequeue(ctx context.Context) (*Job, error)
+	Complete(ctx context.Context, id, status, result string) (Job, error)
+	Cancel(ctx context.Context, id string) (Job, error)
 }

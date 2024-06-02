@@ -14,6 +14,7 @@ var tracer = otel.Tracer("job")
 type Handler interface {
 	List(c echo.Context) error
 	Create(c echo.Context) error
+	Cancel(c echo.Context) error
 }
 
 type handler struct {
@@ -61,6 +62,20 @@ func (h *handler) Create(c echo.Context) error {
 	}
 
 	job, err := h.service.Create(ctx, requester, request.Type, request.Payload, request.Scheduled)
+	if err != nil {
+		span.RecordError(err)
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{"content": job})
+}
+
+func (h *handler) Cancel(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "Job.Handler.Cancel")
+	defer span.End()
+
+	id := c.Param("id")
+	job, err := h.service.Cancel(ctx, id)
 	if err != nil {
 		span.RecordError(err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})

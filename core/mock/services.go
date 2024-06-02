@@ -141,6 +141,20 @@ func (m *MockAssociationService) EXPECT() *MockAssociationServiceMockRecorder {
 	return m.recorder
 }
 
+// Clean mocks base method.
+func (m *MockAssociationService) Clean(ctx context.Context, ccid string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Clean", ctx, ccid)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Clean indicates an expected call of Clean.
+func (mr *MockAssociationServiceMockRecorder) Clean(ctx, ccid interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Clean", reflect.TypeOf((*MockAssociationService)(nil).Clean), ctx, ccid)
+}
+
 // Count mocks base method.
 func (m *MockAssociationService) Count(ctx context.Context) (int64, error) {
 	m.ctrl.T.Helper()
@@ -521,6 +535,20 @@ func (mr *MockEntityServiceMockRecorder) Affiliation(ctx, mode, document, signat
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Affiliation", reflect.TypeOf((*MockEntityService)(nil).Affiliation), ctx, mode, document, signature, meta)
 }
 
+// Clean mocks base method.
+func (m *MockEntityService) Clean(ctx context.Context, ccid string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Clean", ctx, ccid)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Clean indicates an expected call of Clean.
+func (mr *MockEntityServiceMockRecorder) Clean(ctx, ccid interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Clean", reflect.TypeOf((*MockEntityService)(nil).Clean), ctx, ccid)
+}
+
 // Count mocks base method.
 func (m *MockEntityService) Count(ctx context.Context) (int64, error) {
 	m.ctrl.T.Helper()
@@ -705,6 +733,20 @@ func (m *MockKeyService) EXPECT() *MockKeyServiceMockRecorder {
 	return m.recorder
 }
 
+// Clean mocks base method.
+func (m *MockKeyService) Clean(ctx context.Context, ccid string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Clean", ctx, ccid)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Clean indicates an expected call of Clean.
+func (mr *MockKeyServiceMockRecorder) Clean(ctx, ccid interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Clean", reflect.TypeOf((*MockKeyService)(nil).Clean), ctx, ccid)
+}
+
 // Enact mocks base method.
 func (m *MockKeyService) Enact(ctx context.Context, mode core.CommitMode, payload, signature string) (core.Key, error) {
 	m.ctrl.T.Helper()
@@ -801,6 +843,20 @@ func NewMockMessageService(ctrl *gomock.Controller) *MockMessageService {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockMessageService) EXPECT() *MockMessageServiceMockRecorder {
 	return m.recorder
+}
+
+// Clean mocks base method.
+func (m *MockMessageService) Clean(ctx context.Context, ccid string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Clean", ctx, ccid)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Clean indicates an expected call of Clean.
+func (mr *MockMessageServiceMockRecorder) Clean(ctx, ccid interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Clean", reflect.TypeOf((*MockMessageService)(nil).Clean), ctx, ccid)
 }
 
 // Count mocks base method.
@@ -952,6 +1008,20 @@ func NewMockProfileService(ctrl *gomock.Controller) *MockProfileService {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockProfileService) EXPECT() *MockProfileServiceMockRecorder {
 	return m.recorder
+}
+
+// Clean mocks base method.
+func (m *MockProfileService) Clean(ctx context.Context, ccid string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Clean", ctx, ccid)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Clean indicates an expected call of Clean.
+func (mr *MockProfileServiceMockRecorder) Clean(ctx, ccid interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Clean", reflect.TypeOf((*MockProfileService)(nil).Clean), ctx, ccid)
 }
 
 // Count mocks base method.
@@ -1150,6 +1220,20 @@ func (m *MockSemanticIDService) EXPECT() *MockSemanticIDServiceMockRecorder {
 	return m.recorder
 }
 
+// Clean mocks base method.
+func (m *MockSemanticIDService) Clean(ctx context.Context, ccid string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Clean", ctx, ccid)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Clean indicates an expected call of Clean.
+func (mr *MockSemanticIDServiceMockRecorder) Clean(ctx, ccid interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Clean", reflect.TypeOf((*MockSemanticIDService)(nil).Clean), ctx, ccid)
+}
+
 // Delete mocks base method.
 func (m *MockSemanticIDService) Delete(ctx context.Context, id, owner string) error {
 	m.ctrl.T.Helper()
@@ -1278,6 +1362,20 @@ func (m *MockStoreService) EXPECT() *MockStoreServiceMockRecorder {
 	return m.recorder
 }
 
+// CleanUserAllData mocks base method.
+func (m *MockStoreService) CleanUserAllData(ctx context.Context, target string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CleanUserAllData", ctx, target)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// CleanUserAllData indicates an expected call of CleanUserAllData.
+func (mr *MockStoreServiceMockRecorder) CleanUserAllData(ctx, target interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CleanUserAllData", reflect.TypeOf((*MockStoreService)(nil).CleanUserAllData), ctx, target)
+}
+
 // Commit mocks base method.
 func (m *MockStoreService) Commit(ctx context.Context, mode core.CommitMode, document, signature, option string) (any, error) {
 	m.ctrl.T.Helper()
@@ -1372,6 +1470,20 @@ func NewMockSubscriptionService(ctrl *gomock.Controller) *MockSubscriptionServic
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockSubscriptionService) EXPECT() *MockSubscriptionServiceMockRecorder {
 	return m.recorder
+}
+
+// Clean mocks base method.
+func (m *MockSubscriptionService) Clean(ctx context.Context, ccid string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Clean", ctx, ccid)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Clean indicates an expected call of Clean.
+func (mr *MockSubscriptionServiceMockRecorder) Clean(ctx, ccid interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Clean", reflect.TypeOf((*MockSubscriptionService)(nil).Clean), ctx, ccid)
 }
 
 // CreateSubscription mocks base method.
@@ -1485,6 +1597,20 @@ func NewMockTimelineService(ctrl *gomock.Controller) *MockTimelineService {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockTimelineService) EXPECT() *MockTimelineServiceMockRecorder {
 	return m.recorder
+}
+
+// Clean mocks base method.
+func (m *MockTimelineService) Clean(ctx context.Context, ccid string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Clean", ctx, ccid)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Clean indicates an expected call of Clean.
+func (mr *MockTimelineServiceMockRecorder) Clean(ctx, ccid interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Clean", reflect.TypeOf((*MockTimelineService)(nil).Clean), ctx, ccid)
 }
 
 // Count mocks base method.
@@ -1818,6 +1944,36 @@ func (m *MockJobService) EXPECT() *MockJobServiceMockRecorder {
 	return m.recorder
 }
 
+// Cancel mocks base method.
+func (m *MockJobService) Cancel(ctx context.Context, id string) (core.Job, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Cancel", ctx, id)
+	ret0, _ := ret[0].(core.Job)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Cancel indicates an expected call of Cancel.
+func (mr *MockJobServiceMockRecorder) Cancel(ctx, id interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Cancel", reflect.TypeOf((*MockJobService)(nil).Cancel), ctx, id)
+}
+
+// Complete mocks base method.
+func (m *MockJobService) Complete(ctx context.Context, id, status, result string) (core.Job, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Complete", ctx, id, status, result)
+	ret0, _ := ret[0].(core.Job)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Complete indicates an expected call of Complete.
+func (mr *MockJobServiceMockRecorder) Complete(ctx, id, status, result interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Complete", reflect.TypeOf((*MockJobService)(nil).Complete), ctx, id, status, result)
+}
+
 // Create mocks base method.
 func (m *MockJobService) Create(ctx context.Context, requester, typ, payload string, scheduled time.Time) (core.Job, error) {
 	m.ctrl.T.Helper()
@@ -1831,6 +1987,21 @@ func (m *MockJobService) Create(ctx context.Context, requester, typ, payload str
 func (mr *MockJobServiceMockRecorder) Create(ctx, requester, typ, payload, scheduled interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Create", reflect.TypeOf((*MockJobService)(nil).Create), ctx, requester, typ, payload, scheduled)
+}
+
+// Dequeue mocks base method.
+func (m *MockJobService) Dequeue(ctx context.Context) (*core.Job, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Dequeue", ctx)
+	ret0, _ := ret[0].(*core.Job)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Dequeue indicates an expected call of Dequeue.
+func (mr *MockJobServiceMockRecorder) Dequeue(ctx interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Dequeue", reflect.TypeOf((*MockJobService)(nil).Dequeue), ctx)
 }
 
 // List mocks base method.

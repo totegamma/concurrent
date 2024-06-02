@@ -207,3 +207,24 @@ func (s *service) Unsubscribe(ctx context.Context, mode core.CommitMode, documen
 
 	return item, err
 }
+
+func (s *service) Clean(ctx context.Context, ccid string) error {
+	ctx, span := tracer.Start(ctx, "Subscription.Service.Clean")
+	defer span.End()
+
+	subscriptions, err := s.repo.GetOwnSubscriptions(ctx, ccid)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	for _, subscription := range subscriptions {
+		err := s.repo.DeleteSubscription(ctx, subscription.ID)
+		if err != nil {
+			span.RecordError(err)
+			return err
+		}
+	}
+
+	return nil
+}

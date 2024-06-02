@@ -229,6 +229,13 @@ func (s *service) GetAllKeys(ctx context.Context, owner string) ([]core.Key, err
 	return s.repository.GetAll(ctx, owner)
 }
 
+func (s *service) Clean(ctx context.Context, ccid string) error {
+	ctx, span := tracer.Start(ctx, "Key.Service.Clean")
+	defer span.End()
+
+	return s.repository.Clean(ctx, ccid)
+}
+
 func IsKeyValid(ctx context.Context, key core.Key) bool {
 	return key.RevokeDocument == nil
 }

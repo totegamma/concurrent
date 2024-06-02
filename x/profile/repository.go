@@ -20,6 +20,7 @@ type Repository interface {
 	GetByAuthor(ctx context.Context, owner string) ([]core.Profile, error)
 	GetBySchema(ctx context.Context, schema string) ([]core.Profile, error)
 	Delete(ctx context.Context, id string) (core.Profile, error)
+	Clean(ctx context.Context, ccid string) error
 	Count(ctx context.Context) (int64, error)
 }
 
@@ -284,4 +285,17 @@ func (r *repository) Get(ctx context.Context, id string) (core.Profile, error) {
 	}
 
 	return profile, nil
+}
+
+func (r *repository) Clean(ctx context.Context, ccid string) error {
+	ctx, span := tracer.Start(ctx, "Profile.Repository.Clean")
+	defer span.End()
+
+	err := r.db.WithContext(ctx).Where("author = ?", ccid).Delete(&core.Profile{}).Error
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	return nil
 }

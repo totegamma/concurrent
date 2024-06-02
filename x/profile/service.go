@@ -173,3 +173,11 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, documentStr 
 
 	return s.repo.Delete(ctx, document.Target)
 }
+
+// Clean deletes all profiles by author
+func (s *service) Clean(ctx context.Context, ccid string) error {
+	ctx, span := tracer.Start(ctx, "Profile.Service.Clean")
+	defer span.End()
+
+	return s.repo.Clean(ctx, ccid)
+}

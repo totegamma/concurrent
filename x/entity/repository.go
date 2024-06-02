@@ -24,6 +24,7 @@ type Repository interface {
 	SetTombstone(ctx context.Context, id, document, signature string) error
 	GetList(ctx context.Context) ([]core.Entity, error)
 	Delete(ctx context.Context, key string) error
+	DeleteMeta(ctx context.Context, ccid string) error
 	Count(ctx context.Context) (int64, error)
 }
 
@@ -139,6 +140,19 @@ func (r *repository) CreateMeta(ctx context.Context, meta core.EntityMeta) (core
 	err := r.db.WithContext(ctx).Create(meta).Error
 
 	return meta, err
+}
+
+func (r *repository) DeleteMeta(ctx context.Context, key string) error {
+	ctx, span := tracer.Start(ctx, "Entity.Repository.DeleteMeta")
+	defer span.End()
+
+	err := r.db.WithContext(ctx).Delete(&core.EntityMeta{}, "id = ?", key).Error
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	return nil
 }
 
 func (r *repository) CreateWithMeta(ctx context.Context, entity core.Entity, meta core.EntityMeta) (core.Entity, core.EntityMeta, error) {

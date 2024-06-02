@@ -734,3 +734,24 @@ func (s *service) Realtime(ctx context.Context, request <-chan []string, respons
 		}
 	}
 }
+
+func (s *service) Clean(ctx context.Context, ccid string) error {
+	ctx, span := tracer.Start(ctx, "Timeline.Service.Clean")
+	defer span.End()
+
+	timelines, err := s.repository.ListTimelineByAuthor(ctx, ccid)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	for _, timeline := range timelines {
+		err := s.repository.DeleteTimeline(ctx, timeline.ID)
+		if err != nil {
+			span.RecordError(err)
+			return err
+		}
+	}
+
+	return nil
+}

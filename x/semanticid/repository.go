@@ -13,6 +13,7 @@ type Repository interface {
 	Upsert(ctx context.Context, item core.SemanticID) (core.SemanticID, error)
 	Get(ctx context.Context, id, owner string) (core.SemanticID, error)
 	Delete(ctx context.Context, id, owner string) error
+	Clean(ctx context.Context, ccid string) error
 }
 
 type repository struct {
@@ -55,4 +56,11 @@ func (r *repository) Delete(ctx context.Context, id, owner string) error {
 	}
 
 	return nil
+}
+
+func (r *repository) Clean(ctx context.Context, ccid string) error {
+	ctx, span := tracer.Start(ctx, "SemanticID.Repository.Clean")
+	defer span.End()
+
+	return r.db.Where("owner = ?", ccid).Delete(&core.SemanticID{}).Error
 }

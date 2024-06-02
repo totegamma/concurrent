@@ -23,6 +23,7 @@ type Repository interface {
 	GetBySchemaAndVariant(ctx context.Context, messageID string, schema string, variant string) ([]core.Association, error)
 	GetOwnByTarget(ctx context.Context, targetID, author string) ([]core.Association, error)
 	Count(ctx context.Context) (int64, error)
+	Clean(ctx context.Context, ccid string) error
 }
 
 type repository struct {
@@ -325,4 +326,17 @@ func (r *repository) GetBySchemaAndVariant(ctx context.Context, messageID, schem
 	}
 
 	return associations, nil
+}
+
+func (r *repository) Clean(ctx context.Context, ccid string) error {
+	ctx, span := tracer.Start(ctx, "Association.Repository.Clean")
+	defer span.End()
+
+	err := r.db.WithContext(ctx).Where("owner = ?", ccid).Delete(&core.Association{}).Error
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	return nil
 }

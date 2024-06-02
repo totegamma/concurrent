@@ -491,3 +491,10 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 
 	return deleted, err
 }
+
+func (s *service) Clean(ctx context.Context, ccid string) error {
+	ctx, span := tracer.Start(ctx, "Message.Service.Clean")
+	defer span.End()
+
+	return s.repo.Clean(ctx, ccid)
+}

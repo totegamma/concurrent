@@ -56,6 +56,19 @@ func (s *service) Count(ctx context.Context) (int64, error) {
 	return s.repo.Count(ctx)
 }
 
+func (s *service) Clean(ctx context.Context, ccid string) error {
+	ctx, span := tracer.Start(ctx, "Association.Service.Clean")
+	defer span.End()
+
+	err := s.repo.Clean(ctx, ccid)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	return nil
+}
+
 // PostAssociation creates a new association
 // If targetType is messages, it also posts the association to the target message's timelines
 // returns the created association

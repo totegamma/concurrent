@@ -11,6 +11,7 @@ import (
 type Repository interface {
 	Get(ctx context.Context, owner, key string) (string, error)
 	Upsert(ctx context.Context, owner, key, value string) error
+	Clean(ctx context.Context, ccid string) error
 }
 
 type repository struct {
@@ -47,4 +48,12 @@ func (r *repository) Upsert(ctx context.Context, owner, key, value string) error
 	}
 
 	return r.db.Save(kv).Error
+}
+
+// Clean deletes all userkvs for a given owner
+func (r *repository) Clean(ctx context.Context, ccid string) error {
+	ctx, span := tracer.Start(ctx, "UserKV.Repository.Clean")
+	defer span.End()
+
+	return r.db.Where("owner = ?", ccid).Delete(&core.UserKV{}).Error
 }

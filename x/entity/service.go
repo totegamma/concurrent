@@ -36,6 +36,13 @@ func NewService(repository Repository, client client.Client, config core.Config,
 	}
 }
 
+func (s *service) Clean(ctx context.Context, ccid string) error {
+	ctx, span := tracer.Start(ctx, "Entity.Service.Clean")
+	defer span.End()
+
+	return s.repository.DeleteMeta(ctx, ccid)
+}
+
 // PullEntityFromRemote pulls entity from remote
 func (s *service) PullEntityFromRemote(ctx context.Context, id, remote string) (core.Entity, error) {
 	ctx, span := tracer.Start(ctx, "Entity.Service.PullEntityFromRemote")

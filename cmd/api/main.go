@@ -323,6 +323,7 @@ func main() {
 	// job
 	apiV1.GET("/jobs", jobHandler.List, auth.Restrict(auth.ISLOCAL))
 	apiV1.POST("/jobs", jobHandler.Create, auth.Restrict(auth.ISLOCAL))
+	apiV1.DELETE("/job/:id", jobHandler.Cancel, auth.Restrict(auth.ISLOCAL))
 
 	// misc
 	e.GET("/health", func(c echo.Context) (err error) {

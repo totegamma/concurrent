@@ -198,11 +198,14 @@ type UserKV struct {
 }
 
 type Job struct {
-	ID        string    `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
-	Author    string    `json:"author" gorm:"type:char(42)"`
-	Type      string    `json:"type" gorm:"type:text"`
-	Payload   string    `json:"payload" gorm:"type:json"`
-	Scheduled time.Time `json:"scheduled" gorm:"type:timestamp with time zone"`
-	Status    string    `json:"status" gorm:"type:text"` // pending, running, completed, failed
-	Result    string    `json:"result" gorm:"type:json"`
+	ID          string    `json:"id" gorm:"primaryKey;type:uuid;default:gen_random_uuid()"`
+	Author      string    `json:"author" gorm:"type:char(42)"`
+	Type        string    `json:"type" gorm:"type:text"`
+	Payload     string    `json:"payload" gorm:"type:json"`
+	Scheduled   time.Time `json:"scheduled" gorm:"type:timestamp with time zone"`
+	Status      string    `json:"status" gorm:"type:text"` // pending, running, completed, failed
+	Result      string    `json:"result" gorm:"type:text"`
+	CreatedAt   time.Time `json:"createdAt" gorm:"autoCreateTime"`
+	CompletedAt time.Time `json:"completedAt" gorm:"autoUpdateTime"`
+	TraceID     string    `json:"traceID" gorm:"type:text"`
 }

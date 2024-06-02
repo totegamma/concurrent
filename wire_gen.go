@@ -129,7 +129,8 @@ func SetupEntityService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, cli
 
 func SetupAgent(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config core.Config, repositoryPath string) core.AgentService {
 	storeService := SetupStoreService(db, rdb, mc, client2, config, repositoryPath)
-	agentService := agent.NewAgent(mc, rdb, storeService, config, repositoryPath)
+	jobService := SetupJobService(db)
+	agentService := agent.NewAgent(mc, rdb, storeService, jobService, config, repositoryPath)
 	return agentService
 }
 
@@ -163,7 +164,8 @@ func SetupStoreService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, clie
 	timelineService := SetupTimelineService(db, rdb, mc, client2, config)
 	ackService := SetupAckService(db, rdb, mc, client2, config)
 	subscriptionService := SetupSubscriptionService(db)
-	storeService := store.NewService(repository, keyService, entityService, messageService, associationService, profileService, timelineService, ackService, subscriptionService, config, repositoryPath)
+	semanticIDService := SetupSemanticidService(db)
+	storeService := store.NewService(repository, keyService, entityService, messageService, associationService, profileService, timelineService, ackService, subscriptionService, semanticIDService, config, repositoryPath)
 	return storeService
 }
 
@@ -229,7 +231,8 @@ var storeServiceProvider = wire.NewSet(store.NewService, store.NewRepository, Se
 	SetupTimelineService,
 	SetupAckService,
 	SetupSubscriptionService,
+	SetupSemanticidService,
 )
 
 // Lv7
-var agentServiceProvider = wire.NewSet(agent.NewAgent, SetupStoreService)
+var agentServiceProvider = wire.NewSet(agent.NewAgent, SetupStoreService, SetupJobService)

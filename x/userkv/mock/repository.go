@@ -34,6 +34,20 @@ func (m *MockRepository) EXPECT() *MockRepositoryMockRecorder {
 	return m.recorder
 }
 
+// Clean mocks base method.
+func (m *MockRepository) Clean(ctx context.Context, ccid string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Clean", ctx, ccid)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Clean indicates an expected call of Clean.
+func (mr *MockRepositoryMockRecorder) Clean(ctx, ccid interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Clean", reflect.TypeOf((*MockRepository)(nil).Clean), ctx, ccid)
+}
+
 // Get mocks base method.
 func (m *MockRepository) Get(ctx context.Context, owner, key string) (string, error) {
 	m.ctrl.T.Helper()

@@ -273,6 +273,7 @@ func main() {
 	apiV1.GET("/domains", domainHandler.List)
 
 	// entity
+	apiV1.GET("/entity", entityHandler.GetSelf, auth.Restrict(auth.ISREGISTERED))
 	apiV1.GET("/entity/:id", entityHandler.Get)
 	apiV1.GET("/entity/:id/acking", ackHandler.GetAcking)
 	apiV1.GET("/entity/:id/acker", ackHandler.GetAcker)

@@ -57,6 +57,7 @@ type EntityService interface {
 	Clean(ctx context.Context, ccid string) error
 	Get(ctx context.Context, ccid string) (Entity, error)
 	GetWithHint(ctx context.Context, ccid, hint string) (Entity, error)
+	GetMeta(ctx context.Context, ccid string) (EntityMeta, error)
 	GetByAlias(ctx context.Context, alias string) (Entity, error)
 	List(ctx context.Context) ([]Entity, error)
 	UpdateScore(ctx context.Context, id string, score int) error

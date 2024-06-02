@@ -406,3 +406,10 @@ func (s *service) Delete(ctx context.Context, id string) error {
 
 	return s.repository.Delete(ctx, id)
 }
+
+func (s *service) GetMeta(ctx context.Context, ccid string) (core.EntityMeta, error) {
+	ctx, span := tracer.Start(ctx, "Entity.Service.GetMeta")
+	defer span.End()
+
+	return s.repository.GetMeta(ctx, ccid)
+}

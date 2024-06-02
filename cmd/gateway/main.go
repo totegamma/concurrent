@@ -292,6 +292,11 @@ func main() {
 				c.Request().Header.Set(core.CaptchaVerifiedHeader, strconv.FormatBool(captchaVerified))
 			}
 
+			requesterIsRegistered, ok := ctx.Value(core.RequesterIsRegisteredKey).(bool)
+			if ok {
+				c.Request().Header.Set(core.RequesterIsRegisteredHeader, strconv.FormatBool(requesterIsRegistered))
+			}
+
 			proxy.ServeHTTP(c.Response(), c.Request())
 			return nil
 		}

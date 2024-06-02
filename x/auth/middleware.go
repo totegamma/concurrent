@@ -26,6 +26,7 @@ const (
 	ISLOCAL
 	ISKNOWN
 	ISUNITED
+	ISREGISTERED
 )
 
 func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
@@ -249,6 +250,13 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				ctx = context.WithValue(ctx, core.RequesterDomainTagsKey, domainTags)
 				span.SetAttributes(attribute.String("RequesterDomainTags", domain.Tag))
 			}
+
+			_, err = s.entity.GetMeta(ctx, ccid)
+			if err == nil {
+				ctx = context.WithValue(ctx, core.RequesterIsRegisteredKey, true)
+			} else {
+				ctx = context.WithValue(ctx, core.RequesterIsRegisteredKey, false)
+			}
 		}
 	skipCheckAuthorization:
 		c.SetRequest(c.Request().WithContext(ctx))
@@ -269,6 +277,7 @@ func ReceiveGatewayAuthPropagation(next echo.HandlerFunc) echo.HandlerFunc {
 		reqDomainTagsHeader := c.Request().Header.Get(core.RequesterDomainTagsHeader)
 		reqCaptchaVerifiedHeader := c.Request().Header.Get(core.CaptchaVerifiedHeader)
 		reqPassportHeader := c.Request().Header.Get(core.RequesterPassportHeader)
+		reqRegisteredHeader := c.Request().Header.Get(core.RequesterIsRegisteredHeader)
 
 		if reqTypeHeader != "" {
 			reqType, err := strconv.Atoi(reqTypeHeader)
@@ -315,6 +324,14 @@ func ReceiveGatewayAuthPropagation(next echo.HandlerFunc) echo.HandlerFunc {
 		if reqPassportHeader != "" {
 			ctx = context.WithValue(ctx, core.RequesterPassportKey, reqPassportHeader)
 			span.SetAttributes(attribute.String("RequesterPassport", reqPassportHeader))
+		}
+
+		if reqRegisteredHeader != "" {
+			registered, err := strconv.ParseBool(reqRegisteredHeader)
+			if err == nil {
+				ctx = context.WithValue(ctx, core.RequesterIsRegisteredKey, registered)
+				span.SetAttributes(attribute.String("RequesterIsRegistered", reqRegisteredHeader))
+			}
 		}
 
 		c.SetRequest(c.Request().WithContext(ctx))
@@ -378,6 +395,13 @@ func Restrict(principal Principal) echo.MiddlewareFunc {
 					return c.JSON(http.StatusForbidden, echo.Map{
 						"error":  "you are not authorized to perform this action",
 						"detail": "you are not united",
+					})
+				}
+			case ISREGISTERED:
+				if registered, _ := ctx.Value(core.RequesterIsRegisteredKey).(bool); !registered {
+					return c.JSON(http.StatusForbidden, echo.Map{
+						"error":  "you are not authorized to perform this action",
+						"detail": "you are not registered",
 					})
 				}
 			}

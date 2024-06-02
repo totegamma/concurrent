@@ -58,6 +58,7 @@ func TestLocalRootSuccess(t *testing.T) {
 		ID:     User1ID,
 		Domain: "local.example.com",
 	}, nil).AnyTimes()
+	mockEntity.EXPECT().GetMeta(gomock.Any(), gomock.Any()).Return(core.EntityMeta{}, nil).AnyTimes()
 	mockDomain := mock_core.NewMockDomainService(ctrl)
 	mockKey := mock_core.NewMockKeyService(ctrl)
 
@@ -115,6 +116,7 @@ func TestRemoteRootSuccess(t *testing.T) {
 		ID:     User1ID,
 		Domain: RemoteDomainFQDN,
 	}, nil).AnyTimes()
+	mockEntity.EXPECT().GetMeta(gomock.Any(), gomock.Any()).Return(core.EntityMeta{}, nil).AnyTimes()
 
 	mockDomain := mock_core.NewMockDomainService(ctrl)
 	mockDomain.EXPECT().GetByFQDN(gomock.Any(), RemoteDomainFQDN).Return(core.Domain{

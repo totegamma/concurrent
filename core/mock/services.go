@@ -608,6 +608,21 @@ func (mr *MockEntityServiceMockRecorder) GetByAlias(ctx, alias interface{}) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByAlias", reflect.TypeOf((*MockEntityService)(nil).GetByAlias), ctx, alias)
 }
 
+// GetMeta mocks base method.
+func (m *MockEntityService) GetMeta(ctx context.Context, ccid string) (core.EntityMeta, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetMeta", ctx, ccid)
+	ret0, _ := ret[0].(core.EntityMeta)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetMeta indicates an expected call of GetMeta.
+func (mr *MockEntityServiceMockRecorder) GetMeta(ctx, ccid interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMeta", reflect.TypeOf((*MockEntityService)(nil).GetMeta), ctx, ccid)
+}
+
 // GetWithHint mocks base method.
 func (m *MockEntityService) GetWithHint(ctx context.Context, ccid, hint string) (core.Entity, error) {
 	m.ctrl.T.Helper()

@@ -145,6 +145,7 @@ func (s *service) Affiliation(ctx context.Context, mode core.CommitMode, documen
 			)
 
 			if err != nil {
+				span.RecordError(err)
 				return core.Entity{}, errors.Wrap(err, "Failed to create entity")
 			}
 

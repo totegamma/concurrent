@@ -123,7 +123,7 @@ func (r *repository) Create(ctx context.Context, entity core.Entity) (core.Entit
 	ctx, span := tracer.Start(ctx, "Entity.Repository.Create")
 	defer span.End()
 
-	if err := r.db.WithContext(ctx).Create(&entity).Error; err != nil {
+	if err := r.db.WithContext(ctx).Save(&entity).Error; err != nil {
 		return core.Entity{}, err
 	}
 
@@ -160,10 +160,10 @@ func (r *repository) CreateWithMeta(ctx context.Context, entity core.Entity, met
 	defer span.End()
 
 	err := r.db.Transaction(func(tx *gorm.DB) error {
-		if err := tx.Create(&entity).Error; err != nil {
+		if err := tx.Save(&entity).Error; err != nil {
 			return err
 		}
-		if err := tx.Create(&meta).Error; err != nil {
+		if err := tx.Save(&meta).Error; err != nil {
 			return err
 		}
 		return nil

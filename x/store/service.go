@@ -136,16 +136,46 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 	}
 
 	if err == nil && (mode == core.CommitModeExecute || mode == core.CommitModeLocalOnlyExec) {
-		// save document to history
-		owner := base.Owner
-		if owner == "" {
-			owner = base.Signer
-		}
 
 		entry := fmt.Sprintf("%s %s", signature, document)
-		err = s.repo.Log(ctx, owner, entry)
-		if err != nil {
-			return nil, err
+
+		if base.Type == "ack" || base.Type == "unack" { // ack/unackはfrom/toの両方にログを残す
+			var ackDoc core.AckDocument
+			err := json.Unmarshal([]byte(document), &ackDoc)
+			if err != nil {
+				span.RecordError(errors.Wrap(err, "failed to unmarshal ack document"))
+			}
+
+			fromEntity, err := s.entity.Get(ctx, ackDoc.From)
+			if err == nil && fromEntity.Domain == s.config.FQDN {
+				err = s.repo.Log(ctx, ackDoc.From, entry)
+				if err != nil {
+					span.RecordError(errors.Wrap(err, "failed to log ack.from document"))
+				}
+			} else {
+				span.RecordError(errors.Wrap(err, "failed to get ack.from entity"))
+			}
+
+			toEntity, err := s.entity.Get(ctx, ackDoc.To)
+			if err == nil && toEntity.Domain == s.config.FQDN {
+				err = s.repo.Log(ctx, ackDoc.To, entry)
+				if err != nil {
+					span.RecordError(errors.Wrap(err, "failed to log ack.to document"))
+				}
+			} else {
+				span.RecordError(errors.Wrap(err, "failed to get ack.to entity"))
+			}
+		} else {
+			// save document to history
+			owner := base.Owner
+			if owner == "" {
+				owner = base.Signer
+			}
+
+			err = s.repo.Log(ctx, owner, entry)
+			if err != nil {
+				span.RecordError(errors.Wrap(err, "failed to log document"))
+			}
 		}
 	}
 

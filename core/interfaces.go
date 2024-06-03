@@ -157,6 +157,7 @@ type TimelineService interface {
 	GetItem(ctx context.Context, timeline string, id string) (TimelineItem, error)
 	PostItem(ctx context.Context, timeline string, item TimelineItem, document, signature string) (TimelineItem, error)
 	RemoveItem(ctx context.Context, timeline string, id string)
+	RemoveItemsByResourceID(ctx context.Context, resourceID string) error
 
 	PublishEvent(ctx context.Context, event Event) error
 

@@ -453,6 +453,18 @@ skipAuth:
 	return created, nil
 }
 
+func (s *service) RemoveItemsByResourceID(ctx context.Context, resourceID string) error {
+	ctx, span := tracer.Start(ctx, "Timeline.Service.RemoveItemByResourceID")
+	defer span.End()
+
+	err := s.repository.DeleteItemByResourceID(ctx, resourceID)
+	if err != nil {
+		span.RecordError(err)
+	}
+
+	return err
+}
+
 func (s *service) PublishEvent(ctx context.Context, event core.Event) error {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.PublishEvent")
 	defer span.End()

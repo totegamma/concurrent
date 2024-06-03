@@ -334,6 +334,11 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 		return core.Association{}, err
 	}
 
+	err = s.timeline.RemoveItemsByResourceID(ctx, doc.Target)
+	if err != nil {
+		span.RecordError(err)
+	}
+
 	for _, posted := range targetAssociation.Timelines {
 		event := core.Event{
 			Timeline:  posted,

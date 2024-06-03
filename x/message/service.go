@@ -417,7 +417,15 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 	}
 
 	deleted, err := s.repo.Delete(ctx, doc.Target)
-	slog.DebugContext(ctx, fmt.Sprintf("deleted: %v", deleted), slog.String("module", "message"))
+	if err != nil {
+		span.RecordError(err)
+		return core.Message{}, err
+	}
+
+	err = s.timeline.RemoveItemsByResourceID(ctx, doc.Target)
+	if err != nil {
+		span.RecordError(err)
+	}
 
 	ispublic := false
 	for _, timelineID := range deleted.Timelines {

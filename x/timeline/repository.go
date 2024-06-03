@@ -27,6 +27,7 @@ type Repository interface {
 	GetItem(ctx context.Context, timelineID string, objectID string) (core.TimelineItem, error)
 	CreateItem(ctx context.Context, item core.TimelineItem) (core.TimelineItem, error)
 	DeleteItem(ctx context.Context, timelineID string, objectID string) error
+	DeleteItemByResourceID(ctx context.Context, resourceID string) error
 
 	ListTimelineBySchema(ctx context.Context, schema string) ([]core.Timeline, error)
 	ListTimelineByAuthor(ctx context.Context, author string) ([]core.Timeline, error)
@@ -563,6 +564,13 @@ func (r *repository) DeleteItem(ctx context.Context, timelineID string, objectID
 	defer span.End()
 
 	return r.db.WithContext(ctx).Delete(&core.TimelineItem{}, "timeline_id = ? and resource_id = ?", timelineID, objectID).Error
+}
+
+func (r *repository) DeleteItemByResourceID(ctx context.Context, resourceID string) error {
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.DeleteItemByResourceID")
+	defer span.End()
+
+	return r.db.WithContext(ctx).Delete(&core.TimelineItem{}, "resource_id = ?", resourceID).Error
 }
 
 // GetTimelineRecent returns a list of timeline items by TimelineID and time range

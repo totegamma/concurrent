@@ -30,19 +30,29 @@ func (s *service) CreateSubscription(ctx context.Context, mode core.CommitMode, 
 		return core.Subscription{}, err
 	}
 
-	hash := core.GetHash([]byte(document))
-	hash10 := [10]byte{}
-	copy(hash10[:], hash[:10])
-	signedAt := doc.SignedAt
-	id := cdid.New(hash10, signedAt).String()
+	if doc.ID == "" { // New
+		hash := core.GetHash([]byte(document))
+		hash10 := [10]byte{}
+		copy(hash10[:], hash[:10])
+		signedAt := doc.SignedAt
+		doc.ID = cdid.New(hash10, signedAt).String()
+	} else {
+		existance, err := s.repo.GetSubscription(ctx, doc.ID)
+		if err != nil {
+			span.RecordError(err)
+			return core.Subscription{}, err
+		}
+
+		doc.DomainOwned = existance.DomainOwned // make sure the domain owned is immutable
+	}
 
 	var policyparams *string = nil
 	if doc.PolicyParams != "" {
 		policyparams = &doc.PolicyParams
 	}
 
-	subscription := core.Subscription{
-		ID:           id,
+	created, err := s.repo.CreateSubscription(ctx, core.Subscription{
+		ID:           doc.ID,
 		Author:       doc.Signer,
 		Indexable:    doc.Indexable,
 		DomainOwned:  doc.DomainOwned,
@@ -51,34 +61,14 @@ func (s *service) CreateSubscription(ctx context.Context, mode core.CommitMode, 
 		PolicyParams: policyparams,
 		Document:     document,
 		Signature:    signature,
+	})
+
+	if err != nil {
+		span.RecordError(err)
+		return created, err
 	}
 
-	if doc.ID != "" { // update
-		existance, err := s.repo.GetSubscription(ctx, doc.ID)
-		if err != nil {
-			span.RecordError(err)
-			return core.Subscription{}, err
-		}
-
-		subscription.ID = doc.ID
-		subscription.DomainOwned = existance.DomainOwned // make sure the domain owned is immutable
-
-		updated, err := s.repo.UpdateSubscription(ctx, subscription)
-		if err != nil {
-			span.RecordError(err)
-			return updated, err
-		}
-
-		return updated, nil
-	} else { // create
-		created, err := s.repo.CreateSubscription(ctx, subscription)
-		if err != nil {
-			span.RecordError(err)
-			return created, err
-		}
-
-		return created, nil
-	}
+	return created, nil
 }
 
 // GetSubscription returns a Subscription by ID

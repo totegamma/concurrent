@@ -504,13 +504,13 @@ func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, docu
 		}
 	}
 
-	if doc.ID == "" {
+	if doc.ID == "" { // New
 		hash := core.GetHash([]byte(document))
 		hash10 := [10]byte{}
 		copy(hash10[:], hash[:10])
 		signedAt := doc.SignedAt
 		doc.ID = cdid.New(hash10, signedAt).String()
-	} else {
+	} else { // Update
 		id, err := s.NormalizeTimelineID(ctx, doc.ID)
 		if err != nil {
 			return core.Timeline{}, err
@@ -522,6 +522,14 @@ func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, docu
 			}
 			doc.ID = split[0]
 		}
+
+		existance, err := s.repository.GetTimeline(ctx, doc.ID)
+		if err != nil {
+			span.RecordError(err)
+			return core.Timeline{}, err
+		}
+
+		doc.DomainOwned = existance.DomainOwned // make sure the domain owned is immutable
 	}
 
 	var policyparams *string = nil
@@ -554,7 +562,7 @@ func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, docu
 
 	saved.ID = saved.ID + "@" + s.config.FQDN
 
-	return saved, err
+	return saved, nil
 }
 
 // Get returns timeline information by ID

@@ -196,6 +196,13 @@ func (s *service) ResolveSubkey(ctx context.Context, keyID string) (string, erro
 	return rootKey, nil
 }
 
+func (s *service) GetRemoteKeyResolution(ctx context.Context, remote string, keyID string) ([]core.Key, error) {
+	ctx, span := tracer.Start(ctx, "Key.Service.GetRemoteKey")
+	defer span.End()
+
+	return s.repository.GetRemoteKeyResolution(ctx, remote, keyID)
+}
+
 func (s *service) GetKeyResolution(ctx context.Context, keyID string) ([]core.Key, error) {
 	ctx, span := tracer.Start(ctx, "Key.Service.GetKeyResolution")
 	defer span.End()

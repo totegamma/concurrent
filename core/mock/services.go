@@ -807,6 +807,21 @@ func (mr *MockKeyServiceMockRecorder) GetKeyResolution(ctx, keyID interface{}) *
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKeyResolution", reflect.TypeOf((*MockKeyService)(nil).GetKeyResolution), ctx, keyID)
 }
 
+// GetRemoteKeyResolution mocks base method.
+func (m *MockKeyService) GetRemoteKeyResolution(ctx context.Context, remote, keyID string) ([]core.Key, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetRemoteKeyResolution", ctx, remote, keyID)
+	ret0, _ := ret[0].([]core.Key)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetRemoteKeyResolution indicates an expected call of GetRemoteKeyResolution.
+func (mr *MockKeyServiceMockRecorder) GetRemoteKeyResolution(ctx, remote, keyID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRemoteKeyResolution", reflect.TypeOf((*MockKeyService)(nil).GetRemoteKeyResolution), ctx, remote, keyID)
+}
+
 // ResolveSubkey mocks base method.
 func (m *MockKeyService) ResolveSubkey(ctx context.Context, keyID string) (string, error) {
 	m.ctrl.T.Helper()
@@ -1392,18 +1407,18 @@ func (mr *MockStoreServiceMockRecorder) CleanUserAllData(ctx, target interface{}
 }
 
 // Commit mocks base method.
-func (m *MockStoreService) Commit(ctx context.Context, mode core.CommitMode, document, signature, option string) (any, error) {
+func (m *MockStoreService) Commit(ctx context.Context, mode core.CommitMode, document, signature, option string, keys []core.Key) (any, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Commit", ctx, mode, document, signature, option)
+	ret := m.ctrl.Call(m, "Commit", ctx, mode, document, signature, option, keys)
 	ret0, _ := ret[0].(any)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Commit indicates an expected call of Commit.
-func (mr *MockStoreServiceMockRecorder) Commit(ctx, mode, document, signature, option interface{}) *gomock.Call {
+func (mr *MockStoreServiceMockRecorder) Commit(ctx, mode, document, signature, option, keys interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Commit", reflect.TypeOf((*MockStoreService)(nil).Commit), ctx, mode, document, signature, option)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Commit", reflect.TypeOf((*MockStoreService)(nil).Commit), ctx, mode, document, signature, option, keys)
 }
 
 // GetPath mocks base method.
@@ -1421,18 +1436,18 @@ func (mr *MockStoreServiceMockRecorder) GetPath(ctx, id interface{}) *gomock.Cal
 }
 
 // Restore mocks base method.
-func (m *MockStoreService) Restore(ctx context.Context, archive io.Reader) ([]core.BatchResult, error) {
+func (m *MockStoreService) Restore(ctx context.Context, archive io.Reader, from string) ([]core.BatchResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Restore", ctx, archive)
+	ret := m.ctrl.Call(m, "Restore", ctx, archive, from)
 	ret0, _ := ret[0].([]core.BatchResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Restore indicates an expected call of Restore.
-func (mr *MockStoreServiceMockRecorder) Restore(ctx, archive interface{}) *gomock.Call {
+func (mr *MockStoreServiceMockRecorder) Restore(ctx, archive, from interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Restore", reflect.TypeOf((*MockStoreService)(nil).Restore), ctx, archive)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Restore", reflect.TypeOf((*MockStoreService)(nil).Restore), ctx, archive, from)
 }
 
 // Since mocks base method.

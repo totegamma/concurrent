@@ -62,7 +62,7 @@ func SetupAckService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client
 }
 
 func SetupKeyService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config core.Config) core.KeyService {
-	repository := key.NewRepository(db, mc)
+	repository := key.NewRepository(db, mc, client2)
 	keyService := key.NewService(repository, config)
 	return keyService
 }

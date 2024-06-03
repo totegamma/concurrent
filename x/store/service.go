@@ -61,7 +61,7 @@ func NewService(
 	}
 }
 
-func (s *service) Commit(ctx context.Context, mode core.CommitMode, document string, signature string, option string) (any, error) {
+func (s *service) Commit(ctx context.Context, mode core.CommitMode, document string, signature string, option string, keys []core.Key) (any, error) {
 	ctx, span := tracer.Start(ctx, "Store.Service.Commit")
 	defer span.End()
 
@@ -73,11 +73,6 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 	err := json.Unmarshal([]byte(document), &base)
 	if err != nil {
 		return nil, err
-	}
-
-	keys, ok := ctx.Value(core.RequesterKeychainKey).([]core.Key)
-	if !ok {
-		keys = []core.Key{}
 	}
 
 	err = s.ValidateDocument(ctx, document, signature, keys)
@@ -180,7 +175,7 @@ func (s *service) GetPath(ctx context.Context, id string) string {
 	return path
 }
 
-func (s *service) Restore(ctx context.Context, archive io.Reader) ([]core.BatchResult, error) {
+func (s *service) Restore(ctx context.Context, archive io.Reader, from string) ([]core.BatchResult, error) {
 	ctx, span := tracer.Start(ctx, "Store.Service.Restore")
 	defer span.End()
 
@@ -200,7 +195,34 @@ func (s *service) Restore(ctx context.Context, archive io.Reader) ([]core.BatchR
 		// owner := split[1]
 		signature := split[2]
 		document := strings.Join(split[3:], " ")
-		_, err := s.Commit(ctx, core.CommitModeLocalOnlyExec, document, signature, "")
+
+		var doc core.DocumentBase[any]
+		err := json.Unmarshal([]byte(document), &doc)
+		if err != nil {
+			results = append(results, core.BatchResult{ID: split[0], Error: fmt.Sprintf("%v", errors.Wrap(err, "failed to unmarshal document"))})
+			continue
+		}
+
+		signer, err := s.entity.GetWithHint(ctx, doc.Owner, from)
+		if err != nil {
+			results = append(results, core.BatchResult{ID: split[0], Error: fmt.Sprintf("%v", errors.Wrap(err, "failed to resolve signer"))})
+			continue
+		}
+
+		var keys []core.Key
+		if doc.KeyID != "" {
+			if signer.Domain == s.config.FQDN { // local
+				keys, err = s.key.GetKeyResolution(ctx, doc.KeyID)
+			} else { // remote
+				keys, err = s.key.GetRemoteKeyResolution(ctx, signer.Domain, doc.KeyID)
+			}
+		}
+		if err != nil {
+			results = append(results, core.BatchResult{ID: split[0], Error: fmt.Sprintf("%v", errors.Wrap(err, "failed to resolve key"))})
+			continue
+		}
+
+		_, err = s.Commit(ctx, core.CommitModeLocalOnlyExec, document, signature, "", keys)
 		results = append(results, core.BatchResult{ID: split[0], Error: fmt.Sprintf("%v", err)})
 	}
 

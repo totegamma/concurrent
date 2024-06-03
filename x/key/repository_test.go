@@ -3,6 +3,7 @@ package key
 import (
 	"context"
 	"github.com/stretchr/testify/assert"
+	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/core"
 	"github.com/totegamma/concurrent/internal/testutil"
 	"testing"
@@ -19,7 +20,8 @@ func TestRepository(t *testing.T) {
 	mc, cleanup_mc := testutil.CreateMC()
 	defer cleanup_mc()
 
-	repo := NewRepository(db, mc)
+	client := client.NewClient()
+	repo := NewRepository(db, mc, client)
 
 	newkey := core.Key{
 		ID:              "cck1v26je8uyhc9x6xgcw26d3cne20s44atr7a94em",

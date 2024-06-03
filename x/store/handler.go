@@ -48,7 +48,12 @@ func (h *handler) Commit(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
 	}
 
-	result, err := h.service.Commit(ctx, core.CommitModeExecute, request.Document, request.Signature, request.Option)
+	keys, ok := ctx.Value(core.RequesterKeychainKey).([]core.Key)
+	if !ok {
+		keys = []core.Key{}
+	}
+
+	result, err := h.service.Commit(ctx, core.CommitModeExecute, request.Document, request.Signature, request.Option, keys)
 	if err != nil {
 		span.RecordError(err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
@@ -80,7 +85,8 @@ func (h *handler) Post(c echo.Context) error {
 	body := c.Request().Body
 	defer body.Close()
 
-	result, err := h.service.Restore(ctx, body)
+	from := c.QueryParam("from")
+	result, err := h.service.Restore(ctx, body, from)
 
 	if err != nil {
 		span.RecordError(err)

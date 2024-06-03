@@ -45,6 +45,9 @@ type Repository interface {
 	Count(ctx context.Context) (int64, error)
 
 	Subscribe(ctx context.Context, channels []string, event chan<- core.Event) error
+
+	SetNormalizationCache(ctx context.Context, timelineID string, value string) error
+	GetNormalizationCache(ctx context.Context, timelineID string) (string, error)
 }
 
 type repository struct {
@@ -71,6 +74,23 @@ func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client c
 	mc.Set(&memcache.Item{Key: "timeline_count", Value: []byte(strconv.FormatInt(count, 10))})
 
 	return &repository{db, rdb, mc, client, schema, config}
+}
+
+const (
+	normaalizationCachePrefix = "timeline:normalize:"
+	normaalizationCacheTTL    = 60 * 15 // 15 minutes
+)
+
+func (r *repository) SetNormalizationCache(ctx context.Context, timelineID string, value string) error {
+	return r.mc.Set(&memcache.Item{Key: normaalizationCachePrefix + timelineID, Value: []byte(value), Expiration: normaalizationCacheTTL})
+}
+
+func (r *repository) GetNormalizationCache(ctx context.Context, timelineID string) (string, error) {
+	item, err := r.mc.Get(normaalizationCachePrefix + timelineID)
+	if err != nil {
+		return "", err
+	}
+	return string(item.Value), nil
 }
 
 func (r *repository) normalizeLocalDBID(id string) (string, error) {

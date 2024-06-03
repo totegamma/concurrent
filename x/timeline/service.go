@@ -71,6 +71,12 @@ func (s *service) NormalizeTimelineID(ctx context.Context, timeline string) (str
 	ctx, span := tracer.Start(ctx, "Timeline.Service.NormalizeTimelineID")
 	defer span.End()
 
+	// CheckCache
+	cached, err := s.repository.GetNormalizationCache(ctx, timeline)
+	if err == nil {
+		return cached, nil
+	}
+
 	split := strings.Split(timeline, "@")
 	id := split[0]
 	domain := s.config.FQDN
@@ -98,7 +104,14 @@ func (s *service) NormalizeTimelineID(ctx context.Context, timeline string) (str
 		id = target
 	}
 
-	return fmt.Sprintf("%s@%s", id, domain), nil
+	normalized := fmt.Sprintf("%s@%s", id, domain)
+
+	err = s.repository.SetNormalizationCache(ctx, timeline, normalized)
+	if err != nil {
+		span.RecordError(err)
+	}
+
+	return normalized, nil
 }
 
 // GetChunks returns chunks by timelineID and time

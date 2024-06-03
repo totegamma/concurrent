@@ -303,28 +303,28 @@ func main() {
 	apiV1.GET("/timelines/realtime", timelineHandler.Realtime)
 
 	// userkv
-	apiV1.GET("/kv/:key", userkvHandler.Get, auth.Restrict(auth.ISLOCAL))
-	apiV1.PUT("/kv/:key", userkvHandler.Upsert, auth.Restrict(auth.ISLOCAL))
+	apiV1.GET("/kv/:key", userkvHandler.Get, auth.Restrict(auth.ISREGISTERED))
+	apiV1.PUT("/kv/:key", userkvHandler.Upsert, auth.Restrict(auth.ISREGISTERED))
 
 	// auth
 	apiV1.GET("/auth/passport", authHandler.GetPassport, auth.Restrict(auth.ISLOCAL))
 
 	// key
 	apiV1.GET("/key/:id", keyHandler.GetKeyResolution)
-	apiV1.GET("/keys/mine", keyHandler.GetKeyMine, auth.Restrict(auth.ISLOCAL))
+	apiV1.GET("/keys/mine", keyHandler.GetKeyMine, auth.Restrict(auth.ISREGISTERED))
 
 	// subscription
 	apiV1.GET("/subscription/:id", subscriptionHandler.GetSubscription)
 	apiV1.GET("/subscriptions/mine", subscriptionHandler.GetOwnSubscriptions, auth.Restrict(auth.ISLOCAL))
 
 	// storage
-	apiV1.GET("/repository", storeHandler.Get, auth.Restrict(auth.ISLOCAL))
+	apiV1.GET("/repository", storeHandler.Get, auth.Restrict(auth.ISREGISTERED))
 	apiV1.POST("/repository", storeHandler.Post, auth.Restrict(auth.ISLOCAL))
 
 	// job
-	apiV1.GET("/jobs", jobHandler.List, auth.Restrict(auth.ISLOCAL))
-	apiV1.POST("/jobs", jobHandler.Create, auth.Restrict(auth.ISLOCAL))
-	apiV1.DELETE("/job/:id", jobHandler.Cancel, auth.Restrict(auth.ISLOCAL))
+	apiV1.GET("/jobs", jobHandler.List, auth.Restrict(auth.ISREGISTERED))
+	apiV1.POST("/jobs", jobHandler.Create, auth.Restrict(auth.ISREGISTERED))
+	apiV1.DELETE("/job/:id", jobHandler.Cancel, auth.Restrict(auth.ISREGISTERED))
 
 	// misc
 	e.GET("/health", func(c echo.Context) (err error) {

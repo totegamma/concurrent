@@ -48,6 +48,11 @@ func (h *handler) Commit(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
 	}
 
+	// limit document size 8KB
+	if len(request.Document) > 8192 {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Document size is too large"})
+	}
+
 	keys, ok := ctx.Value(core.RequesterKeychainKey).([]core.Key)
 	if !ok {
 		keys = []core.Key{}

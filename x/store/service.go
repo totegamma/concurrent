@@ -233,7 +233,7 @@ func (s *service) Restore(ctx context.Context, archive io.Reader, from string) (
 			continue
 		}
 
-		signer, err := s.entity.GetWithHint(ctx, doc.Owner, from)
+		signer, err := s.entity.GetWithHint(ctx, doc.Signer, from)
 		if err != nil {
 			results = append(results, core.BatchResult{ID: split[0], Error: fmt.Sprintf("%v", errors.Wrap(err, "failed to resolve signer"))})
 			continue

@@ -89,19 +89,20 @@ func (s *service) NormalizeTimelineID(ctx context.Context, timeline string) (str
 				return "", err
 			}
 			domain = entity.Domain
+
+			if !cdid.IsSeemsCDID(id, 't') && domain == s.config.FQDN {
+				target, err := s.semanticid.Lookup(ctx, id, split[1])
+				if err != nil {
+					span.SetAttributes(attribute.String("timeline", timeline))
+					span.RecordError(errors.Wrap(err, "failed to lookup semanticID"))
+					return "", err
+				}
+				id = target
+			}
+
 		} else {
 			domain = split[1]
 		}
-	}
-
-	if !cdid.IsSeemsCDID(id, 't') && domain == s.config.FQDN && core.IsCCID(split[1]) {
-		target, err := s.semanticid.Lookup(ctx, id, split[1])
-		if err != nil {
-			span.SetAttributes(attribute.String("timeline", timeline))
-			span.RecordError(errors.Wrap(err, "failed to lookup semanticID"))
-			return "", err
-		}
-		id = target
 	}
 
 	normalized := fmt.Sprintf("%s@%s", id, domain)

@@ -49,13 +49,13 @@ func (r *repository) normalizeDBID(id string) (string, error) {
 
 	if len(normalized) == 27 {
 		if normalized[0] != 'm' {
-			return "", errors.New("message id must start with 'm'")
+			return "", errors.New("message id must start with 'm'. got " + normalized)
 		}
 		normalized = normalized[1:]
 	}
 
 	if len(normalized) != 26 {
-		return "", errors.New("message id must be 26 characters long")
+		return "", errors.New("message id must be 26 characters long. got " + normalized)
 	}
 
 	return normalized, nil

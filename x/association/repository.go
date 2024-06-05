@@ -79,13 +79,13 @@ func (r *repository) Create(ctx context.Context, association core.Association) (
 
 	if len(association.ID) == 27 {
 		if association.ID[0] != 'a' {
-			return association, errors.New("association ID must start with 'a'")
+			return association, errors.New("association ID must start with 'a'. got " + association.ID)
 		}
 		association.ID = association.ID[1:]
 	}
 
 	if len(association.ID) != 26 {
-		return association, errors.New("association ID must be 26 characters long")
+		return association, errors.New("association ID must be 26 characters long. got " + association.ID)
 	}
 
 	schemaID, err := r.schema.UrlToID(ctx, association.Schema)
@@ -110,9 +110,13 @@ func (r *repository) Get(ctx context.Context, id string) (core.Association, erro
 
 	if len(id) == 27 {
 		if id[0] != 'a' {
-			return core.Association{}, errors.New("association typed-id must start with 'a'")
+			return core.Association{}, errors.New("association typed-id must start with 'a'. got " + id)
 		}
 		id = id[1:]
+	}
+
+	if len(id) != 26 {
+		return core.Association{}, errors.New("association ID must be 26 characters long. got " + id)
 	}
 
 	var association core.Association
@@ -156,7 +160,7 @@ func (r *repository) Delete(ctx context.Context, id string) (core.Association, e
 
 	if len(id) == 27 {
 		if id[0] != 'a' {
-			return core.Association{}, errors.New("association typed-id must start with 'a'")
+			return core.Association{}, errors.New("association typed-id must start with 'a'. got " + id)
 		}
 		id = id[1:]
 	}

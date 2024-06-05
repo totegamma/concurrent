@@ -289,12 +289,22 @@ func (h handler) Realtime(c echo.Context) error {
 				break
 			}
 
-			input <- req.Channels
-
-			slog.DebugContext(
-				ctx, fmt.Sprintf("Socket subscribe: %s", req.Channels),
-				slog.String("module", "socket"),
-			)
+			switch req.Type {
+			case "listen":
+				input <- req.Channels
+				slog.DebugContext(
+					ctx, fmt.Sprintf("Socket subscribe: %s", req.Channels),
+					slog.String("module", "socket"),
+				)
+			case "h": // heartbeat
+				// do nothing
+			default:
+				slog.InfoContext(
+					ctx, "Unknown request type",
+					slog.String("type", req.Type),
+					slog.String("module", "socket"),
+				)
+			}
 		}
 	}()
 

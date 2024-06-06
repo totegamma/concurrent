@@ -24,6 +24,7 @@ var (
 )
 
 type channelRequest struct {
+	Type     string   `json:"type"`
 	Channels []string `json:"channels"`
 }
 
@@ -317,6 +318,7 @@ func (a *agent) RemoteSubRoutine(ctx context.Context, domain string, timelines [
 		}(c, messageChan)
 	}
 	request := channelRequest{
+		Type:     "listen",
 		Channels: timelines,
 	}
 	err := remoteConns[domain].WriteJSON(request)

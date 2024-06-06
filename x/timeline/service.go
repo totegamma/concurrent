@@ -773,7 +773,7 @@ func (s *service) Clean(ctx context.Context, ccid string) error {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.Clean")
 	defer span.End()
 
-	timelines, err := s.repository.ListTimelineByAuthor(ctx, ccid)
+	timelines, err := s.repository.ListTimelineByAuthorOwned(ctx, ccid)
 	if err != nil {
 		span.RecordError(err)
 		return err

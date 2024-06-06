@@ -14,7 +14,8 @@ type Repository interface {
 	UpdateSubscription(ctx context.Context, subscription core.Subscription) (core.Subscription, error)
 	GetSubscription(ctx context.Context, id string) (core.Subscription, error)
 	DeleteSubscription(ctx context.Context, id string) error
-	GetOwnSubscriptions(ctx context.Context, owner string) ([]core.Subscription, error)
+	GetSubscriptionsByAuthor(ctx context.Context, owner string) ([]core.Subscription, error)
+	GetSubscriptionsByAuthorOwned(ctx context.Context, owner string) ([]core.Subscription, error)
 
 	CreateItem(ctx context.Context, item core.SubscriptionItem) (core.SubscriptionItem, error)
 	GetItem(ctx context.Context, id string, subscription string) (core.SubscriptionItem, error)
@@ -193,12 +194,30 @@ func (r *repository) DeleteSubscription(ctx context.Context, id string) error {
 }
 
 // GetOwnSubscriptions returns a list of collections by owner
-func (r *repository) GetOwnSubscriptions(ctx context.Context, owner string) ([]core.Subscription, error) {
-	ctx, span := tracer.Start(ctx, "Subscription.Repository.GetOwnSubscriptions")
+func (r *repository) GetSubscriptionsByAuthor(ctx context.Context, owner string) ([]core.Subscription, error) {
+	ctx, span := tracer.Start(ctx, "Subscription.Repository.GetSubscriptionsByAuthor")
 	defer span.End()
 
 	var subscriptions []core.Subscription
 	err := r.db.WithContext(ctx).Preload("Items").Find(&subscriptions, "author = ?", owner).Error
+
+	for i := range subscriptions {
+		err := r.postProcess(ctx, &subscriptions[i])
+		if err != nil {
+			return []core.Subscription{}, err
+		}
+	}
+
+	return subscriptions, err
+}
+
+// GetOwnSubscriptions returns a list of collections by owner
+func (r *repository) GetSubscriptionsByAuthorOwned(ctx context.Context, owner string) ([]core.Subscription, error) {
+	ctx, span := tracer.Start(ctx, "Subscription.Repository.GetSubscriptionsByAuthorOwned")
+	defer span.End()
+
+	var subscriptions []core.Subscription
+	err := r.db.WithContext(ctx).Preload("Items").Find(&subscriptions, "author = ? and domain_owned = false", owner).Error
 
 	for i := range subscriptions {
 		err := r.postProcess(ctx, &subscriptions[i])

@@ -29,7 +29,7 @@ func NewService(repository Repository, client client.Client, entity core.EntityS
 }
 
 // Ack creates new Ack
-func (s *service) Ack(ctx context.Context, mode core.CommitMode, document string, signature string) error {
+func (s *service) Ack(ctx context.Context, mode core.CommitMode, document string, signature string) (core.Ack, error) {
 	ctx, span := tracer.Start(ctx, "Ack.Service.Ack")
 	defer span.End()
 
@@ -37,7 +37,7 @@ func (s *service) Ack(ctx context.Context, mode core.CommitMode, document string
 	err := json.Unmarshal([]byte(document), &doc)
 	if err != nil {
 		span.RecordError(err)
-		return err
+		return core.Ack{}, err
 	}
 
 	switch doc.Type {
@@ -45,7 +45,7 @@ func (s *service) Ack(ctx context.Context, mode core.CommitMode, document string
 		to, err := s.entity.Get(ctx, doc.To)
 		if err != nil {
 			span.RecordError(err)
-			return err
+			return core.Ack{}, err
 		}
 
 		if to.Domain != s.config.FQDN {
@@ -57,13 +57,13 @@ func (s *service) Ack(ctx context.Context, mode core.CommitMode, document string
 			packetStr, err := json.Marshal(packet)
 			if err != nil {
 				span.RecordError(err)
-				return err
+				return core.Ack{}, err
 			}
 
 			resp, err := s.client.Commit(ctx, to.Domain, string(packetStr), nil)
 			if err != nil {
 				span.RecordError(err)
-				return err
+				return core.Ack{}, err
 			}
 
 			defer resp.Body.Close()
@@ -79,7 +79,7 @@ func (s *service) Ack(ctx context.Context, mode core.CommitMode, document string
 		to, err := s.entity.Get(ctx, doc.To)
 		if err != nil {
 			span.RecordError(err)
-			return err
+			return core.Ack{}, err
 		}
 
 		if to.Domain != s.config.FQDN {
@@ -91,13 +91,13 @@ func (s *service) Ack(ctx context.Context, mode core.CommitMode, document string
 			packetStr, err := json.Marshal(packet)
 			if err != nil {
 				span.RecordError(err)
-				return err
+				return core.Ack{}, err
 			}
 
 			resp, err := s.client.Commit(ctx, to.Domain, string(packetStr), nil)
 			if err != nil {
 				span.RecordError(err)
-				return err
+				return core.Ack{}, err
 			}
 
 			defer resp.Body.Close()
@@ -110,7 +110,7 @@ func (s *service) Ack(ctx context.Context, mode core.CommitMode, document string
 			Signature: signature,
 		})
 	default:
-		return fmt.Errorf("invalid object type")
+		return core.Ack{}, fmt.Errorf("invalid object type")
 	}
 }
 

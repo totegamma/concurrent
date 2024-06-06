@@ -82,34 +82,88 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 	}
 
 	var result any
+	owners := []string{}
 
 	switch base.Type {
 	case "message":
-		result, err = s.message.Create(ctx, mode, document, signature)
+		var m core.Message
+		m, err = s.message.Create(ctx, mode, document, signature)
+		result = m
+		owners = []string{m.Author}
+
 	case "association":
-		result, err = s.association.Create(ctx, mode, document, signature)
+		var a core.Association
+		a, err = s.association.Create(ctx, mode, document, signature)
+		result = a
+		owners = []string{a.Owner}
+
 	case "profile":
-		result, err = s.profile.Upsert(ctx, mode, document, signature)
+		var p core.Profile
+		p, err = s.profile.Upsert(ctx, mode, document, signature)
+		result = p
+		owners = []string{p.Author}
+
 	case "affiliation":
-		result, err = s.entity.Affiliation(ctx, mode, document, signature, option)
+		var e core.Entity
+		e, err = s.entity.Affiliation(ctx, mode, document, signature, option)
+		result = e
+		owners = []string{e.ID}
+
 	case "tombstone":
-		result, err = s.entity.Tombstone(ctx, mode, document, signature)
+		var e core.Entity
+		e, err = s.entity.Tombstone(ctx, mode, document, signature)
+		result = e
+		owners = []string{e.ID}
+
 	case "timeline":
-		result, err = s.timeline.UpsertTimeline(ctx, mode, document, signature)
+		var t core.Timeline
+		t, err = s.timeline.UpsertTimeline(ctx, mode, document, signature)
+		result = t
+		if !t.DomainOwned {
+			owners = []string{t.Author}
+		}
+
 	case "event":
 		result, err = s.timeline.Event(ctx, mode, document, signature)
+
 	case "ack", "unack":
-		result, err = nil, s.ack.Ack(ctx, mode, document, signature)
+		var a core.Ack
+		a, err = s.ack.Ack(ctx, mode, document, signature)
+		result = a
+		owners = []string{a.From, a.To}
+
 	case "enact":
-		result, err = s.key.Enact(ctx, mode, document, signature)
+		var k core.Key
+		k, err = s.key.Enact(ctx, mode, document, signature)
+		result = k
+		owners = []string{k.Root}
+
 	case "revoke":
-		result, err = s.key.Revoke(ctx, mode, document, signature)
+		var k core.Key
+		k, err = s.key.Revoke(ctx, mode, document, signature)
+		result = k
+		owners = []string{k.Root}
+
 	case "subscription":
-		result, err = s.subscription.CreateSubscription(ctx, mode, document, signature)
+		var sub core.Subscription
+		sub, err = s.subscription.CreateSubscription(ctx, mode, document, signature)
+		result = sub
+		if !sub.DomainOwned {
+			owners = []string{sub.Author}
+		}
+
 	case "subscribe":
-		result, err = s.subscription.Subscribe(ctx, mode, document, signature)
+		var si core.SubscriptionItem
+		si, err = s.subscription.Subscribe(ctx, mode, document, signature)
+		result = si
+		owners = []string{base.Signer}
+
 	case "unsubscribe":
-		result, err = s.subscription.Unsubscribe(ctx, mode, document)
+		var si core.SubscriptionItem
+		si, err = s.subscription.Unsubscribe(ctx, mode, document)
+		result = si
+		owners = []string{base.Signer}
+
 	case "delete":
 		var doc core.DeleteDocument
 		err := json.Unmarshal([]byte(document), &doc)
@@ -119,15 +173,34 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 		typ := doc.Target[0]
 		switch typ {
 		case 'm': // message
-			result, err = s.message.Delete(ctx, mode, document, signature)
+			var dm core.Message
+			dm, err = s.message.Delete(ctx, mode, document, signature)
+			result = dm
+			owners = []string{dm.Author}
 		case 'a': // association
-			result, err = s.association.Delete(ctx, mode, document, signature)
+			var da core.Association
+			da, err = s.association.Delete(ctx, mode, document, signature)
+			result = da
+			owners = []string{da.Owner}
 		case 'p': // profile
-			result, err = s.profile.Delete(ctx, mode, document)
+			var dp core.Profile
+			dp, err = s.profile.Delete(ctx, mode, document)
+			result = dp
+			owners = []string{dp.Author}
 		case 't': // timeline
-			result, err = s.timeline.DeleteTimeline(ctx, mode, document)
+			var dt core.Timeline
+			dt, err = s.timeline.DeleteTimeline(ctx, mode, document)
+			result = dt
+			if !dt.DomainOwned {
+				owners = []string{dt.Author}
+			}
 		case 's': // subscription
-			result, err = s.subscription.DeleteSubscription(ctx, mode, document)
+			var ds core.Subscription
+			ds, err = s.subscription.DeleteSubscription(ctx, mode, document)
+			result = ds
+			if !ds.DomainOwned {
+				owners = []string{ds.Author}
+			}
 		default:
 			result, err = nil, fmt.Errorf("unknown document type: %s", string(typ))
 		}
@@ -139,39 +212,7 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 
 		entry := fmt.Sprintf("%s %s", signature, document)
 
-		if base.Type == "ack" || base.Type == "unack" { // ack/unackはfrom/toの両方にログを残す
-			var ackDoc core.AckDocument
-			err := json.Unmarshal([]byte(document), &ackDoc)
-			if err != nil {
-				span.RecordError(errors.Wrap(err, "failed to unmarshal ack document"))
-			}
-
-			fromEntity, err := s.entity.Get(ctx, ackDoc.From)
-			if err == nil && fromEntity.Domain == s.config.FQDN {
-				err = s.repo.Log(ctx, ackDoc.From, entry)
-				if err != nil {
-					span.RecordError(errors.Wrap(err, "failed to log ack.from document"))
-				}
-			} else {
-				span.RecordError(errors.Wrap(err, "failed to get ack.from entity"))
-			}
-
-			toEntity, err := s.entity.Get(ctx, ackDoc.To)
-			if err == nil && toEntity.Domain == s.config.FQDN {
-				err = s.repo.Log(ctx, ackDoc.To, entry)
-				if err != nil {
-					span.RecordError(errors.Wrap(err, "failed to log ack.to document"))
-				}
-			} else {
-				span.RecordError(errors.Wrap(err, "failed to get ack.to entity"))
-			}
-		} else {
-			// save document to history
-			owner := base.Owner
-			if owner == "" {
-				owner = base.Signer
-			}
-
+		for _, owner := range owners {
 			err = s.repo.Log(ctx, owner, entry)
 			if err != nil {
 				span.RecordError(errors.Wrap(err, "failed to log document"))

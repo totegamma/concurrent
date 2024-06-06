@@ -107,11 +107,11 @@ func (s *service) DeleteSubscription(ctx context.Context, mode core.CommitMode, 
 }
 
 // GetOwnSubscriptions returns all subscriptions owned by the owner
-func (s *service) GetOwnSubscriptions(ctx context.Context, owner string) ([]core.Subscription, error) {
+func (s *service) GetOwnSubscriptions(ctx context.Context, author string) ([]core.Subscription, error) {
 	ctx, span := tracer.Start(ctx, "Subscription.Service.GetOwnSubscriptions")
 	defer span.End()
 
-	return s.repo.GetOwnSubscriptions(ctx, owner)
+	return s.repo.GetSubscriptionsByAuthor(ctx, author)
 }
 
 // Subscribe creates new collection item
@@ -202,7 +202,7 @@ func (s *service) Clean(ctx context.Context, ccid string) error {
 	ctx, span := tracer.Start(ctx, "Subscription.Service.Clean")
 	defer span.End()
 
-	subscriptions, err := s.repo.GetOwnSubscriptions(ctx, ccid)
+	subscriptions, err := s.repo.GetSubscriptionsByAuthorOwned(ctx, ccid)
 	if err != nil {
 		span.RecordError(err)
 		return err

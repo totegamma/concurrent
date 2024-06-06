@@ -10,8 +10,8 @@ import (
 
 // Repository is the interface for host repository
 type Repository interface {
-	Ack(ctx context.Context, ack *core.Ack) error
-	Unack(ctx context.Context, ack *core.Ack) error
+	Ack(ctx context.Context, ack *core.Ack) (core.Ack, error)
+	Unack(ctx context.Context, ack *core.Ack) (core.Ack, error)
 	GetAcker(ctx context.Context, key string) ([]core.Ack, error)
 	GetAcking(ctx context.Context, key string) ([]core.Ack, error)
 }
@@ -26,23 +26,25 @@ func NewRepository(db *gorm.DB) Repository {
 }
 
 // Ack creates a new ack
-func (r *repository) Ack(ctx context.Context, ack *core.Ack) error {
+func (r *repository) Ack(ctx context.Context, ack *core.Ack) (core.Ack, error) {
 	ctx, span := tracer.Start(ctx, "Ack.Repository.Ack")
 	defer span.End()
 
 	ack.Valid = true
+	err := r.db.WithContext(ctx).Save(&ack).Error
 
-	return r.db.WithContext(ctx).Save(&ack).Error
+	return *ack, err
 }
 
 // Unack deletes a ack
-func (r *repository) Unack(ctx context.Context, ack *core.Ack) error {
+func (r *repository) Unack(ctx context.Context, ack *core.Ack) (core.Ack, error) {
 	ctx, span := tracer.Start(ctx, "Ack.Repository.Unack")
 	defer span.End()
 
 	ack.Valid = false
+	err := r.db.WithContext(ctx).Save(&ack).Error
 
-	return r.db.WithContext(ctx).Save(&ack).Error
+	return *ack, err
 }
 
 // GetAcker returns all acks for a entity

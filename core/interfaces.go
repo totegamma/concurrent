@@ -10,7 +10,7 @@ import (
 )
 
 type AckService interface {
-	Ack(ctx context.Context, mode CommitMode, document, signature string) error
+	Ack(ctx context.Context, mode CommitMode, document, signature string) (Ack, error)
 	GetAcker(ctx context.Context, key string) ([]Ack, error)
 	GetAcking(ctx context.Context, key string) ([]Ack, error)
 }

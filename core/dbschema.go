@@ -98,7 +98,7 @@ type Domain struct {
 	Score        int         `json:"score" gorm:"type:integer;default:0"`
 	Meta         interface{} `json:"meta" gorm:"-"`
 	IsScoreFixed bool        `json:"isScoreFixed" gorm:"type:boolean;default:false"`
-	Dimension    string      `json:"dimension" gorm:"type:text"`
+	Dimension    string      `json:"dimension" gorm:"-"`
 	CDate        time.Time   `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 	MDate        time.Time   `json:"mdate" gorm:"autoUpdateTime"`
 	LastScraped  time.Time   `json:"lastScraped" gorm:"type:timestamp with time zone"`

@@ -60,7 +60,7 @@ func (s *service) Ack(ctx context.Context, mode core.CommitMode, document string
 				return core.Ack{}, err
 			}
 
-			resp, err := s.client.Commit(ctx, to.Domain, string(packetStr), nil)
+			resp, err := s.client.Commit(ctx, to.Domain, string(packetStr), nil, nil)
 			if err != nil {
 				span.RecordError(err)
 				return core.Ack{}, err
@@ -94,7 +94,7 @@ func (s *service) Ack(ctx context.Context, mode core.CommitMode, document string
 				return core.Ack{}, err
 			}
 
-			resp, err := s.client.Commit(ctx, to.Domain, string(packetStr), nil)
+			resp, err := s.client.Commit(ctx, to.Domain, string(packetStr), nil, nil)
 			if err != nil {
 				span.RecordError(err)
 				return core.Ack{}, err

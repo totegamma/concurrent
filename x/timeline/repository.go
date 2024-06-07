@@ -229,7 +229,7 @@ func (r *repository) GetTimelineFromRemote(ctx context.Context, host string, key
 		span.RecordError(err)
 	}
 
-	timeline, err := r.client.GetTimeline(ctx, host, key)
+	timeline, err := r.client.GetTimeline(ctx, host, key, nil)
 	if err != nil {
 		span.RecordError(err)
 		return core.Timeline{}, err
@@ -264,7 +264,7 @@ func (r *repository) GetChunksFromRemote(ctx context.Context, host string, timel
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.GetChunksFromRemote")
 	defer span.End()
 
-	chunks, err := r.client.GetChunks(ctx, host, timelines, queryTime)
+	chunks, err := r.client.GetChunks(ctx, host, timelines, queryTime, nil)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err

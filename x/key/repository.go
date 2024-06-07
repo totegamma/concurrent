@@ -51,7 +51,7 @@ func (r *repository) GetRemoteKeyResolution(ctx context.Context, remote string, 
 		return keys, nil
 	}
 	// get from remote
-	keys, err := r.client.GetKey(ctx, remote, keyID)
+	keys, err := r.client.GetKey(ctx, remote, keyID, nil)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err

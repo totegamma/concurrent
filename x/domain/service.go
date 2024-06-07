@@ -38,7 +38,7 @@ func (s *service) GetByFQDN(ctx context.Context, fqdn string) (core.Domain, erro
 		return domain, nil
 	}
 
-	domain, err = s.client.GetDomain(ctx, fqdn)
+	domain, err = s.client.GetDomain(ctx, fqdn, nil)
 	if err != nil {
 		return core.Domain{}, err
 	}

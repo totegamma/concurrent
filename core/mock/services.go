@@ -40,11 +40,12 @@ func (m *MockAckService) EXPECT() *MockAckServiceMockRecorder {
 }
 
 // Ack mocks base method.
-func (m *MockAckService) Ack(ctx context.Context, mode core.CommitMode, document, signature string) error {
+func (m *MockAckService) Ack(ctx context.Context, mode core.CommitMode, document, signature string) (core.Ack, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Ack", ctx, mode, document, signature)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(core.Ack)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // Ack indicates an expected call of Ack.
@@ -1934,6 +1935,20 @@ func (m *MockTimelineService) RemoveItem(ctx context.Context, timeline, id strin
 func (mr *MockTimelineServiceMockRecorder) RemoveItem(ctx, timeline, id interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveItem", reflect.TypeOf((*MockTimelineService)(nil).RemoveItem), ctx, timeline, id)
+}
+
+// RemoveItemsByResourceID mocks base method.
+func (m *MockTimelineService) RemoveItemsByResourceID(ctx context.Context, resourceID string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RemoveItemsByResourceID", ctx, resourceID)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RemoveItemsByResourceID indicates an expected call of RemoveItemsByResourceID.
+func (mr *MockTimelineServiceMockRecorder) RemoveItemsByResourceID(ctx, resourceID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveItemsByResourceID", reflect.TypeOf((*MockTimelineService)(nil).RemoveItemsByResourceID), ctx, resourceID)
 }
 
 // UpsertTimeline mocks base method.

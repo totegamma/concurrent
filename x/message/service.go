@@ -384,7 +384,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 				continue
 			}
 
-			s.client.Commit(ctx, domain, string(packetStr), nil)
+			s.client.Commit(ctx, domain, string(packetStr), nil, nil)
 		}
 	}
 

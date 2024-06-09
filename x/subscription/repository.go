@@ -111,7 +111,7 @@ func (r *repository) CreateSubscription(ctx context.Context, subscription core.S
 		return subscription, err
 	}
 
-	err = r.db.WithContext(ctx).Create(&subscription).Error
+	err = r.db.WithContext(ctx).Save(&subscription).Error
 	if err != nil {
 		return subscription, err
 	}

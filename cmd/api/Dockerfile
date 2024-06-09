@@ -9,7 +9,6 @@ RUN go build -ldflags "-s -w -X main.version=$(git describe) -X \"main.buildMach
 
 FROM ubuntu:latest
 
-RUN go install github.com/totegamma/ccadmin@v0.5.0
 COPY --from=coreBuilder /work/ccapi /usr/local/bin
 
 CMD ["ccapi"]

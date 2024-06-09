@@ -7,7 +7,7 @@ COPY ./ ./
 
 RUN go build -ldflags "-s -w -X main.version=$(git describe) -X \"main.buildMachine=$(uname -srmo)\" -X \"main.buildTime=$(date)\" -X \"main.goVersion=$(go version)\"" -o ccgateway ./cmd/gateway
 
-FROM golang:latest
+FROM ubuntu:latest
 
 COPY --from=coreBuilder /work/ccgateway /usr/local/bin
 

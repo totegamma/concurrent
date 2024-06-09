@@ -7,7 +7,7 @@ COPY ./ ./
 
 RUN go build -ldflags "-s -w -X main.version=$(git describe) -X \"main.buildMachine=$(uname -srmo)\" -X \"main.buildTime=$(date)\" -X \"main.goVersion=$(go version)\"" -o ccapi ./cmd/api
 
-FROM golang:latest
+FROM ubuntu:latest
 
 RUN go install github.com/totegamma/ccadmin@v0.5.0
 COPY --from=coreBuilder /work/ccapi /usr/local/bin

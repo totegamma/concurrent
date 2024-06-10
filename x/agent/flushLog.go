@@ -6,7 +6,6 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 )
 
@@ -36,55 +35,10 @@ func (a *agent) FlushLog(ctx context.Context) {
 	defer storage.Close()
 
 	// find last log entry
-	stats, err := storage.Stat()
-	if err != nil {
-		slog.Error("failed to stat repository log file:", err)
-		panic(err)
-	}
 
-	var lastLine string
-	var seeker int64 = stats.Size()
-
-	for {
-		from := seeker - 1024
-		to := seeker
-
-		if from < 0 {
-			from = 0
-		}
-
-		if from == 0 && to == 0 {
-			break
-		}
-
-		buf := make([]byte, to-from)
-		_, err := storage.ReadAt(buf, from)
-		if err != nil {
-			slog.Error("failed to read repository log file:", err)
-			panic(err)
-		}
-
-		// remove trailing newline
-		if buf[len(buf)-1] == '\n' {
-			buf = buf[:len(buf)-1]
-		}
-
-		lines := strings.Split(string(buf), "\n")
-		if len(lines) > 1 {
-			lastLine = lines[len(lines)-1] + lastLine
-			break
-		}
-
-		lastLine = string(buf) + lastLine
-
-		seeker = from
-	}
-
-	split := strings.Split(lastLine, " ")
-	lastID := split[0]
-	if len(split) < 2 {
-		slog.Error("no last log entry found")
-		lastID = "0-0"
+	lastID := a.rdb.Get(ctx, "agent:CommitLogLastFlushed").Val()
+	if lastID == "" {
+		lastID = "0"
 	}
 
 	entries, err := a.store.Since(ctx, lastID)
@@ -124,6 +78,11 @@ func (a *agent) FlushLog(ctx context.Context) {
 		defer userstore.Close()
 
 		userstore.WriteString(log)
+	}
+
+	// update last flushed log id
+	if len(entries) > 0 {
+		a.rdb.Set(ctx, "agent:CommitLogLastFlushed", entries[len(entries)-1].ID, 0)
 	}
 
 	slog.Info(fmt.Sprintf("%d entries flushed", len(entries)))

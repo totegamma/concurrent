@@ -40,7 +40,7 @@ func (r *repository) Since(ctx context.Context, since string) ([]core.CommitLog,
 			"repository-all",
 			since,
 		},
-		Count: 64,
+		Count: 4096,
 		Block: 0,
 	}).Result()
 

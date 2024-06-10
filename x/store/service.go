@@ -213,6 +213,16 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 		entry := fmt.Sprintf("%s %s", signature, document)
 
 		for _, owner := range owners {
+			ownerEntity, err := s.entity.Get(ctx, owner)
+			if err != nil {
+				span.RecordError(errors.Wrap(err, "failed to get owner entity"))
+				continue
+			}
+
+			if ownerEntity.Domain != s.config.FQDN {
+				continue
+			}
+
 			err = s.repo.Log(ctx, owner, entry)
 			if err != nil {
 				span.RecordError(errors.Wrap(err, "failed to log document"))

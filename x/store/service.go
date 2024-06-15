@@ -121,6 +121,8 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 		result = t
 		if !t.DomainOwned {
 			owners = []string{t.Author}
+		} else {
+			owners = []string{s.config.FQDN}
 		}
 
 	case "event":
@@ -150,6 +152,8 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 		result = sub
 		if !sub.DomainOwned {
 			owners = []string{sub.Author}
+		} else {
+			owners = []string{s.config.FQDN}
 		}
 
 	case "subscribe":
@@ -193,6 +197,8 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 			result = dt
 			if !dt.DomainOwned {
 				owners = []string{dt.Author}
+			} else {
+				owners = []string{s.config.FQDN}
 			}
 		case 's': // subscription
 			var ds core.Subscription
@@ -200,6 +206,8 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 			result = ds
 			if !ds.DomainOwned {
 				owners = []string{ds.Author}
+			} else {
+				owners = []string{s.config.FQDN}
 			}
 		default:
 			result, err = nil, fmt.Errorf("unknown document type: %s", string(typ))

@@ -76,8 +76,6 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 	ctx, span := tracer.Start(ctx, "Association.Service.Create")
 	defer span.End()
 
-	created := core.Association{}
-
 	var doc core.AssociationDocument[any]
 	err := json.Unmarshal([]byte(document), &doc)
 	if err != nil {
@@ -94,37 +92,37 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 	owner, err := s.entity.Get(ctx, doc.Owner)
 	if err != nil {
 		span.RecordError(err)
-		return created, err
+		return core.Association{}, err
 	}
 
 	bodyStr, err := json.Marshal(doc.Body)
 	if err != nil {
 		span.RecordError(err)
-		return created, err
+		return core.Association{}, err
 	}
 
 	uniqueKey := doc.Signer + doc.Schema + doc.Target + doc.Variant + string(bodyStr)
 	uniqueHash := core.GetHash([]byte(uniqueKey))
 	unique := hex.EncodeToString(uniqueHash[:16])
 
-	if owner.Domain == s.config.FQDN { // signerが自ドメイン管轄の場合、リソースを作成
-		association := core.Association{
-			ID:        id,
-			Author:    doc.Signer,
-			Owner:     doc.Owner,
-			Schema:    doc.Schema,
-			Target:    doc.Target,
-			Document:  document,
-			Signature: signature,
-			Timelines: doc.Timelines,
-			Variant:   doc.Variant,
-			Unique:    unique,
-		}
+	association := core.Association{
+		ID:        id,
+		Author:    doc.Signer,
+		Owner:     doc.Owner,
+		Schema:    doc.Schema,
+		Target:    doc.Target,
+		Document:  document,
+		Signature: signature,
+		Timelines: doc.Timelines,
+		Variant:   doc.Variant,
+		Unique:    unique,
+	}
 
-		created, err = s.repo.Create(ctx, association)
+	if owner.Domain == s.config.FQDN { // signerが自ドメイン管轄の場合、リソースを作成
+		association, err = s.repo.Create(ctx, association)
 		if err != nil {
 			span.RecordError(err)
-			return created, err // TODO: if err is duplicate key error, server should return 409
+			return association, err // TODO: if err is duplicate key error, server should return 409
 		}
 	}
 
@@ -154,9 +152,9 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 				// localなら、timelineのエントリを生成→Eventを発行
 				for _, timeline := range timelines {
 					posted, err := s.timeline.PostItem(ctx, timeline, core.TimelineItem{
-						ResourceID: created.ID,
-						Owner:      created.Owner,
-						Author:     &created.Author,
+						ResourceID: association.ID,
+						Owner:      association.Owner,
+						Author:     &association.Author,
 					}, document, signature)
 					if err != nil {
 						span.RecordError(err)
@@ -168,7 +166,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 						Item:      posted,
 						Document:  document,
 						Signature: signature,
-						Resource:  created,
+						Resource:  association,
 					}
 
 					err = s.timeline.PublishEvent(ctx, event)
@@ -203,11 +201,11 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 
 		// Associationだけの追加対応
 		// メッセージの場合は、ターゲットのタイムラインにも追加する
-		if mode != core.CommitModeLocalOnlyExec {
-			targetMessage, err := s.message.Get(ctx, created.Target, doc.Signer) //NOTE: これはownerのドメインしか実行できない
+		if owner.Domain == s.config.FQDN && mode != core.CommitModeLocalOnlyExec {
+			targetMessage, err := s.message.Get(ctx, association.Target, doc.Signer) //NOTE: これはownerのドメインしか実行できない
 			if err != nil {
 				span.RecordError(err)
-				return created, err
+				return association, err
 			}
 
 			for _, timeline := range targetMessage.Timelines {
@@ -227,20 +225,20 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 						Timeline:  timeline,
 						Document:  document,
 						Signature: signature,
-						Resource:  created,
+						Resource:  association,
 					}
 					err := s.timeline.PublishEvent(ctx, event)
 					if err != nil {
 						slog.ErrorContext(ctx, "failed to publish message to Redis", slog.String("error", err.Error()), slog.String("module", "association"))
 						span.RecordError(err)
-						return created, err
+						return association, err
 					}
 				} else {
 					documentObj := core.EventDocument{
 						Timeline:  timeline,
 						Document:  document,
 						Signature: signature,
-						Resource:  created,
+						Resource:  association,
 						DocumentBase: core.DocumentBase[any]{
 							Signer:   s.config.CCID,
 							Type:     "event",
@@ -251,13 +249,13 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 					document, err := json.Marshal(documentObj)
 					if err != nil {
 						span.RecordError(err)
-						return created, err
+						return association, err
 					}
 
 					signatureBytes, err := core.SignBytes([]byte(document), s.config.PrivateKey)
 					if err != nil {
 						span.RecordError(err)
-						return created, err
+						return association, err
 					}
 
 					signature := hex.EncodeToString(signatureBytes)
@@ -270,7 +268,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 					packet, err := json.Marshal(packetObj)
 					if err != nil {
 						span.RecordError(err)
-						return created, err
+						return association, err
 					}
 
 					s.client.Commit(ctx, domain, string(packet), nil, nil)
@@ -279,7 +277,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 		}
 	}
 
-	return created, nil
+	return association, nil
 }
 
 // Get returns an association by ID

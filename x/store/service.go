@@ -95,7 +95,7 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 		var a core.Association
 		a, err = s.association.Create(ctx, mode, document, signature)
 		result = a
-		owners = []string{a.Owner}
+		owners = []string{a.Author, a.Owner}
 
 	case "profile":
 		var p core.Profile

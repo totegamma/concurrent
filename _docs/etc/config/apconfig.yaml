@@ -1,0 +1,25 @@
+
+apConfig:
+  fqdn: example.com
+  proxyPriv: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+
+# config.yamlと同じ内容
+server:
+  dsn: "host=db user=postgres password=postgres dbname=concurrent port=5432 sslmode=disable"
+  redisAddr: "redis:6379"
+  memcachedAddr: "memcached:11211"
+  traceEndpoint: "tempo:4318"
+  enableTrace: false
+  repositoryPath: "/var/lib/concurrent"
+  captchaSitekey: "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"
+  captchaSecret: "6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe"
+
+nodeInfo:
+  openRegistration: false
+  metadata:
+    nodeName: 'example.com'
+    nodeDescription: 'description'
+    maintainer:
+      name: 'your_name'
+      email: 'your_email@example.com'
+    themeColor: '#0476d9'

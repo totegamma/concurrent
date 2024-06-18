@@ -1,5 +1,3 @@
-version: "3"
-
 services:
   gateway:
     image: ghcr.io/totegamma/ccgateway:latest

@@ -1,5 +1,5 @@
 services:
-  - name: concurrent
+  - name: concrnt
     host: api
     port: 8000
     path: /api/v1
@@ -13,18 +13,18 @@ services:
     host: summary
     port: 8080
     path: /summary
-  - name: activitypub
-    host: apbridge
-    port: 8000
-    path: /ap
-    preservePath: true
-    injectCors: true
-  - name: webfinger
-    host: apbridge
-    port: 8000
-    path: /.well-known
-    preservePath: true
-    injectCors: true
+#  - name: activitypub
+#    host: apbridge
+#    port: 8000
+#    path: /ap
+#    preservePath: true
+#    injectCors: true
+#  - name: webfinger
+#    host: apbridge
+#    port: 8000
+#    path: /.well-known
+#    preservePath: true
+#    injectCors: true
 #  - name: mediaserver
 #    host: mediaserver
 #    port: 8000

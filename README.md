@@ -44,7 +44,7 @@ In this sense, centralized social networks, where one relies on others for prote
 
 # For geeks
 ## How to launch own server
-look at detailed documentation: [concurrent square](https://square.concurrent.world/operator/basic/index.html)
+look at detailed documentation: [concrnt square](https://square.concrnt.net/operator/)
 
 ## Contributing
 When creating a PR, we generally recommend creating an issue first and reaching a consensus on whether or not to proceed. (Concrnt is currently being heavily developed, and there may be changes that cannot be made due to its policy.)

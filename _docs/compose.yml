@@ -53,7 +53,7 @@ services:
       - external
 
 # apbridge:
-#   image: ghcr.io/totegamma/ccworld-ap-bridge:latest
+#   image: ghcr.io/concrnt/ccworld-ap-bridge:latest
 #   restart: always
 #   depends_on:
 #     db:

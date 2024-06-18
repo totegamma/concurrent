@@ -1,24 +1,25 @@
 # this is example. you must replace ccid and keys before deploy.
-
 server:
   dsn: "host=db user=postgres password=postgres dbname=concurrent port=5432 sslmode=disable"
   redisAddr: "redis:6379"
   memcachedAddr: "memcached:11211"
-  traceEndpoint: "localhost:4318"
+  traceEndpoint: "tempo:4318"
   enableTrace: false
-  logpath: "" # empty for default(/var/log/concurrent)
+  repositoryPath: "/var/lib/concurrent"
   captchaSitekey: "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"
   captchaSecret: "6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe"
 
-concurrent:
+concrnt:
   # fqdn is instance ID
   # It is really hard and not recommended to change this value after node started
   fqdn: example.tld
   # 'open' or 'invite' or 'close'
   registration: open
+  # network
+  # for testing: concrnt-devnet, for production: concrnt-mainnet
+  dimension: concrnt-mainnet
   # server agent account
   # it is handy to generate these info with concurrent.world devtool
-  dimension: concrnt-mainnet
   privatekey: xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 
 profile:
@@ -26,7 +27,7 @@ profile:
   description: domain description
   logo: 'https://concurrent.world/concurrent.png'
   wordmark: ''
-  themeColor: '#20193b'
+  themeColor: '#0476d9'
   maintainerName: notset
   maintainerEmail: notset@example.com
 

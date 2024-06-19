@@ -16,10 +16,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v2
 
-      - name: Set up Node.js
-        uses: actions/setup-node@v2
+      - uses: pnpm/action-setup@v4
+        name: Install pnpm
         with:
-          node-version: '18'
+          version: 8
+          run_install: false
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'pnpm'
 
       - name: Build
         run: pnpm i && pnpm build
@@ -36,5 +43,4 @@ jobs:
           asset_path: ./web.zip
           asset_name: web.zip
           asset_content_type: application/zip
-
 

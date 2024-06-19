@@ -1,0 +1,45 @@
+name: Release_Go
+
+on:
+  release:
+    types: [created]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        target:
+          - api
+          - gateway
+        platform:
+          - amd64
+          - arm64
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v2
+
+      - name: Set up Go
+        uses: actions/setup-go@v2
+        with:
+          go-version: '1.21'
+
+      - name: Build
+        run: go build -o ${{ matrix.target }}-linux-${{ matrix.platform }} ./cmd/${{ matrix.target }}
+        env:
+          GOOS: linux
+          GOARCH: ${{ matrix.platform }}
+
+      - name: Upload Release Asset
+        uses: actions/upload-release-asset@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          upload_url: ${{ github.event.release.upload_url }}
+          asset_path: ./{{ matrix.target }}-linux-${{ matrix.platform }}
+          asset_name: {{ matrix.target }}-linux-${{ matrix.platform }}
+          asset_content_type: application/octet-stream
+

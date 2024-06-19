@@ -2,6 +2,7 @@
 server:
   dsn: "host=db user=postgres password=postgres dbname=concurrent port=5432 sslmode=disable"
   redisAddr: "redis:6379"
+  redisDB: 0
   memcachedAddr: "memcached:11211"
   traceEndpoint: "tempo:4318"
   enableTrace: false

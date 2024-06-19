@@ -17,6 +17,7 @@ type Config struct {
 type Server struct {
 	Dsn            string `yaml:"dsn"`
 	RedisAddr      string `yaml:"redisAddr"`
+	RedisDB        int    `yaml:"redisDB"`
 	MemcachedAddr  string `yaml:"memcachedAddr"`
 	EnableTrace    bool   `yaml:"enableTrace"`
 	TraceEndpoint  string `yaml:"traceEndpoint"`

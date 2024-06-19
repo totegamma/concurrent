@@ -188,7 +188,7 @@ func main() {
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     config.Server.RedisAddr,
 		Password: "", // no password set
-		DB:       0,  // use default DB
+		DB:       config.Server.RedisDB,
 	})
 	err = redisotel.InstrumentTracing(
 		rdb,

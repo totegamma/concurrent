@@ -67,6 +67,14 @@ func (s *service) GetChunksFromRemote(ctx context.Context, host string, timeline
 	return s.repository.GetChunksFromRemote(ctx, host, timelines, pivot)
 }
 
+// NormalizeTimelineID normalizes timelineID
+//
+// t+<hash>@<anydomain> -> t+<hash>@<anydomain>
+// t+<hash>@<anyuser> -> t+<hash>@<anydomain>
+// <semanticID>@<localuser> -> t+<hash>@<localdomain>
+// <semanticID>@<remoteuser> -> <semanticID>@<userID>@<domainname>
+// <semanticID>@<userID>@<localdomain> -> t+<hash>@<localdomain>
+// <semanticID>@<userID>@<remotedomain> -> <semanticID>@<userID>@<remotedomain>
 func (s *service) NormalizeTimelineID(ctx context.Context, timeline string) (string, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.NormalizeTimelineID")
 	defer span.End()
@@ -74,43 +82,59 @@ func (s *service) NormalizeTimelineID(ctx context.Context, timeline string) (str
 	// CheckCache
 	cached, err := s.repository.GetNormalizationCache(ctx, timeline)
 	if err == nil {
+		fmt.Printf("cache hit %s -> %s\n", timeline, cached)
 		return cached, nil
 	}
 
+	var normalized string
+
 	split := strings.Split(timeline, "@")
 	id := split[0]
-	domain := s.config.FQDN
-	if len(split) == 2 {
-		if core.IsCCID(split[1]) {
-			entity, err := s.entity.Get(ctx, split[1])
+	domain := split[len(split)-1]
+
+	var userid string
+	if len(split) == 3 {
+		userid = split[1]
+	}
+
+	if core.IsCCID(domain) {
+		userid = domain
+		entity, err := s.entity.Get(ctx, domain)
+		if err != nil {
+			span.SetAttributes(attribute.String("timeline", timeline))
+			span.RecordError(err)
+			return "", err
+		}
+		domain = entity.Domain
+	}
+
+	if domain == s.config.FQDN {
+		if cdid.IsSeemsCDID(id, 't') {
+			normalized = id + "@" + domain
+		} else {
+			target, err := s.semanticid.Lookup(ctx, id, userid)
 			if err != nil {
 				span.SetAttributes(attribute.String("timeline", timeline))
+				err = errors.Wrap(err, "failed to lookup semanticID")
 				span.RecordError(err)
 				return "", err
 			}
-			domain = entity.Domain
-
-			if !cdid.IsSeemsCDID(id, 't') && domain == s.config.FQDN {
-				target, err := s.semanticid.Lookup(ctx, id, split[1])
-				if err != nil {
-					span.SetAttributes(attribute.String("timeline", timeline))
-					span.RecordError(errors.Wrap(err, "failed to lookup semanticID"))
-					return "", err
-				}
-				id = target
-			}
-
+			normalized = target + "@" + domain
+		}
+	} else {
+		if cdid.IsSeemsCDID(id, 't') {
+			normalized = id + "@" + domain
 		} else {
-			domain = split[1]
+			normalized = id + "@" + userid + "@" + domain
 		}
 	}
-
-	normalized := fmt.Sprintf("%s@%s", id, domain)
 
 	err = s.repository.SetNormalizationCache(ctx, timeline, normalized)
 	if err != nil {
 		span.RecordError(err)
 	}
+
+	fmt.Printf("normalize %s -> %s\n", timeline, normalized)
 
 	return normalized, nil
 }

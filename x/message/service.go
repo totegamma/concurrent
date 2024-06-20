@@ -308,11 +308,11 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 			continue
 		}
 		split := strings.Split(normalized, "@")
-		if len(split) != 2 {
+		if len(split) <= 1 {
 			span.RecordError(fmt.Errorf("invalid timeline id: %s", normalized))
 			continue
 		}
-		domain := split[1]
+		domain := split[len(split)-1]
 
 		if _, ok := destinations[domain]; !ok {
 			destinations[domain] = []string{}

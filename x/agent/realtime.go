@@ -41,7 +41,7 @@ func (a *agent) GetCurrentSubs(ctx context.Context) []string {
 	uniqueChannels := make([]string, 0)
 	for channel := range uniqueChannelsMap {
 		split := strings.Split(channel, "@")
-		if len(split) != 2 {
+		if len(split) <= 1 {
 			continue
 		}
 		uniqueChannels = append(uniqueChannels, channel)
@@ -62,10 +62,10 @@ func (a *agent) createInsufficientSubs(ctx context.Context) {
 	changedRemotes := make([]string, 0)
 	for _, timeline := range currentSubs {
 		split := strings.Split(timeline, "@")
-		if len(split) != 2 {
+		if len(split) <= 1 {
 			continue
 		}
-		domain := split[1]
+		domain := split[len(split)-1]
 
 		if domain == a.config.FQDN {
 			continue

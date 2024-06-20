@@ -219,14 +219,15 @@ func (s *service) GetRecentItems(ctx context.Context, timelines []string, until 
 		}
 
 		split := strings.Split(normalized, "@")
-		if len(split) == 2 {
-			if _, ok := domainMap[split[1]]; !ok {
-				domainMap[split[1]] = make([]string, 0)
+		domain := split[len(split)-1]
+		if len(split) >= 2 {
+			if _, ok := domainMap[domain]; !ok {
+				domainMap[domain] = make([]string, 0)
 			}
-			if split[1] == s.config.FQDN {
-				domainMap[split[1]] = append(domainMap[split[1]], split[0])
+			if domain == s.config.FQDN {
+				domainMap[domain] = append(domainMap[domain], split[0])
 			} else {
-				domainMap[split[1]] = append(domainMap[split[1]], timeline)
+				domainMap[domain] = append(domainMap[domain], timeline)
 			}
 		}
 
@@ -566,8 +567,8 @@ func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, docu
 			return core.Timeline{}, err
 		}
 		split := strings.Split(id, "@")
-		if len(split) == 2 {
-			if split[1] != s.config.FQDN {
+		if len(split) >= 1 {
+			if split[len(split)-1] != s.config.FQDN {
 				return core.Timeline{}, fmt.Errorf("This timeline is not owned by this domain")
 			}
 			doc.ID = split[0]
@@ -621,17 +622,23 @@ func (s *service) GetTimeline(ctx context.Context, key string) (core.Timeline, e
 	defer span.End()
 
 	split := strings.Split(key, "@")
-	if len(split) == 2 {
-		if split[1] == s.config.FQDN {
-			return s.repository.GetTimeline(ctx, split[0])
+	id := split[0]
+	domain := split[len(split)-1]
+	userid := split[len(split)-1]
+	if len(split) == 3 {
+		userid = split[1]
+	}
+	if len(split) >= 2 {
+		if domain == s.config.FQDN {
+			return s.repository.GetTimeline(ctx, id)
 		} else {
 			if cdid.IsSeemsCDID(split[0], 't') {
-				timeline, err := s.repository.GetTimeline(ctx, split[0])
+				timeline, err := s.repository.GetTimeline(ctx, id)
 				if err == nil {
 					return timeline, nil
 				}
 			}
-			targetID, err := s.semanticid.Lookup(ctx, split[0], split[1])
+			targetID, err := s.semanticid.Lookup(ctx, id, userid)
 			if err != nil {
 				return core.Timeline{}, err
 			}
@@ -735,7 +742,7 @@ func (s *service) GetTimelineAutoDomain(ctx context.Context, timelineID string) 
 	split := strings.Split(normalized, "@")
 	if len(split) > 1 {
 		key = split[0]
-		host = split[1]
+		host = split[len(split)-1]
 	}
 
 	if host == s.config.FQDN {

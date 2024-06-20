@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"net"
 	"net/http"
 	"reflect"
 	"strings"
@@ -20,7 +21,7 @@ import (
 )
 
 const (
-	defaultTimeout = 10 * time.Second
+	defaultTimeout = 3 * time.Second
 )
 
 var tracer = otel.Tracer("client")
@@ -38,23 +39,75 @@ type Client interface {
 }
 
 type client struct {
-	client http.Client
+	client     http.Client
+	lastFailed map[string]time.Time
+	failCount  map[string]int
 }
 
 func NewClient() Client {
 	httpClient := new(http.Client)
-	return &client{
-		client: *httpClient,
+	httpClient.Timeout = defaultTimeout
+	client := &client{
+		client:     *httpClient,
+		lastFailed: make(map[string]time.Time),
+		failCount:  make(map[string]int),
 	}
+	go client.UpKeeper()
+	return client
 }
 
 type Options struct {
 	AuthToken string
 }
 
+func (c *client) IsOnline(domain string) bool {
+	if c.lastFailed[domain].IsZero() {
+		return true
+	}
+	return false
+}
+
+func (c *client) UpKeeper() {
+	ctx := context.Background()
+	for {
+		time.Sleep(1 * time.Second)
+		for domain, lastFailed := range c.lastFailed {
+			// exponential backoff (max 10 minutes)
+			var span int = 600
+			if c.failCount[domain] < 10 {
+				span = 1 << c.failCount[domain]
+			}
+			if time.Since(lastFailed) > time.Duration(span)*time.Second {
+				log.Printf("Domain %s is offline. Fail count: %d", domain, c.failCount[domain])
+				// health check
+				_, err := httpRequest[core.Domain](ctx, &c.client, "GET", "https://"+domain+"/api/v1/domain", "", &Options{})
+				if err != nil {
+					if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+						c.lastFailed[domain] = time.Now()
+					}
+					c.failCount[domain]++
+					if c.failCount[domain] > 20 {
+						log.Printf("Domain %s is still offline after 20 retries. Bye bye :(", domain)
+						delete(c.lastFailed, domain)
+						delete(c.failCount, domain)
+					}
+				} else {
+					log.Printf("Domain %s is back online :3", domain)
+					c.lastFailed[domain] = time.Time{}
+					c.failCount[domain] = 0
+				}
+			}
+		}
+	}
+}
+
 func (c *client) Commit(ctx context.Context, domain, body string, response any, opts *Options) (*http.Response, error) {
 	ctx, span := tracer.Start(ctx, "Client.Commit")
 	defer span.End()
+
+	if !c.IsOnline(domain) {
+		return &http.Response{}, fmt.Errorf("Domain is offline")
+	}
 
 	req, err := http.NewRequest("POST", "https://"+domain+"/api/v1/commit", bytes.NewBuffer([]byte(body)))
 	if err != nil {
@@ -87,6 +140,11 @@ func (c *client) Commit(ctx context.Context, domain, body string, response any, 
 	resp, err := client.Do(req)
 	if err != nil {
 		span.RecordError(err)
+
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			c.lastFailed[domain] = time.Now()
+		}
+
 		return &http.Response{}, err
 	}
 
@@ -146,9 +204,18 @@ func (c *client) GetEntity(ctx context.Context, domain, address string, opts *Op
 	ctx, span := tracer.Start(ctx, "Client.GetEntity")
 	defer span.End()
 
+	if !c.IsOnline(domain) {
+		return core.Entity{}, fmt.Errorf("Domain is offline")
+	}
+
 	response, err := httpRequest[core.Entity](ctx, &c.client, "GET", "https://"+domain+"/api/v1/entity/"+address, "", opts)
 	if err != nil {
 		span.RecordError(err)
+
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			c.lastFailed[domain] = time.Now()
+		}
+
 		return core.Entity{}, err
 	}
 
@@ -159,9 +226,19 @@ func (c *client) GetMessage(ctx context.Context, domain, id string, opts *Option
 	ctx, span := tracer.Start(ctx, "Client.GetMessage")
 	defer span.End()
 
+	if !c.IsOnline(domain) {
+		return core.Message{}, fmt.Errorf("Domain is offline")
+
+	}
+
 	response, err := httpRequest[core.Message](ctx, &c.client, "GET", "https://"+domain+"/api/v1/message/"+id, "", opts)
 	if err != nil {
 		span.RecordError(err)
+
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			c.lastFailed[domain] = time.Now()
+		}
+
 		return core.Message{}, err
 	}
 
@@ -172,9 +249,18 @@ func (c *client) GetAssociation(ctx context.Context, domain, id string, opts *Op
 	ctx, span := tracer.Start(ctx, "Client.GetAssociation")
 	defer span.End()
 
+	if !c.IsOnline(domain) {
+		return core.Association{}, fmt.Errorf("Domain is offline")
+	}
+
 	response, err := httpRequest[core.Association](ctx, &c.client, "GET", "https://"+domain+"/api/v1/association/"+id, "", opts)
 	if err != nil {
 		span.RecordError(err)
+
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			c.lastFailed[domain] = time.Now()
+		}
+
 		return core.Association{}, err
 	}
 
@@ -185,9 +271,18 @@ func (c *client) GetProfile(ctx context.Context, domain, id string, opts *Option
 	ctx, span := tracer.Start(ctx, "Client.GetProfile")
 	defer span.End()
 
+	if !c.IsOnline(domain) {
+		return core.Profile{}, fmt.Errorf("Domain is offline")
+	}
+
 	response, err := httpRequest[core.Profile](ctx, &c.client, "GET", "https://"+domain+"/api/v1/profile/"+id, "", opts)
 	if err != nil {
 		span.RecordError(err)
+
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			c.lastFailed[domain] = time.Now()
+		}
+
 		return core.Profile{}, err
 	}
 
@@ -198,9 +293,18 @@ func (c *client) GetTimeline(ctx context.Context, domain, id string, opts *Optio
 	ctx, span := tracer.Start(ctx, "Client.GetTimeline")
 	defer span.End()
 
+	if !c.IsOnline(domain) {
+		return core.Timeline{}, fmt.Errorf("Domain is offline")
+	}
+
 	response, err := httpRequest[core.Timeline](ctx, &c.client, "GET", "https://"+domain+"/api/v1/timeline/"+id, "", opts)
 	if err != nil {
 		span.RecordError(err)
+
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			c.lastFailed[domain] = time.Now()
+		}
+
 		return core.Timeline{}, err
 	}
 
@@ -211,12 +315,21 @@ func (c *client) GetChunks(ctx context.Context, domain string, timelines []strin
 	ctx, span := tracer.Start(ctx, "Client.GetChunks")
 	defer span.End()
 
+	if !c.IsOnline(domain) {
+		return nil, fmt.Errorf("Domain is offline")
+	}
+
 	timelinesStr := strings.Join(timelines, ",")
 	timeStr := fmt.Sprintf("%d", queryTime.Unix())
 
 	response, err := httpRequest[map[string]core.Chunk](ctx, &c.client, "GET", "https://"+domain+"/api/v1/timelines/chunks?timelines="+timelinesStr+"&time="+timeStr, "", opts)
 	if err != nil {
 		span.RecordError(err)
+
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			c.lastFailed[domain] = time.Now()
+		}
+
 		return nil, err
 	}
 
@@ -227,9 +340,18 @@ func (c *client) GetKey(ctx context.Context, domain, id string, opts *Options) (
 	ctx, span := tracer.Start(ctx, "Client.GetKey")
 	defer span.End()
 
+	if !c.IsOnline(domain) {
+		return nil, fmt.Errorf("Domain is offline")
+	}
+
 	response, err := httpRequest[[]core.Key](ctx, &c.client, "GET", "https://"+domain+"/api/v1/key/"+id, "", opts)
 	if err != nil {
 		span.RecordError(err)
+
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			c.lastFailed[domain] = time.Now()
+		}
+
 		return nil, err
 	}
 
@@ -240,9 +362,18 @@ func (c *client) GetDomain(ctx context.Context, domain string, opts *Options) (c
 	ctx, span := tracer.Start(ctx, "Client.GetDomain")
 	defer span.End()
 
+	if !c.IsOnline(domain) {
+		return core.Domain{}, fmt.Errorf("Domain is offline")
+	}
+
 	response, err := httpRequest[core.Domain](ctx, &c.client, "GET", "https://"+domain+"/api/v1/domain", "", opts)
 	if err != nil {
 		span.RecordError(err)
+
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			c.lastFailed[domain] = time.Now()
+		}
+
 		return core.Domain{}, err
 	}
 

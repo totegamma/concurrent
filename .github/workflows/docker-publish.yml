@@ -69,6 +69,9 @@ jobs:
         with:
           images: ${{ matrix.image }}
 
+      - name: Get tag
+        run: echo "TAG=${GITHUB_REF##*/}" >> $GITHUB_ENV
+
       # Build and push Docker image with Buildx (don't push on PR)
       # https://github.com/docker/build-push-action
       - name: Build and push Docker image
@@ -83,4 +86,5 @@ jobs:
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          build-args: VERSION=${{env.TAG}}
 

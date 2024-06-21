@@ -82,7 +82,6 @@ func (s *service) NormalizeTimelineID(ctx context.Context, timeline string) (str
 	// CheckCache
 	cached, err := s.repository.GetNormalizationCache(ctx, timeline)
 	if err == nil {
-		fmt.Printf("cache hit %s -> %s\n", timeline, cached)
 		return cached, nil
 	}
 
@@ -133,8 +132,6 @@ func (s *service) NormalizeTimelineID(ctx context.Context, timeline string) (str
 	if err != nil {
 		span.RecordError(err)
 	}
-
-	fmt.Printf("normalize %s -> %s\n", timeline, normalized)
 
 	return normalized, nil
 }

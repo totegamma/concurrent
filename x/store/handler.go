@@ -63,20 +63,20 @@ func (h *handler) Commit(c echo.Context) error {
 	result, err := h.service.Commit(ctx, core.CommitModeExecute, request.Document, request.Signature, request.Option, keys)
 	if err != nil {
 		if errors.Is(err, core.ErrorPermissionDenied{}) {
-			return c.JSON(http.StatusForbidden, echo.Map{"error": "Permission Denied"})
+			return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "error": err.Error()})
 		}
 		if errors.Is(err, core.ErrorAlreadyExists{}) {
-			return c.JSON(http.StatusOK, echo.Map{"info": "Already Exists"})
+			return c.JSON(http.StatusOK, echo.Map{"status": "processed", "content": result})
 		}
 		if errors.Is(err, core.ErrorAlreadyDeleted{}) {
-			return c.JSON(http.StatusOK, echo.Map{"info": "Already Deleted"})
+			return c.JSON(http.StatusOK, echo.Map{"status": "processed", "content": result})
 		}
 
 		span.RecordError(err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusCreated, echo.Map{"content": result})
+	return c.JSON(http.StatusCreated, echo.Map{"status": "ok", "content": result})
 }
 
 func (h *handler) Get(c echo.Context) error {

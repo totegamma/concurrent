@@ -123,8 +123,11 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 	if owner.Domain == s.config.FQDN { // signerが自ドメイン管轄の場合、リソースを作成
 		association, err = s.repo.Create(ctx, association)
 		if err != nil {
+			if errors.Is(err, core.ErrorAlreadyExists{}) {
+				return association, core.NewErrorAlreadyExists()
+			}
 			span.RecordError(err)
-			return association, err // TODO: if err is duplicate key error, server should return 409
+			return association, err
 		}
 	}
 

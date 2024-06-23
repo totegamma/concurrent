@@ -41,6 +41,10 @@ func (r *repository) Get(ctx context.Context, id, owner string) (core.SemanticID
 
 	var item core.SemanticID
 	if err := r.db.WithContext(ctx).Where("id = ? AND owner = ?", id, owner).First(&item).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return core.SemanticID{}, core.NewErrorNotFound()
+		}
+		span.RecordError(err)
 		return core.SemanticID{}, err
 	}
 

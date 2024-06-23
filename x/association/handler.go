@@ -8,7 +8,6 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/core"
 	"go.opentelemetry.io/otel"
-	"gorm.io/gorm"
 )
 
 var tracer = otel.Tracer("association")
@@ -38,10 +37,11 @@ func (h handler) Get(c echo.Context) error {
 
 	association, err := h.service.Get(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		span.RecordError(err)
+		if errors.Is(err, core.ErrorNotFound{}) {
 			return c.JSON(http.StatusNotFound, echo.Map{"error": "association not found"})
 		}
-		return err
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": association})
 }
@@ -56,7 +56,8 @@ func (h handler) GetOwnByTarget(c echo.Context) error {
 
 	associations, err := h.service.GetOwnByTarget(ctx, targetID, requester)
 	if err != nil {
-		return err
+		span.RecordError(err)
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": associations})
 }
@@ -70,13 +71,15 @@ func (h handler) GetCounts(c echo.Context) error {
 	if schema == "" {
 		counts, err := h.service.GetCountsBySchema(ctx, messageID)
 		if err != nil {
-			return err
+			span.RecordError(err)
+			return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 		}
 		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": counts})
 	} else {
 		counts, err := h.service.GetCountsBySchemaAndVariant(ctx, messageID, schema)
 		if err != nil {
-			return err
+			span.RecordError(err)
+			return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 		}
 		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": counts})
 	}
@@ -93,19 +96,22 @@ func (h handler) GetFiltered(c echo.Context) error {
 	if schema == "" {
 		associations, err := h.service.GetByTarget(ctx, messageID)
 		if err != nil {
-			return err
+			span.RecordError(err)
+			return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 		}
 		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": associations})
 	} else if variant == "" {
 		associations, err := h.service.GetBySchema(ctx, messageID, schema)
 		if err != nil {
-			return err
+			span.RecordError(err)
+			return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 		}
 		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": associations})
 	} else {
 		associations, err := h.service.GetBySchemaAndVariant(ctx, messageID, schema, variant)
 		if err != nil {
-			return err
+			span.RecordError(err)
+			return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 		}
 		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": associations})
 	}

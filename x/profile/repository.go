@@ -276,6 +276,10 @@ func (r *repository) Get(ctx context.Context, id string) (core.Profile, error) {
 
 	var profile core.Profile
 	if err := r.db.WithContext(ctx).Where("id = $1", id).First(&profile).Error; err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return core.Profile{}, core.NewErrorNotFound()
+		}
+		span.RecordError(err)
 		return core.Profile{}, err
 	}
 

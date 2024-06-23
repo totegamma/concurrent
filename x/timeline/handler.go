@@ -15,7 +15,6 @@ import (
 	"github.com/totegamma/concurrent/core"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
-	"gorm.io/gorm"
 )
 
 var tracer = otel.Tracer("timeline")
@@ -49,10 +48,10 @@ func (h handler) Get(c echo.Context) error {
 	timelineID := c.Param("id")
 	timeline, err := h.service.GetTimeline(ctx, timelineID)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, core.ErrorNotFound{}) {
 			return c.JSON(http.StatusNotFound, echo.Map{"error": "User not found"})
 		}
-		return err
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": timeline})
 }
@@ -155,7 +154,7 @@ func (h handler) List(c echo.Context) error {
 	list, err := h.service.ListTimelineBySchema(ctx, schema)
 	if err != nil {
 		span.RecordError(err)
-		return err
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": list})
 }
@@ -173,7 +172,7 @@ func (h handler) ListMine(c echo.Context) error {
 	list, err := h.service.ListTimelineByAuthor(ctx, requester)
 	if err != nil {
 		span.RecordError(err)
-		return err
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": list})
 }
@@ -194,7 +193,7 @@ func (h handler) Remove(c echo.Context) error {
 	target, err := h.service.GetItem(ctx, timelineID, objectID)
 	if err != nil {
 		span.RecordError(err)
-		return err
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 
 	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
@@ -223,14 +222,14 @@ func (h handler) GetChunks(c echo.Context) error {
 	timeInt, err := strconv.ParseInt(timeStr, 10, 64)
 	if err != nil {
 		span.RecordError(err)
-		return err
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
 	}
 	time := time.Unix(timeInt, 0)
 
 	chunks, err := h.service.GetChunks(ctx, timelines, time)
 	if err != nil {
 		span.RecordError(err)
-		return err
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": chunks})

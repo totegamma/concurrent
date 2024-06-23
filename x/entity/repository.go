@@ -5,9 +5,11 @@ import (
 	"log/slog"
 	"strconv"
 
+	"github.com/pkg/errors"
+	"gorm.io/gorm"
+
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/totegamma/concurrent/core"
-	"gorm.io/gorm"
 )
 
 // Repository is the interface for host repository
@@ -16,9 +18,8 @@ type Repository interface {
 	GetByAlias(ctx context.Context, alias string) (core.Entity, error)
 	SetAlias(ctx context.Context, id, alias string) error
 	GetMeta(ctx context.Context, key string) (core.EntityMeta, error)
-	Create(ctx context.Context, entity core.Entity) (core.Entity, error)
-	CreateMeta(ctx context.Context, meta core.EntityMeta) (core.EntityMeta, error)
-	CreateWithMeta(ctx context.Context, entity core.Entity, meta core.EntityMeta) (core.Entity, core.EntityMeta, error)
+	Upsert(ctx context.Context, entity core.Entity) (core.Entity, error)
+	UpsertWithMeta(ctx context.Context, entity core.Entity, meta core.EntityMeta) (core.Entity, core.EntityMeta, error)
 	UpdateScore(ctx context.Context, id string, score int) error
 	UpdateTag(ctx context.Context, id, tag string) error
 	SetTombstone(ctx context.Context, id, document, signature string) error
@@ -90,7 +91,15 @@ func (r *repository) Get(ctx context.Context, key string) (core.Entity, error) {
 
 	var entity core.Entity
 	err := r.db.WithContext(ctx).First(&entity, "id = ?", key).Error
-	return entity, err
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return core.Entity{}, core.NewErrorNotFound()
+		}
+		span.RecordError(err)
+		return core.Entity{}, err
+	}
+
+	return entity, nil
 }
 
 func (r *repository) GetByAlias(ctx context.Context, alias string) (core.Entity, error) {
@@ -99,6 +108,14 @@ func (r *repository) GetByAlias(ctx context.Context, alias string) (core.Entity,
 
 	var entity core.Entity
 	err := r.db.WithContext(ctx).First(&entity, "alias = ?", alias).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return core.Entity{}, core.NewErrorNotFound()
+		}
+		span.RecordError(err)
+		return core.Entity{}, err
+	}
+
 	return entity, err
 }
 
@@ -119,8 +136,8 @@ func (r *repository) GetMeta(ctx context.Context, key string) (core.EntityMeta, 
 }
 
 // Create creates new entity
-func (r *repository) Create(ctx context.Context, entity core.Entity) (core.Entity, error) {
-	ctx, span := tracer.Start(ctx, "Entity.Repository.Create")
+func (r *repository) Upsert(ctx context.Context, entity core.Entity) (core.Entity, error) {
+	ctx, span := tracer.Start(ctx, "Entity.Repository.Upsert")
 	defer span.End()
 
 	if err := r.db.WithContext(ctx).Save(&entity).Error; err != nil {
@@ -130,16 +147,6 @@ func (r *repository) Create(ctx context.Context, entity core.Entity) (core.Entit
 	r.mc.Increment("entity_count", 1)
 
 	return entity, nil
-}
-
-// CreateEntityMeta creates new entity meta
-func (r *repository) CreateMeta(ctx context.Context, meta core.EntityMeta) (core.EntityMeta, error) {
-	ctx, span := tracer.Start(ctx, "Entity.Repository.CreateMeta")
-	defer span.End()
-
-	err := r.db.WithContext(ctx).Create(meta).Error
-
-	return meta, err
 }
 
 func (r *repository) DeleteMeta(ctx context.Context, key string) error {
@@ -155,8 +162,8 @@ func (r *repository) DeleteMeta(ctx context.Context, key string) error {
 	return nil
 }
 
-func (r *repository) CreateWithMeta(ctx context.Context, entity core.Entity, meta core.EntityMeta) (core.Entity, core.EntityMeta, error) {
-	ctx, span := tracer.Start(ctx, "Entity.Repository.CreateWithMeta")
+func (r *repository) UpsertWithMeta(ctx context.Context, entity core.Entity, meta core.EntityMeta) (core.Entity, core.EntityMeta, error) {
+	ctx, span := tracer.Start(ctx, "Entity.Repository.UpsertWithMeta")
 	defer span.End()
 
 	err := r.db.Transaction(func(tx *gorm.DB) error {

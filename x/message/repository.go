@@ -15,7 +15,7 @@ type Repository interface {
 	Create(ctx context.Context, message core.Message) (core.Message, error)
 	Get(ctx context.Context, key string) (core.Message, error)
 	GetWithOwnAssociations(ctx context.Context, key string, ccid string) (core.Message, error)
-	Delete(ctx context.Context, key string) (core.Message, error)
+	Delete(ctx context.Context, key string) error
 	Clean(ctx context.Context, ccid string) error
 	Count(ctx context.Context) (int64, error)
 }
@@ -144,6 +144,9 @@ func (r *repository) Create(ctx context.Context, message core.Message) (core.Mes
 
 	err = r.db.WithContext(ctx).Create(&message).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			return core.Message{}, core.NewErrorAlreadyExists()
+		}
 		return core.Message{}, err
 	}
 
@@ -169,6 +172,9 @@ func (r *repository) Get(ctx context.Context, id string) (core.Message, error) {
 	var message core.Message
 	err = r.db.WithContext(ctx).First(&message, "id = ?", id).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return core.Message{}, core.NewErrorNotFound()
+		}
 		return message, err
 	}
 
@@ -190,6 +196,9 @@ func (r *repository) GetWithOwnAssociations(ctx context.Context, id string, ccid
 	var message core.Message
 	err = r.db.WithContext(ctx).First(&message, "id = ?", id).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return core.Message{}, core.NewErrorNotFound()
+		}
 		return message, err
 	}
 
@@ -213,31 +222,21 @@ func (r *repository) GetWithOwnAssociations(ctx context.Context, id string, ccid
 }
 
 // Delete deletes an message
-func (r *repository) Delete(ctx context.Context, id string) (core.Message, error) {
+func (r *repository) Delete(ctx context.Context, id string) error {
 	ctx, span := tracer.Start(ctx, "Message.Repository.Delete")
 	defer span.End()
 
 	id, err := r.normalizeDBID(id)
 
 	var deleted core.Message
-	err = r.db.WithContext(ctx).First(&deleted, "id = ?", id).Error
-	if err != nil {
-		return deleted, err
-	}
-
 	err = r.db.WithContext(ctx).Where("id = $1", id).Delete(&deleted).Error
 	if err != nil {
-		return deleted, err
-	}
-
-	err = r.postProcess(ctx, &deleted)
-	if err != nil {
-		return core.Message{}, err
+		return err
 	}
 
 	r.mc.Decrement("message_count", 1)
 
-	return deleted, nil
+	return nil
 }
 
 func (r *repository) Clean(ctx context.Context, ccid string) error {

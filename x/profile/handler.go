@@ -7,7 +7,6 @@ import (
 
 	"github.com/labstack/echo/v4"
 	"go.opentelemetry.io/otel"
-	"gorm.io/gorm"
 
 	"github.com/totegamma/concurrent/core"
 )
@@ -42,10 +41,11 @@ func (h handler) Get(c echo.Context) error {
 
 	profile, err := h.service.Get(ctx, id)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, core.ErrorNotFound{}) {
 			return c.JSON(http.StatusNotFound, echo.Map{"error": "Profile not found"})
 		}
-		return err
+		span.RecordError(err)
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": profile})
@@ -64,10 +64,11 @@ func (h handler) GetBySemanticID(c echo.Context) error {
 
 	profile, err := h.service.GetBySemanticID(ctx, semanticID, owner)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
+		if errors.Is(err, core.ErrorNotFound{}) {
 			return c.JSON(http.StatusNotFound, echo.Map{"error": "Profile not found"})
 		}
-		return err
+		span.RecordError(err)
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": profile})
@@ -95,10 +96,7 @@ func (h handler) Query(c echo.Context) error {
 	}
 
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			return c.JSON(http.StatusNotFound, echo.Map{"error": "Profile not found"})
-		}
-		return err
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": profiles})

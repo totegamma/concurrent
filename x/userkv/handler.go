@@ -2,11 +2,14 @@
 package userkv
 
 import (
-	"github.com/labstack/echo/v4"
-	"github.com/totegamma/concurrent/core"
-	"go.opentelemetry.io/otel"
 	"io"
 	"net/http"
+
+	"github.com/labstack/echo/v4"
+	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel"
+
+	"github.com/totegamma/concurrent/core"
 )
 
 var tracer = otel.Tracer("userkv")
@@ -39,6 +42,9 @@ func (h handler) Get(c echo.Context) error {
 	key := c.Param("key")
 	value, err := h.service.Get(ctx, requester, key)
 	if err != nil {
+		if errors.Is(err, core.ErrorNotFound{}) {
+			return c.JSON(http.StatusNotFound, echo.Map{"status": "error", "message": "userkv not found"})
+		}
 		return c.JSON(http.StatusInternalServerError, echo.Map{"status": "error", "message": err.Error()})
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": value})

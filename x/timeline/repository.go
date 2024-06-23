@@ -5,16 +5,18 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/pkg/errors"
 	"github.com/redis/go-redis/v9"
+	"gorm.io/gorm"
+
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/core"
-	"gorm.io/gorm"
-	"slices"
 )
 
 // Repository is timeline repository interface
@@ -496,7 +498,15 @@ func (r *repository) GetItem(ctx context.Context, timelineID string, objectID st
 
 	var item core.TimelineItem
 	err := r.db.WithContext(ctx).First(&item, "timeline_id = ? and resource_id = ?", timelineID, objectID).Error
-	return item, err
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return core.TimelineItem{}, core.NewErrorNotFound()
+		}
+		span.RecordError(err)
+		return core.TimelineItem{}, err
+	}
+
+	return item, nil
 }
 
 // CreateItem creates a new timeline item
@@ -513,6 +523,9 @@ func (r *repository) CreateItem(ctx context.Context, item core.TimelineItem) (co
 
 	err := r.db.WithContext(ctx).Create(&item).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			return core.TimelineItem{}, core.NewErrorAlreadyExists()
+		}
 		span.RecordError(err)
 		return item, err
 	}
@@ -606,6 +619,13 @@ func (r *repository) GetTimeline(ctx context.Context, id string) (core.Timeline,
 
 	var timeline core.Timeline
 	err = r.db.WithContext(ctx).First(&timeline, "id = ?", id).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return core.Timeline{}, core.NewErrorNotFound()
+		}
+		span.RecordError(err)
+		return core.Timeline{}, err
+	}
 
 	err = r.postprocess(ctx, &timeline)
 	if err != nil {

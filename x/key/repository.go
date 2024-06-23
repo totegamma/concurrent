@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/pkg/errors"
 	"gorm.io/gorm"
 
 	"github.com/totegamma/concurrent/client"
@@ -86,6 +87,9 @@ func (r *repository) Get(ctx context.Context, keyID string) (core.Key, error) {
 	var key core.Key
 	err := r.db.Where("id = ?", keyID).First(&key).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return core.Key{}, core.NewErrorNotFound()
+		}
 		return core.Key{}, err
 	}
 
@@ -98,6 +102,9 @@ func (r *repository) Enact(ctx context.Context, key core.Key) (core.Key, error) 
 
 	err := r.db.Create(&key).Error
 	if err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			return core.Key{}, core.NewErrorAlreadyExists()
+		}
 		return core.Key{}, err
 	}
 

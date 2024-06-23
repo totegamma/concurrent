@@ -2,9 +2,12 @@ package domain
 
 import (
 	"context"
-	"github.com/totegamma/concurrent/core"
-	"gorm.io/gorm"
 	"time"
+
+	"github.com/pkg/errors"
+	"gorm.io/gorm"
+
+	"github.com/totegamma/concurrent/core"
 )
 
 // Repository is the interface for host repository
@@ -34,7 +37,15 @@ func (r *repository) GetByFQDN(ctx context.Context, key string) (core.Domain, er
 
 	var host core.Domain
 	err := r.db.WithContext(ctx).First(&host, "id = ?", key).Error
-	return host, err
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return core.Domain{}, core.NewErrorNotFound()
+		}
+		span.RecordError(err)
+		return host, err
+	}
+
+	return host, nil
 }
 
 // GetByCCID returns a host by CCID
@@ -44,7 +55,15 @@ func (r *repository) GetByCCID(ctx context.Context, ccid string) (core.Domain, e
 
 	var host core.Domain
 	err := r.db.WithContext(ctx).First(&host, "cc_id = ?", ccid).Error
-	return host, err
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return core.Domain{}, core.NewErrorNotFound()
+		}
+		span.RecordError(err)
+		return host, err
+	}
+
+	return host, nil
 }
 
 // Upsert creates new host

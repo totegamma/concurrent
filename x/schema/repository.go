@@ -50,5 +50,12 @@ func (r *repository) Get(ctx context.Context, id uint) (core.Schema, error) {
 
 	var s core.Schema
 	err := r.db.WithContext(ctx).Where("id = ?", id).First(&s).Error
+	if err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return core.Schema{}, core.NewErrorNotFound()
+		}
+		span.RecordError(err)
+		return core.Schema{}, err
+	}
 	return s, err
 }

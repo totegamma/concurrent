@@ -8,7 +8,6 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/core"
 	"go.opentelemetry.io/otel"
-	"gorm.io/gorm"
 )
 
 var tracer = otel.Tracer("message")
@@ -40,7 +39,7 @@ func (h handler) Get(c echo.Context) error {
 	if ok {
 		message, err = h.service.GetWithOwnAssociations(ctx, id, requester)
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
+			if errors.Is(err, core.ErrorNotFound{}) {
 				return c.JSON(http.StatusNotFound, echo.Map{"error": "Message not found"})
 			}
 			return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
@@ -48,7 +47,7 @@ func (h handler) Get(c echo.Context) error {
 	} else {
 		message, err = h.service.Get(ctx, id, "")
 		if err != nil {
-			if errors.Is(err, gorm.ErrRecordNotFound) {
+			if errors.Is(err, core.ErrorNotFound{}) {
 				return c.JSON(http.StatusNotFound, echo.Map{"error": "Message not found"})
 			}
 			return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})

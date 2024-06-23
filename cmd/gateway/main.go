@@ -166,7 +166,8 @@ func main() {
 
 	// Postrgresqlとの接続
 	db, err := gorm.Open(postgres.Open(config.Server.Dsn), &gorm.Config{
-		Logger: gormLogger,
+		Logger:         gormLogger,
+		TranslateError: true,
 	})
 	if err != nil {
 		panic("failed to connect database")

@@ -408,6 +408,9 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 
 	deleteTarget, err := s.repo.Get(ctx, doc.Target)
 	if err != nil {
+		if errors.Is(err, core.ErrorNotFound{}) {
+			return core.Message{}, core.NewErrorAlreadyDeleted()
+		}
 		span.RecordError(err)
 		return core.Message{}, err
 	}
@@ -416,7 +419,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 		return core.Message{}, fmt.Errorf("you are not authorized to perform this action")
 	}
 
-	deleted, err := s.repo.Delete(ctx, doc.Target)
+	err = s.repo.Delete(ctx, doc.Target)
 	if err != nil {
 		span.RecordError(err)
 		return core.Message{}, err
@@ -428,7 +431,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 	}
 
 	ispublic := false
-	for _, timelineID := range deleted.Timelines {
+	for _, timelineID := range deleteTarget.Timelines {
 		timeline, err := s.timeline.GetTimelineAutoDomain(ctx, timelineID)
 		if err != nil {
 			span.SetStatus(codes.Error, err.Error())
@@ -478,11 +481,11 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 
 	var publicResource *core.Message = nil
 	if ispublic {
-		publicResource = &deleted
+		publicResource = &deleteTarget
 	}
 
 	if mode != core.CommitModeLocalOnlyExec {
-		for _, desttimeline := range deleted.Timelines {
+		for _, desttimeline := range deleteTarget.Timelines {
 			event := core.Event{
 				Timeline:  desttimeline,
 				Document:  document,
@@ -492,12 +495,12 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 			err := s.timeline.PublishEvent(ctx, event)
 			if err != nil {
 				span.RecordError(err)
-				return deleted, err
+				return deleteTarget, err
 			}
 		}
 	}
 
-	return deleted, err
+	return deleteTarget, err
 }
 
 func (s *service) Clean(ctx context.Context, ccid string) error {

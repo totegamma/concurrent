@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/pkg/errors"
+
 	"github.com/totegamma/concurrent/cdid"
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/core"
@@ -310,6 +312,10 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 
 	targetAssociation, err := s.repo.Get(ctx, doc.Target)
 	if err != nil {
+		if errors.Is(err, core.ErrorNotFound{}) {
+			return core.Association{}, core.NewErrorAlreadyDeleted()
+		}
+
 		span.RecordError(err)
 		return core.Association{}, err
 	}
@@ -326,7 +332,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 		return core.Association{}, fmt.Errorf("you are not authorized to perform this action")
 	}
 
-	deleted, err := s.repo.Delete(ctx, doc.Target)
+	err = s.repo.Delete(ctx, doc.Target)
 	if err != nil {
 		span.RecordError(err)
 		return core.Association{}, err
@@ -342,17 +348,17 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 			Timeline:  posted,
 			Document:  document,
 			Signature: signature,
-			Resource:  deleted,
+			Resource:  targetAssociation,
 		}
 		err := s.timeline.PublishEvent(ctx, event)
 		if err != nil {
 			slog.ErrorContext(ctx, "failed to publish message to Redis", slog.String("error", err.Error()), slog.String("module", "association"))
 			span.RecordError(err)
-			return deleted, err
+			return targetAssociation, err
 		}
 	}
 
-	if deleted.Target[0] == 'm' && mode != core.CommitModeLocalOnlyExec { // distribute is needed only when targetType is messages
+	if targetAssociation.Target[0] == 'm' && mode != core.CommitModeLocalOnlyExec { // distribute is needed only when targetType is messages
 		for _, timeline := range targetMessage.Timelines {
 
 			normalized, err := s.timeline.NormalizeTimelineID(ctx, timeline)
@@ -372,32 +378,32 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 					Timeline:  timeline,
 					Document:  document,
 					Signature: signature,
-					Resource:  deleted,
+					Resource:  targetAssociation,
 				}
 				err := s.timeline.PublishEvent(ctx, event)
 				if err != nil {
 					slog.ErrorContext(ctx, "failed to publish message to Redis", slog.String("error", err.Error()), slog.String("module", "association"))
 					span.RecordError(err)
-					return deleted, err
+					return targetAssociation, err
 				}
 			} else {
 				documentObj := core.EventDocument{
 					Timeline:  timeline,
 					Document:  document,
 					Signature: signature,
-					Resource:  deleted,
+					Resource:  targetAssociation,
 				}
 
 				document, err := json.Marshal(documentObj)
 				if err != nil {
 					span.RecordError(err)
-					return deleted, err
+					return targetAssociation, err
 				}
 
 				signatureBytes, err := core.SignBytes([]byte(document), s.config.PrivateKey)
 				if err != nil {
 					span.RecordError(err)
-					return deleted, err
+					return targetAssociation, err
 				}
 
 				signature := hex.EncodeToString(signatureBytes)
@@ -410,7 +416,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 				packet, err := json.Marshal(packetObj)
 				if err != nil {
 					span.RecordError(err)
-					return deleted, err
+					return targetAssociation, err
 				}
 
 				s.client.Commit(ctx, domain, string(packet), nil, nil)
@@ -418,7 +424,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 		}
 	}
 
-	return deleted, nil
+	return targetAssociation, nil
 }
 
 // GetByTarget returns associations by target

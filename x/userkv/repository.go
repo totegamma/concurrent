@@ -30,6 +30,10 @@ func (r *repository) Get(ctx context.Context, owner, key string) (string, error)
 
 	var kv core.UserKV
 	if err := r.db.Where("owner = ? AND key = ?", owner, key).First(&kv).Error; err != nil {
+		if err == gorm.ErrRecordNotFound {
+			return "", core.NewErrorNotFound()
+		}
+		span.RecordError(err)
 		return "", err
 	}
 

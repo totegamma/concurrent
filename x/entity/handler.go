@@ -9,7 +9,6 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/totegamma/concurrent/core"
 	"go.opentelemetry.io/otel"
-	"gorm.io/gorm"
 )
 
 var tracer = otel.Tracer("entity")
@@ -44,7 +43,7 @@ func (h handler) Get(c echo.Context) error {
 		entity, err = h.service.GetByAlias(ctx, id)
 		if err != nil {
 			span.RecordError(err)
-			return err
+			return c.JSON(http.StatusInternalServerError, echo.Map{"status": "error", "message": err.Error()})
 		}
 		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": entity})
 	}
@@ -55,10 +54,10 @@ func (h handler) Get(c echo.Context) error {
 		entity, err = h.service.GetWithHint(ctx, id, hint)
 	}
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			span.RecordError(err)
+		if errors.Is(err, core.ErrorNotFound{}) {
 			return c.JSON(http.StatusNotFound, echo.Map{"error": "entity not found"})
 		}
+		span.RecordError(err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"status": "error", "message": err.Error()})
 	}
 
@@ -77,10 +76,10 @@ func (h handler) GetSelf(c echo.Context) error {
 
 	entity, err := h.service.Get(ctx, requester)
 	if err != nil {
-		if errors.Is(err, gorm.ErrRecordNotFound) {
-			span.RecordError(err)
+		if errors.Is(err, core.ErrorNotFound{}) {
 			return c.JSON(http.StatusNotFound, echo.Map{"error": "entity not found"})
 		}
+		span.RecordError(err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"status": "error", "message": err.Error()})
 	}
 
@@ -95,7 +94,7 @@ func (h handler) List(c echo.Context) error {
 	entities, err := h.service.List(ctx)
 	if err != nil {
 		span.RecordError(err)
-		return err
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": entities})
 }

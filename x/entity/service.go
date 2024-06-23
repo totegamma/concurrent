@@ -126,7 +126,7 @@ func (s *service) Affiliation(ctx context.Context, mode core.CommitMode, documen
 
 		switch s.config.Registration {
 		case "open":
-			entity, _, err := s.repository.CreateWithMeta(
+			entity, _, err := s.repository.UpsertWithMeta(
 				ctx,
 				core.Entity{
 					ID:                   doc.Signer,
@@ -193,7 +193,7 @@ func (s *service) Affiliation(ctx context.Context, mode core.CommitMode, documen
 				return core.Entity{}, fmt.Errorf("inviter is not allowed to invite")
 			}
 
-			registered, _, err := s.repository.CreateWithMeta(
+			registered, _, err := s.repository.UpsertWithMeta(
 				ctx,
 				core.Entity{
 					ID:                   doc.Signer,
@@ -247,7 +247,7 @@ func (s *service) Affiliation(ctx context.Context, mode core.CommitMode, documen
 			newEntity.Score = existence.Score
 		}
 
-		created, err := s.repository.Create(ctx, newEntity)
+		created, err := s.repository.Upsert(ctx, newEntity)
 		if err != nil {
 			span.RecordError(err)
 			return core.Entity{}, err

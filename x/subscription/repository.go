@@ -241,7 +241,14 @@ func (r *repository) CreateItem(ctx context.Context, item core.SubscriptionItem)
 	}
 
 	err = r.db.WithContext(ctx).Create(&item).Error
-	return item, err
+	if err != nil {
+		if errors.Is(err, gorm.ErrDuplicatedKey) {
+			return core.SubscriptionItem{}, core.NewErrorAlreadyExists()
+		}
+		span.RecordError(err)
+		return core.SubscriptionItem{}, err
+	}
+	return item, nil
 }
 
 // GetItem returns a collection item by ID
@@ -256,7 +263,16 @@ func (r *repository) GetItem(ctx context.Context, id, subscription string) (core
 	}
 
 	var obj core.SubscriptionItem
-	return obj, r.db.WithContext(ctx).First(&obj, "id = ? and subscription = ?", id, subscription).Error
+	err = r.db.WithContext(ctx).First(&obj, "id = ? and subscription = ?", id, subscription).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return core.SubscriptionItem{}, core.NewErrorNotFound()
+		}
+		span.RecordError(err)
+		return core.SubscriptionItem{}, err
+	}
+
+	return obj, nil
 }
 
 // DeleteItem deletes a collection item by ID

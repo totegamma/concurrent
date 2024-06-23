@@ -1,9 +1,11 @@
 package subscription
 
 import (
-	"github.com/labstack/echo/v4"
-	"go.opentelemetry.io/otel"
 	"net/http"
+
+	"github.com/labstack/echo/v4"
+	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel"
 
 	"github.com/totegamma/concurrent/core"
 )
@@ -36,6 +38,10 @@ func (h *handler) GetSubscription(c echo.Context) error {
 
 	data, err := h.service.GetSubscription(ctx, id)
 	if err != nil {
+		if errors.Is(err, core.ErrorNotFound{}) {
+			return c.JSON(http.StatusNotFound, echo.Map{"status": "error", "message": "subscription not found"})
+		}
+		span.RecordError(err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"status": "error", "message": err.Error()})
 	}
 

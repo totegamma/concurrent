@@ -5,9 +5,11 @@ import (
 	"net/http"
 
 	"github.com/labstack/echo/v4"
-	"github.com/totegamma/concurrent/core"
+	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
+
+	"github.com/totegamma/concurrent/core"
 )
 
 var tracer = otel.Tracer("store")
@@ -60,11 +62,21 @@ func (h *handler) Commit(c echo.Context) error {
 
 	result, err := h.service.Commit(ctx, core.CommitModeExecute, request.Document, request.Signature, request.Option, keys)
 	if err != nil {
+		if errors.Is(err, core.ErrorPermissionDenied{}) {
+			return c.JSON(http.StatusForbidden, echo.Map{"error": "Permission Denied"})
+		}
+		if errors.Is(err, core.ErrorAlreadyExists{}) {
+			return c.JSON(http.StatusOK, echo.Map{"info": "Already Exists"})
+		}
+		if errors.Is(err, core.ErrorAlreadyDeleted{}) {
+			return c.JSON(http.StatusOK, echo.Map{"info": "Already Deleted"})
+		}
+
 		span.RecordError(err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, echo.Map{"content": result})
+	return c.JSON(http.StatusCreated, echo.Map{"content": result})
 }
 
 func (h *handler) Get(c echo.Context) error {

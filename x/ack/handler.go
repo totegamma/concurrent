@@ -35,7 +35,7 @@ func (h handler) GetAcking(c echo.Context) error {
 	acks, err := h.service.GetAcking(ctx, id)
 	if err != nil {
 		span.RecordError(err)
-		return err
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": acks})
 }
@@ -49,7 +49,7 @@ func (h handler) GetAcker(c echo.Context) error {
 	acks, err := h.service.GetAcker(ctx, id)
 	if err != nil {
 		span.RecordError(err)
-		return err
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": acks})
 }

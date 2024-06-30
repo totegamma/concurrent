@@ -30,9 +30,11 @@ type Policy struct {
 }
 
 type Statement struct {
-	Actions   []string `json:"actions"`
-	Effect    string   `json:"effect"`
-	Condition Expr     `json:"condition"`
+	Actions        []string `json:"actions"`
+	Dominant       bool     `json:"dominant"`
+	DefaultOnTrue  bool     `json:"defaultOnTrue"`
+	DefaultOnFalse bool     `json:"defaultOnFalse"`
+	Condition      Expr     `json:"condition"`
 }
 
 type Expr struct {

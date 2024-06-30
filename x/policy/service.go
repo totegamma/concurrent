@@ -71,13 +71,8 @@ func (s service) Test(ctx context.Context, policy core.Policy, context core.Requ
 					return false, err
 				}
 
-				if statement.Effect == "allow" {
-					span.End()
-					return result_bool, nil
-				} else {
-					span.End()
-					return !result_bool, nil
-				}
+				span.End()
+				return result_bool, nil
 			}
 		}
 		span.SetAttributes(attribute.Bool("examined", false))

@@ -396,7 +396,7 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 			}
 
 			requestContext := core.RequestContext{
-				Self:      tl,
+				Parent:    tl,
 				Params:    params,
 				Requester: requesterEntity,
 			}
@@ -431,7 +431,7 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 			}
 
 			requestContext := core.RequestContext{
-				Self:      tl,
+				Parent:    tl,
 				Params:    params,
 				Requester: requesterEntity,
 			}

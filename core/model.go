@@ -19,7 +19,8 @@ type Chunk struct {
 type RequestContext struct {
 	Requester Entity
 	Document  any
-	Self      any
+	Parent    any
+	Resource  any
 	Params    map[string]any
 }
 

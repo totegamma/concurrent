@@ -106,7 +106,7 @@ func (s *service) Get(ctx context.Context, id string, requester string) (core.Me
 			ctx,
 			timeline.Policy,
 			core.RequestContext{
-				Self:   timeline,
+				Parent: timeline,
 				Params: params,
 			},
 			action,
@@ -175,7 +175,7 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 		}
 
 		requestContext := core.RequestContext{
-			Self:      timeline,
+			Parent:    timeline,
 			Params:    params,
 			Requester: requesterEntity,
 		}
@@ -286,7 +286,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 				ctx,
 				timeline.Policy,
 				core.RequestContext{
-					Self:   timeline,
+					Parent: timeline,
 					Params: params,
 				},
 				"GET:/message/",
@@ -457,7 +457,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 			ctx,
 			timeline.Policy,
 			core.RequestContext{
-				Self:   timeline,
+				Parent: timeline,
 				Params: params,
 			},
 			"GET:/message/",

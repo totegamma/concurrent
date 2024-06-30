@@ -31,10 +31,11 @@ func (h *handler) List(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Job.Handler.List")
 	defer span.End()
 
-	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
+	requesterContext, ok := ctx.Value(core.RequesterContextCtxKey).(core.RequesterContext)
 	if !ok {
-		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Unauthorized"})
+		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}
+	requester := requesterContext.Entity.ID
 
 	jobs, err := h.service.List(ctx, requester)
 	if err != nil {
@@ -49,10 +50,11 @@ func (h *handler) Create(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Job.Handler.Create")
 	defer span.End()
 
-	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
+	requesterContext, ok := ctx.Value(core.RequesterContextCtxKey).(core.RequesterContext)
 	if !ok {
-		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Unauthorized"})
+		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}
+	requester := requesterContext.Entity.ID
 
 	var request Job
 	err := c.Bind(&request)

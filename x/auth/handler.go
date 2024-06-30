@@ -30,10 +30,11 @@ func (h *handler) GetPassport(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Auth.Handler.GetPassport")
 	defer span.End()
 
-	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
+	requesterContext, ok := ctx.Value(core.RequesterContextCtxKey).(core.RequesterContext)
 	if !ok {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}
+	requester := requesterContext.Entity.ID
 
 	keys, ok := ctx.Value(core.RequesterKeychainKey).([]core.Key)
 

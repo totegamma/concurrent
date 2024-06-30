@@ -254,24 +254,13 @@ func main() {
 				c.Request().Header.Set(core.RequesterTypeHeader, strconv.Itoa(requesterType))
 			}
 
-			requesterId, ok := ctx.Value(core.RequesterIdCtxKey).(string)
+			requesterContext, ok := ctx.Value(core.RequesterContextCtxKey).(core.RequesterContext)
 			if ok {
-				c.Request().Header.Set(core.RequesterIdHeader, requesterId)
-			}
-
-			requesterTag, ok := ctx.Value(core.RequesterTagCtxKey).(core.Tags)
-			if ok {
-				c.Request().Header.Set(core.RequesterTagHeader, requesterTag.ToString())
-			}
-
-			requesterDomain, ok := ctx.Value(core.RequesterDomainCtxKey).(string)
-			if ok {
-				c.Request().Header.Set(core.RequesterDomainHeader, requesterDomain)
-			}
-
-			requesterDomainTags, ok := ctx.Value(core.RequesterDomainTagsKey).(core.Tags)
-			if ok {
-				c.Request().Header.Set(core.RequesterDomainTagsHeader, requesterDomainTags.ToString())
+				serialized, err := json.Marshal(requesterContext)
+				if err != nil {
+					return err
+				}
+				c.Request().Header.Set(core.RequesterContextHeader, string(serialized))
 			}
 
 			requesterKeys, ok := ctx.Value(core.RequesterKeychainKey).([]core.Key)
@@ -291,11 +280,6 @@ func main() {
 			captchaVerified, ok := ctx.Value(core.CaptchaVerifiedKey).(bool)
 			if ok && captchaVerified {
 				c.Request().Header.Set(core.CaptchaVerifiedHeader, strconv.FormatBool(captchaVerified))
-			}
-
-			requesterIsRegistered, ok := ctx.Value(core.RequesterIsRegisteredKey).(bool)
-			if ok {
-				c.Request().Header.Set(core.RequesterIsRegisteredHeader, strconv.FormatBool(requesterIsRegistered))
 			}
 
 			proxy.ServeHTTP(c.Response(), c.Request())

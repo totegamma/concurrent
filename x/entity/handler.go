@@ -69,10 +69,11 @@ func (h handler) GetSelf(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Entity.Handler.GetSelf")
 	defer span.End()
 
-	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
+	requesterContext, ok := ctx.Value(core.RequesterContextCtxKey).(core.RequesterContext)
 	if !ok {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}
+	requester := requesterContext.Entity.ID
 
 	entity, err := h.service.Get(ctx, requester)
 	if err != nil {

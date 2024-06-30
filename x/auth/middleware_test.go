@@ -87,12 +87,11 @@ func TestLocalRootSuccess(t *testing.T) {
 	if assert.NoError(t, err) {
 		ctx := c.Request().Context()
 		assert.Equal(t, core.LocalUser, ctx.Value(core.RequesterTypeCtxKey))
-		assert.Equal(t, User1ID, ctx.Value(core.RequesterIdCtxKey))
-		tags := ctx.Value(core.RequesterTagCtxKey).(core.Tags)
-		tagString := tags.ToString()
-		assert.Equal(t, "", tagString)
-		assert.Equal(t, nil, ctx.Value(core.RequesterDomainCtxKey))
-		assert.Equal(t, nil, ctx.Value(core.RequesterDomainTagsKey))
+		reqctx, _ := ctx.Value(core.RequesterContextCtxKey).(core.RequesterContext)
+		assert.Equal(t, User1ID, reqctx.Entity.ID)
+		tags := reqctx.Entity.Tag
+		assert.Equal(t, "", tags)
+		assert.Equal(t, nil, reqctx.Domain)
 		assert.Equal(t, nil, ctx.Value(core.RequesterKeychainKey))
 		assert.Equal(t, nil, ctx.Value(core.CaptchaVerifiedKey))
 	} else {
@@ -182,14 +181,13 @@ func TestRemoteRootSuccess(t *testing.T) {
 	if assert.NoError(t, err) {
 		ctx := c.Request().Context()
 		assert.Equal(t, core.RemoteUser, ctx.Value(core.RequesterTypeCtxKey))
-		assert.Equal(t, User1ID, ctx.Value(core.RequesterIdCtxKey))
-		tags := ctx.Value(core.RequesterTagCtxKey).(core.Tags)
-		tagString := tags.ToString()
-		assert.Equal(t, "", tagString)
-		assert.Equal(t, RemoteDomainFQDN, ctx.Value(core.RequesterDomainCtxKey))
-		domainTags := ctx.Value(core.RequesterDomainTagsKey).(core.Tags)
-		domainTagString := domainTags.ToString()
-		assert.Equal(t, "", domainTagString)
+		reqctx, _ := ctx.Value(core.RequesterContextCtxKey).(core.RequesterContext)
+		assert.Equal(t, User1ID, reqctx.Entity.ID)
+		tags := reqctx.Entity.Tag
+		assert.Equal(t, "", tags)
+		assert.Equal(t, RemoteDomainFQDN, reqctx.Domain.ID)
+		domainTags := reqctx.Domain.Tag
+		assert.Equal(t, "", domainTags)
 		assert.Len(t, ctx.Value(core.RequesterKeychainKey).([]core.Key), 0)
 		assert.Equal(t, nil, ctx.Value(core.CaptchaVerifiedKey))
 	}

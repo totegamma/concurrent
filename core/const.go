@@ -1,27 +1,19 @@
 package core
 
 const (
-	RequesterTypeCtxKey      = "cc-requesterType"
-	RequesterIdCtxKey        = "cc-requesterId"
-	RequesterTagCtxKey       = "cc-requesterTag"
-	RequesterDomainCtxKey    = "cc-requesterDomain"
-	RequesterDomainTagsKey   = "cc-requesterDomainTags"
-	RequesterKeychainKey     = "cc-requesterKeychain"
-	RequesterPassportKey     = "cc-requesterPassport"
-	RequesterIsRegisteredKey = "cc-requesterIsRegistered"
-	CaptchaVerifiedKey       = "cc-captchaVerified"
+	RequesterTypeCtxKey    = "cc-requesterType"
+	RequesterContextCtxKey = "cc-requesterContext"
+	RequesterKeychainKey   = "cc-requesterKeychain"
+	RequesterPassportKey   = "cc-requesterPassport"
+	CaptchaVerifiedKey     = "cc-captchaVerified"
 )
 
 const (
-	RequesterTypeHeader         = "cc-requester-type"
-	RequesterIdHeader           = "cc-requester-ccid"
-	RequesterTagHeader          = "cc-requester-tag"
-	RequesterDomainHeader       = "cc-requester-domain"
-	RequesterDomainTagsHeader   = "cc-requester-domain-tags"
-	RequesterKeychainHeader     = "cc-requester-keychain"
-	RequesterPassportHeader     = "passport"
-	RequesterIsRegisteredHeader = "cc-requester-is-registered"
-	CaptchaVerifiedHeader       = "cc-captcha-verified"
+	RequesterTypeHeader     = "cc-requester-type"
+	RequesterContextHeader  = "cc-requester-context"
+	RequesterKeychainHeader = "cc-requester-keychain"
+	RequesterPassportHeader = "passport"
+	CaptchaVerifiedHeader   = "cc-captcha-verified"
 )
 
 const (

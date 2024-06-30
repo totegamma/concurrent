@@ -34,10 +34,11 @@ func (h handler) Get(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "UserKV.Handler.Get")
 	defer span.End()
 
-	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
+	requesterContext, ok := ctx.Value(core.RequesterContextCtxKey).(core.RequesterContext)
 	if !ok {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}
+	requester := requesterContext.Entity.ID
 
 	key := c.Param("key")
 	value, err := h.service.Get(ctx, requester, key)
@@ -55,10 +56,11 @@ func (h handler) Upsert(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "UserKV.Handler.Upsert")
 	defer span.End()
 
-	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
+	requesterContext, ok := ctx.Value(core.RequesterContextCtxKey).(core.RequesterContext)
 	if !ok {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}
+	requester := requesterContext.Entity.ID
 
 	key := c.Param("key")
 	body := c.Request().Body

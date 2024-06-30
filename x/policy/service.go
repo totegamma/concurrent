@@ -279,14 +279,14 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 		}, nil
 
 	case "IsRequesterLocalUser":
-		domain := requestCtx.Requester.Domain
+		domain := requestCtx.Requester.Domain.ID
 		return core.EvalResult{
 			Operator: "IsRequesterLocalUser",
 			Result:   domain == s.config.FQDN,
 		}, nil
 
 	case "IsRequesterRemoteUser":
-		domain := requestCtx.Requester.Domain
+		domain := requestCtx.Requester.Domain.ID
 		return core.EvalResult{
 			Operator: "IsRequesterRemoteUser",
 			Result:   domain != s.config.FQDN,
@@ -295,7 +295,7 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 	case "IsRequesterGuestUser":
 		return core.EvalResult{
 			Operator: "IsRequesterGuestUser",
-			Result:   requestCtx.Requester.ID == "",
+			Result:   requestCtx.Requester.Entity == nil,
 		}, nil
 
 	case "RequesterHasTag":
@@ -308,7 +308,7 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 			}, err
 		}
 
-		tags := core.ParseTags(requestCtx.Requester.Tag)
+		tags := core.ParseTags(requestCtx.Requester.Entity.Tag)
 		return core.EvalResult{
 			Operator: "RequesterHasTag",
 			Result:   tags.Has(target),
@@ -317,7 +317,7 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 	case "RequesterID":
 		return core.EvalResult{
 			Operator: "RequesterID",
-			Result:   requestCtx.Requester.ID,
+			Result:   requestCtx.Requester.Entity.ID,
 		}, nil
 
 	default:

@@ -164,10 +164,11 @@ func (h handler) ListMine(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.ListMine")
 	defer span.End()
 
-	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
+	requesterContext, ok := ctx.Value(core.RequesterContextCtxKey).(core.RequesterContext)
 	if !ok {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}
+	requester := requesterContext.Entity.ID
 
 	list, err := h.service.ListTimelineByAuthor(ctx, requester)
 	if err != nil {
@@ -196,10 +197,11 @@ func (h handler) Remove(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 
-	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
+	requesterContext, ok := ctx.Value(core.RequesterContextCtxKey).(core.RequesterContext)
 	if !ok {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}
+	requester := requesterContext.Entity.ID
 
 	if *target.Author != requester && target.Owner != requester {
 		return c.JSON(http.StatusForbidden, echo.Map{"error": "You are not owner of this timeline element"})

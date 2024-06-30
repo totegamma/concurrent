@@ -83,10 +83,11 @@ func (h *handler) Get(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Store.Handler.Get")
 	defer span.End()
 
-	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
+	requesterContext, ok := ctx.Value(core.RequesterContextCtxKey).(core.RequesterContext)
 	if !ok {
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Unauthorized"})
 	}
+	requester := requesterContext.Entity.ID
 
 	path := h.service.GetPath(ctx, requester)
 

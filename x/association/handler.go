@@ -52,7 +52,11 @@ func (h handler) GetOwnByTarget(c echo.Context) error {
 
 	targetID := c.Param("id")
 
-	requester, _ := ctx.Value(core.RequesterIdCtxKey).(string)
+	requesterContext, ok := ctx.Value(core.RequesterContextCtxKey).(core.RequesterContext)
+	if !ok {
+		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
+	}
+	requester := requesterContext.Entity.ID
 
 	associations, err := h.service.GetOwnByTarget(ctx, targetID, requester)
 	if err != nil {

@@ -6,17 +6,18 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"github.com/pkg/errors"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/labstack/echo/v4"
+	"github.com/pkg/errors"
+	"github.com/xinguang/go-recaptcha"
+	"go.opentelemetry.io/otel/attribute"
+
 	"github.com/totegamma/concurrent/core"
 	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/totegamma/concurrent/x/key"
-	"github.com/xinguang/go-recaptcha"
-	"go.opentelemetry.io/otel/attribute"
 )
 
 type Principal int
@@ -63,11 +64,6 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 			err = json.Unmarshal([]byte(passport.Document), &passportDoc)
 			if err != nil {
 				span.RecordError(errors.Wrap(err, "failed to unmarshal passport document"))
-				goto skipCheckPassport
-			}
-
-			if passportDoc.Domain == s.config.FQDN {
-				span.RecordError(fmt.Errorf("do not use passport for local user"))
 				goto skipCheckPassport
 			}
 
@@ -187,6 +183,7 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				span.RecordError(fmt.Errorf("invalid issuer"))
 				goto skipCheckAuthorization
 			}
+			span.SetAttributes(attribute.String("RequesterId", ccid))
 
 			entity, err := s.entity.Get(ctx, ccid)
 			if err != nil {
@@ -194,13 +191,15 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				return c.JSON(http.StatusForbidden, echo.Map{})
 			}
 
-			tags := core.ParseTags(entity.Tag)
-			ctx = context.WithValue(ctx, core.RequesterTagCtxKey, tags)
-
-			if tags.Has("_block") {
-				return c.JSON(http.StatusForbidden, echo.Map{
-					"error": "you are blocked",
-				})
+			_, err = s.entity.GetMeta(ctx, ccid)
+			registered := true
+			if err != nil {
+				if errors.Is(err, core.ErrorNotFound{}) {
+					registered = false
+				} else {
+					span.RecordError(errors.Wrap(err, "failed to get entity meta"))
+					return c.JSON(http.StatusForbidden, echo.Map{})
+				}
 			}
 
 			if entity.Domain == s.config.FQDN {
@@ -220,8 +219,13 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 					}
 				}
 
-				ctx = context.WithValue(ctx, core.RequesterIdCtxKey, ccid)
-				span.SetAttributes(attribute.String("RequesterId", ccid))
+				requesterContext := core.RequesterContext{
+					Entity:       &entity,
+					IsRegistered: registered,
+				}
+
+				ctx = context.WithValue(ctx, core.RequesterContextCtxKey, requesterContext)
+
 				ctx = context.WithValue(ctx, core.RequesterTypeCtxKey, core.LocalUser)
 				span.SetAttributes(attribute.String("RequesterType", core.RequesterTypeString(core.LocalUser)))
 			} else {
@@ -232,31 +236,18 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 					return c.JSON(http.StatusForbidden, echo.Map{})
 				}
 
-				domainTags := core.ParseTags(domain.Tag)
-				if domainTags.Has("_block") {
-					return c.JSON(http.StatusForbidden, echo.Map{
-						"error":  "you are not authorized to perform this action",
-						"detail": "your domain is blocked",
-					})
+				requesterContext := core.RequesterContext{
+					Entity:       &entity,
+					Domain:       &domain,
+					IsRegistered: registered,
 				}
 
-				// remote user
-				ctx = context.WithValue(ctx, core.RequesterIdCtxKey, ccid)
-				span.SetAttributes(attribute.String("RequesterId", ccid))
+				ctx = context.WithValue(ctx, core.RequesterContextCtxKey, requesterContext)
+
 				ctx = context.WithValue(ctx, core.RequesterTypeCtxKey, core.RemoteUser)
 				span.SetAttributes(attribute.String("RequesterType", core.RequesterTypeString(core.RemoteUser)))
-				ctx = context.WithValue(ctx, core.RequesterDomainCtxKey, entity.Domain)
-				span.SetAttributes(attribute.String("RequesterDomain", entity.Domain))
-				ctx = context.WithValue(ctx, core.RequesterDomainTagsKey, domainTags)
-				span.SetAttributes(attribute.String("RequesterDomainTags", domain.Tag))
 			}
 
-			_, err = s.entity.GetMeta(ctx, ccid)
-			if err == nil {
-				ctx = context.WithValue(ctx, core.RequesterIsRegisteredKey, true)
-			} else {
-				ctx = context.WithValue(ctx, core.RequesterIsRegisteredKey, false)
-			}
 		}
 	skipCheckAuthorization:
 		c.SetRequest(c.Request().WithContext(ctx))
@@ -270,14 +261,10 @@ func ReceiveGatewayAuthPropagation(next echo.HandlerFunc) echo.HandlerFunc {
 		defer span.End()
 
 		reqTypeHeader := c.Request().Header.Get(core.RequesterTypeHeader)
-		reqIdHeader := c.Request().Header.Get(core.RequesterIdHeader)
-		reqTagHeader := c.Request().Header.Get(core.RequesterTagHeader)
-		reqDomainHeader := c.Request().Header.Get(core.RequesterDomainHeader)
 		reqKeyHeader := c.Request().Header.Get(core.RequesterKeychainHeader)
-		reqDomainTagsHeader := c.Request().Header.Get(core.RequesterDomainTagsHeader)
 		reqCaptchaVerifiedHeader := c.Request().Header.Get(core.CaptchaVerifiedHeader)
 		reqPassportHeader := c.Request().Header.Get(core.RequesterPassportHeader)
-		reqRegisteredHeader := c.Request().Header.Get(core.RequesterIsRegisteredHeader)
+		reqContextHeader := c.Request().Header.Get(core.RequesterContextHeader)
 
 		if reqTypeHeader != "" {
 			reqType, err := strconv.Atoi(reqTypeHeader)
@@ -287,21 +274,6 @@ func ReceiveGatewayAuthPropagation(next echo.HandlerFunc) echo.HandlerFunc {
 			}
 		}
 
-		if reqIdHeader != "" {
-			ctx = context.WithValue(ctx, core.RequesterIdCtxKey, reqIdHeader)
-			span.SetAttributes(attribute.String("RequesterId", reqIdHeader))
-		}
-
-		if reqTagHeader != "" {
-			ctx = context.WithValue(ctx, core.RequesterTagCtxKey, core.ParseTags(reqTagHeader))
-			span.SetAttributes(attribute.String("RequesterTag", reqTagHeader))
-		}
-
-		if reqDomainHeader != "" {
-			ctx = context.WithValue(ctx, core.RequesterDomainCtxKey, reqDomainHeader)
-			span.SetAttributes(attribute.String("RequesterDomain", reqDomainHeader))
-		}
-
 		if reqKeyHeader != "" {
 			var keys []core.Key
 			err := json.Unmarshal([]byte(reqKeyHeader), &keys)
@@ -309,11 +281,6 @@ func ReceiveGatewayAuthPropagation(next echo.HandlerFunc) echo.HandlerFunc {
 				ctx = context.WithValue(ctx, core.RequesterKeychainKey, keys)
 				span.SetAttributes(attribute.String("RequesterKeychain", reqKeyHeader))
 			}
-		}
-
-		if reqDomainTagsHeader != "" {
-			ctx = context.WithValue(ctx, core.RequesterDomainTagsKey, core.ParseTags(reqDomainTagsHeader))
-			span.SetAttributes(attribute.String("RequesterDomainTags", reqDomainTagsHeader))
 		}
 
 		if reqCaptchaVerifiedHeader != "" {
@@ -326,11 +293,12 @@ func ReceiveGatewayAuthPropagation(next echo.HandlerFunc) echo.HandlerFunc {
 			span.SetAttributes(attribute.String("RequesterPassport", reqPassportHeader))
 		}
 
-		if reqRegisteredHeader != "" {
-			registered, err := strconv.ParseBool(reqRegisteredHeader)
+		if reqContextHeader != "" {
+			var requesterContext core.RequesterContext
+			err := json.Unmarshal([]byte(reqContextHeader), &requesterContext)
 			if err == nil {
-				ctx = context.WithValue(ctx, core.RequesterIsRegisteredKey, registered)
-				span.SetAttributes(attribute.String("RequesterIsRegistered", reqRegisteredHeader))
+				ctx = context.WithValue(ctx, core.RequesterContextCtxKey, requesterContext)
+				span.SetAttributes(attribute.String("RequesterContext", reqContextHeader))
 			}
 		}
 
@@ -363,17 +331,9 @@ func Restrict(principal Principal) echo.MiddlewareFunc {
 			defer span.End()
 
 			requesterType, _ := ctx.Value(core.RequesterTypeCtxKey).(int)
-			requesterTags, _ := ctx.Value(core.RequesterTagCtxKey).(core.Tags)
+			requesterContext, _ := ctx.Value(core.RequesterContextCtxKey).(core.RequesterContext)
 
 			switch principal {
-			case ISADMIN:
-				if !requesterTags.Has("_admin") {
-					return c.JSON(http.StatusForbidden, echo.Map{
-						"error":  "you are not authorized to perform this action",
-						"detail": "you are not admin",
-					})
-				}
-
 			case ISLOCAL:
 				if requesterType != core.LocalUser {
 					return c.JSON(http.StatusForbidden, echo.Map{
@@ -390,15 +350,8 @@ func Restrict(principal Principal) echo.MiddlewareFunc {
 					})
 				}
 
-			case ISUNITED:
-				if requesterType != core.RemoteDomain {
-					return c.JSON(http.StatusForbidden, echo.Map{
-						"error":  "you are not authorized to perform this action",
-						"detail": "you are not united",
-					})
-				}
 			case ISREGISTERED:
-				if registered, _ := ctx.Value(core.RequesterIsRegisteredKey).(bool); !registered {
+				if !requesterContext.IsRegistered {
 					return c.JSON(http.StatusForbidden, echo.Map{
 						"error":  "you are not authorized to perform this action",
 						"detail": "you are not registered",

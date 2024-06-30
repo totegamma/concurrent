@@ -376,77 +376,51 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 		goto skipAuth
 	}
 
-	if tl.DomainOwned {
-		writable = true
-		if tl.Policy != "" {
-			var params map[string]any = make(map[string]any)
-			if tl.PolicyParams != nil {
-				err := json.Unmarshal([]byte(*tl.PolicyParams), &params)
-				if err != nil {
-					span.SetStatus(codes.Error, err.Error())
-					span.RecordError(err)
-					goto skipAuth
-				}
-			}
-
-			requesterEntity, err := s.entity.Get(ctx, author)
+	writable = true
+	if tl.Policy != "" {
+		var params map[string]any = make(map[string]any)
+		if tl.PolicyParams != nil {
+			err := json.Unmarshal([]byte(*tl.PolicyParams), &params)
 			if err != nil {
+				span.SetStatus(codes.Error, err.Error())
 				span.RecordError(err)
 				goto skipAuth
-			}
-
-			requestContext := core.RequestContext{
-				Self:      tl,
-				Params:    params,
-				Requester: requesterEntity,
-			}
-
-			ok, err := s.policy.TestWithPolicyURL(ctx, tl.Policy, requestContext, "distribute")
-			if err != nil {
-				span.RecordError(err)
-				goto skipAuth
-			}
-
-			if !ok {
-				writable = false
 			}
 		}
-	} else {
-		writable = false
-		if tl.Policy != "" {
-			var params map[string]any = make(map[string]any)
-			if tl.PolicyParams != nil {
-				err := json.Unmarshal([]byte(*tl.PolicyParams), &params)
-				if err != nil {
-					span.SetStatus(codes.Error, err.Error())
-					span.RecordError(err)
-					goto skipAuth
-				}
-			}
 
-			requesterEntity, err := s.entity.Get(ctx, author)
-			if err != nil {
-				span.RecordError(err)
-				goto skipAuth
-			}
+		requesterEntity, err := s.entity.Get(ctx, author)
+		if err != nil {
+			span.RecordError(err)
+			goto skipAuth
+		}
 
-			requestContext := core.RequestContext{
-				Self:      tl,
-				Params:    params,
-				Requester: requesterEntity,
-			}
+		requesterDomain, err := s.domain.GetByFQDN(ctx, requesterEntity.Domain)
+		if err != nil {
+			span.RecordError(err)
+			goto skipAuth
+		}
 
-			ok, err := s.policy.TestWithPolicyURL(ctx, tl.Policy, requestContext, "distribute")
-			if err != nil {
-				span.RecordError(err)
-				goto skipAuth
-			}
+		requestContext := core.RequestContext{
+			Resource: tl,
+			Params:   params,
+			Requester: core.RequesterContext{
+				Entity: &requesterEntity,
+				Domain: &requesterDomain,
+				//TODO: IsRegistered
+			},
+		}
 
-			if ok {
-				writable = true
-			}
+		ok, err := s.policy.TestWithPolicyURL(ctx, tl.Policy, requestContext, "distribute")
+		if err != nil {
+			span.RecordError(err)
+			goto skipAuth
+		}
+
+		if !ok {
+			writable = false
 		}
 	}
+
 skipAuth:
 
 	if !writable {

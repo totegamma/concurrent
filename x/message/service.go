@@ -58,7 +58,7 @@ func (s *service) Count(ctx context.Context) (int64, error) {
 }
 
 // Get returns a message by ID
-func (s *service) Get(ctx context.Context, id string, requester string) (core.Message, error) {
+func (s *service) Get(ctx context.Context, id string, requester core.RequesterContext) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "Message.Service.Get")
 	defer span.End()
 
@@ -76,7 +76,7 @@ func (s *service) Get(ctx context.Context, id string, requester string) (core.Me
 			continue
 		}
 
-		if timeline.Author == requester { // 自分のタイムラインなら読める
+		if timeline.Author == requester.Entity.ID { // 自分のタイムラインなら読める
 			canRead = true
 			break
 		}
@@ -106,7 +106,7 @@ func (s *service) Get(ctx context.Context, id string, requester string) (core.Me
 			ctx,
 			timeline.Policy,
 			core.RequestContext{
-				Self:   timeline,
+				Parent: timeline,
 				Params: params,
 			},
 			action,
@@ -130,17 +130,11 @@ func (s *service) Get(ctx context.Context, id string, requester string) (core.Me
 }
 
 // GetWithOwnAssociations returns a message by ID with associations
-func (s *service) GetWithOwnAssociations(ctx context.Context, id string, requester string) (core.Message, error) {
+func (s *service) GetWithOwnAssociations(ctx context.Context, id string, requester core.RequesterContext) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "Message.Service.GetWithOwnAssociations")
 	defer span.End()
 
-	message, err := s.repo.GetWithOwnAssociations(ctx, id, requester)
-	if err != nil {
-		span.RecordError(err)
-		return core.Message{}, err
-	}
-
-	requesterEntity, err := s.entity.Get(ctx, requester)
+	message, err := s.repo.GetWithOwnAssociations(ctx, id, requester.Entity.ID)
 	if err != nil {
 		span.RecordError(err)
 		return core.Message{}, err
@@ -154,7 +148,7 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 			continue
 		}
 
-		if timeline.Author == requester { // 自分のタイムラインなら読める
+		if timeline.Author == requester.Entity.ID { // 自分のタイムラインなら読める
 			canRead = true
 			break
 		}
@@ -175,9 +169,9 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 		}
 
 		requestContext := core.RequestContext{
-			Self:      timeline,
+			Parent:    timeline,
 			Params:    params,
-			Requester: requesterEntity,
+			Requester: requester,
 		}
 
 		action, ok := ctx.Value(core.RequestPathCtxKey).(string)
@@ -286,7 +280,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 				ctx,
 				timeline.Policy,
 				core.RequestContext{
-					Self:   timeline,
+					Parent: timeline,
 					Params: params,
 				},
 				"GET:/message/",
@@ -457,7 +451,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 			ctx,
 			timeline.Policy,
 			core.RequestContext{
-				Self:   timeline,
+				Parent: timeline,
 				Params: params,
 			},
 			"GET:/message/",

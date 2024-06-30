@@ -16,10 +16,17 @@ type Chunk struct {
 	Items []TimelineItem `json:"items"`
 }
 
+type RequesterContext struct {
+	Entity       *Entity
+	Domain       *Domain
+	IsRegistered bool
+}
+
 type RequestContext struct {
-	Requester Entity
+	Requester RequesterContext
 	Document  any
-	Self      any
+	Resource  any
+	Parent    any
 	Params    map[string]any
 }
 

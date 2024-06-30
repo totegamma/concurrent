@@ -33,11 +33,16 @@ func (h handler) Get(c echo.Context) error {
 
 	id := c.Param("id")
 
-	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
+	requesterContext, ok := ctx.Value(core.RequesterContextCtxKey).(core.RequesterContext)
+	if !ok {
+		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
+	}
+
 	var message core.Message
 	var err error
-	if ok {
-		message, err = h.service.GetWithOwnAssociations(ctx, id, requester)
+
+	if requesterContext.Entity != nil {
+		message, err = h.service.GetWithOwnAssociations(ctx, id, requesterContext)
 		if err != nil {
 			if errors.Is(err, core.ErrorNotFound{}) {
 				return c.JSON(http.StatusNotFound, echo.Map{"error": "Message not found"})
@@ -45,7 +50,7 @@ func (h handler) Get(c echo.Context) error {
 			return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 		}
 	} else {
-		message, err = h.service.Get(ctx, id, "")
+		message, err = h.service.Get(ctx, id, requesterContext)
 		if err != nil {
 			if errors.Is(err, core.ErrorNotFound{}) {
 				return c.JSON(http.StatusNotFound, echo.Map{"error": "Message not found"})
@@ -53,6 +58,7 @@ func (h handler) Get(c echo.Context) error {
 			return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 		}
 	}
+
 	return c.JSON(http.StatusOK, echo.Map{
 		"status":  "ok",
 		"content": message,

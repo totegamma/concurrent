@@ -15,6 +15,7 @@ import (
 
 	"github.com/totegamma/concurrent/cdid"
 	"github.com/totegamma/concurrent/core"
+	"github.com/totegamma/concurrent/x/policy"
 )
 
 type service struct {
@@ -370,83 +371,50 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 	}
 
 	var writable bool
+	results := make([]core.PolicyEvalResult, 0)
 
 	if tl.Author == author {
 		writable = true
+	}
+
+	requesterEntity, err := s.entity.Get(ctx, author)
+	if err != nil {
+		span.RecordError(err)
+	}
+
+	requestContext := core.RequestContext{
+		Parent:    tl,
+		Requester: requesterEntity,
+	}
+
+	result, err := s.policy.TestWithGlobalPolicy(ctx, requestContext, "distribute")
+	if err != nil {
+		span.RecordError(err)
 		goto skipAuth
 	}
+	results = append(results, result)
 
-	if tl.DomainOwned {
-		writable = true
-		if tl.Policy != "" {
-			var params map[string]any = make(map[string]any)
-			if tl.PolicyParams != nil {
-				err := json.Unmarshal([]byte(*tl.PolicyParams), &params)
-				if err != nil {
-					span.SetStatus(codes.Error, err.Error())
-					span.RecordError(err)
-					goto skipAuth
-				}
-			}
-
-			requesterEntity, err := s.entity.Get(ctx, author)
+	if tl.Policy != "" {
+		var params map[string]any = make(map[string]any)
+		if tl.PolicyParams != nil {
+			err := json.Unmarshal([]byte(*tl.PolicyParams), &params)
 			if err != nil {
+				span.SetStatus(codes.Error, err.Error())
 				span.RecordError(err)
 				goto skipAuth
-			}
-
-			requestContext := core.RequestContext{
-				Parent:    tl,
-				Params:    params,
-				Requester: requesterEntity,
-			}
-
-			ok, err := s.policy.TestWithPolicyURL(ctx, tl.Policy, requestContext, "distribute")
-			if err != nil {
-				span.RecordError(err)
-				goto skipAuth
-			}
-
-			if !ok {
-				writable = false
 			}
 		}
-	} else {
-		writable = false
-		if tl.Policy != "" {
-			var params map[string]any = make(map[string]any)
-			if tl.PolicyParams != nil {
-				err := json.Unmarshal([]byte(*tl.PolicyParams), &params)
-				if err != nil {
-					span.SetStatus(codes.Error, err.Error())
-					span.RecordError(err)
-					goto skipAuth
-				}
-			}
 
-			requesterEntity, err := s.entity.Get(ctx, author)
-			if err != nil {
-				span.RecordError(err)
-				goto skipAuth
-			}
-
-			requestContext := core.RequestContext{
-				Parent:    tl,
-				Params:    params,
-				Requester: requesterEntity,
-			}
-
-			ok, err := s.policy.TestWithPolicyURL(ctx, tl.Policy, requestContext, "distribute")
-			if err != nil {
-				span.RecordError(err)
-				goto skipAuth
-			}
-
-			if ok {
-				writable = true
-			}
+		result, err = s.policy.TestWithPolicyURL(ctx, tl.Policy, requestContext, "distribute")
+		if err != nil {
+			span.RecordError(err)
+			goto skipAuth
 		}
+		results = append(results, result)
 	}
+
+	writable = policy.Summerize(results)
+
 skipAuth:
 
 	if !writable {

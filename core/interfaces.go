@@ -88,8 +88,9 @@ type MessageService interface {
 }
 
 type PolicyService interface {
-	Test(ctx context.Context, policy Policy, context RequestContext, action string) (bool, error)
-	TestWithPolicyURL(ctx context.Context, url string, context RequestContext, action string) (bool, error)
+	Test(ctx context.Context, policy Policy, context RequestContext, action string) (PolicyEvalResult, error)
+	TestWithPolicyURL(ctx context.Context, url string, context RequestContext, action string) (PolicyEvalResult, error)
+	TestWithGlobalPolicy(ctx context.Context, context RequestContext, action string) (PolicyEvalResult, error)
 }
 
 type ProfileService interface {

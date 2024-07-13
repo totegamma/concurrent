@@ -37,6 +37,16 @@ const (
 	CommitModeLocalOnlyExec
 )
 
+type PolicyEvalResult int
+
+const (
+	PolicyEvalResultDefault PolicyEvalResult = iota
+	PolicyEvalResultNever
+	PolicyEvalResultDeny
+	PolicyEvalResultAllow
+	PolicyEvalResultAlways
+)
+
 const (
 	Unknown = iota
 	LocalUser

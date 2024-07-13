@@ -2,6 +2,7 @@ package policy
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/stretchr/testify/assert"
 	"testing"
 
@@ -11,7 +12,39 @@ import (
 var s service
 var ctx = context.Background()
 
+var globalPolicyJson = `
+{
+    "global": {
+        "dominant": true,
+        "defaultOnTrue": true,
+        "condition": {
+            "op": "Not",
+            "args": [
+                {
+                    "op": "Or",
+                    "args": [
+                        {
+                            "op": "RequesterDomainHasTag",
+                            "const": "_block"
+                        },
+                        {
+                            "op": "RequesterHasTag",
+                            "const": "_block"
+                        }
+                    ]
+                }
+            ]
+        },
+    },
+    "bases": [
+    ]
+}
+`
+
 func TestMain(m *testing.M) {
+
+	var globalPolicy core.Policy
+	json.Unmarshal([]byte(globalPolicyJson), &globalPolicy)
 
 	s = service{
 		config: core.Config{},

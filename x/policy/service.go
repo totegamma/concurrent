@@ -17,35 +17,46 @@ import (
 var tracer = otel.Tracer("policy")
 
 type service struct {
-	repository Repository
-	config     core.Config
+	repository   Repository
+	policyConfig core.PolicyConfig
+	config       core.Config
 }
 
-func NewService(repository Repository, config core.Config) core.PolicyService {
+func NewService(repository Repository, globalPolicy core.Policy, config core.Config) core.PolicyService {
 	return &service{
 		repository,
+		globalPolicy,
 		config,
 	}
 }
 
-func (s service) TestWithPolicyURL(ctx context.Context, url string, context core.RequestContext, action string) (bool, error) {
+func (s service) TestWithGlobalPolicy(ctx context.Context, context core.RequestContext, action string) (core.PolicyEvalResult, error) {
+	ctx, span := tracer.Start(ctx, "Policy.Service.TestWithGlobalPolicy")
+	defer span.End()
+
+	return s.Test(ctx, s.globalPolicy, context, action)
+}
+
+func (s service) TestWithPolicyURL(ctx context.Context, url string, context core.RequestContext, action string) (core.PolicyEvalResult, error) {
 	ctx, span := tracer.Start(ctx, "Policy.Service.TestWithPolicyURL")
 	defer span.End()
 
 	policy, err := s.repository.Get(ctx, url)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
-		return false, err
+		return core.PolicyEvalResultDefault, err
 	}
 
 	return s.Test(ctx, policy, context, action)
 }
 
-func (s service) Test(ctx context.Context, policy core.Policy, context core.RequestContext, action string) (bool, error) {
+func (s service) Test(ctx context.Context, policy core.Policy, context core.RequestContext, action string) (core.PolicyEvalResult, error) {
 	ctx, span := tracer.Start(ctx, "Policy.Service.Test")
 	defer span.End()
 
 	span.SetAttributes(attribute.String("action", action))
+
+	results := make([]core.PolicyEvalResult, 0)
 
 	for _, statement := range policy.Statements {
 		_, span := tracer.Start(ctx, "Policy.Service.Test.Statement")
@@ -60,7 +71,7 @@ func (s service) Test(ctx context.Context, policy core.Policy, context core.Requ
 				if err != nil {
 					span.SetStatus(codes.Error, err.Error())
 					span.End()
-					return false, err
+					return core.PolicyEvalResultDefault, err
 				}
 
 				result_bool, ok := result.Result.(bool)
@@ -68,17 +79,47 @@ func (s service) Test(ctx context.Context, policy core.Policy, context core.Requ
 					err := fmt.Errorf("bad argument type for Policy. Expected bool but got %s\n", reflect.TypeOf(result).String())
 					span.SetStatus(codes.Error, err.Error())
 					span.End()
-					return false, err
+					return core.PolicyEvalResultDefault, err
 				}
 
 				span.End()
-				return result_bool, nil
+				if statement.DefaultOnTrue && result_bool {
+					results = append(results, core.PolicyEvalResultDefault)
+				} else if statement.DefaultOnFalse && !result_bool {
+					results = append(results, core.PolicyEvalResultDefault)
+				} else if statement.Dominant && result_bool {
+					results = append(results, core.PolicyEvalResultAlways)
+				} else if statement.Dominant && !result_bool {
+					results = append(results, core.PolicyEvalResultNever)
+				} else if result_bool {
+					results = append(results, core.PolicyEvalResultAllow)
+				} else {
+					results = append(results, core.PolicyEvalResultDeny)
+				}
 			}
 		}
 		span.SetAttributes(attribute.Bool("examined", false))
 		span.End()
 	}
-	return false, nil
+
+	result := core.PolicyEvalResultDefault
+
+	for _, r := range results {
+		switch r {
+		case core.PolicyEvalResultAlways:
+			return core.PolicyEvalResultAlways, nil
+		case core.PolicyEvalResultNever:
+			return core.PolicyEvalResultNever, nil
+		case core.PolicyEvalResultAllow:
+			result = core.PolicyEvalResultAllow
+		case core.PolicyEvalResultDeny:
+			result = core.PolicyEvalResultDeny
+		case core.PolicyEvalResultDefault:
+			continue
+		}
+	}
+
+	return result, nil
 }
 
 func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.EvalResult, error) {

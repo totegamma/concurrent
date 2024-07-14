@@ -12,14 +12,15 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/totegamma/concurrent/core"
+	"github.com/totegamma/concurrent/internal/testutil"
 )
 
 var tracer = otel.Tracer("policy")
 
 type service struct {
-	repository   Repository
-	policyConfig core.PolicyConfig
-	config       core.Config
+	repository Repository
+	global     core.Policy
+	config     core.Config
 }
 
 func NewService(repository Repository, globalPolicy core.Policy, config core.Config) core.PolicyService {
@@ -34,7 +35,7 @@ func (s service) TestWithGlobalPolicy(ctx context.Context, context core.RequestC
 	ctx, span := tracer.Start(ctx, "Policy.Service.TestWithGlobalPolicy")
 	defer span.End()
 
-	return s.Test(ctx, s.globalPolicy, context, action)
+	return s.Test(ctx, s.global, context, action)
 }
 
 func (s service) TestWithPolicyURL(ctx context.Context, url string, context core.RequestContext, action string) (core.PolicyEvalResult, error) {
@@ -56,70 +57,41 @@ func (s service) Test(ctx context.Context, policy core.Policy, context core.Requ
 
 	span.SetAttributes(attribute.String("action", action))
 
-	results := make([]core.PolicyEvalResult, 0)
-
-	for _, statement := range policy.Statements {
-		_, span := tracer.Start(ctx, "Policy.Service.Test.Statement")
-		for _, a := range statement.Actions {
-			span.SetAttributes(attribute.StringSlice("actions", statement.Actions))
-			if isActionMatch(action, a) {
-				span.SetAttributes(attribute.Bool("examined", true))
-
-				result, err := s.eval(statement.Condition, context)
-				resultJson, _ := json.MarshalIndent(result, "", "  ")
-				span.SetAttributes(attribute.String("result", string(resultJson)))
-				if err != nil {
-					span.SetStatus(codes.Error, err.Error())
-					span.End()
-					return core.PolicyEvalResultDefault, err
-				}
-
-				result_bool, ok := result.Result.(bool)
-				if !ok {
-					err := fmt.Errorf("bad argument type for Policy. Expected bool but got %s\n", reflect.TypeOf(result).String())
-					span.SetStatus(codes.Error, err.Error())
-					span.End()
-					return core.PolicyEvalResultDefault, err
-				}
-
-				span.End()
-				if statement.DefaultOnTrue && result_bool {
-					results = append(results, core.PolicyEvalResultDefault)
-				} else if statement.DefaultOnFalse && !result_bool {
-					results = append(results, core.PolicyEvalResultDefault)
-				} else if statement.Dominant && result_bool {
-					results = append(results, core.PolicyEvalResultAlways)
-				} else if statement.Dominant && !result_bool {
-					results = append(results, core.PolicyEvalResultNever)
-				} else if result_bool {
-					results = append(results, core.PolicyEvalResultAllow)
-				} else {
-					results = append(results, core.PolicyEvalResultDeny)
-				}
-			}
-		}
-		span.SetAttributes(attribute.Bool("examined", false))
-		span.End()
+	statement, ok := policy.Statements[action]
+	if !ok {
+		testutil.PrintJson(policy)
+		span.SetAttributes(attribute.String("debug", "no rule"))
+		return core.PolicyEvalResultDefault, nil
 	}
 
-	result := core.PolicyEvalResultDefault
-
-	for _, r := range results {
-		switch r {
-		case core.PolicyEvalResultAlways:
-			return core.PolicyEvalResultAlways, nil
-		case core.PolicyEvalResultNever:
-			return core.PolicyEvalResultNever, nil
-		case core.PolicyEvalResultAllow:
-			result = core.PolicyEvalResultAllow
-		case core.PolicyEvalResultDeny:
-			result = core.PolicyEvalResultDeny
-		case core.PolicyEvalResultDefault:
-			continue
-		}
+	result, err := s.eval(statement.Condition, context)
+	resultJson, _ := json.MarshalIndent(result, "", "  ")
+	span.SetAttributes(attribute.String("result", string(resultJson)))
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		return core.PolicyEvalResultDefault, err
 	}
 
-	return result, nil
+	result_bool, ok := result.Result.(bool)
+	if !ok {
+		err := fmt.Errorf("bad argument type for Policy. Expected bool but got %s\n", reflect.TypeOf(result).String())
+		span.SetStatus(codes.Error, err.Error())
+		return core.PolicyEvalResultDefault, err
+	}
+
+	if statement.DefaultOnTrue && result_bool {
+		return core.PolicyEvalResultDefault, nil
+	} else if statement.DefaultOnFalse && !result_bool {
+		return core.PolicyEvalResultDefault, nil
+	} else if statement.Dominant && result_bool {
+		return core.PolicyEvalResultAlways, nil
+	} else if statement.Dominant && !result_bool {
+		return core.PolicyEvalResultNever, nil
+	} else if result_bool {
+		return core.PolicyEvalResultAllow, nil
+	} else {
+		return core.PolicyEvalResultDeny, nil
+	}
 }
 
 func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.EvalResult, error) {
@@ -204,6 +176,72 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 			Operator: "Or",
 			Args:     args,
 			Result:   false,
+		}, nil
+	case "Not":
+		if len(expr.Args) != 1 {
+			err := fmt.Errorf("bad argument length for NOT. Expected 1 but got %d\n", len(expr.Args))
+			return core.EvalResult{
+				Operator: "Not",
+				Error:    err.Error(),
+			}, err
+		}
+
+		arg0_raw, err := s.eval(expr.Args[0], requestCtx)
+		if err != nil {
+			return core.EvalResult{
+				Operator: "Not",
+				Args:     []core.EvalResult{arg0_raw},
+				Error:    err.Error(),
+			}, err
+		}
+
+		arg0, ok := arg0_raw.Result.(bool)
+		if !ok {
+			err := fmt.Errorf("bad argument type for NOT. Expected bool but got %s\n", reflect.TypeOf(arg0_raw.Result))
+			return core.EvalResult{
+				Operator: "Not",
+				Args:     []core.EvalResult{arg0_raw},
+				Error:    err.Error(),
+			}, err
+		}
+
+		return core.EvalResult{
+			Operator: "Not",
+			Args:     []core.EvalResult{arg0_raw},
+			Result:   !arg0,
+		}, nil
+
+	case "Eq":
+		if len(expr.Args) != 2 {
+			err := fmt.Errorf("bad argument length for EQ. Expected 2 but got %d\n", len(expr.Args))
+			return core.EvalResult{
+				Operator: "Eq",
+				Error:    err.Error(),
+			}, err
+		}
+
+		arg0_raw, err := s.eval(expr.Args[0], requestCtx)
+		if err != nil {
+			return core.EvalResult{
+				Operator: "Eq",
+				Args:     []core.EvalResult{arg0_raw},
+				Error:    err.Error(),
+			}, err
+		}
+
+		arg1_raw, err := s.eval(expr.Args[1], requestCtx)
+		if err != nil {
+			return core.EvalResult{
+				Operator: "Eq",
+				Args:     []core.EvalResult{arg0_raw, arg1_raw},
+				Error:    err.Error(),
+			}, err
+		}
+
+		return core.EvalResult{
+			Operator: "Eq",
+			Args:     []core.EvalResult{arg0_raw, arg1_raw},
+			Result:   arg0_raw.Result == arg1_raw.Result,
 		}, nil
 
 	case "Const":
@@ -314,6 +352,31 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 			Result:   value,
 		}, nil
 
+	case "LoadSelf":
+		key, ok := expr.Constant.(string)
+		if !ok {
+			err := fmt.Errorf("bad argument type for LoadSelf. Expected string but got %s\n", reflect.TypeOf(expr.Constant))
+			return core.EvalResult{
+				Operator: "LoadSelf",
+				Error:    err.Error(),
+			}, err
+		}
+
+		mappedSelf := structToMap(requestCtx.Self)
+		value, ok := resolveDotNotation(mappedSelf, key)
+		if !ok {
+			err := fmt.Errorf("key not found: %s\n", key)
+			return core.EvalResult{
+				Operator: "LoadSelf",
+				Error:    err.Error(),
+			}, err
+		}
+
+		return core.EvalResult{
+			Operator: "LoadSelf",
+			Result:   value,
+		}, nil
+
 	case "IsRequesterLocalUser":
 		domain := requestCtx.Requester.Domain
 		return core.EvalResult{
@@ -354,6 +417,22 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 		return core.EvalResult{
 			Operator: "RequesterID",
 			Result:   requestCtx.Requester.ID,
+		}, nil
+
+	case "RequesterDomainHasTag":
+		target, ok := expr.Constant.(string)
+		if !ok {
+			err := fmt.Errorf("bad argument type for RequesterDomainHasTag. Expected string but got %s\n", reflect.TypeOf(expr.Constant))
+			return core.EvalResult{
+				Operator: "RequesterDomainHasTag",
+				Error:    err.Error(),
+			}, err
+		}
+
+		tags := core.ParseTags(requestCtx.RequesterDomain.Tag)
+		return core.EvalResult{
+			Operator: "RequesterDomainHasTag",
+			Result:   tags.Has(target),
 		}, nil
 
 	default:

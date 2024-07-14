@@ -1,6 +1,7 @@
 package testutil
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
@@ -45,9 +46,18 @@ func SetupMockTraceProvider() *tracetest.InMemoryExporter {
 	return spanChecker
 }
 
-func printJson(v interface{}) {
+func PrintJson(v interface{}) {
 	b, _ := json.MarshalIndent(v, "", "  ")
 	log.Println(string(b))
+}
+
+func SetupTraceCtx() (context.Context, string) {
+	ctx, span := tracer.Start(context.Background(), "testRoot")
+	defer span.End()
+
+	traceID := span.SpanContext().TraceID().String()
+
+	return ctx, traceID
 }
 
 func CreateHttpRequest() (echo.Context, *http.Request, *httptest.ResponseRecorder, string) {

@@ -17,25 +17,29 @@ type Chunk struct {
 }
 
 type RequestContext struct {
-	Requester Entity
-	Document  any
-	Parent    any
-	Resource  any
-	Params    map[string]any
+	Requester       Entity
+	RequesterDomain Domain
+	Document        any
+	Self            any
+	Resource        any
+	Params          map[string]any
+}
+
+type PolicyDocument struct {
+	Name        string              `json:"name"`
+	Description string              `json:"description"`
+	Versions    map[string][]Policy `json:"versions"`
 }
 
 type Policy struct {
-	Name       string      `json:"name"`
-	Version    string      `json:"version"`
-	Statements []Statement `json:"statements"`
+	Statements map[string]Statement `json:"statements"`
 }
 
 type Statement struct {
-	Actions        []string `json:"actions"`
-	Dominant       bool     `json:"dominant"`
-	DefaultOnTrue  bool     `json:"defaultOnTrue"`
-	DefaultOnFalse bool     `json:"defaultOnFalse"`
-	Condition      Expr     `json:"condition"`
+	Dominant       bool `json:"dominant"`
+	DefaultOnTrue  bool `json:"defaultOnTrue"`
+	DefaultOnFalse bool `json:"defaultOnFalse"`
+	Condition      Expr `json:"condition"`
 }
 
 type Expr struct {

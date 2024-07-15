@@ -383,7 +383,7 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 	}
 
 	requestContext := core.RequestContext{
-		Parent:    tl,
+		Self:      tl,
 		Requester: requesterEntity,
 	}
 

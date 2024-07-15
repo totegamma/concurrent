@@ -35,7 +35,7 @@ func (s service) TestWithGlobalPolicy(ctx context.Context, context core.RequestC
 	ctx, span := tracer.Start(ctx, "Policy.Service.TestWithGlobalPolicy")
 	defer span.End()
 
-	return s.Test(ctx, s.global, context, action)
+	return s.test(ctx, s.global, context, action)
 }
 
 func (s service) TestWithPolicyURL(ctx context.Context, url string, context core.RequestContext, action string) (core.PolicyEvalResult, error) {
@@ -53,6 +53,33 @@ func (s service) TestWithPolicyURL(ctx context.Context, url string, context core
 
 func (s service) Test(ctx context.Context, policy core.Policy, context core.RequestContext, action string) (core.PolicyEvalResult, error) {
 	ctx, span := tracer.Start(ctx, "Policy.Service.Test")
+	defer span.End()
+
+	globalResult, err := s.test(ctx, s.global, context, action)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		return core.PolicyEvalResultDefault, err
+	}
+
+	if globalResult == core.PolicyEvalResultAlways || globalResult == core.PolicyEvalResultNever {
+		return globalResult, nil
+	}
+
+	localResult, err := s.test(ctx, policy, context, action)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		return core.PolicyEvalResultDefault, err
+	}
+
+	if localResult == core.PolicyEvalResultDefault {
+		return globalResult, nil
+	}
+
+	return localResult, nil
+}
+
+func (s service) test(ctx context.Context, policy core.Policy, context core.RequestContext, action string) (core.PolicyEvalResult, error) {
+	ctx, span := tracer.Start(ctx, "Policy.Service.test")
 	defer span.End()
 
 	span.SetAttributes(attribute.String("action", action))

@@ -10,6 +10,53 @@ import (
 	"github.com/totegamma/concurrent/core"
 )
 
+func IsDominant(result core.PolicyEvalResult) (bool, bool) {
+	if result == core.PolicyEvalResultAlways {
+		return true, true
+	} else if result == core.PolicyEvalResultNever {
+		return true, false
+	} else {
+		return false, false
+	}
+}
+
+func AccumulateOr(results []core.PolicyEvalResult) core.PolicyEvalResult {
+	var hasAlways bool
+	var hasNever bool
+	var hasAllow bool
+	var hasDeny bool
+
+	for _, r := range results {
+		if r == core.PolicyEvalResultAlways {
+			hasAlways = true
+		} else if r == core.PolicyEvalResultNever {
+			hasNever = true
+		} else if r == core.PolicyEvalResultAllow {
+			hasAllow = true
+		} else if r == core.PolicyEvalResultDeny {
+			hasDeny = true
+		}
+	}
+
+	if hasAlways && hasNever {
+		return core.PolicyEvalResultDefault
+	} else if hasAlways {
+		return core.PolicyEvalResultAlways
+	} else if hasNever {
+		return core.PolicyEvalResultNever
+	}
+
+	if hasAllow && hasDeny {
+		return core.PolicyEvalResultDefault
+	} else if hasAllow {
+		return core.PolicyEvalResultAllow
+	} else if hasDeny {
+		return core.PolicyEvalResultDeny
+	}
+
+	return core.PolicyEvalResultDefault
+}
+
 func Summerize(results []core.PolicyEvalResult) bool {
 	result := false
 

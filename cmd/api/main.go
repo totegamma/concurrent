@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log"
 	"log/slog"
@@ -206,7 +207,65 @@ func main() {
 
 	client := client.NewClient()
 
-	agent := concurrent.SetupAgent(db, rdb, mc, client, conconf, config.Server.RepositoryPath)
+	var globalPolicyJson = `
+    {
+        "statements": {
+            "global": {
+                "dominant": true,
+                "defaultOnTrue": true,
+                "condition": {
+                    "op": "Not",
+                    "args": [
+                        {
+                            "op": "Or",
+                            "args": [
+                                {
+                                    "op": "RequesterDomainHasTag",
+                                    "const": "_block"
+                                },
+                                {
+                                    "op": "RequesterHasTag",
+                                    "const": "_block"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            },
+            "timeline.message.read": {
+                "condition": {
+                    "op": "Or",
+                    "args": [
+                        {
+                            "op": "LoadSelf",
+                            "const": "domainOwned"
+                        },
+                        {
+                            "op": "Eq",
+                            "args": [
+                                {
+                                    "op": "LoadSelf",
+                                    "const": "author"
+                                },
+                                {
+                                    "op": "RequesterID"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+    }`
+
+	globalPolicy := core.Policy{}
+	err = json.Unmarshal([]byte(globalPolicyJson), &globalPolicy)
+	if err != nil {
+		panic("failed to parse global policy")
+	}
+
+	policy := concurrent.SetupPolicyService(rdb, globalPolicy, conconf)
+	agent := concurrent.SetupAgent(db, rdb, mc, client, policy, conconf, config.Server.RepositoryPath)
 
 	domainService := concurrent.SetupDomainService(db, client, conconf)
 	domainHandler := domain.NewHandler(domainService)
@@ -214,16 +273,16 @@ func main() {
 	userKvService := concurrent.SetupUserkvService(db)
 	userkvHandler := userkv.NewHandler(userKvService)
 
-	messageService := concurrent.SetupMessageService(db, rdb, mc, client, conconf)
+	messageService := concurrent.SetupMessageService(db, rdb, mc, client, policy, conconf)
 	messageHandler := message.NewHandler(messageService)
 
-	associationService := concurrent.SetupAssociationService(db, rdb, mc, client, conconf)
+	associationService := concurrent.SetupAssociationService(db, rdb, mc, client, policy, conconf)
 	associationHandler := association.NewHandler(associationService)
 
 	profileService := concurrent.SetupProfileService(db, rdb, mc, client, conconf)
 	profileHandler := profile.NewHandler(profileService)
 
-	timelineService := concurrent.SetupTimelineService(db, rdb, mc, client, conconf)
+	timelineService := concurrent.SetupTimelineService(db, rdb, mc, client, policy, conconf)
 	timelineHandler := timeline.NewHandler(timelineService)
 
 	entityService := concurrent.SetupEntityService(db, rdb, mc, client, conconf)
@@ -238,7 +297,7 @@ func main() {
 	ackService := concurrent.SetupAckService(db, rdb, mc, client, conconf)
 	ackHandler := ack.NewHandler(ackService)
 
-	storeService := concurrent.SetupStoreService(db, rdb, mc, client, conconf, config.Server.RepositoryPath)
+	storeService := concurrent.SetupStoreService(db, rdb, mc, client, policy, conconf, config.Server.RepositoryPath)
 	storeHandler := store.NewHandler(storeService)
 
 	subscriptionService := concurrent.SetupSubscriptionService(db)

@@ -94,7 +94,7 @@ func SetupJobService(db *gorm.DB) core.JobService {
 	return nil
 }
 
-func SetupAckService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, config core.Config) core.AckService {
+func SetupAckService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, policy core.PolicyService, config core.Config) core.AckService {
 	wire.Build(ackServiceProvider)
 	return nil
 }
@@ -109,7 +109,7 @@ func SetupMessageService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, cl
 	return nil
 }
 
-func SetupProfileService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, config core.Config) core.ProfileService {
+func SetupProfileService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, policy core.PolicyService, config core.Config) core.ProfileService {
 	wire.Build(profileServiceProvider)
 	return nil
 }
@@ -129,7 +129,7 @@ func SetupDomainService(db *gorm.DB, client client.Client, config core.Config) c
 	return nil
 }
 
-func SetupEntityService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, config core.Config) core.EntityService {
+func SetupEntityService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, policy core.PolicyService, config core.Config) core.EntityService {
 	wire.Build(entityServiceProvider)
 	return nil
 }

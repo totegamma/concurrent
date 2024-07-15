@@ -14,7 +14,6 @@ import (
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/core"
 	"github.com/totegamma/concurrent/x/jwt"
-	"golang.org/x/exp/slices"
 )
 
 type service struct {
@@ -22,16 +21,25 @@ type service struct {
 	client     client.Client
 	config     core.Config
 	key        core.KeyService
+	policy     core.PolicyService
 	jwtService jwt.Service
 }
 
 // NewService creates a new entity service
-func NewService(repository Repository, client client.Client, config core.Config, key core.KeyService, jwtService jwt.Service) core.EntityService {
+func NewService(
+	repository Repository,
+	client client.Client,
+	config core.Config,
+	key core.KeyService,
+	policy core.PolicyService,
+	jwtService jwt.Service,
+) core.EntityService {
 	return &service{
 		repository,
 		client,
 		config,
 		key,
+		policy,
 		jwtService,
 	}
 }
@@ -188,8 +196,17 @@ func (s *service) Affiliation(ctx context.Context, mode core.CommitMode, documen
 				return core.Entity{}, err
 			}
 
-			inviterTags := strings.Split(inviter.Tag, ",")
-			if !slices.Contains(inviterTags, "_invite") {
+			rctx := core.RequestContext{
+				Requester: inviter,
+			}
+
+			policyResult, err := s.policy.TestWithGlobalPolicy(ctx, rctx, "invite")
+			if err != nil {
+				span.RecordError(err)
+				return core.Entity{}, err
+			}
+
+			if policyResult == core.PolicyEvalResultNever || policyResult == core.PolicyEvalResultDeny {
 				return core.Entity{}, fmt.Errorf("inviter is not allowed to invite")
 			}
 

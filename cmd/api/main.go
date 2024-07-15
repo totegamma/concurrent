@@ -232,6 +232,12 @@ func main() {
                     ]
                 }
             },
+            "invite": {
+                "condition": {
+                    "op": "RequesterHasTag",
+                    "const": "_invite"
+                }
+            },
             "timeline.distribute": {
                 "condition": {
                     "op": "Or",
@@ -302,13 +308,13 @@ func main() {
 	associationService := concurrent.SetupAssociationService(db, rdb, mc, client, policy, conconf)
 	associationHandler := association.NewHandler(associationService)
 
-	profileService := concurrent.SetupProfileService(db, rdb, mc, client, conconf)
+	profileService := concurrent.SetupProfileService(db, rdb, mc, client, policy, conconf)
 	profileHandler := profile.NewHandler(profileService)
 
 	timelineService := concurrent.SetupTimelineService(db, rdb, mc, client, policy, conconf)
 	timelineHandler := timeline.NewHandler(timelineService)
 
-	entityService := concurrent.SetupEntityService(db, rdb, mc, client, conconf)
+	entityService := concurrent.SetupEntityService(db, rdb, mc, client, policy, conconf)
 	entityHandler := entity.NewHandler(entityService)
 
 	authService := concurrent.SetupAuthService(db, rdb, mc, client, policy, conconf)
@@ -317,7 +323,7 @@ func main() {
 	keyService := concurrent.SetupKeyService(db, rdb, mc, client, conconf)
 	keyHandler := key.NewHandler(keyService)
 
-	ackService := concurrent.SetupAckService(db, rdb, mc, client, conconf)
+	ackService := concurrent.SetupAckService(db, rdb, mc, client, policy, conconf)
 	ackHandler := ack.NewHandler(ackService)
 
 	storeService := concurrent.SetupStoreService(db, rdb, mc, client, policy, conconf, config.Server.RepositoryPath)

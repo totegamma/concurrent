@@ -139,7 +139,7 @@ func SetupAgent(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client clie
 	return nil
 }
 
-func SetupAuthService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, config core.Config) core.AuthService {
+func SetupAuthService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, policy core.PolicyService, config core.Config) core.AuthService {
 	wire.Build(authServiceProvider)
 	return nil
 }

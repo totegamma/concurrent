@@ -203,6 +203,7 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				})
 			}
 
+			var domain core.Domain
 			if entity.Domain == s.config.FQDN {
 				// local user
 
@@ -226,7 +227,7 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				span.SetAttributes(attribute.String("RequesterType", core.RequesterTypeString(core.LocalUser)))
 			} else {
 
-				domain, err := s.domain.GetByFQDN(ctx, entity.Domain)
+				domain, err = s.domain.GetByFQDN(ctx, entity.Domain)
 				if err != nil {
 					span.RecordError(errors.Wrap(err, "failed to get domain by fqdn"))
 					return c.JSON(http.StatusForbidden, echo.Map{})
@@ -257,6 +258,25 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 			} else {
 				ctx = context.WithValue(ctx, core.RequesterIsRegisteredKey, false)
 			}
+
+			rctx := core.RequestContext{
+				Requester:       entity,
+				RequesterDomain: domain,
+			}
+
+			accessOK, err := s.policy.TestWithGlobalPolicy(ctx, rctx, "global")
+			if err != nil {
+				span.RecordError(errors.Wrap(err, "failed to test with global policy"))
+				return c.JSON(http.StatusForbidden, echo.Map{})
+			}
+
+			if accessOK == core.PolicyEvalResultNever || accessOK == core.PolicyEvalResultDeny {
+				return c.JSON(http.StatusForbidden, echo.Map{
+					"error":  "you are not authorized to perform this action",
+					"detail": "you are not allowed by global policy",
+				})
+			}
+
 		}
 	skipCheckAuthorization:
 		c.SetRequest(c.Request().WithContext(ctx))

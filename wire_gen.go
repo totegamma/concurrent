@@ -132,11 +132,11 @@ func SetupAgent(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 cli
 	return agentService
 }
 
-func SetupAuthService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, config core.Config) core.AuthService {
+func SetupAuthService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, policy2 core.PolicyService, config core.Config) core.AuthService {
 	entityService := SetupEntityService(db, rdb, mc, client2, config)
 	domainService := SetupDomainService(db, client2, config)
 	keyService := SetupKeyService(db, rdb, mc, client2, config)
-	authService := auth.NewService(config, entityService, domainService, keyService)
+	authService := auth.NewService(config, entityService, domainService, keyService, policy2)
 	return authService
 }
 

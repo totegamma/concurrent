@@ -16,11 +16,18 @@ type service struct {
 	entity core.EntityService
 	domain core.DomainService
 	key    core.KeyService
+	policy core.PolicyService
 }
 
 // NewService creates a new auth service
-func NewService(config core.Config, entity core.EntityService, domain core.DomainService, key core.KeyService) core.AuthService {
-	return &service{config, entity, domain, key}
+func NewService(
+	config core.Config,
+	entity core.EntityService,
+	domain core.DomainService,
+	key core.KeyService,
+	policy core.PolicyService,
+) core.AuthService {
+	return &service{config, entity, domain, key, policy}
 }
 
 // GetPassport takes client signed JWT and returns server signed JWT

@@ -311,7 +311,7 @@ func main() {
 	entityService := concurrent.SetupEntityService(db, rdb, mc, client, conconf)
 	entityHandler := entity.NewHandler(entityService)
 
-	authService := concurrent.SetupAuthService(db, rdb, mc, client, conconf)
+	authService := concurrent.SetupAuthService(db, rdb, mc, client, policy, conconf)
 	authHandler := auth.NewHandler(authService)
 
 	keyService := concurrent.SetupKeyService(db, rdb, mc, client, conconf)

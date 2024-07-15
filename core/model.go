@@ -26,9 +26,9 @@ type RequestContext struct {
 }
 
 type PolicyDocument struct {
-	Name        string              `json:"name"`
-	Description string              `json:"description"`
-	Versions    map[string][]Policy `json:"versions"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Versions    map[string]Policy `json:"versions"`
 }
 
 type Policy struct {

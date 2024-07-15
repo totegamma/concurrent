@@ -232,6 +232,29 @@ func main() {
                     ]
                 }
             },
+            "timeline.distribute": {
+                "condition": {
+                    "op": "Or",
+                    "args": [
+                        {
+                            "op": "LoadSelf",
+                            "const": "domainOwned"
+                        },
+                        {
+                            "op": "Eq",
+                            "args": [
+                                {
+                                    "op": "LoadSelf",
+                                    "const": "author"
+                                },
+                                {
+                                    "op": "RequesterID"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            },
             "timeline.message.read": {
                 "condition": {
                     "op": "Or",

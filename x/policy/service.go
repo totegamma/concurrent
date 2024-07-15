@@ -34,7 +34,7 @@ func NewService(repository Repository, globalPolicy core.Policy, config core.Con
 func (s service) Summerize(results []core.PolicyEvalResult, action string) bool {
 	result, ok := s.global.Defaults[action]
 	if !ok {
-		return false
+		result = false
 	}
 
 	for _, r := range results {
@@ -66,10 +66,14 @@ func (s service) TestWithPolicyURL(ctx context.Context, url string, context core
 	ctx, span := tracer.Start(ctx, "Policy.Service.TestWithPolicyURL")
 	defer span.End()
 
-	policy, err := s.repository.Get(ctx, url)
-	if err != nil {
-		span.SetStatus(codes.Error, err.Error())
-		return core.PolicyEvalResultDefault, err
+	var policy core.Policy
+	if url != "" {
+		var err error
+		policy, err = s.repository.Get(ctx, url)
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			return core.PolicyEvalResultDefault, err
+		}
 	}
 
 	return s.Test(ctx, policy, context, action)
@@ -86,6 +90,10 @@ func (s service) Test(ctx context.Context, policy core.Policy, context core.Requ
 	}
 
 	if globalResult == core.PolicyEvalResultAlways || globalResult == core.PolicyEvalResultNever {
+		return globalResult, nil
+	}
+
+	if len(policy.Statements) == 0 {
 		return globalResult, nil
 	}
 

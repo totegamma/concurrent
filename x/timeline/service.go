@@ -385,15 +385,17 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 			Self:      tl,
 			Requester: requesterEntity,
 		},
-		"distribute",
+		"timeline.distribute",
 	)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	writable := s.policy.Summerize([]core.PolicyEvalResult{result}, "distribute")
+	writable := s.policy.Summerize([]core.PolicyEvalResult{result}, "timeline.distribute")
 
 	if !writable {
+		span.RecordError(fmt.Errorf("You don't have timeline.distribute access to %v", timelineID))
+		span.SetAttributes(attribute.Int("result", int(result)))
 		slog.InfoContext(
 			ctx, "failed to post to timeline",
 			slog.String("type", "audit"),

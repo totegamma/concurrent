@@ -200,11 +200,6 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 			continue
 		}
 
-		if timeline.Policy == "" {
-			timelinePolicyResults[i] = core.PolicyEvalResultDefault
-			continue
-		}
-
 		var params map[string]any = make(map[string]any)
 		if timeline.PolicyParams != nil {
 			err := json.Unmarshal([]byte(*timeline.PolicyParams), &params)
@@ -215,13 +210,16 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 			}
 		}
 
-		requestContext := core.RequestContext{
-			Self:      timeline,
-			Params:    params,
-			Requester: requesterEntity,
-		}
-
-		result, err := s.policy.TestWithPolicyURL(ctx, timeline.Policy, requestContext, "timeline.message.read")
+		result, err := s.policy.TestWithPolicyURL(
+			ctx,
+			timeline.Policy,
+			core.RequestContext{
+				Self:      timeline,
+				Params:    params,
+				Requester: requesterEntity,
+			},
+			"timeline.message.read",
+		)
 		if err != nil {
 			span.SetStatus(codes.Error, err.Error())
 			timelinePolicyResults[i] = core.PolicyEvalResultDefault

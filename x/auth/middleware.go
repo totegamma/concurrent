@@ -339,23 +339,6 @@ func ReceiveGatewayAuthPropagation(next echo.HandlerFunc) echo.HandlerFunc {
 	}
 }
 
-func SetRequestPath(next echo.HandlerFunc) echo.HandlerFunc {
-	return func(c echo.Context) error {
-		ctx, span := tracer.Start(c.Request().Context(), "Auth.Service.SetRequestPath")
-		defer span.End()
-
-		url := c.Request().URL
-		method := c.Request().Method
-		path := method + ":" + url.Path
-
-		ctx = context.WithValue(ctx, core.RequestPathCtxKey, path)
-		span.SetAttributes(attribute.String("RequestPath", path))
-
-		c.SetRequest(c.Request().WithContext(ctx))
-		return next(c)
-	}
-}
-
 func Restrict(principal Principal) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {

@@ -306,7 +306,7 @@ func main() {
 	jobService := concurrent.SetupJobService(db)
 	jobHandler := job.NewHandler(jobService)
 
-	apiV1 := e.Group("", auth.SetRequestPath, auth.ReceiveGatewayAuthPropagation)
+	apiV1 := e.Group("", auth.ReceiveGatewayAuthPropagation)
 	// store
 	apiV1.POST("/commit", storeHandler.Commit)
 

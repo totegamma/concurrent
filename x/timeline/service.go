@@ -11,11 +11,9 @@ import (
 
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 
 	"github.com/totegamma/concurrent/cdid"
 	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/x/policy"
 )
 
 type service struct {
@@ -370,52 +368,30 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 		return core.TimelineItem{}, err
 	}
 
-	var writable bool
-	results := make([]core.PolicyEvalResult, 0)
-
-	if tl.Author == author {
-		writable = true
-	}
-
 	requesterEntity, err := s.entity.Get(ctx, author)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	requestContext := core.RequestContext{
-		Self:      tl,
-		Requester: requesterEntity,
+	var params map[string]any = make(map[string]any)
+	if tl.PolicyParams != nil {
+		json.Unmarshal([]byte(*tl.PolicyParams), &params)
 	}
 
-	result, err := s.policy.TestWithGlobalPolicy(ctx, requestContext, "distribute")
+	result, err := s.policy.TestWithPolicyURL(
+		ctx,
+		tl.Policy,
+		core.RequestContext{
+			Self:      tl,
+			Requester: requesterEntity,
+		},
+		"distribute",
+	)
 	if err != nil {
 		span.RecordError(err)
-		goto skipAuth
-	}
-	results = append(results, result)
-
-	if tl.Policy != "" {
-		var params map[string]any = make(map[string]any)
-		if tl.PolicyParams != nil {
-			err := json.Unmarshal([]byte(*tl.PolicyParams), &params)
-			if err != nil {
-				span.SetStatus(codes.Error, err.Error())
-				span.RecordError(err)
-				goto skipAuth
-			}
-		}
-
-		result, err = s.policy.TestWithPolicyURL(ctx, tl.Policy, requestContext, "distribute")
-		if err != nil {
-			span.RecordError(err)
-			goto skipAuth
-		}
-		results = append(results, result)
 	}
 
-	writable = policy.Summerize(results)
-
-skipAuth:
+	writable := s.policy.Summerize([]core.PolicyEvalResult{result}, "distribute")
 
 	if !writable {
 		slog.InfoContext(

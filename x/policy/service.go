@@ -31,6 +31,30 @@ func NewService(repository Repository, globalPolicy core.Policy, config core.Con
 	}
 }
 
+func (s service) Summerize(results []core.PolicyEvalResult, action string) bool {
+	result, ok := s.global.Defaults[action]
+	if !ok {
+		return false
+	}
+
+	for _, r := range results {
+		switch r {
+		case core.PolicyEvalResultAlways:
+			return true
+		case core.PolicyEvalResultNever:
+			return false
+		case core.PolicyEvalResultAllow:
+			result = true
+		case core.PolicyEvalResultDeny:
+			result = false
+		case core.PolicyEvalResultDefault:
+			continue
+		}
+	}
+
+	return result
+}
+
 func (s service) TestWithGlobalPolicy(ctx context.Context, context core.RequestContext, action string) (core.PolicyEvalResult, error) {
 	ctx, span := tracer.Start(ctx, "Policy.Service.TestWithGlobalPolicy")
 	defer span.End()

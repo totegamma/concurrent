@@ -33,6 +33,7 @@ type PolicyDocument struct {
 
 type Policy struct {
 	Statements map[string]Statement `json:"statements"`
+	Defaults   map[string]bool      `json:"defaults"`
 }
 
 type Statement struct {

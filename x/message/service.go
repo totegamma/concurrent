@@ -143,7 +143,7 @@ func (s *service) isMessagePublic(ctx context.Context, message core.Message) (bo
 SKIP_EVAL_MESSAGE_POLICY:
 
 	// accumulate polies
-	result := policy.Summerize([]core.PolicyEvalResult{messagePolicyResult, timelinePolicyResult})
+	result := s.policy.Summerize([]core.PolicyEvalResult{messagePolicyResult, timelinePolicyResult}, "message.read")
 	if !result {
 		return false, nil
 	}
@@ -263,7 +263,7 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 	}
 SKIP_EVAL_MESSAGE_POLICY:
 
-	result := policy.Summerize([]core.PolicyEvalResult{messagePolicyResult, timelinePolicyResult})
+	result := s.policy.Summerize([]core.PolicyEvalResult{messagePolicyResult, timelinePolicyResult}, "message.read")
 	if !result {
 		return core.Message{}, fmt.Errorf("no read access")
 	}

@@ -57,27 +57,6 @@ func AccumulateOr(results []core.PolicyEvalResult) core.PolicyEvalResult {
 	return core.PolicyEvalResultDefault
 }
 
-func Summerize(results []core.PolicyEvalResult) bool {
-	result := false
-
-	for _, r := range results {
-		switch r {
-		case core.PolicyEvalResultAlways:
-			return true
-		case core.PolicyEvalResultNever:
-			return false
-		case core.PolicyEvalResultAllow:
-			result = true
-		case core.PolicyEvalResultDeny:
-			result = false
-		case core.PolicyEvalResultDefault:
-			continue
-		}
-	}
-
-	return result
-}
-
 func debugPrint(comment string, v interface{}) {
 	b, _ := json.MarshalIndent(v, "", "  ")
 	fmt.Println(comment, string(b))

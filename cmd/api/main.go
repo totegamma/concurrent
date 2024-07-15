@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"log/slog"
@@ -207,91 +206,7 @@ func main() {
 
 	client := client.NewClient()
 
-	var globalPolicyJson = `
-    {
-        "statements": {
-            "global": {
-                "dominant": true,
-                "defaultOnTrue": true,
-                "condition": {
-                    "op": "Not",
-                    "args": [
-                        {
-                            "op": "Or",
-                            "args": [
-                                {
-                                    "op": "RequesterDomainHasTag",
-                                    "const": "_block"
-                                },
-                                {
-                                    "op": "RequesterHasTag",
-                                    "const": "_block"
-                                }
-                            ]
-                        }
-                    ]
-                }
-            },
-            "invite": {
-                "condition": {
-                    "op": "RequesterHasTag",
-                    "const": "_invite"
-                }
-            },
-            "timeline.distribute": {
-                "condition": {
-                    "op": "Or",
-                    "args": [
-                        {
-                            "op": "LoadSelf",
-                            "const": "domainOwned"
-                        },
-                        {
-                            "op": "Eq",
-                            "args": [
-                                {
-                                    "op": "LoadSelf",
-                                    "const": "author"
-                                },
-                                {
-                                    "op": "RequesterID"
-                                }
-                            ]
-                        }
-                    ]
-                }
-            },
-            "timeline.message.read": {
-                "condition": {
-                    "op": "Or",
-                    "args": [
-                        {
-                            "op": "LoadSelf",
-                            "const": "domainOwned"
-                        },
-                        {
-                            "op": "Eq",
-                            "args": [
-                                {
-                                    "op": "LoadSelf",
-                                    "const": "author"
-                                },
-                                {
-                                    "op": "RequesterID"
-                                }
-                            ]
-                        }
-                    ]
-                }
-            }
-        }
-    }`
-
-	globalPolicy := core.Policy{}
-	err = json.Unmarshal([]byte(globalPolicyJson), &globalPolicy)
-	if err != nil {
-		panic("failed to parse global policy")
-	}
+	globalPolicy := getDefaultGlobalPolicy()
 
 	policy := concurrent.SetupPolicyService(rdb, globalPolicy, conconf)
 	agent := concurrent.SetupAgent(db, rdb, mc, client, policy, conconf, config.Server.RepositoryPath)

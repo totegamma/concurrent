@@ -37,6 +37,139 @@ var globalPolicyJson = `
                 "const": "_invite"
             }
         },
+        "association.delete": {
+            "condition": {
+                "op": "Or",
+                "args": [
+                    {
+                        "op": "Eq",
+                        "args": [
+                            {
+                                "op": "LoadSelf",
+                                "const": "author"
+                            },
+                            {
+                                "op": "LoadDocument",
+                                "const": "signer"
+                            }
+                        ]
+                    },
+                    {
+                        "op": "Eq",
+                        "args": [
+                            {
+                                "op": "LoadSelf",
+                                "const": "owner"
+                            },
+                            {
+                                "op": "LoadDocument",
+                                "const": "signer"
+                            }
+                        ]
+                    },
+                    {
+                        "op": "RequesterHasTag",
+                        "const": "_admin"
+                    }
+                ]
+            }
+        },
+        "message.delete": {
+            "condition": {
+                "op": "Or",
+                "args": [
+                    {
+                        "op": "Eq",
+                        "args": [
+                            {
+                                "op": "LoadSelf",
+                                "const": "author"
+                            },
+                            {
+                                "op": "LoadDocument",
+                                "const": "signer"
+                            }
+                        ]
+                    },
+                    {
+                        "op": "RequesterHasTag",
+                        "const": "_admin"
+                    }
+                ]
+            }
+        },
+        "profile.delete": {
+            "condition": {
+                "op": "Or",
+                "args": [
+                    {
+                        "op": "Eq",
+                        "args": [
+                            {
+                                "op": "LoadSelf",
+                                "const": "author"
+                            },
+                            {
+                                "op": "LoadDocument",
+                                "const": "signer"
+                            }
+                        ]
+                    },
+                    {
+                        "op": "RequesterHasTag",
+                        "const": "_admin"
+                    }
+                ]
+            }
+        },
+        "subscription.delete": {
+            "condition": {
+                "op": "Or",
+                "args": [
+                    {
+                        "op": "Eq",
+                        "args": [
+                            {
+                                "op": "LoadSelf",
+                                "const": "author"
+                            },
+                            {
+                                "op": "LoadDocument",
+                                "const": "signer"
+                            }
+                        ]
+                    },
+                    {
+                        "op": "RequesterHasTag",
+                        "const": "_admin"
+                    }
+                ]
+            }
+        },
+        "timeline.delete": {
+            "condition": {
+                "op": "Or",
+                "args": [
+                    {
+                        "op": "Eq",
+                        "args": [
+                            {
+                                "op": "LoadSelf",
+                                "const": "author"
+                            },
+                            {
+                                "op": "LoadDocument",
+                                "const": "signer"
+                            }
+                        ]
+                    },
+                    {
+                        "op": "RequesterHasTag",
+                        "const": "_admin"
+                    }
+                ]
+            }
+        },
         "timeline.distribute": {
             "condition": {
                 "op": "Or",

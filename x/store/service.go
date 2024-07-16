@@ -170,7 +170,7 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 
 	case "delete":
 		var doc core.DeleteDocument
-		err := json.Unmarshal([]byte(document), &doc)
+		err = json.Unmarshal([]byte(document), &doc)
 		if err != nil {
 			return nil, err
 		}

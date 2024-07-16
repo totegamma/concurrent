@@ -433,8 +433,34 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 		return core.Association{}, err
 	}
 
-	if (targetAssociation.Author != requester) && (targetMessage.Author != requester) {
-		return core.Association{}, fmt.Errorf("you are not authorized to perform this action")
+	var params map[string]any = make(map[string]any)
+	if targetMessage.PolicyParams != nil {
+		err := json.Unmarshal([]byte(*targetMessage.PolicyParams), &params)
+		if err != nil {
+			span.RecordError(err)
+			return core.Association{}, err
+		}
+	}
+
+	result, err := s.policy.TestWithPolicyURL(
+		ctx,
+		targetMessage.Policy,
+		core.RequestContext{
+			Self:     targetAssociation,
+			Params:   params,
+			Document: doc,
+		},
+		"association.delete",
+	)
+
+	if err != nil {
+		span.RecordError(err)
+		return core.Association{}, err
+	}
+
+	finally := s.policy.Summerize([]core.PolicyEvalResult{result}, "association.delete")
+	if !finally {
+		return core.Association{}, core.ErrorPermissionDenied{}
 	}
 
 	err = s.repo.Delete(ctx, doc.Target)

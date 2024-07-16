@@ -384,6 +384,7 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 		core.RequestContext{
 			Self:      tl,
 			Requester: requesterEntity,
+			Params:    params,
 		},
 		"timeline.distribute",
 	)

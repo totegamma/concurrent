@@ -118,7 +118,6 @@ func (s service) test(ctx context.Context, policy core.Policy, context core.Requ
 
 	statement, ok := policy.Statements[action]
 	if !ok {
-		testutil.PrintJson(policy)
 		span.SetAttributes(attribute.String("debug", "no rule"))
 		return core.PolicyEvalResultDefault, nil
 	}
@@ -213,6 +212,7 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 					Error:    err.Error(),
 				}, err
 			}
+			args = append(args, eval)
 			rhs, ok := eval.Result.(bool)
 			if !ok {
 				err := fmt.Errorf("bad argument type for OR. Expected bool but got %s\n", reflect.TypeOf(eval.Result))
@@ -375,6 +375,7 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 		value, ok := resolveDotNotation(requestCtx.Params, key)
 		if !ok {
 			err := fmt.Errorf("key not found: %s\n", key)
+			testutil.PrintJson(requestCtx)
 			return core.EvalResult{
 				Operator: "LoadParam",
 				Error:    err.Error(),

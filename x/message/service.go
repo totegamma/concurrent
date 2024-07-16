@@ -71,11 +71,6 @@ func (s *service) isMessagePublic(ctx context.Context, message core.Message) (bo
 			continue
 		}
 
-		if timeline.Policy == "" {
-			timelinePolicyResults[i] = core.PolicyEvalResultDefault
-			continue
-		}
-
 		var params map[string]any = make(map[string]any)
 		if timeline.PolicyParams != nil {
 			err := json.Unmarshal([]byte(*timeline.PolicyParams), &params)
@@ -112,33 +107,31 @@ func (s *service) isMessagePublic(ctx context.Context, message core.Message) (bo
 
 	// message policy check
 	messagePolicyResult := core.PolicyEvalResultDefault
-	if message.Policy != "" {
 
-		var params map[string]any = make(map[string]any)
-		if message.PolicyParams != nil {
-			err := json.Unmarshal([]byte(*message.PolicyParams), &params)
-			if err != nil {
-				span.SetStatus(codes.Error, err.Error())
-				span.RecordError(err)
-				goto SKIP_EVAL_MESSAGE_POLICY
-			}
-		}
-
-		var err error
-		messagePolicyResult, err = s.policy.TestWithPolicyURL(
-			ctx,
-			message.Policy,
-			core.RequestContext{
-				Self:   message,
-				Params: params,
-			},
-			"message.read",
-		)
+	var err error
+	var params map[string]any = make(map[string]any)
+	if message.PolicyParams != nil {
+		err := json.Unmarshal([]byte(*message.PolicyParams), &params)
 		if err != nil {
 			span.SetStatus(codes.Error, err.Error())
+			span.RecordError(err)
 			goto SKIP_EVAL_MESSAGE_POLICY
-
 		}
+	}
+
+	messagePolicyResult, err = s.policy.TestWithPolicyURL(
+		ctx,
+		message.Policy,
+		core.RequestContext{
+			Self:   message,
+			Params: params,
+		},
+		"message.read",
+	)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		goto SKIP_EVAL_MESSAGE_POLICY
+
 	}
 SKIP_EVAL_MESSAGE_POLICY:
 
@@ -443,8 +436,34 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 		return core.Message{}, err
 	}
 
-	if deleteTarget.Author != doc.Signer {
-		return core.Message{}, fmt.Errorf("you are not authorized to perform this action")
+	var params map[string]any = make(map[string]any)
+	if deleteTarget.PolicyParams != nil {
+		err := json.Unmarshal([]byte(*deleteTarget.PolicyParams), &params)
+		if err != nil {
+			span.RecordError(err)
+			return core.Message{}, err
+		}
+	}
+
+	result, err := s.policy.TestWithPolicyURL(
+		ctx,
+		deleteTarget.Policy,
+		core.RequestContext{
+			Self:     deleteTarget,
+			Params:   params,
+			Document: doc,
+		},
+		"message.delete",
+	)
+
+	if err != nil {
+		span.RecordError(err)
+		return core.Message{}, err
+	}
+
+	finally := s.policy.Summerize([]core.PolicyEvalResult{result}, "message.delete")
+	if !finally {
+		return core.Message{}, core.ErrorPermissionDenied{}
 	}
 
 	err = s.repo.Delete(ctx, doc.Target)

@@ -83,9 +83,6 @@ var globalPolicyJson = `
                 ]
             }
         }
-    },
-    "defaults": {
-        "association.attach": true
     }
 }`
 

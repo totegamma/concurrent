@@ -10,10 +10,12 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"go.opentelemetry.io/otel/codes"
 
 	"github.com/totegamma/concurrent/cdid"
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/core"
+	"github.com/totegamma/concurrent/x/policy"
 )
 
 type service struct {
@@ -24,6 +26,7 @@ type service struct {
 	timeline core.TimelineService
 	message  core.MessageService
 	key      core.KeyService
+	policy   core.PolicyService
 	config   core.Config
 }
 
@@ -36,6 +39,7 @@ func NewService(
 	timeline core.TimelineService,
 	message core.MessageService,
 	key core.KeyService,
+	policy core.PolicyService,
 	config core.Config,
 ) core.AssociationService {
 	return &service{
@@ -46,6 +50,7 @@ func NewService(
 		timeline,
 		message,
 		key,
+		policy,
 		config,
 	}
 }
@@ -121,6 +126,103 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 	}
 
 	if owner.Domain == s.config.FQDN { // signerが自ドメイン管轄の場合、リソースを作成
+
+		switch doc.Target[0] {
+		case 'm': // message
+			target, err := s.message.Get(ctx, association.Target, doc.Signer)
+			if err != nil {
+				span.RecordError(err)
+				return association, err
+			}
+
+			timelinePolicyResults := make([]core.PolicyEvalResult, len(target.Timelines))
+			for i, timelineID := range target.Timelines {
+				timeline, err := s.timeline.GetTimelineAutoDomain(ctx, timelineID)
+				if err != nil {
+					span.SetStatus(codes.Error, err.Error())
+					continue
+				}
+
+				if timeline.Policy == "" {
+					timelinePolicyResults[i] = core.PolicyEvalResultDefault
+					continue
+				}
+
+				var params map[string]any = make(map[string]any)
+				if timeline.PolicyParams != nil {
+					err := json.Unmarshal([]byte(*timeline.PolicyParams), &params)
+					if err != nil {
+						span.SetStatus(codes.Error, err.Error())
+						span.RecordError(err)
+						continue
+					}
+				}
+
+				result, err := s.policy.TestWithPolicyURL(
+					ctx,
+					timeline.Policy,
+					core.RequestContext{
+						Self:     timeline,
+						Params:   params,
+						Document: doc,
+					},
+					"timeline.message.association.attach",
+				)
+				if err != nil {
+					span.SetStatus(codes.Error, err.Error())
+					timelinePolicyResults[i] = core.PolicyEvalResultDefault
+					continue
+				}
+
+				timelinePolicyResults[i] = result
+			}
+
+			timelinePolicyResult := policy.AccumulateOr(timelinePolicyResults)
+			timelinePolicyIsDominant, timlinePolicyAllowed := policy.IsDominant(timelinePolicyResult)
+			if timelinePolicyIsDominant && !timlinePolicyAllowed {
+				return association, core.ErrorPermissionDenied{}
+			}
+
+			messagePolicyResult := core.PolicyEvalResultDefault
+			if target.Policy != "" {
+				var params map[string]any = make(map[string]any)
+				if target.PolicyParams != nil {
+					err := json.Unmarshal([]byte(*target.PolicyParams), &params)
+					if err != nil {
+						span.SetStatus(codes.Error, err.Error())
+						span.RecordError(err)
+						goto SKIP_EVAL_MESSAGE_POLICY
+					}
+				}
+
+				var err error
+				messagePolicyResult, err = s.policy.TestWithPolicyURL(
+					ctx,
+					target.Policy,
+					core.RequestContext{
+						Self:     target,
+						Params:   params,
+						Document: doc,
+					},
+					"message.association.attach",
+				)
+				if err != nil {
+					span.SetStatus(codes.Error, err.Error())
+					goto SKIP_EVAL_MESSAGE_POLICY
+
+				}
+			}
+		SKIP_EVAL_MESSAGE_POLICY:
+
+			result := s.policy.Summerize([]core.PolicyEvalResult{messagePolicyResult, timelinePolicyResult}, "association.attach")
+			if !result {
+				return association, core.ErrorPermissionDenied{}
+			}
+		case 'p': // profile
+		case 't': // timeline
+		case 's': // subscription
+		}
+
 		association, err = s.repo.Create(ctx, association)
 		if err != nil {
 			if errors.Is(err, core.ErrorAlreadyExists{}) {

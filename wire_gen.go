@@ -95,7 +95,7 @@ func SetupAssociationService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client
 	timelineService := SetupTimelineService(db, rdb, mc, client2, policy2, config)
 	messageService := SetupMessageService(db, rdb, mc, client2, policy2, config)
 	keyService := SetupKeyService(db, rdb, mc, client2, config)
-	associationService := association.NewService(repository, client2, entityService, domainService, timelineService, messageService, keyService, config)
+	associationService := association.NewService(repository, client2, entityService, domainService, timelineService, messageService, keyService, policy2, config)
 	return associationService
 }
 

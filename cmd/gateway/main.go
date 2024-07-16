@@ -208,7 +208,9 @@ func main() {
 	defer mc.Close()
 
 	client := client.NewClient()
-	authService := concurrent.SetupAuthService(db, rdb, mc, client, conconf)
+	globalPolicy := getDefaultGlobalPolicy()
+	policy := concurrent.SetupPolicyService(rdb, globalPolicy, conconf)
+	authService := concurrent.SetupAuthService(db, rdb, mc, client, policy, conconf)
 
 	e.Use(authService.IdentifyIdentity)
 

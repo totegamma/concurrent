@@ -98,6 +98,26 @@ var globalPolicyJson = `
                 ]
             }
         },
+        "profile.create": {
+            "condition": {
+                "op": "IsRequesterLocalUser"
+            }
+        },
+        "profile.update": {
+            "condition": {
+                "op": "Eq",
+                "args": [
+                    {
+                        "op": "LoadSelf",
+                        "const": "author"
+                    },
+                    {
+                        "op": "LoadDocument",
+                        "const": "signer"
+                    }
+                ]
+            }
+        },
         "profile.delete": {
             "condition": {
                 "op": "Or",

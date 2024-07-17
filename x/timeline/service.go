@@ -713,8 +713,35 @@ func (s *service) DeleteTimeline(ctx context.Context, mode core.CommitMode, docu
 		return core.Timeline{}, err
 	}
 
-	if deleteTarget.Author != doc.Signer {
-		return core.Timeline{}, fmt.Errorf("You are not authorized to perform this action")
+	signer, err := s.entity.Get(ctx, doc.Signer)
+	if err != nil {
+		span.RecordError(err)
+		return core.Timeline{}, err
+	}
+
+	var params map[string]any = make(map[string]any)
+	if deleteTarget.PolicyParams != nil {
+		json.Unmarshal([]byte(*deleteTarget.PolicyParams), &params)
+	}
+
+	policyResult, err := s.policy.TestWithPolicyURL(
+		ctx,
+		deleteTarget.Policy,
+		core.RequestContext{
+			Requester: signer,
+			Self:      deleteTarget,
+			Document:  doc,
+		},
+		"timeline.delete",
+	)
+	if err != nil {
+		span.RecordError(err)
+		return core.Timeline{}, err
+	}
+
+	result := s.policy.Summerize([]core.PolicyEvalResult{policyResult}, "timeline.delete")
+	if !result {
+		return core.Timeline{}, errors.New("policy failed")
 	}
 
 	err = s.repository.DeleteTimeline(ctx, doc.Target)

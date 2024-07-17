@@ -170,11 +170,42 @@ func (s *service) DeleteSubscription(ctx context.Context, mode core.CommitMode, 
 		return core.Subscription{}, err
 	}
 
-	if deleteTarget.Author != doc.Signer {
-		return core.Subscription{}, errors.New("you are not authorized to perform this action")
+	signer, err := s.entity.Get(ctx, doc.Signer)
+	if err != nil {
+		span.RecordError(err)
+		return core.Subscription{}, err
+	}
+
+	var params map[string]any = make(map[string]any)
+	if deleteTarget.PolicyParams != nil {
+		json.Unmarshal([]byte(*deleteTarget.PolicyParams), &params)
+	}
+
+	policyResult, err := s.policy.TestWithPolicyURL(
+		ctx,
+		deleteTarget.Policy,
+		core.RequestContext{
+			Requester: signer,
+			Self:      deleteTarget,
+			Document:  doc,
+		},
+		"subscription.delete",
+	)
+	if err != nil {
+		span.RecordError(err)
+		return core.Subscription{}, err
+	}
+
+	result := s.policy.Summerize([]core.PolicyEvalResult{policyResult}, "subscription.delete")
+	if !result {
+		return core.Subscription{}, errors.New("policy failed")
 	}
 
 	err = s.repo.DeleteSubscription(ctx, doc.Target)
+	if err != nil {
+		span.RecordError(err)
+		return core.Subscription{}, err
+	}
 
 	return deleteTarget, err
 }

@@ -4,19 +4,32 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+
 	"github.com/totegamma/concurrent/cdid"
 	"github.com/totegamma/concurrent/core"
+	"go.opentelemetry.io/otel/codes"
 )
 
 type service struct {
 	repo       Repository
 	entity     core.EntityService
+	policy     core.PolicyService
 	semanticid core.SemanticIDService
 }
 
 // NewService creates a new profile service
-func NewService(repo Repository, entity core.EntityService, semanticid core.SemanticIDService) core.ProfileService {
-	return &service{repo, entity, semanticid}
+func NewService(
+	repo Repository,
+	entity core.EntityService,
+	policy core.PolicyService,
+	semanticid core.SemanticIDService,
+) core.ProfileService {
+	return &service{
+		repo,
+		entity,
+		policy,
+		semanticid,
+	}
 }
 
 // Count returns the count number of messages
@@ -108,11 +121,77 @@ func (s *service) Upsert(ctx context.Context, mode core.CommitMode, document, si
 		}
 	}
 
+	signer, err := s.entity.Get(ctx, doc.Signer)
+	if err != nil {
+		span.RecordError(err)
+		return core.Profile{}, err
+	}
+
 	if doc.ID == "" {
 		hash := core.GetHash([]byte(document))
 		hash10 := [10]byte{}
 		copy(hash10[:], hash[:10])
 		doc.ID = cdid.New(hash10, doc.SignedAt).String()
+
+		_, err := s.repo.Get(ctx, doc.ID)
+		if err == nil {
+			span.RecordError(err)
+			return core.Profile{}, errors.New("profile already exists")
+		}
+
+		policyResult, err := s.policy.TestWithPolicyURL(
+			ctx,
+			"",
+			core.RequestContext{
+				Requester: signer,
+				Document:  doc,
+			},
+			"profile.create",
+		)
+		if err != nil {
+			span.RecordError(err)
+			return core.Profile{}, err
+		}
+
+		result := s.policy.Summerize([]core.PolicyEvalResult{policyResult}, "profile.create")
+		if !result {
+			return core.Profile{}, errors.New("policy failed")
+		}
+
+	} else {
+
+		existance, err := s.repo.Get(ctx, doc.ID)
+		if err != nil {
+			span.RecordError(err)
+			return core.Profile{}, err
+		}
+
+		var params map[string]any = make(map[string]any)
+		if existance.PolicyParams != nil {
+			json.Unmarshal([]byte(*existance.PolicyParams), &params)
+		}
+
+		policyResult, err := s.policy.TestWithPolicyURL(
+			ctx,
+			existance.Policy,
+			core.RequestContext{
+				Requester: signer,
+				Self:      existance,
+				Document:  doc,
+				Params:    params,
+			},
+			"profile.update",
+		)
+
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			span.RecordError(err)
+		}
+
+		result := s.policy.Summerize([]core.PolicyEvalResult{policyResult}, "profile.update")
+		if !result {
+			return core.Profile{}, errors.New("policy failed")
+		}
 	}
 
 	var policyparams *string = nil
@@ -148,30 +227,55 @@ func (s *service) Upsert(ctx context.Context, mode core.CommitMode, document, si
 }
 
 // Delete deletes profile
-func (s *service) Delete(ctx context.Context, mode core.CommitMode, documentStr string) (core.Profile, error) {
+func (s *service) Delete(ctx context.Context, mode core.CommitMode, document string) (core.Profile, error) {
 	ctx, span := tracer.Start(ctx, "Profile.Service.Delete")
 	defer span.End()
 
-	var document core.DeleteDocument
-	err := json.Unmarshal([]byte(documentStr), &document)
+	var doc core.DeleteDocument
+	err := json.Unmarshal([]byte(document), &doc)
 	if err != nil {
 		span.RecordError(err)
 		return core.Profile{}, err
 	}
 
-	deleteTarget, err := s.Get(ctx, document.Target)
+	deleteTarget, err := s.Get(ctx, doc.Target)
 	if err != nil {
 		span.RecordError(err)
 		return core.Profile{}, err
 	}
 
-	if deleteTarget.Author != document.Signer {
-		err = errors.New("unauthorized")
+	signer, err := s.entity.Get(ctx, doc.Signer)
+	if err != nil {
 		span.RecordError(err)
 		return core.Profile{}, err
 	}
 
-	return s.repo.Delete(ctx, document.Target)
+	var params map[string]any = make(map[string]any)
+	if deleteTarget.PolicyParams != nil {
+		json.Unmarshal([]byte(*deleteTarget.PolicyParams), &params)
+	}
+
+	policyResult, err := s.policy.TestWithPolicyURL(
+		ctx,
+		deleteTarget.Policy,
+		core.RequestContext{
+			Requester: signer,
+			Self:      deleteTarget,
+			Document:  doc,
+		},
+		"profile.delete",
+	)
+	if err != nil {
+		span.RecordError(err)
+		return core.Profile{}, err
+	}
+
+	result := s.policy.Summerize([]core.PolicyEvalResult{policyResult}, "profile.delete")
+	if !result {
+		return core.Profile{}, errors.New("policy failed")
+	}
+
+	return s.repo.Delete(ctx, doc.Target)
 }
 
 // Clean deletes all profiles by author

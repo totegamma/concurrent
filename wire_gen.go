@@ -83,7 +83,7 @@ func SetupProfileService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, cl
 	repository := profile.NewRepository(db, mc, schemaService)
 	entityService := SetupEntityService(db, rdb, mc, client2, policy2, config)
 	semanticIDService := SetupSemanticidService(db)
-	profileService := profile.NewService(repository, entityService, semanticIDService)
+	profileService := profile.NewService(repository, entityService, policy2, semanticIDService)
 	return profileService
 }
 

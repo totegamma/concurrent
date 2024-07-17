@@ -296,7 +296,9 @@ var globalPolicyJson = `
         }
     },
     "defaults": {
-        "association.attach": true
+        "message.association.attach": true,
+        "timeline.association.attach": true,
+        "subscription.association.attach": true
     }
 }`
 

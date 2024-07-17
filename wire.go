@@ -57,7 +57,7 @@ var ackServiceProvider = wire.NewSet(ack.NewService, ack.NewRepository, SetupEnt
 var messageServiceProvider = wire.NewSet(message.NewService, message.NewRepository, SetupEntityService, SetupDomainService, SetupTimelineService, SetupKeyService, SetupSchemaService)
 
 // Lv5
-var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupEntityService, SetupDomainService, SetupTimelineService, SetupMessageService, SetupKeyService, SetupSchemaService)
+var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupEntityService, SetupDomainService, SetupTimelineService, SetupMessageService, SetupKeyService, SetupSchemaService, SetupProfileService, SetupSubscriptionService)
 
 // Lv6
 var storeServiceProvider = wire.NewSet(

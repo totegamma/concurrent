@@ -19,15 +19,17 @@ import (
 )
 
 type service struct {
-	repo     Repository
-	client   client.Client
-	entity   core.EntityService
-	domain   core.DomainService
-	timeline core.TimelineService
-	message  core.MessageService
-	key      core.KeyService
-	policy   core.PolicyService
-	config   core.Config
+	repo         Repository
+	client       client.Client
+	entity       core.EntityService
+	domain       core.DomainService
+	profile      core.ProfileService
+	timeline     core.TimelineService
+	subscription core.SubscriptionService
+	message      core.MessageService
+	key          core.KeyService
+	policy       core.PolicyService
+	config       core.Config
 }
 
 // NewService creates a new association service
@@ -36,7 +38,9 @@ func NewService(
 	client client.Client,
 	entity core.EntityService,
 	domain core.DomainService,
+	profile core.ProfileService,
 	timeline core.TimelineService,
+	subscription core.SubscriptionService,
 	message core.MessageService,
 	key core.KeyService,
 	policy core.PolicyService,
@@ -47,7 +51,9 @@ func NewService(
 		client,
 		entity,
 		domain,
+		profile,
 		timeline,
+		subscription,
 		message,
 		key,
 		policy,
@@ -95,6 +101,12 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 	copy(hash10[:], hash[:10])
 	signedAt := doc.SignedAt
 	id := "a" + cdid.New(hash10, signedAt).String()
+
+	signer, err := s.entity.Get(ctx, doc.Signer)
+	if err != nil {
+		span.RecordError(err)
+		return core.Association{}, err
+	}
 
 	owner, err := s.entity.Get(ctx, doc.Owner)
 	if err != nil {
@@ -183,44 +195,143 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 				return association, core.ErrorPermissionDenied{}
 			}
 
-			messagePolicyResult := core.PolicyEvalResultDefault
-			if target.Policy != "" {
-				var params map[string]any = make(map[string]any)
-				if target.PolicyParams != nil {
-					err := json.Unmarshal([]byte(*target.PolicyParams), &params)
-					if err != nil {
-						span.SetStatus(codes.Error, err.Error())
-						span.RecordError(err)
-						goto SKIP_EVAL_MESSAGE_POLICY
-					}
-				}
-
-				var err error
-				messagePolicyResult, err = s.policy.TestWithPolicyURL(
-					ctx,
-					target.Policy,
-					core.RequestContext{
-						Self:     target,
-						Params:   params,
-						Document: doc,
-					},
-					"message.association.attach",
-				)
+			var params map[string]any = make(map[string]any)
+			if target.PolicyParams != nil {
+				err := json.Unmarshal([]byte(*target.PolicyParams), &params)
 				if err != nil {
 					span.SetStatus(codes.Error, err.Error())
-					goto SKIP_EVAL_MESSAGE_POLICY
-
+					span.RecordError(err)
 				}
 			}
-		SKIP_EVAL_MESSAGE_POLICY:
 
-			result := s.policy.Summerize([]core.PolicyEvalResult{messagePolicyResult, timelinePolicyResult}, "association.attach")
+			messagePolicyResult, err := s.policy.TestWithPolicyURL(
+				ctx,
+				target.Policy,
+				core.RequestContext{
+					Requester: signer,
+					Self:      target,
+					Params:    params,
+					Document:  doc,
+				},
+				"message.association.attach",
+			)
+			if err != nil {
+				span.SetStatus(codes.Error, err.Error())
+
+			}
+
+			result := s.policy.Summerize([]core.PolicyEvalResult{messagePolicyResult, timelinePolicyResult}, "message.association.attach")
 			if !result {
 				return association, core.ErrorPermissionDenied{}
 			}
+
 		case 'p': // profile
+			target, err := s.profile.Get(ctx, association.Target)
+			if err != nil {
+				span.RecordError(err)
+				return association, err
+			}
+
+			var params map[string]any = make(map[string]any)
+			if target.PolicyParams != nil {
+				err := json.Unmarshal([]byte(*target.PolicyParams), &params)
+				if err != nil {
+					span.SetStatus(codes.Error, err.Error())
+					span.RecordError(err)
+				}
+			}
+
+			policyEvalResult, err := s.policy.TestWithPolicyURL(
+				ctx,
+				target.Policy,
+				core.RequestContext{
+					Requester: signer,
+					Self:      target,
+					Params:    params,
+					Document:  doc,
+				},
+				"profile.association.attach",
+			)
+			if err != nil {
+				span.SetStatus(codes.Error, err.Error())
+			}
+
+			result := s.policy.Summerize([]core.PolicyEvalResult{policyEvalResult}, "profile.association.attach")
+			if !result {
+				return association, core.ErrorPermissionDenied{}
+			}
+
 		case 't': // timeline
+			target, err := s.timeline.GetTimeline(ctx, association.Target)
+			if err != nil {
+				span.RecordError(err)
+				return association, err
+			}
+
+			var params map[string]any = make(map[string]any)
+			if target.PolicyParams != nil {
+				err := json.Unmarshal([]byte(*target.PolicyParams), &params)
+				if err != nil {
+					span.SetStatus(codes.Error, err.Error())
+					span.RecordError(err)
+				}
+			}
+
+			policyEvalResult, err := s.policy.TestWithPolicyURL(
+				ctx,
+				target.Policy,
+				core.RequestContext{
+					Requester: signer,
+					Self:      target,
+					Params:    params,
+					Document:  doc,
+				},
+				"timeline.association.attach",
+			)
+			if err != nil {
+				span.SetStatus(codes.Error, err.Error())
+			}
+
+			result := s.policy.Summerize([]core.PolicyEvalResult{policyEvalResult}, "timeline.association.attach")
+			if !result {
+				return association, core.ErrorPermissionDenied{}
+			}
+
 		case 's': // subscription
+			target, err := s.subscription.GetSubscription(ctx, association.Target)
+			if err != nil {
+				span.RecordError(err)
+				return association, err
+			}
+
+			var params map[string]any = make(map[string]any)
+			if target.PolicyParams != nil {
+				err := json.Unmarshal([]byte(*target.PolicyParams), &params)
+				if err != nil {
+					span.SetStatus(codes.Error, err.Error())
+					span.RecordError(err)
+				}
+			}
+
+			policyEvalResult, err := s.policy.TestWithPolicyURL(
+				ctx,
+				target.Policy,
+				core.RequestContext{
+					Requester: signer,
+					Self:      target,
+					Params:    params,
+					Document:  doc,
+				},
+				"subscription.association.attach",
+			)
+			if err != nil {
+				span.SetStatus(codes.Error, err.Error())
+			}
+
+			result := s.policy.Summerize([]core.PolicyEvalResult{policyEvalResult}, "subscription.association.attach")
+			if !result {
+				return association, core.ErrorPermissionDenied{}
+			}
 		}
 
 		association, err = s.repo.Create(ctx, association)
@@ -425,30 +536,19 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 		return core.Association{}, err
 	}
 
-	requester := doc.Signer
-
-	targetMessage, err := s.message.Get(ctx, targetAssociation.Target, requester)
+	signer, err := s.entity.Get(ctx, doc.Signer)
 	if err != nil {
 		span.RecordError(err)
 		return core.Association{}, err
 	}
 
-	var params map[string]any = make(map[string]any)
-	if targetMessage.PolicyParams != nil {
-		err := json.Unmarshal([]byte(*targetMessage.PolicyParams), &params)
-		if err != nil {
-			span.RecordError(err)
-			return core.Association{}, err
-		}
-	}
-
 	result, err := s.policy.TestWithPolicyURL(
 		ctx,
-		targetMessage.Policy,
+		"",
 		core.RequestContext{
-			Self:     targetAssociation,
-			Params:   params,
-			Document: doc,
+			Requester: signer,
+			Self:      targetAssociation,
+			Document:  doc,
 		},
 		"association.delete",
 	)
@@ -490,6 +590,13 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 	}
 
 	if targetAssociation.Target[0] == 'm' && mode != core.CommitModeLocalOnlyExec { // distribute is needed only when targetType is messages
+
+		targetMessage, err := s.message.Get(ctx, targetAssociation.Target, doc.Signer)
+		if err != nil {
+			span.RecordError(err)
+			return core.Association{}, err
+		}
+
 		for _, timeline := range targetMessage.Timelines {
 
 			normalized, err := s.timeline.NormalizeTimelineID(ctx, timeline)

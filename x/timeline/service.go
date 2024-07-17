@@ -11,6 +11,7 @@ import (
 
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 
 	"github.com/totegamma/concurrent/cdid"
 	"github.com/totegamma/concurrent/core"
@@ -499,12 +500,43 @@ func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, docu
 		}
 	}
 
-	if doc.ID == "" { // New
+	signer, err := s.entity.Get(ctx, doc.Signer)
+	if err != nil {
+		span.RecordError(err)
+		return core.Timeline{}, err
+	}
+
+	if doc.ID == "" { // Create
 		hash := core.GetHash([]byte(document))
 		hash10 := [10]byte{}
 		copy(hash10[:], hash[:10])
 		signedAt := doc.SignedAt
 		doc.ID = cdid.New(hash10, signedAt).String()
+
+		// check existence
+		_, err := s.repository.GetTimeline(ctx, doc.ID)
+		if err == nil {
+			return core.Timeline{}, fmt.Errorf("Timeline already exists: %s", doc.ID)
+		}
+
+		policyResult, err := s.policy.TestWithPolicyURL(
+			ctx,
+			"",
+			core.RequestContext{
+				Requester: signer,
+				Document:  doc,
+			},
+			"timeline.create",
+		)
+		if err != nil {
+			return core.Timeline{}, err
+		}
+
+		result := s.policy.Summerize([]core.PolicyEvalResult{policyResult}, "timeline.create")
+		if !result {
+			return core.Timeline{}, fmt.Errorf("You don't have timeline.create access")
+		}
+
 	} else { // Update
 		id, err := s.NormalizeTimelineID(ctx, doc.ID)
 		if err != nil {
@@ -525,6 +557,36 @@ func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, docu
 		}
 
 		doc.DomainOwned = existance.DomainOwned // make sure the domain owned is immutable
+
+		var params map[string]any = make(map[string]any)
+		if existance.PolicyParams != nil {
+			if err != nil {
+				span.SetStatus(codes.Error, err.Error())
+				span.RecordError(err)
+			}
+		}
+
+		policyResult, err := s.policy.TestWithPolicyURL(
+			ctx,
+			existance.Policy,
+			core.RequestContext{
+				Requester: signer,
+				Self:      existance,
+				Document:  doc,
+				Params:    params,
+			},
+			"timeline.update",
+		)
+
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			span.RecordError(err)
+		}
+
+		result := s.policy.Summerize([]core.PolicyEvalResult{policyResult}, "timeline.update")
+		if !result {
+			return core.Timeline{}, fmt.Errorf("You don't have timeline.update access")
+		}
 	}
 
 	var policyparams *string = nil

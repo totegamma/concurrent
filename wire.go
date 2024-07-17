@@ -43,10 +43,10 @@ var jobServiceProvider = wire.NewSet(job.NewService, job.NewRepository)
 
 // Lv1
 var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService, SetupSchemaService, SetupKeyService)
-var subscriptionServiceProvider = wire.NewSet(subscription.NewService, subscription.NewRepository, SetupSchemaService)
 
 // Lv2
 var timelineServiceProvider = wire.NewSet(timeline.NewService, timeline.NewRepository, SetupEntityService, SetupDomainService, SetupSchemaService, SetupSemanticidService, SetupSubscriptionService)
+var subscriptionServiceProvider = wire.NewSet(subscription.NewService, subscription.NewRepository, SetupSchemaService, SetupEntityService)
 
 // Lv3
 var profileServiceProvider = wire.NewSet(profile.NewService, profile.NewRepository, SetupEntityService, SetupKeyService, SetupSchemaService, SetupSemanticidService)
@@ -159,7 +159,7 @@ func SetupStoreService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, clie
 	return nil
 }
 
-func SetupSubscriptionService(db *gorm.DB) core.SubscriptionService {
+func SetupSubscriptionService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, policy core.PolicyService, config core.Config) core.SubscriptionService {
 	wire.Build(subscriptionServiceProvider)
 	return nil
 }

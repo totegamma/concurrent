@@ -105,7 +105,7 @@ func SetupTimelineService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, c
 	entityService := SetupEntityService(db, rdb, mc, client2, policy2, config)
 	domainService := SetupDomainService(db, client2, config)
 	semanticIDService := SetupSemanticidService(db)
-	subscriptionService := SetupSubscriptionService(db)
+	subscriptionService := SetupSubscriptionService(db, rdb, mc, client2, policy2, config)
 	timelineService := timeline.NewService(repository, entityService, domainService, semanticIDService, subscriptionService, policy2, config)
 	return timelineService
 }
@@ -161,16 +161,17 @@ func SetupStoreService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, clie
 	profileService := SetupProfileService(db, rdb, mc, client2, policy2, config)
 	timelineService := SetupTimelineService(db, rdb, mc, client2, policy2, config)
 	ackService := SetupAckService(db, rdb, mc, client2, policy2, config)
-	subscriptionService := SetupSubscriptionService(db)
+	subscriptionService := SetupSubscriptionService(db, rdb, mc, client2, policy2, config)
 	semanticIDService := SetupSemanticidService(db)
 	storeService := store.NewService(repository, keyService, entityService, messageService, associationService, profileService, timelineService, ackService, subscriptionService, semanticIDService, config, repositoryPath)
 	return storeService
 }
 
-func SetupSubscriptionService(db *gorm.DB) core.SubscriptionService {
+func SetupSubscriptionService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, policy2 core.PolicyService, config core.Config) core.SubscriptionService {
 	schemaService := SetupSchemaService(db)
 	repository := subscription.NewRepository(db, schemaService)
-	subscriptionService := subscription.NewService(repository)
+	entityService := SetupEntityService(db, rdb, mc, client2, policy2, config)
+	subscriptionService := subscription.NewService(repository, entityService, policy2)
 	return subscriptionService
 }
 
@@ -202,10 +203,10 @@ var jobServiceProvider = wire.NewSet(job.NewService, job.NewRepository)
 // Lv1
 var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService, SetupSchemaService, SetupKeyService)
 
-var subscriptionServiceProvider = wire.NewSet(subscription.NewService, subscription.NewRepository, SetupSchemaService)
-
 // Lv2
 var timelineServiceProvider = wire.NewSet(timeline.NewService, timeline.NewRepository, SetupEntityService, SetupDomainService, SetupSchemaService, SetupSemanticidService, SetupSubscriptionService)
+
+var subscriptionServiceProvider = wire.NewSet(subscription.NewService, subscription.NewRepository, SetupSchemaService, SetupEntityService)
 
 // Lv3
 var profileServiceProvider = wire.NewSet(profile.NewService, profile.NewRepository, SetupEntityService, SetupKeyService, SetupSchemaService, SetupSemanticidService)

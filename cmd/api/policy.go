@@ -122,6 +122,35 @@ var globalPolicyJson = `
                 ]
             }
         },
+        "subscription.create": {
+            "condition": {
+                "op": "Or",
+                "args": [
+                    {
+                        "op": "IsRequesterLocalUser"
+                    },
+                    {
+                        "op": "RequesterHasTag",
+                        "const": "subscription_creator"
+                    }
+                ]
+            }
+        },
+        "subscription.update": {
+            "condition": {
+                "op": "Eq",
+                "args": [
+                    {
+                        "op": "LoadSelf",
+                        "const": "author"
+                    },
+                    {
+                        "op": "LoadDocument",
+                        "const": "signer"
+                    }
+                ]
+            }
+        },
         "subscription.delete": {
             "condition": {
                 "op": "Or",
@@ -142,6 +171,35 @@ var globalPolicyJson = `
                     {
                         "op": "RequesterHasTag",
                         "const": "_admin"
+                    }
+                ]
+            }
+        },
+        "timeline.create": {
+            "condition": {
+                "op": "Or",
+                "args": [
+                    {
+                        "op": "IsRequesterLocalUser"
+                    },
+                    {
+                        "op": "RequesterHasTag",
+                        "const": "timeline_creator"
+                    }
+                ]
+            }
+        },
+        "timeline.update": {
+            "condition": {
+                "op": "Eq",
+                "args": [
+                    {
+                        "op": "LoadSelf",
+                        "const": "author"
+                    },
+                    {
+                        "op": "LoadDocument",
+                        "const": "signer"
                     }
                 ]
             }

@@ -135,7 +135,7 @@ type StoreService interface {
 }
 
 type SubscriptionService interface {
-	CreateSubscription(ctx context.Context, mode CommitMode, document, signature string) (Subscription, error)
+	UpsertSubscription(ctx context.Context, mode CommitMode, document, signature string) (Subscription, error)
 	Subscribe(ctx context.Context, mode CommitMode, document string, signature string) (SubscriptionItem, error)
 	Unsubscribe(ctx context.Context, mode CommitMode, document string) (SubscriptionItem, error)
 	DeleteSubscription(ctx context.Context, mode CommitMode, document string) (Subscription, error)

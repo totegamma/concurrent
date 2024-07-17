@@ -244,7 +244,7 @@ func main() {
 	storeService := concurrent.SetupStoreService(db, rdb, mc, client, policy, conconf, config.Server.RepositoryPath)
 	storeHandler := store.NewHandler(storeService)
 
-	subscriptionService := concurrent.SetupSubscriptionService(db)
+	subscriptionService := concurrent.SetupSubscriptionService(db, rdb, mc, client, policy, conconf)
 	subscriptionHandler := subscription.NewHandler(subscriptionService)
 
 	jobService := concurrent.SetupJobService(db)

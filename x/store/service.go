@@ -148,7 +148,7 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 
 	case "subscription":
 		var sub core.Subscription
-		sub, err = s.subscription.CreateSubscription(ctx, mode, document, signature)
+		sub, err = s.subscription.UpsertSubscription(ctx, mode, document, signature)
 		result = sub
 		if !sub.DomainOwned {
 			owners = []string{sub.Author}

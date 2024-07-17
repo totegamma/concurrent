@@ -1551,21 +1551,6 @@ func (mr *MockSubscriptionServiceMockRecorder) Clean(ctx, ccid any) *gomock.Call
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Clean", reflect.TypeOf((*MockSubscriptionService)(nil).Clean), ctx, ccid)
 }
 
-// CreateSubscription mocks base method.
-func (m *MockSubscriptionService) CreateSubscription(ctx context.Context, mode core.CommitMode, document, signature string) (core.Subscription, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "CreateSubscription", ctx, mode, document, signature)
-	ret0, _ := ret[0].(core.Subscription)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// CreateSubscription indicates an expected call of CreateSubscription.
-func (mr *MockSubscriptionServiceMockRecorder) CreateSubscription(ctx, mode, document, signature any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CreateSubscription", reflect.TypeOf((*MockSubscriptionService)(nil).CreateSubscription), ctx, mode, document, signature)
-}
-
 // DeleteSubscription mocks base method.
 func (m *MockSubscriptionService) DeleteSubscription(ctx context.Context, mode core.CommitMode, document string) (core.Subscription, error) {
 	m.ctrl.T.Helper()
@@ -1639,6 +1624,21 @@ func (m *MockSubscriptionService) Unsubscribe(ctx context.Context, mode core.Com
 func (mr *MockSubscriptionServiceMockRecorder) Unsubscribe(ctx, mode, document any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Unsubscribe", reflect.TypeOf((*MockSubscriptionService)(nil).Unsubscribe), ctx, mode, document)
+}
+
+// UpsertSubscription mocks base method.
+func (m *MockSubscriptionService) UpsertSubscription(ctx context.Context, mode core.CommitMode, document, signature string) (core.Subscription, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpsertSubscription", ctx, mode, document, signature)
+	ret0, _ := ret[0].(core.Subscription)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// UpsertSubscription indicates an expected call of UpsertSubscription.
+func (mr *MockSubscriptionServiceMockRecorder) UpsertSubscription(ctx, mode, document, signature any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpsertSubscription", reflect.TypeOf((*MockSubscriptionService)(nil).UpsertSubscription), ctx, mode, document, signature)
 }
 
 // MockTimelineService is a mock of TimelineService interface.

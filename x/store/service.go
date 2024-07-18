@@ -86,16 +86,10 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 
 	switch base.Type {
 	case "message":
-		var m core.Message
-		m, err = s.message.Create(ctx, mode, document, signature)
-		result = m
-		owners = []string{m.Author}
+		result, owners, err = s.message.Create(ctx, mode, document, signature)
 
 	case "association":
-		var a core.Association
-		a, err = s.association.Create(ctx, mode, document, signature)
-		result = a
-		owners = []string{a.Author, a.Owner}
+		result, owners, err = s.association.Create(ctx, mode, document, signature)
 
 	case "profile":
 		var p core.Profile
@@ -124,6 +118,9 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 		} else {
 			owners = []string{s.config.FQDN}
 		}
+
+	case "retract":
+		result, owners, err = s.timeline.Retract(ctx, mode, document, signature)
 
 	case "event":
 		result, err = s.timeline.Event(ctx, mode, document, signature)
@@ -177,15 +174,9 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 		typ := doc.Target[0]
 		switch typ {
 		case 'm': // message
-			var dm core.Message
-			dm, err = s.message.Delete(ctx, mode, document, signature)
-			result = dm
-			owners = []string{dm.Author}
+			result, owners, err = s.message.Delete(ctx, mode, document, signature)
 		case 'a': // association
-			var da core.Association
-			da, err = s.association.Delete(ctx, mode, document, signature)
-			result = da
-			owners = []string{da.Owner}
+			result, owners, err = s.association.Delete(ctx, mode, document, signature)
 		case 'p': // profile
 			var dp core.Profile
 			dp, err = s.profile.Delete(ctx, mode, document)

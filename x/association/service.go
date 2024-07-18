@@ -85,7 +85,7 @@ func (s *service) Clean(ctx context.Context, ccid string) error {
 // PostAssociation creates a new association
 // If targetType is messages, it also posts the association to the target message's timelines
 // returns the created association
-func (s *service) Create(ctx context.Context, mode core.CommitMode, document string, signature string) (core.Association, error) {
+func (s *service) Create(ctx context.Context, mode core.CommitMode, document string, signature string) (core.Association, []string, error) {
 	ctx, span := tracer.Start(ctx, "Association.Service.Create")
 	defer span.End()
 
@@ -93,7 +93,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 	err := json.Unmarshal([]byte(document), &doc)
 	if err != nil {
 		span.RecordError(err)
-		return core.Association{}, err
+		return core.Association{}, []string{}, err
 	}
 
 	hash := core.GetHash([]byte(document))
@@ -105,19 +105,19 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 	signer, err := s.entity.Get(ctx, doc.Signer)
 	if err != nil {
 		span.RecordError(err)
-		return core.Association{}, err
+		return core.Association{}, []string{}, err
 	}
 
 	owner, err := s.entity.Get(ctx, doc.Owner)
 	if err != nil {
 		span.RecordError(err)
-		return core.Association{}, err
+		return core.Association{}, []string{}, err
 	}
 
 	bodyStr, err := json.Marshal(doc.Body)
 	if err != nil {
 		span.RecordError(err)
-		return core.Association{}, err
+		return core.Association{}, []string{}, err
 	}
 
 	uniqueKey := doc.Signer + doc.Schema + doc.Target + doc.Variant + string(bodyStr)
@@ -144,7 +144,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 			target, err := s.message.Get(ctx, association.Target, doc.Signer)
 			if err != nil {
 				span.RecordError(err)
-				return association, err
+				return core.Association{}, []string{}, err
 			}
 
 			timelinePolicyResults := make([]core.PolicyEvalResult, len(target.Timelines))
@@ -155,19 +155,9 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 					continue
 				}
 
-				if timeline.Policy == "" {
-					timelinePolicyResults[i] = core.PolicyEvalResultDefault
-					continue
-				}
-
 				var params map[string]any = make(map[string]any)
 				if timeline.PolicyParams != nil {
-					err := json.Unmarshal([]byte(*timeline.PolicyParams), &params)
-					if err != nil {
-						span.SetStatus(codes.Error, err.Error())
-						span.RecordError(err)
-						continue
-					}
+					json.Unmarshal([]byte(*timeline.PolicyParams), &params)
 				}
 
 				result, err := s.policy.TestWithPolicyURL(
@@ -192,16 +182,12 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 			timelinePolicyResult := policy.AccumulateOr(timelinePolicyResults)
 			timelinePolicyIsDominant, timlinePolicyAllowed := policy.IsDominant(timelinePolicyResult)
 			if timelinePolicyIsDominant && !timlinePolicyAllowed {
-				return association, core.ErrorPermissionDenied{}
+				return association, []string{}, core.ErrorPermissionDenied{}
 			}
 
 			var params map[string]any = make(map[string]any)
 			if target.PolicyParams != nil {
-				err := json.Unmarshal([]byte(*target.PolicyParams), &params)
-				if err != nil {
-					span.SetStatus(codes.Error, err.Error())
-					span.RecordError(err)
-				}
+				json.Unmarshal([]byte(*target.PolicyParams), &params)
 			}
 
 			messagePolicyResult, err := s.policy.TestWithPolicyURL(
@@ -222,14 +208,14 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 
 			result := s.policy.Summerize([]core.PolicyEvalResult{messagePolicyResult, timelinePolicyResult}, "message.association.attach")
 			if !result {
-				return association, core.ErrorPermissionDenied{}
+				return association, []string{}, core.ErrorPermissionDenied{}
 			}
 
 		case 'p': // profile
 			target, err := s.profile.Get(ctx, association.Target)
 			if err != nil {
 				span.RecordError(err)
-				return association, err
+				return association, []string{}, err
 			}
 
 			var params map[string]any = make(map[string]any)
@@ -258,14 +244,14 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 
 			result := s.policy.Summerize([]core.PolicyEvalResult{policyEvalResult}, "profile.association.attach")
 			if !result {
-				return association, core.ErrorPermissionDenied{}
+				return association, []string{}, core.ErrorPermissionDenied{}
 			}
 
 		case 't': // timeline
 			target, err := s.timeline.GetTimeline(ctx, association.Target)
 			if err != nil {
 				span.RecordError(err)
-				return association, err
+				return association, []string{}, err
 			}
 
 			var params map[string]any = make(map[string]any)
@@ -294,14 +280,14 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 
 			result := s.policy.Summerize([]core.PolicyEvalResult{policyEvalResult}, "timeline.association.attach")
 			if !result {
-				return association, core.ErrorPermissionDenied{}
+				return association, []string{}, core.ErrorPermissionDenied{}
 			}
 
 		case 's': // subscription
 			target, err := s.subscription.GetSubscription(ctx, association.Target)
 			if err != nil {
 				span.RecordError(err)
-				return association, err
+				return association, []string{}, err
 			}
 
 			var params map[string]any = make(map[string]any)
@@ -330,17 +316,17 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 
 			result := s.policy.Summerize([]core.PolicyEvalResult{policyEvalResult}, "subscription.association.attach")
 			if !result {
-				return association, core.ErrorPermissionDenied{}
+				return association, []string{}, core.ErrorPermissionDenied{}
 			}
 		}
 
 		association, err = s.repo.Create(ctx, association)
 		if err != nil {
 			if errors.Is(err, core.ErrorAlreadyExists{}) {
-				return association, core.NewErrorAlreadyExists()
+				return association, []string{}, core.NewErrorAlreadyExists()
 			}
 			span.RecordError(err)
-			return association, err
+			return association, []string{}, err
 		}
 	}
 
@@ -423,7 +409,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 			targetMessage, err := s.message.Get(ctx, association.Target, doc.Signer) //NOTE: これはownerのドメインしか実行できない
 			if err != nil {
 				span.RecordError(err)
-				return association, err
+				return association, []string{}, err
 			}
 
 			for _, timeline := range targetMessage.Timelines {
@@ -449,7 +435,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 					if err != nil {
 						slog.ErrorContext(ctx, "failed to publish message to Redis", slog.String("error", err.Error()), slog.String("module", "association"))
 						span.RecordError(err)
-						return association, err
+						return association, []string{}, err
 					}
 				} else {
 					documentObj := core.EventDocument{
@@ -467,13 +453,13 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 					document, err := json.Marshal(documentObj)
 					if err != nil {
 						span.RecordError(err)
-						return association, err
+						return association, []string{}, err
 					}
 
 					signatureBytes, err := core.SignBytes([]byte(document), s.config.PrivateKey)
 					if err != nil {
 						span.RecordError(err)
-						return association, err
+						return association, []string{}, err
 					}
 
 					signature := hex.EncodeToString(signatureBytes)
@@ -486,7 +472,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 					packet, err := json.Marshal(packetObj)
 					if err != nil {
 						span.RecordError(err)
-						return association, err
+						return association, []string{}, err
 					}
 
 					s.client.Commit(ctx, domain, string(packet), nil, nil)
@@ -495,7 +481,12 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 		}
 	}
 
-	return association, nil
+	affected, err := s.timeline.GetOwners(ctx, doc.Timelines)
+	if err != nil {
+		span.RecordError(err)
+	}
+
+	return association, affected, nil
 }
 
 // Get returns an association by ID
@@ -515,7 +506,7 @@ func (s *service) GetOwn(ctx context.Context, author string) ([]core.Association
 }
 
 // Delete deletes an association by ID
-func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, signature string) (core.Association, error) {
+func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, signature string) (core.Association, []string, error) {
 	ctx, span := tracer.Start(ctx, "Association.Service.Delete")
 	defer span.End()
 
@@ -523,23 +514,23 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 	err := json.Unmarshal([]byte(document), &doc)
 	if err != nil {
 		span.RecordError(err)
-		return core.Association{}, err
+		return core.Association{}, []string{}, err
 	}
 
 	targetAssociation, err := s.repo.Get(ctx, doc.Target)
 	if err != nil {
 		if errors.Is(err, core.ErrorNotFound{}) {
-			return core.Association{}, core.NewErrorAlreadyDeleted()
+			return core.Association{}, []string{}, core.NewErrorAlreadyDeleted()
 		}
 
 		span.RecordError(err)
-		return core.Association{}, err
+		return core.Association{}, []string{}, err
 	}
 
 	signer, err := s.entity.Get(ctx, doc.Signer)
 	if err != nil {
 		span.RecordError(err)
-		return core.Association{}, err
+		return core.Association{}, []string{}, err
 	}
 
 	result, err := s.policy.TestWithPolicyURL(
@@ -555,18 +546,18 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 
 	if err != nil {
 		span.RecordError(err)
-		return core.Association{}, err
+		return core.Association{}, []string{}, err
 	}
 
 	finally := s.policy.Summerize([]core.PolicyEvalResult{result}, "association.delete")
 	if !finally {
-		return core.Association{}, core.ErrorPermissionDenied{}
+		return core.Association{}, []string{}, core.ErrorPermissionDenied{}
 	}
 
 	err = s.repo.Delete(ctx, doc.Target)
 	if err != nil {
 		span.RecordError(err)
-		return core.Association{}, err
+		return core.Association{}, []string{}, err
 	}
 
 	err = s.timeline.RemoveItemsByResourceID(ctx, doc.Target)
@@ -585,7 +576,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 		if err != nil {
 			slog.ErrorContext(ctx, "failed to publish message to Redis", slog.String("error", err.Error()), slog.String("module", "association"))
 			span.RecordError(err)
-			return targetAssociation, err
+			return targetAssociation, []string{}, err
 		}
 	}
 
@@ -594,7 +585,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 		targetMessage, err := s.message.Get(ctx, targetAssociation.Target, doc.Signer)
 		if err != nil {
 			span.RecordError(err)
-			return core.Association{}, err
+			return core.Association{}, []string{}, err
 		}
 
 		for _, timeline := range targetMessage.Timelines {
@@ -622,7 +613,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 				if err != nil {
 					slog.ErrorContext(ctx, "failed to publish message to Redis", slog.String("error", err.Error()), slog.String("module", "association"))
 					span.RecordError(err)
-					return targetAssociation, err
+					return targetAssociation, []string{}, err
 				}
 			} else {
 				documentObj := core.EventDocument{
@@ -635,13 +626,13 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 				document, err := json.Marshal(documentObj)
 				if err != nil {
 					span.RecordError(err)
-					return targetAssociation, err
+					return targetAssociation, []string{}, err
 				}
 
 				signatureBytes, err := core.SignBytes([]byte(document), s.config.PrivateKey)
 				if err != nil {
 					span.RecordError(err)
-					return targetAssociation, err
+					return targetAssociation, []string{}, err
 				}
 
 				signature := hex.EncodeToString(signatureBytes)
@@ -654,7 +645,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 				packet, err := json.Marshal(packetObj)
 				if err != nil {
 					span.RecordError(err)
-					return targetAssociation, err
+					return targetAssociation, []string{}, err
 				}
 
 				s.client.Commit(ctx, domain, string(packet), nil, nil)
@@ -662,7 +653,12 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 		}
 	}
 
-	return targetAssociation, nil
+	affected, err := s.timeline.GetOwners(ctx, targetAssociation.Timelines)
+	if err != nil {
+		span.RecordError(err)
+	}
+
+	return targetAssociation, affected, nil
 }
 
 // GetByTarget returns associations by target

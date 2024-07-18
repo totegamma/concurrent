@@ -560,10 +560,7 @@ func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, docu
 
 		var params map[string]any = make(map[string]any)
 		if existance.PolicyParams != nil {
-			if err != nil {
-				span.SetStatus(codes.Error, err.Error())
-				span.RecordError(err)
-			}
+			json.Unmarshal([]byte(*existance.PolicyParams), &params)
 		}
 
 		policyResult, err := s.policy.TestWithPolicyURL(
@@ -687,12 +684,70 @@ func (s *service) GetItem(ctx context.Context, timeline string, id string) (core
 	return s.repository.GetItem(ctx, timeline, id)
 }
 
-// Remove removes timeline element by ID
-func (s *service) RemoveItem(ctx context.Context, timeline string, id string) {
-	ctx, span := tracer.Start(ctx, "Timeline.Service.RemoveItem")
+// Retract removes timeline element by ID
+func (s *service) Retract(ctx context.Context, mode core.CommitMode, document, signature string) (core.TimelineItem, []string, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Service.Retract")
 	defer span.End()
 
-	s.repository.DeleteItem(ctx, timeline, id)
+	var doc core.RetractDocument
+	err := json.Unmarshal([]byte(document), &doc)
+	if err != nil {
+		return core.TimelineItem{}, []string{}, err
+	}
+
+	existing, err := s.repository.GetItem(ctx, doc.Timeline, doc.Target)
+	if err != nil {
+		return core.TimelineItem{}, []string{}, err
+	}
+
+	signer, err := s.entity.Get(ctx, doc.Signer)
+	if err != nil {
+		span.RecordError(err)
+		return core.TimelineItem{}, []string{}, err
+	}
+
+	timeline, err := s.repository.GetTimeline(ctx, doc.ID)
+	if err != nil {
+		span.RecordError(err)
+		return core.TimelineItem{}, []string{}, err
+	}
+
+	var params map[string]any = make(map[string]any)
+	if timeline.PolicyParams != nil {
+		json.Unmarshal([]byte(*timeline.PolicyParams), &params)
+	}
+
+	policyResult, err := s.policy.TestWithPolicyURL(
+		ctx,
+		timeline.Policy,
+		core.RequestContext{
+			Requester: signer,
+			Self:      timeline,
+			Resource:  existing,
+			Document:  doc,
+			Params:    params,
+		},
+		"timeline.retract",
+	)
+
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		span.RecordError(err)
+	}
+
+	result := s.policy.Summerize([]core.PolicyEvalResult{policyResult}, "timeline.retract")
+	if !result {
+		return core.TimelineItem{}, []string{}, fmt.Errorf("You don't have timeline.retract access")
+	}
+
+	s.repository.DeleteItem(ctx, doc.Timeline, doc.Target)
+
+	affected := []string{timeline.Author}
+	if timeline.DomainOwned {
+		affected = []string{s.config.FQDN}
+	}
+
+	return existing, affected, nil
 }
 
 // Delete deletes
@@ -831,6 +886,31 @@ func (s *service) Realtime(ctx context.Context, request <-chan []string, respons
 			return
 		}
 	}
+}
+
+func (s *service) GetOwners(ctx context.Context, timelines []string) ([]string, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Service.GetOwners")
+	defer span.End()
+
+	var owners_map map[string]bool = make(map[string]bool)
+	for _, timelineID := range timelines {
+		timeline, err := s.GetTimeline(ctx, timelineID)
+		if err != nil {
+			continue
+		}
+		if timeline.DomainOwned {
+			owners_map[s.config.FQDN] = true
+		} else {
+			owners_map[timeline.Author] = true
+		}
+	}
+
+	owners := make([]string, 0)
+	for owner := range owners_map {
+		owners = append(owners, owner)
+	}
+
+	return owners, nil
 }
 
 func (s *service) Clean(ctx context.Context, ccid string) error {

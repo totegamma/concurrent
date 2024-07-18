@@ -111,12 +111,7 @@ func (s *service) isMessagePublic(ctx context.Context, message core.Message) (bo
 	var err error
 	var params map[string]any = make(map[string]any)
 	if message.PolicyParams != nil {
-		err := json.Unmarshal([]byte(*message.PolicyParams), &params)
-		if err != nil {
-			span.SetStatus(codes.Error, err.Error())
-			span.RecordError(err)
-			goto SKIP_EVAL_MESSAGE_POLICY
-		}
+		json.Unmarshal([]byte(*message.PolicyParams), &params)
 	}
 
 	messagePolicyResult, err = s.policy.TestWithPolicyURL(
@@ -130,10 +125,7 @@ func (s *service) isMessagePublic(ctx context.Context, message core.Message) (bo
 	)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
-		goto SKIP_EVAL_MESSAGE_POLICY
-
 	}
-SKIP_EVAL_MESSAGE_POLICY:
 
 	// accumulate polies
 	result := s.policy.Summerize([]core.PolicyEvalResult{messagePolicyResult, timelinePolicyResult}, "message.read")
@@ -228,31 +220,22 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 	}
 
 	messagePolicyResult := core.PolicyEvalResultDefault
-	if message.Policy != "" {
 
-		var params map[string]any = make(map[string]any)
-		if message.PolicyParams != nil {
-			err := json.Unmarshal([]byte(*message.PolicyParams), &params)
-			if err != nil {
-				span.SetStatus(codes.Error, err.Error())
-				span.RecordError(err)
-				goto SKIP_EVAL_MESSAGE_POLICY
-			}
-		}
-
-		requestContext := core.RequestContext{
-			Self:      message,
-			Params:    params,
-			Requester: requesterEntity,
-		}
-
-		messagePolicyResult, err = s.policy.TestWithPolicyURL(ctx, message.Policy, requestContext, "message.read")
-		if err != nil {
-			span.SetStatus(codes.Error, err.Error())
-			goto SKIP_EVAL_MESSAGE_POLICY
-		}
+	var params map[string]any = make(map[string]any)
+	if message.PolicyParams != nil {
+		json.Unmarshal([]byte(*message.PolicyParams), &params)
 	}
-SKIP_EVAL_MESSAGE_POLICY:
+
+	requestContext := core.RequestContext{
+		Self:      message,
+		Params:    params,
+		Requester: requesterEntity,
+	}
+
+	messagePolicyResult, err = s.policy.TestWithPolicyURL(ctx, message.Policy, requestContext, "message.read")
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+	}
 
 	result := s.policy.Summerize([]core.PolicyEvalResult{messagePolicyResult, timelinePolicyResult}, "message.read")
 	if !result {
@@ -264,7 +247,7 @@ SKIP_EVAL_MESSAGE_POLICY:
 
 // Create creates a new message
 // It also posts the message to the timelines
-func (s *service) Create(ctx context.Context, mode core.CommitMode, document string, signature string) (core.Message, error) {
+func (s *service) Create(ctx context.Context, mode core.CommitMode, document string, signature string) (core.Message, []string, error) {
 	ctx, span := tracer.Start(ctx, "Message.Service.Create")
 	defer span.End()
 
@@ -274,7 +257,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 	err := json.Unmarshal([]byte(document), &doc)
 	if err != nil {
 		span.RecordError(err)
-		return created, err
+		return created, []string{}, err
 	}
 
 	hash := core.GetHash([]byte(document))
@@ -286,7 +269,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 	signer, err := s.entity.Get(ctx, doc.Signer)
 	if err != nil {
 		span.RecordError(err)
-		return core.Message{}, err
+		return core.Message{}, []string{}, err
 	}
 
 	var policyparams *string = nil
@@ -310,7 +293,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 		created, err = s.repo.Create(ctx, message)
 		if err != nil {
 			span.RecordError(err)
-			return message, err
+			return message, []string{}, err
 		}
 
 	}
@@ -338,14 +321,16 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 	ispublic, err := s.isMessagePublic(ctx, created)
 	if err != nil {
 		span.RecordError(err)
-		return core.Message{}, err
+		return core.Message{}, []string{}, err
 	}
 
 	sendDocument := ""
 	sendSignature := ""
+	var sendResource *core.Message
 	if ispublic {
 		sendDocument = document
 		sendSignature = signature
+		sendResource = &created
 	}
 
 	for domain, timelines := range destinations {
@@ -376,6 +361,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 						Item:      posted,
 						Document:  sendDocument,
 						Signature: sendSignature,
+						Resource:  sendResource,
 					}
 
 					err = s.timeline.PublishEvent(ctx, event)
@@ -411,12 +397,17 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 
 	// TODO: 実際に送信できたstreamの一覧を返すべき
 
-	return created, nil
+	affected, err := s.timeline.GetOwners(ctx, doc.Timelines)
+	if err != nil {
+		span.RecordError(err)
+	}
+
+	return created, affected, nil
 }
 
 // Delete deletes a message by ID
 // It also emits a delete event to the sockets
-func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, signature string) (core.Message, error) {
+func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, signature string) (core.Message, []string, error) {
 	ctx, span := tracer.Start(ctx, "Message.Service.Delete")
 	defer span.End()
 
@@ -424,16 +415,16 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 	err := json.Unmarshal([]byte(document), &doc)
 	if err != nil {
 		span.RecordError(err)
-		return core.Message{}, err
+		return core.Message{}, []string{}, err
 	}
 
 	deleteTarget, err := s.repo.Get(ctx, doc.Target)
 	if err != nil {
 		if errors.Is(err, core.ErrorNotFound{}) {
-			return core.Message{}, core.NewErrorAlreadyDeleted()
+			return core.Message{}, []string{}, core.NewErrorAlreadyDeleted()
 		}
 		span.RecordError(err)
-		return core.Message{}, err
+		return core.Message{}, []string{}, err
 	}
 
 	var params map[string]any = make(map[string]any)
@@ -441,7 +432,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 		err := json.Unmarshal([]byte(*deleteTarget.PolicyParams), &params)
 		if err != nil {
 			span.RecordError(err)
-			return core.Message{}, err
+			return core.Message{}, []string{}, err
 		}
 	}
 
@@ -458,18 +449,18 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 
 	if err != nil {
 		span.RecordError(err)
-		return core.Message{}, err
+		return core.Message{}, []string{}, err
 	}
 
 	finally := s.policy.Summerize([]core.PolicyEvalResult{result}, "message.delete")
 	if !finally {
-		return core.Message{}, core.ErrorPermissionDenied{}
+		return core.Message{}, []string{}, core.ErrorPermissionDenied{}
 	}
 
 	err = s.repo.Delete(ctx, doc.Target)
 	if err != nil {
 		span.RecordError(err)
-		return core.Message{}, err
+		return core.Message{}, []string{}, err
 	}
 
 	err = s.timeline.RemoveItemsByResourceID(ctx, doc.Target)
@@ -480,7 +471,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 	ispublic, err := s.isMessagePublic(ctx, deleteTarget)
 	if err != nil {
 		span.RecordError(err)
-		return core.Message{}, err
+		return core.Message{}, []string{}, err
 	}
 
 	var publicResource *core.Message = nil
@@ -499,12 +490,17 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 			err := s.timeline.PublishEvent(ctx, event)
 			if err != nil {
 				span.RecordError(err)
-				return deleteTarget, err
+				return deleteTarget, []string{}, err
 			}
 		}
 	}
 
-	return deleteTarget, err
+	affected, err := s.timeline.GetOwners(ctx, deleteTarget.Timelines)
+	if err != nil {
+		span.RecordError(err)
+	}
+
+	return deleteTarget, affected, err
 }
 
 func (s *service) Clean(ctx context.Context, ccid string) error {

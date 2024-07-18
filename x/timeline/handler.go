@@ -26,7 +26,6 @@ type Handler interface {
 	Range(c echo.Context) error
 	List(c echo.Context) error
 	ListMine(c echo.Context) error
-	Remove(c echo.Context) error
 	GetChunks(c echo.Context) error
 	Realtime(c echo.Context) error
 }
@@ -175,39 +174,6 @@ func (h handler) ListMine(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": list})
-}
-
-// Remove is remove timeline element from timeline
-func (h handler) Remove(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.Remove")
-	defer span.End()
-
-	timelineID := c.Param("timeline")
-	split := strings.Split(timelineID, "@")
-	if len(split) == 2 {
-		timelineID = split[0]
-	}
-
-	objectID := c.Param("object")
-
-	target, err := h.service.GetItem(ctx, timelineID, objectID)
-	if err != nil {
-		span.RecordError(err)
-		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
-	}
-
-	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
-	if !ok {
-		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
-	}
-
-	if *target.Author != requester && target.Owner != requester {
-		return c.JSON(http.StatusForbidden, echo.Map{"error": "You are not owner of this timeline element"})
-	}
-
-	h.service.RemoveItem(ctx, timelineID, objectID)
-
-	return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
 }
 
 // GetChunks

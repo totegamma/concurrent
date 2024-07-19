@@ -330,79 +330,80 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 		}
 	}
 
-	if doc.Target[0] == 'm' {
-		destinations := make(map[string][]string)
-		for _, timeline := range doc.Timelines {
-			normalized, err := s.timeline.NormalizeTimelineID(ctx, timeline)
+	destinations := make(map[string][]string)
+	for _, timeline := range doc.Timelines {
+		normalized, err := s.timeline.NormalizeTimelineID(ctx, timeline)
+		if err != nil {
+			span.RecordError(err)
+			continue
+		}
+		split := strings.Split(normalized, "@")
+		if len(split) <= 1 {
+			span.RecordError(fmt.Errorf("invalid timeline id: %s", normalized))
+			continue
+		}
+		domain := split[len(split)-1]
+
+		if _, ok := destinations[domain]; !ok {
+			destinations[domain] = []string{}
+		}
+		destinations[domain] = append(destinations[domain], timeline)
+	}
+
+	for domain, timelines := range destinations {
+		if domain == s.config.FQDN {
+			// localなら、timelineのエントリを生成→Eventを発行
+			for _, timeline := range timelines {
+
+				posted, err := s.timeline.PostItem(ctx, timeline, core.TimelineItem{
+					ResourceID: association.ID,
+					Owner:      association.Owner,
+					Author:     &association.Author,
+				}, document, signature)
+				if err != nil {
+					span.RecordError(err)
+					continue
+				}
+
+				event := core.Event{
+					Timeline:  timeline,
+					Item:      posted,
+					Document:  document,
+					Signature: signature,
+					Resource:  association,
+				}
+
+				err = s.timeline.PublishEvent(ctx, event)
+				if err != nil {
+					slog.ErrorContext(ctx, "failed to publish event", slog.String("error", err.Error()), slog.String("module", "timeline"))
+					span.RecordError(err)
+					continue
+				}
+			}
+		} else if owner.Domain == s.config.FQDN && mode != core.CommitModeLocalOnlyExec { // ここでリソースを作成したなら、リモートにもリレー
+			// send to remote
+			packet := core.Commit{
+				Document:  document,
+				Signature: signature,
+			}
+
+			packetStr, err := json.Marshal(packet)
 			if err != nil {
 				span.RecordError(err)
 				continue
 			}
-			split := strings.Split(normalized, "@")
-			if len(split) <= 1 {
-				span.RecordError(fmt.Errorf("invalid timeline id: %s", normalized))
+
+			_, err = s.domain.GetByFQDN(ctx, domain)
+			if err != nil {
+				span.RecordError(err)
 				continue
 			}
-			domain := split[len(split)-1]
 
-			if _, ok := destinations[domain]; !ok {
-				destinations[domain] = []string{}
-			}
-			destinations[domain] = append(destinations[domain], timeline)
+			s.client.Commit(ctx, domain, string(packetStr), nil, nil)
 		}
+	}
 
-		for domain, timelines := range destinations {
-			if domain == s.config.FQDN {
-				// localなら、timelineのエントリを生成→Eventを発行
-				for _, timeline := range timelines {
-					posted, err := s.timeline.PostItem(ctx, timeline, core.TimelineItem{
-						ResourceID: association.ID,
-						Owner:      association.Owner,
-						Author:     &association.Author,
-					}, document, signature)
-					if err != nil {
-						span.RecordError(err)
-						continue
-					}
-
-					event := core.Event{
-						Timeline:  timeline,
-						Item:      posted,
-						Document:  document,
-						Signature: signature,
-						Resource:  association,
-					}
-
-					err = s.timeline.PublishEvent(ctx, event)
-					if err != nil {
-						slog.ErrorContext(ctx, "failed to publish event", slog.String("error", err.Error()), slog.String("module", "timeline"))
-						span.RecordError(err)
-						continue
-					}
-				}
-			} else if owner.Domain == s.config.FQDN && mode != core.CommitModeLocalOnlyExec { // ここでリソースを作成したなら、リモートにもリレー
-				// send to remote
-				packet := core.Commit{
-					Document:  document,
-					Signature: signature,
-				}
-
-				packetStr, err := json.Marshal(packet)
-				if err != nil {
-					span.RecordError(err)
-					continue
-				}
-
-				_, err = s.domain.GetByFQDN(ctx, domain)
-				if err != nil {
-					span.RecordError(err)
-					continue
-				}
-
-				s.client.Commit(ctx, domain, string(packetStr), nil, nil)
-			}
-		}
-
+	if doc.Target[0] == 'm' {
 		// Associationだけの追加対応
 		// メッセージの場合は、ターゲットのタイムラインにも追加する
 		if owner.Domain == s.config.FQDN && mode != core.CommitModeLocalOnlyExec {

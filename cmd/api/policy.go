@@ -38,6 +38,8 @@ var globalPolicyJson = `
             }
         },
         "association.delete": {
+            "dominant": true,
+            "defaultOnFalse": true,
             "condition": {
                 "op": "Or",
                 "args": [
@@ -75,6 +77,8 @@ var globalPolicyJson = `
             }
         },
         "message.delete": {
+            "dominant": true,
+            "defaultOnFalse": true,
             "condition": {
                 "op": "Or",
                 "args": [
@@ -99,11 +103,15 @@ var globalPolicyJson = `
             }
         },
         "profile.create": {
+            "dominant": true,
+            "defaultOnFalse": true,
             "condition": {
                 "op": "IsRequesterLocalUser"
             }
         },
         "profile.update": {
+            "dominant": true,
+            "defaultOnFalse": true,
             "condition": {
                 "op": "Eq",
                 "args": [
@@ -119,6 +127,8 @@ var globalPolicyJson = `
             }
         },
         "profile.delete": {
+            "dominant": true,
+            "defaultOnFalse": true,
             "condition": {
                 "op": "Or",
                 "args": [
@@ -143,6 +153,8 @@ var globalPolicyJson = `
             }
         },
         "subscription.create": {
+            "dominant": true,
+            "defaultOnFalse": true,
             "condition": {
                 "op": "Or",
                 "args": [
@@ -157,6 +169,8 @@ var globalPolicyJson = `
             }
         },
         "subscription.update": {
+            "dominant": true,
+            "defaultOnFalse": true,
             "condition": {
                 "op": "Eq",
                 "args": [
@@ -172,6 +186,8 @@ var globalPolicyJson = `
             }
         },
         "subscription.delete": {
+            "dominant": true,
+            "defaultOnFalse": true,
             "condition": {
                 "op": "Or",
                 "args": [
@@ -196,6 +212,8 @@ var globalPolicyJson = `
             }
         },
         "timeline.create": {
+            "dominant": true,
+            "defaultOnFalse": true,
             "condition": {
                 "op": "Or",
                 "args": [
@@ -210,6 +228,8 @@ var globalPolicyJson = `
             }
         },
         "timeline.update": {
+            "dominant": true,
+            "defaultOnFalse": true,
             "condition": {
                 "op": "Eq",
                 "args": [
@@ -225,6 +245,8 @@ var globalPolicyJson = `
             }
         },
         "timeline.delete": {
+            "dominant": true,
+            "defaultOnFalse": true,
             "condition": {
                 "op": "Or",
                 "args": [
@@ -249,6 +271,8 @@ var globalPolicyJson = `
             }
         },
         "timeline.distribute": {
+            "dominant": true,
+            "defaultOnFalse": true,
             "condition": {
                 "op": "Or",
                 "args": [
@@ -272,6 +296,8 @@ var globalPolicyJson = `
             }
         },
         "timeline.message.read": {
+            "dominant": true,
+            "defaultOnFalse": true,
             "condition": {
                 "op": "Or",
                 "args": [

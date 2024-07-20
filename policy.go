@@ -265,8 +265,6 @@ var globalPolicyJson = `
             }
         },
         "timeline.distribute": {
-            "dominant": true,
-            "defaultOnFalse": true,
             "condition": {
                 "op": "Or",
                 "args": [

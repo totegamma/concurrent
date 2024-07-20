@@ -4,27 +4,45 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strings"
+
 	"github.com/totegamma/concurrent/cdid"
 	"github.com/totegamma/concurrent/core"
-	"strings"
+	"go.opentelemetry.io/otel/codes"
 )
 
 type service struct {
-	repo Repository
+	repo   Repository
+	entity core.EntityService
+	policy core.PolicyService
 }
 
 // NewRepository creates a new collection repository
-func NewService(repo Repository) core.SubscriptionService {
-	return &service{repo: repo}
+func NewService(
+	repo Repository,
+	entity core.EntityService,
+	policy core.PolicyService,
+) core.SubscriptionService {
+	return &service{
+		repo,
+		entity,
+		policy,
+	}
 }
 
-// CreateSubscription creates new collection
-func (s *service) CreateSubscription(ctx context.Context, mode core.CommitMode, document, signature string) (core.Subscription, error) {
+// UpsertSubscription creates new collection
+func (s *service) UpsertSubscription(ctx context.Context, mode core.CommitMode, document, signature string) (core.Subscription, error) {
 	ctx, span := tracer.Start(ctx, "Subscription.Service.CreateSubscription")
 	defer span.End()
 
 	var doc core.SubscriptionDocument[any]
 	err := json.Unmarshal([]byte(document), &doc)
+	if err != nil {
+		span.RecordError(err)
+		return core.Subscription{}, err
+	}
+
+	signer, err := s.entity.Get(ctx, doc.Signer)
 	if err != nil {
 		span.RecordError(err)
 		return core.Subscription{}, err
@@ -36,6 +54,31 @@ func (s *service) CreateSubscription(ctx context.Context, mode core.CommitMode, 
 		copy(hash10[:], hash[:10])
 		signedAt := doc.SignedAt
 		doc.ID = cdid.New(hash10, signedAt).String()
+
+		// check existance
+		_, err := s.repo.GetSubscription(ctx, doc.ID)
+		if err == nil {
+			return core.Subscription{}, errors.New("subscription already exists")
+		}
+
+		policyResult, err := s.policy.TestWithPolicyURL(
+			ctx,
+			"",
+			core.RequestContext{
+				Requester: signer,
+				Document:  doc,
+			},
+			"subscription.create",
+		)
+		if err != nil {
+			span.RecordError(err)
+		}
+
+		result := s.policy.Summerize([]core.PolicyEvalResult{policyResult}, "subscription.create")
+		if !result {
+			return core.Subscription{}, errors.New("You don't have subscription.create access")
+		}
+
 	} else {
 		existance, err := s.repo.GetSubscription(ctx, doc.ID)
 		if err != nil {
@@ -44,6 +87,36 @@ func (s *service) CreateSubscription(ctx context.Context, mode core.CommitMode, 
 		}
 
 		doc.DomainOwned = existance.DomainOwned // make sure the domain owned is immutable
+
+		var params map[string]any = make(map[string]any)
+		if existance.PolicyParams != nil {
+			if err != nil {
+				span.SetStatus(codes.Error, err.Error())
+				span.RecordError(err)
+			}
+		}
+
+		policyResult, err := s.policy.TestWithPolicyURL(
+			ctx,
+			existance.Policy,
+			core.RequestContext{
+				Requester: signer,
+				Self:      existance,
+				Document:  doc,
+				Params:    params,
+			},
+			"subscription.update",
+		)
+
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			span.RecordError(err)
+		}
+
+		result := s.policy.Summerize([]core.PolicyEvalResult{policyResult}, "subscription.update")
+		if !result {
+			return core.Subscription{}, errors.New("You don't have subscription.update access")
+		}
 	}
 
 	var policyparams *string = nil
@@ -97,11 +170,42 @@ func (s *service) DeleteSubscription(ctx context.Context, mode core.CommitMode, 
 		return core.Subscription{}, err
 	}
 
-	if deleteTarget.Author != doc.Signer {
-		return core.Subscription{}, errors.New("you are not authorized to perform this action")
+	signer, err := s.entity.Get(ctx, doc.Signer)
+	if err != nil {
+		span.RecordError(err)
+		return core.Subscription{}, err
+	}
+
+	var params map[string]any = make(map[string]any)
+	if deleteTarget.PolicyParams != nil {
+		json.Unmarshal([]byte(*deleteTarget.PolicyParams), &params)
+	}
+
+	policyResult, err := s.policy.TestWithPolicyURL(
+		ctx,
+		deleteTarget.Policy,
+		core.RequestContext{
+			Requester: signer,
+			Self:      deleteTarget,
+			Document:  doc,
+		},
+		"subscription.delete",
+	)
+	if err != nil {
+		span.RecordError(err)
+		return core.Subscription{}, err
+	}
+
+	result := s.policy.Summerize([]core.PolicyEvalResult{policyResult}, "subscription.delete")
+	if !result {
+		return core.Subscription{}, errors.New("policy failed")
 	}
 
 	err = s.repo.DeleteSubscription(ctx, doc.Target)
+	if err != nil {
+		span.RecordError(err)
+		return core.Subscription{}, err
+	}
 
 	return deleteTarget, err
 }

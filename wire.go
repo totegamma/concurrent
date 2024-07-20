@@ -43,10 +43,10 @@ var jobServiceProvider = wire.NewSet(job.NewService, job.NewRepository)
 
 // Lv1
 var entityServiceProvider = wire.NewSet(entity.NewService, entity.NewRepository, SetupJwtService, SetupSchemaService, SetupKeyService)
-var subscriptionServiceProvider = wire.NewSet(subscription.NewService, subscription.NewRepository, SetupSchemaService)
 
 // Lv2
-var timelineServiceProvider = wire.NewSet(timeline.NewService, timeline.NewRepository, SetupEntityService, SetupDomainService, SetupSchemaService, SetupSemanticidService, SetupSubscriptionService, SetupPolicyService)
+var timelineServiceProvider = wire.NewSet(timeline.NewService, timeline.NewRepository, SetupEntityService, SetupDomainService, SetupSchemaService, SetupSemanticidService, SetupSubscriptionService)
+var subscriptionServiceProvider = wire.NewSet(subscription.NewService, subscription.NewRepository, SetupSchemaService, SetupEntityService)
 
 // Lv3
 var profileServiceProvider = wire.NewSet(profile.NewService, profile.NewRepository, SetupEntityService, SetupKeyService, SetupSchemaService, SetupSemanticidService)
@@ -54,10 +54,10 @@ var authServiceProvider = wire.NewSet(auth.NewService, SetupEntityService, Setup
 var ackServiceProvider = wire.NewSet(ack.NewService, ack.NewRepository, SetupEntityService, SetupKeyService)
 
 // Lv4
-var messageServiceProvider = wire.NewSet(message.NewService, message.NewRepository, SetupEntityService, SetupDomainService, SetupTimelineService, SetupKeyService, SetupPolicyService, SetupSchemaService)
+var messageServiceProvider = wire.NewSet(message.NewService, message.NewRepository, SetupEntityService, SetupDomainService, SetupTimelineService, SetupKeyService, SetupSchemaService)
 
 // Lv5
-var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupEntityService, SetupDomainService, SetupTimelineService, SetupMessageService, SetupKeyService, SetupSchemaService)
+var associationServiceProvider = wire.NewSet(association.NewService, association.NewRepository, SetupEntityService, SetupDomainService, SetupTimelineService, SetupMessageService, SetupKeyService, SetupSchemaService, SetupProfileService, SetupSubscriptionService)
 
 // Lv6
 var storeServiceProvider = wire.NewSet(
@@ -79,7 +79,7 @@ var agentServiceProvider = wire.NewSet(agent.NewAgent, SetupStoreService, SetupJ
 
 // -----------
 
-func SetupPolicyService(rdb *redis.Client, config core.Config) core.PolicyService {
+func SetupPolicyService(rdb *redis.Client, globalPolicy core.Policy, config core.Config) core.PolicyService {
 	wire.Build(policyServiceProvider)
 	return nil
 }
@@ -94,7 +94,7 @@ func SetupJobService(db *gorm.DB) core.JobService {
 	return nil
 }
 
-func SetupAckService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, config core.Config) core.AckService {
+func SetupAckService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, policy core.PolicyService, config core.Config) core.AckService {
 	wire.Build(ackServiceProvider)
 	return nil
 }
@@ -104,22 +104,22 @@ func SetupKeyService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client
 	return nil
 }
 
-func SetupMessageService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, config core.Config) core.MessageService {
+func SetupMessageService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, policy core.PolicyService, config core.Config) core.MessageService {
 	wire.Build(messageServiceProvider)
 	return nil
 }
 
-func SetupProfileService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, config core.Config) core.ProfileService {
+func SetupProfileService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, policy core.PolicyService, config core.Config) core.ProfileService {
 	wire.Build(profileServiceProvider)
 	return nil
 }
 
-func SetupAssociationService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, config core.Config) core.AssociationService {
+func SetupAssociationService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, policy core.PolicyService, config core.Config) core.AssociationService {
 	wire.Build(associationServiceProvider)
 	return nil
 }
 
-func SetupTimelineService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, config core.Config) core.TimelineService {
+func SetupTimelineService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, policy core.PolicyService, config core.Config) core.TimelineService {
 	wire.Build(timelineServiceProvider)
 	return nil
 }
@@ -129,17 +129,17 @@ func SetupDomainService(db *gorm.DB, client client.Client, config core.Config) c
 	return nil
 }
 
-func SetupEntityService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, config core.Config) core.EntityService {
+func SetupEntityService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, policy core.PolicyService, config core.Config) core.EntityService {
 	wire.Build(entityServiceProvider)
 	return nil
 }
 
-func SetupAgent(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, config core.Config, repositoryPath string) core.AgentService {
+func SetupAgent(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, policy core.PolicyService, config core.Config, repositoryPath string) core.AgentService {
 	wire.Build(agentServiceProvider)
 	return nil
 }
 
-func SetupAuthService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, config core.Config) core.AuthService {
+func SetupAuthService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, policy core.PolicyService, config core.Config) core.AuthService {
 	wire.Build(authServiceProvider)
 	return nil
 }
@@ -154,12 +154,12 @@ func SetupSchemaService(db *gorm.DB) core.SchemaService {
 	return nil
 }
 
-func SetupStoreService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, config core.Config, repositoryPath string) core.StoreService {
+func SetupStoreService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, policy core.PolicyService, config core.Config, repositoryPath string) core.StoreService {
 	wire.Build(storeServiceProvider)
 	return nil
 }
 
-func SetupSubscriptionService(db *gorm.DB) core.SubscriptionService {
+func SetupSubscriptionService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, policy core.PolicyService, config core.Config) core.SubscriptionService {
 	wire.Build(subscriptionServiceProvider)
 	return nil
 }

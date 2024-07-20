@@ -206,7 +206,10 @@ func main() {
 
 	client := client.NewClient()
 
-	agent := concurrent.SetupAgent(db, rdb, mc, client, conconf, config.Server.RepositoryPath)
+	globalPolicy := getDefaultGlobalPolicy()
+
+	policy := concurrent.SetupPolicyService(rdb, globalPolicy, conconf)
+	agent := concurrent.SetupAgent(db, rdb, mc, client, policy, conconf, config.Server.RepositoryPath)
 
 	domainService := concurrent.SetupDomainService(db, client, conconf)
 	domainHandler := domain.NewHandler(domainService)
@@ -214,40 +217,40 @@ func main() {
 	userKvService := concurrent.SetupUserkvService(db)
 	userkvHandler := userkv.NewHandler(userKvService)
 
-	messageService := concurrent.SetupMessageService(db, rdb, mc, client, conconf)
+	messageService := concurrent.SetupMessageService(db, rdb, mc, client, policy, conconf)
 	messageHandler := message.NewHandler(messageService)
 
-	associationService := concurrent.SetupAssociationService(db, rdb, mc, client, conconf)
+	associationService := concurrent.SetupAssociationService(db, rdb, mc, client, policy, conconf)
 	associationHandler := association.NewHandler(associationService)
 
-	profileService := concurrent.SetupProfileService(db, rdb, mc, client, conconf)
+	profileService := concurrent.SetupProfileService(db, rdb, mc, client, policy, conconf)
 	profileHandler := profile.NewHandler(profileService)
 
-	timelineService := concurrent.SetupTimelineService(db, rdb, mc, client, conconf)
+	timelineService := concurrent.SetupTimelineService(db, rdb, mc, client, policy, conconf)
 	timelineHandler := timeline.NewHandler(timelineService)
 
-	entityService := concurrent.SetupEntityService(db, rdb, mc, client, conconf)
+	entityService := concurrent.SetupEntityService(db, rdb, mc, client, policy, conconf)
 	entityHandler := entity.NewHandler(entityService)
 
-	authService := concurrent.SetupAuthService(db, rdb, mc, client, conconf)
+	authService := concurrent.SetupAuthService(db, rdb, mc, client, policy, conconf)
 	authHandler := auth.NewHandler(authService)
 
 	keyService := concurrent.SetupKeyService(db, rdb, mc, client, conconf)
 	keyHandler := key.NewHandler(keyService)
 
-	ackService := concurrent.SetupAckService(db, rdb, mc, client, conconf)
+	ackService := concurrent.SetupAckService(db, rdb, mc, client, policy, conconf)
 	ackHandler := ack.NewHandler(ackService)
 
-	storeService := concurrent.SetupStoreService(db, rdb, mc, client, conconf, config.Server.RepositoryPath)
+	storeService := concurrent.SetupStoreService(db, rdb, mc, client, policy, conconf, config.Server.RepositoryPath)
 	storeHandler := store.NewHandler(storeService)
 
-	subscriptionService := concurrent.SetupSubscriptionService(db)
+	subscriptionService := concurrent.SetupSubscriptionService(db, rdb, mc, client, policy, conconf)
 	subscriptionHandler := subscription.NewHandler(subscriptionService)
 
 	jobService := concurrent.SetupJobService(db)
 	jobHandler := job.NewHandler(jobService)
 
-	apiV1 := e.Group("", auth.SetRequestPath, auth.ReceiveGatewayAuthPropagation)
+	apiV1 := e.Group("", auth.ReceiveGatewayAuthPropagation)
 	// store
 	apiV1.POST("/commit", storeHandler.Commit)
 

@@ -13,6 +13,7 @@ import (
 	"github.com/totegamma/concurrent/cdid"
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/core"
+	"github.com/totegamma/concurrent/x/policy"
 )
 
 type service struct {
@@ -57,39 +58,17 @@ func (s *service) Count(ctx context.Context) (int64, error) {
 	return s.repo.Count(ctx)
 }
 
-// Get returns a message by ID
-func (s *service) Get(ctx context.Context, id string, requester string) (core.Message, error) {
-	ctx, span := tracer.Start(ctx, "Message.Service.Get")
+func (s *service) isMessagePublic(ctx context.Context, message core.Message) (bool, error) {
+	ctx, span := tracer.Start(ctx, "Message.Service.isMessagePublic")
 	defer span.End()
 
-	message, err := s.repo.Get(ctx, id)
-	if err != nil {
-		span.RecordError(err)
-		return core.Message{}, err
-	}
-
-	canRead := false
-	for _, timelineID := range message.Timelines {
+	// timeline policy check
+	timelinePolicyResults := make([]core.PolicyEvalResult, len(message.Timelines))
+	for i, timelineID := range message.Timelines {
 		timeline, err := s.timeline.GetTimelineAutoDomain(ctx, timelineID)
 		if err != nil {
 			span.SetStatus(codes.Error, err.Error())
 			continue
-		}
-
-		if timeline.Author == requester { // 自分のタイムラインなら読める
-			canRead = true
-			break
-		}
-
-		if timeline.Policy == "" {
-			canRead = true
-			break
-		}
-
-		action, ok := ctx.Value(core.RequestPathCtxKey).(string)
-		if !ok {
-			span.RecordError(fmt.Errorf("action not found"))
-			return core.Message{}, fmt.Errorf("invalid action")
 		}
 
 		var params map[string]any = make(map[string]any)
@@ -102,27 +81,79 @@ func (s *service) Get(ctx context.Context, id string, requester string) (core.Me
 			}
 		}
 
-		ok, err = s.policy.TestWithPolicyURL(
+		result, err := s.policy.TestWithPolicyURL(
 			ctx,
 			timeline.Policy,
 			core.RequestContext{
 				Self:   timeline,
 				Params: params,
 			},
-			action,
+			"timeline.message.read",
 		)
 		if err != nil {
 			span.SetStatus(codes.Error, err.Error())
+			timelinePolicyResults[i] = core.PolicyEvalResultDefault
 			continue
 		}
 
-		if ok {
-			canRead = true
-			break
-		}
-
+		timelinePolicyResults[i] = result
 	}
-	if !canRead {
+
+	timelinePolicyResult := policy.AccumulateOr(timelinePolicyResults)
+	timelinePolicyIsDominant, timelinePolicyAllowed := policy.IsDominant(timelinePolicyResult)
+	if timelinePolicyIsDominant && !timelinePolicyAllowed {
+		return false, nil
+	}
+
+	// message policy check
+	messagePolicyResult := core.PolicyEvalResultDefault
+
+	var err error
+	var params map[string]any = make(map[string]any)
+	if message.PolicyParams != nil {
+		json.Unmarshal([]byte(*message.PolicyParams), &params)
+	}
+
+	messagePolicyResult, err = s.policy.TestWithPolicyURL(
+		ctx,
+		message.Policy,
+		core.RequestContext{
+			Self:   message,
+			Params: params,
+		},
+		"message.read",
+	)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+	}
+
+	// accumulate polies
+	result := s.policy.Summerize([]core.PolicyEvalResult{messagePolicyResult, timelinePolicyResult}, "message.read")
+	if !result {
+		return false, nil
+	}
+
+	return true, nil
+}
+
+// Get returns a message by ID
+func (s *service) Get(ctx context.Context, id string, requester string) (core.Message, error) {
+	ctx, span := tracer.Start(ctx, "Message.Service.Get")
+	defer span.End()
+
+	message, err := s.repo.Get(ctx, id)
+	if err != nil {
+		span.RecordError(err)
+		return core.Message{}, err
+	}
+
+	isPublic, err := s.isMessagePublic(ctx, message)
+	if err != nil {
+		span.RecordError(err)
+		return core.Message{}, err
+	}
+
+	if !isPublic {
 		return core.Message{}, fmt.Errorf("no read access")
 	}
 
@@ -146,22 +177,12 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 		return core.Message{}, err
 	}
 
-	canRead := false
-	for _, timelineID := range message.Timelines {
+	timelinePolicyResults := make([]core.PolicyEvalResult, len(message.Timelines))
+	for i, timelineID := range message.Timelines {
 		timeline, err := s.timeline.GetTimelineAutoDomain(ctx, timelineID)
 		if err != nil {
 			span.SetStatus(codes.Error, err.Error())
 			continue
-		}
-
-		if timeline.Author == requester { // 自分のタイムラインなら読める
-			canRead = true
-			break
-		}
-
-		if timeline.Policy == "" {
-			canRead = true
-			break
 		}
 
 		var params map[string]any = make(map[string]any)
@@ -174,31 +195,50 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 			}
 		}
 
-		requestContext := core.RequestContext{
-			Self:      timeline,
-			Params:    params,
-			Requester: requesterEntity,
-		}
-
-		action, ok := ctx.Value(core.RequestPathCtxKey).(string)
-		if !ok {
-			span.RecordError(fmt.Errorf("action not found"))
-			return core.Message{}, fmt.Errorf("invalid action")
-		}
-
-		ok, err = s.policy.TestWithPolicyURL(ctx, timeline.Policy, requestContext, action)
+		result, err := s.policy.TestWithPolicyURL(
+			ctx,
+			timeline.Policy,
+			core.RequestContext{
+				Self:      timeline,
+				Params:    params,
+				Requester: requesterEntity,
+			},
+			"timeline.message.read",
+		)
 		if err != nil {
 			span.SetStatus(codes.Error, err.Error())
+			timelinePolicyResults[i] = core.PolicyEvalResultDefault
 			continue
 		}
-
-		if ok {
-			canRead = true
-			break
-		}
-
+		timelinePolicyResults[i] = result
 	}
-	if !canRead {
+
+	timelinePolicyResult := policy.AccumulateOr(timelinePolicyResults)
+	timelinePolicyIsDominant, timelinePolicyAllowed := policy.IsDominant(timelinePolicyResult)
+	if timelinePolicyIsDominant && !timelinePolicyAllowed {
+		return core.Message{}, fmt.Errorf("no read access")
+	}
+
+	messagePolicyResult := core.PolicyEvalResultDefault
+
+	var params map[string]any = make(map[string]any)
+	if message.PolicyParams != nil {
+		json.Unmarshal([]byte(*message.PolicyParams), &params)
+	}
+
+	requestContext := core.RequestContext{
+		Self:      message,
+		Params:    params,
+		Requester: requesterEntity,
+	}
+
+	messagePolicyResult, err = s.policy.TestWithPolicyURL(ctx, message.Policy, requestContext, "message.read")
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+	}
+
+	result := s.policy.Summerize([]core.PolicyEvalResult{messagePolicyResult, timelinePolicyResult}, "message.read")
+	if !result {
 		return core.Message{}, fmt.Errorf("no read access")
 	}
 
@@ -207,7 +247,7 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 
 // Create creates a new message
 // It also posts the message to the timelines
-func (s *service) Create(ctx context.Context, mode core.CommitMode, document string, signature string) (core.Message, error) {
+func (s *service) Create(ctx context.Context, mode core.CommitMode, document string, signature string) (core.Message, []string, error) {
 	ctx, span := tracer.Start(ctx, "Message.Service.Create")
 	defer span.End()
 
@@ -217,7 +257,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 	err := json.Unmarshal([]byte(document), &doc)
 	if err != nil {
 		span.RecordError(err)
-		return created, err
+		return created, []string{}, err
 	}
 
 	hash := core.GetHash([]byte(document))
@@ -229,7 +269,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 	signer, err := s.entity.Get(ctx, doc.Signer)
 	if err != nil {
 		span.RecordError(err)
-		return core.Message{}, err
+		return core.Message{}, []string{}, err
 	}
 
 	var policyparams *string = nil
@@ -253,55 +293,13 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 		created, err = s.repo.Create(ctx, message)
 		if err != nil {
 			span.RecordError(err)
-			return message, err
+			return message, []string{}, err
 		}
 
 	}
 
-	ispublic := false
 	destinations := make(map[string][]string)
 	for _, timelineID := range doc.Timelines {
-
-		timeline, err := s.timeline.GetTimelineAutoDomain(ctx, timelineID)
-		if err != nil {
-			span.SetStatus(codes.Error, err.Error())
-			continue
-		}
-
-		if timeline.Policy == "" {
-			ispublic = true
-		} else if ispublic == false {
-
-			var params map[string]any = make(map[string]any)
-			if timeline.PolicyParams != nil {
-				err := json.Unmarshal([]byte(*timeline.PolicyParams), &params)
-				if err != nil {
-					span.SetStatus(codes.Error, err.Error())
-					span.RecordError(err)
-					continue
-				}
-			}
-
-			ok, err := s.policy.TestWithPolicyURL(
-				ctx,
-				timeline.Policy,
-				core.RequestContext{
-					Self:   timeline,
-					Params: params,
-				},
-				"GET:/message/",
-			)
-			if err != nil {
-				span.SetStatus(codes.Error, err.Error())
-				span.RecordError(err)
-				continue
-			}
-
-			if ok {
-				ispublic = true
-			}
-		}
-
 		normalized, err := s.timeline.NormalizeTimelineID(ctx, timelineID)
 		if err != nil {
 			span.RecordError(errors.Wrap(err, "failed to normalize timeline id"))
@@ -320,11 +318,19 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 		destinations[domain] = append(destinations[domain], timelineID)
 	}
 
+	ispublic, err := s.isMessagePublic(ctx, created)
+	if err != nil {
+		span.RecordError(err)
+		return core.Message{}, []string{}, err
+	}
+
 	sendDocument := ""
 	sendSignature := ""
+	var sendResource *core.Message
 	if ispublic {
 		sendDocument = document
 		sendSignature = signature
+		sendResource = &created
 	}
 
 	for domain, timelines := range destinations {
@@ -355,6 +361,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 						Item:      posted,
 						Document:  sendDocument,
 						Signature: sendSignature,
+						Resource:  sendResource,
 					}
 
 					err = s.timeline.PublishEvent(ctx, event)
@@ -390,12 +397,17 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 
 	// TODO: 実際に送信できたstreamの一覧を返すべき
 
-	return created, nil
+	affected, err := s.timeline.GetOwners(ctx, doc.Timelines)
+	if err != nil {
+		span.RecordError(err)
+	}
+
+	return created, affected, nil
 }
 
 // Delete deletes a message by ID
 // It also emits a delete event to the sockets
-func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, signature string) (core.Message, error) {
+func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, signature string) (core.Message, []string, error) {
 	ctx, span := tracer.Start(ctx, "Message.Service.Delete")
 	defer span.End()
 
@@ -403,26 +415,52 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 	err := json.Unmarshal([]byte(document), &doc)
 	if err != nil {
 		span.RecordError(err)
-		return core.Message{}, err
+		return core.Message{}, []string{}, err
 	}
 
 	deleteTarget, err := s.repo.Get(ctx, doc.Target)
 	if err != nil {
 		if errors.Is(err, core.ErrorNotFound{}) {
-			return core.Message{}, core.NewErrorAlreadyDeleted()
+			return core.Message{}, []string{}, core.NewErrorAlreadyDeleted()
 		}
 		span.RecordError(err)
-		return core.Message{}, err
+		return core.Message{}, []string{}, err
 	}
 
-	if deleteTarget.Author != doc.Signer {
-		return core.Message{}, fmt.Errorf("you are not authorized to perform this action")
+	var params map[string]any = make(map[string]any)
+	if deleteTarget.PolicyParams != nil {
+		err := json.Unmarshal([]byte(*deleteTarget.PolicyParams), &params)
+		if err != nil {
+			span.RecordError(err)
+			return core.Message{}, []string{}, err
+		}
+	}
+
+	result, err := s.policy.TestWithPolicyURL(
+		ctx,
+		deleteTarget.Policy,
+		core.RequestContext{
+			Self:     deleteTarget,
+			Params:   params,
+			Document: doc,
+		},
+		"message.delete",
+	)
+
+	if err != nil {
+		span.RecordError(err)
+		return core.Message{}, []string{}, err
+	}
+
+	finally := s.policy.Summerize([]core.PolicyEvalResult{result}, "message.delete")
+	if !finally {
+		return core.Message{}, []string{}, core.ErrorPermissionDenied{}
 	}
 
 	err = s.repo.Delete(ctx, doc.Target)
 	if err != nil {
 		span.RecordError(err)
-		return core.Message{}, err
+		return core.Message{}, []string{}, err
 	}
 
 	err = s.timeline.RemoveItemsByResourceID(ctx, doc.Target)
@@ -430,53 +468,10 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 		span.RecordError(err)
 	}
 
-	ispublic := false
-	for _, timelineID := range deleteTarget.Timelines {
-		timeline, err := s.timeline.GetTimelineAutoDomain(ctx, timelineID)
-		if err != nil {
-			span.SetStatus(codes.Error, err.Error())
-			continue
-		}
-
-		if timeline.Policy == "" {
-			ispublic = true
-			break
-		}
-
-		var params map[string]any = make(map[string]any)
-		if timeline.PolicyParams != nil {
-			err := json.Unmarshal([]byte(*timeline.PolicyParams), &params)
-			if err != nil {
-				span.SetStatus(codes.Error, err.Error())
-				span.RecordError(err)
-				continue
-			}
-		}
-
-		ok, err := s.policy.TestWithPolicyURL(
-			ctx,
-			timeline.Policy,
-			core.RequestContext{
-				Self:   timeline,
-				Params: params,
-			},
-			"GET:/message/",
-		)
-		if err != nil {
-			span.SetStatus(codes.Error, err.Error())
-			span.RecordError(err)
-			continue
-		}
-
-		if ok {
-			ispublic = true
-			break
-		}
-	}
-
+	ispublic, err := s.isMessagePublic(ctx, deleteTarget)
 	if err != nil {
 		span.RecordError(err)
-		return core.Message{}, err
+		return core.Message{}, []string{}, err
 	}
 
 	var publicResource *core.Message = nil
@@ -495,12 +490,17 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 			err := s.timeline.PublishEvent(ctx, event)
 			if err != nil {
 				span.RecordError(err)
-				return deleteTarget, err
+				return deleteTarget, []string{}, err
 			}
 		}
 	}
 
-	return deleteTarget, err
+	affected, err := s.timeline.GetOwners(ctx, deleteTarget.Timelines)
+	if err != nil {
+		span.RecordError(err)
+	}
+
+	return deleteTarget, affected, err
 }
 
 func (s *service) Clean(ctx context.Context, ccid string) error {

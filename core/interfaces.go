@@ -20,8 +20,8 @@ type AgentService interface {
 }
 
 type AssociationService interface {
-	Create(ctx context.Context, mode CommitMode, document, signature string) (Association, error)
-	Delete(ctx context.Context, mode CommitMode, document, signature string) (Association, error)
+	Create(ctx context.Context, mode CommitMode, document, signature string) (Association, []string, error)
+	Delete(ctx context.Context, mode CommitMode, document, signature string) (Association, []string, error)
 
 	Clean(ctx context.Context, ccid string) error
 	Get(ctx context.Context, id string) (Association, error)
@@ -82,14 +82,16 @@ type MessageService interface {
 	Get(ctx context.Context, id string, requester string) (Message, error)
 	GetWithOwnAssociations(ctx context.Context, id string, requester string) (Message, error)
 	Clean(ctx context.Context, ccid string) error
-	Create(ctx context.Context, mode CommitMode, document string, signature string) (Message, error)
-	Delete(ctx context.Context, mode CommitMode, document, signature string) (Message, error)
+	Create(ctx context.Context, mode CommitMode, document string, signature string) (Message, []string, error)
+	Delete(ctx context.Context, mode CommitMode, document, signature string) (Message, []string, error)
 	Count(ctx context.Context) (int64, error)
 }
 
 type PolicyService interface {
-	Test(ctx context.Context, policy Policy, context RequestContext, action string) (bool, error)
-	TestWithPolicyURL(ctx context.Context, url string, context RequestContext, action string) (bool, error)
+	Test(ctx context.Context, policy Policy, context RequestContext, action string) (PolicyEvalResult, error)
+	TestWithPolicyURL(ctx context.Context, url string, context RequestContext, action string) (PolicyEvalResult, error)
+	TestWithGlobalPolicy(ctx context.Context, context RequestContext, action string) (PolicyEvalResult, error)
+	Summerize(results []PolicyEvalResult, action string) bool
 }
 
 type ProfileService interface {
@@ -133,7 +135,7 @@ type StoreService interface {
 }
 
 type SubscriptionService interface {
-	CreateSubscription(ctx context.Context, mode CommitMode, document, signature string) (Subscription, error)
+	UpsertSubscription(ctx context.Context, mode CommitMode, document, signature string) (Subscription, error)
 	Subscribe(ctx context.Context, mode CommitMode, document string, signature string) (SubscriptionItem, error)
 	Unsubscribe(ctx context.Context, mode CommitMode, document string) (SubscriptionItem, error)
 	DeleteSubscription(ctx context.Context, mode CommitMode, document string) (Subscription, error)
@@ -156,7 +158,7 @@ type TimelineService interface {
 	GetImmediateItemsFromSubscription(ctx context.Context, subscription string, since time.Time, limit int) ([]TimelineItem, error)
 	GetItem(ctx context.Context, timeline string, id string) (TimelineItem, error)
 	PostItem(ctx context.Context, timeline string, item TimelineItem, document, signature string) (TimelineItem, error)
-	RemoveItem(ctx context.Context, timeline string, id string)
+	Retract(ctx context.Context, mode CommitMode, document, signature string) (TimelineItem, []string, error)
 	RemoveItemsByResourceID(ctx context.Context, resourceID string) error
 
 	PublishEvent(ctx context.Context, event Event) error
@@ -173,6 +175,7 @@ type TimelineService interface {
 	ListTimelineSubscriptions(ctx context.Context) (map[string]int64, error)
 	Count(ctx context.Context) (int64, error)
 	NormalizeTimelineID(ctx context.Context, timeline string) (string, error)
+	GetOwners(ctx context.Context, timelines []string) ([]string, error)
 
 	Realtime(ctx context.Context, request <-chan []string, response chan<- Event)
 }

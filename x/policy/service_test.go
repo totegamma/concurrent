@@ -1,193 +1,468 @@
 package policy
 
 import (
-	"context"
-	"github.com/stretchr/testify/assert"
+	"encoding/json"
 	"testing"
 
+	"github.com/stretchr/testify/assert"
+	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+
 	"github.com/totegamma/concurrent/core"
+	"github.com/totegamma/concurrent/internal/testutil"
 )
 
-var s service
-var ctx = context.Background()
+var s core.PolicyService
+
+var globalPolicyJson = `
+{
+    "statements": {
+        "global": {
+            "dominant": true,
+            "defaultOnTrue": true,
+            "condition": {
+                "op": "Not",
+                "args": [
+                    {
+                        "op": "Or",
+                        "args": [
+                            {
+                                "op": "RequesterDomainHasTag",
+                                "const": "_block"
+                            },
+                            {
+                                "op": "RequesterHasTag",
+                                "const": "_block"
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        "timeline.message.read": {
+            "condition": {
+                "op": "Or",
+                "args": [
+                    {
+                        "op": "LoadSelf",
+                        "const": "domainOwned"
+                    },
+                    {
+                        "op": "Eq",
+                        "args": [
+                            {
+                                "op": "LoadSelf",
+                                "const": "author"
+                            },
+                            {
+                                "op": "RequesterID"
+                            }
+                        ]
+                    }
+                ]
+            }
+        }
+    }
+}
+`
+
+var checker *tracetest.InMemoryExporter
 
 func TestMain(m *testing.M) {
 
-	s = service{
-		config: core.Config{},
+	checker = testutil.SetupMockTraceProvider()
+
+	var globalPolicy core.Policy
+	err := json.Unmarshal([]byte(globalPolicyJson), &globalPolicy)
+	if err != nil {
+		panic(err)
 	}
+
+	repository := NewRepository(nil)
+
+	s = NewService(
+		repository,
+		globalPolicy,
+		core.Config{
+			FQDN: "local.example.com",
+		},
+	)
 
 	m.Run()
 }
 
-// 1. timelineを作れるのはローカルユーザーか、特定のタグを持つユーザー (Globalレベル想定)
+// 0. block判定
+func TestGlobalBlock(t *testing.T) {
+
+	rctx0 := core.RequestContext{
+		Requester: core.Entity{
+			Domain: "local.example.com",
+		},
+	}
+
+	ctx, id := testutil.SetupTraceCtx()
+	result, err := s.TestWithGlobalPolicy(ctx, rctx0, "global")
+	test0OK := assert.NoError(t, err)
+	test0OK = test0OK && assert.Equal(t, core.PolicyEvalResultDefault, result)
+
+	if !test0OK {
+		testutil.PrintSpans(checker.GetSpans(), id)
+	}
+
+	rctx1 := core.RequestContext{
+		Requester: core.Entity{
+			Domain: "local.example.com",
+			Tag:    "_block",
+		},
+	}
+
+	ctx, id = testutil.SetupTraceCtx()
+	result, err = s.TestWithGlobalPolicy(ctx, rctx1, "global")
+	test1OK := assert.NoError(t, err)
+	test1OK = test1OK && assert.Equal(t, core.PolicyEvalResultNever, result)
+
+	if !test1OK {
+		testutil.PrintSpans(checker.GetSpans(), id)
+	}
+
+	rctx2 := core.RequestContext{
+		Requester: core.Entity{
+			Domain: "other.example.net",
+		},
+		RequesterDomain: core.Domain{
+			Tag: "_block",
+		},
+	}
+
+	ctx, id = testutil.SetupTraceCtx()
+	result, err = s.TestWithGlobalPolicy(ctx, rctx2, "global")
+	test2OK := assert.NoError(t, err)
+	test2OK = test2OK && assert.Equal(t, core.PolicyEvalResultNever, result)
+
+	if !test2OK {
+		testutil.PrintSpans(checker.GetSpans(), id)
+	}
+}
+
+// 1. timelineを作れるのはローカルユーザーか、特定のタグを持つユーザー
 func TestPolicyTimelineCreatorIsLocalUserOrHasTag(t *testing.T) {
 
-	policy := core.Policy{
-		Name:    "StreamCreatorIsLocalUserOrHasTag",
-		Version: "2024-05-01",
-		Statements: []core.Statement{
-			{
-				Actions: []string{"timeline"},
-				Effect:  "allow", // allow: これにマッチしなければ拒否
-				Condition: core.Expr{
-					Operator: "Or",
-					Args: []core.Expr{
-						{
-							Operator: "IsRequesterLocalUser",
-						},
-						{
-							Operator: "RequesterHasTag",
-							Args: []core.Expr{
-								{
-									Operator: "Const",
-									Constant: "timeline_creator",
-								},
-							},
-						},
-					},
-				},
-			},
-		},
-	}
+	const policyJson = `
+    {
+        "statements": {
+            "timeline": {
+                "condition": {
+                    "op": "Or",
+                    "args": [
+                        {
+                            "op": "IsRequesterLocalUser"
+                        },
+                        {
+                            "op": "RequesterHasTag",
+                            "const": "timeline_creator"
+                        }
+                    ]
+                }
+            }
+        }
+    }`
 
-	context := core.RequestContext{}
+	var policy core.Policy
+	json.Unmarshal([]byte(policyJson), &policy)
 
-	canPerform, err := s.Test(ctx, policy, context, "timeline")
-	assert.NoError(t, err)
-	assert.True(t, canPerform)
-}
-
-// 2. timelineに投稿・閲覧できるのは特定のユーザー (timelineレベル想定)
-func TestPolicyTimelineLimitAccess(t *testing.T) {
-
-	policy := core.Policy{
-		Name:    "StreamLimitAccess",
-		Version: "2024-05-01",
-		Statements: []core.Statement{
-			{
-				Actions: []string{"distribute", "GET:/message/*"},
-				Effect:  "allow",
-				Condition: core.Expr{
-					Operator: "Contains",
-					Args: []core.Expr{
-						{
-							Operator: "LoadParam",
-							Constant: "allowlist",
-						},
-						{
-							Operator: "RequesterID",
-						},
-					},
-				},
-			},
-		},
-	}
-
-	context := core.RequestContext{
+	// ローカルユーザー かつ タグ無し (成功)
+	rctx0 := core.RequestContext{
 		Requester: core.Entity{
-			ID: "user1",
-		},
-		Params: map[string]any{
-			"allowlist": []any{"user1", "user2"},
+			Domain: "local.example.com",
 		},
 	}
 
-	canDistribute, err := s.Test(ctx, policy, context, "distribute")
-	assert.NoError(t, err)
-	assert.True(t, canDistribute)
+	ctx, id := testutil.SetupTraceCtx()
+	result, err := s.Test(ctx, policy, rctx0, "timeline")
 
-	canRead, err := s.Test(ctx, policy, context, "GET:/message/msneb1k006zqtpqsg067jyebxtm")
-	assert.NoError(t, err)
-	assert.True(t, canRead)
+	test0OK := assert.NoError(t, err)
+	test0OK = test0OK && assert.Equal(t, core.PolicyEvalResultAllow, result)
+
+	if !test0OK {
+		testutil.PrintSpans(checker.GetSpans(), id)
+	}
+
+	// ローカルユーザー かつ タグあり (成功)
+	rctx1 := core.RequestContext{
+		Requester: core.Entity{
+			Domain: "local.example.com",
+			Tag:    "timeline_creator",
+		},
+	}
+
+	ctx, id = testutil.SetupTraceCtx()
+	result, err = s.Test(ctx, policy, rctx1, "timeline")
+
+	test1OK := assert.NoError(t, err)
+	test1OK = test1OK && assert.Equal(t, core.PolicyEvalResultAllow, result)
+
+	if !test1OK {
+		testutil.PrintSpans(checker.GetSpans(), id)
+	}
+
+	// ローカルユーザーでない かつ タグ無し (失敗)
+	rctx2 := core.RequestContext{
+		Requester: core.Entity{
+			Domain: "other.example.net",
+		},
+	}
+
+	ctx, id = testutil.SetupTraceCtx()
+	result, err = s.Test(ctx, policy, rctx2, "timeline")
+
+	test2OK := assert.NoError(t, err)
+	test2OK = test2OK && assert.Equal(t, core.PolicyEvalResultDeny, result)
+
+	if !test2OK {
+		testutil.PrintSpans(checker.GetSpans(), id)
+	}
+
+	// ローカルユーザーでない かつ タグあり (成功)
+	rctx3 := core.RequestContext{
+		Requester: core.Entity{
+			Domain: "other.example.net",
+			Tag:    "timeline_creator",
+		},
+	}
+
+	ctx, id = testutil.SetupTraceCtx()
+	result, err = s.Test(ctx, policy, rctx3, "timeline")
+
+	test3OK := assert.NoError(t, err)
+	test3OK = test3OK && assert.Equal(t, core.PolicyEvalResultAllow, result)
+
+	if !test3OK {
+		testutil.PrintSpans(checker.GetSpans(), id)
+	}
 }
 
-// 3. timelineに投稿できるのは特定のschema (timelineレベル想定)
-func TestPolicyTimelineLimitMessageSchema(t *testing.T) {
+// 2. messageのread
+func TestPolicyMessageRead(t *testing.T) {
+	// globalでの処理
+	// domainOwnedのとき: 誰でも読める
+	// domainOwnedでないとき: timelineのcreatorに限る
 
-	policy := core.Policy{
-		Name:    "StreamLimitMessageSchema",
-		Version: "2024-05-01",
-		Statements: []core.Statement{
-			{
-				Actions: []string{"distribute"},
-				Effect:  "allow",
-				Condition: core.Expr{
-					Operator: "Contains",
-					Args: []core.Expr{
-						{
-							Operator: "LoadParam",
-							Constant: "allowlist",
-						},
-						{
-							Operator: "LoadDocument",
-							Constant: "schema",
-						},
-					},
-				},
-			},
+	rctx0 := core.RequestContext{
+		Requester: core.Entity{
+			Domain: "local.example.com",
+		},
+		Self: core.Timeline{
+			DomainOwned: true,
+			Author:      "user1",
 		},
 	}
 
-	document := core.MessageDocument[any]{
-		DocumentBase: core.DocumentBase[any]{
-			Schema: "schema1",
+	ctx, id := testutil.SetupTraceCtx()
+	result, err := s.TestWithGlobalPolicy(ctx, rctx0, "timeline.message.read")
+	test0OK := assert.NoError(t, err)
+	test0OK = test0OK && assert.Equal(t, core.PolicyEvalResultAllow, result)
+
+	if !test0OK {
+		testutil.PrintSpans(checker.GetSpans(), id)
+	}
+
+	rctx1 := core.RequestContext{
+		Requester: core.Entity{
+			ID:     "user1",
+			Domain: "local.example.com",
+		},
+		Self: core.Timeline{
+			DomainOwned: false,
+			Author:      "user1",
 		},
 	}
 
-	context := core.RequestContext{
+	ctx, id = testutil.SetupTraceCtx()
+	result, err = s.TestWithGlobalPolicy(ctx, rctx1, "timeline.message.read")
+	test1OK := assert.NoError(t, err)
+	test1OK = test1OK && assert.Equal(t, core.PolicyEvalResultAllow, result)
+
+	if !test1OK {
+		testutil.PrintSpans(checker.GetSpans(), id)
+	}
+
+	rctx2 := core.RequestContext{
+		Requester: core.Entity{
+			ID:     "user2",
+			Domain: "local.example.com",
+		},
+		Self: core.Timeline{
+			DomainOwned: false,
+			Author:      "user1",
+		},
+	}
+
+	ctx, id = testutil.SetupTraceCtx()
+	result, err = s.TestWithGlobalPolicy(ctx, rctx2, "timeline.message.read")
+	test2OK := assert.NoError(t, err)
+	test2OK = test2OK && assert.Equal(t, core.PolicyEvalResultDeny, result)
+
+	if !test2OK {
+		testutil.PrintSpans(checker.GetSpans(), id)
+	}
+
+	// timelineでのチェック
+	// リストにあれば許可
+
+	timelinePolicyJson := `
+    {
+        "statements": {
+            "timeline.message.read": {
+                "condition": {
+                    "op": "Or",
+                    "args": [
+                        {
+                            "op": "LoadParam",
+                            "const": "isReadPublic"
+                        },
+                        {
+                            "op": "Contains",
+                            "args": [
+                                {
+                                    "op": "LoadParam",
+                                    "const": "reader"
+                                },
+                                {
+                                    "op": "RequesterID"
+                                }
+                            ]
+                        }
+                    ]
+                }
+            }
+        }
+    }`
+
+	var timelinePolicy core.Policy
+	err = json.Unmarshal([]byte(timelinePolicyJson), &timelinePolicy)
+	if err != nil {
+		panic(err)
+	}
+
+	rctx3 := core.RequestContext{
+		Requester: core.Entity{
+			ID:     "user1",
+			Domain: "local.example.com",
+		},
+		Self: core.Timeline{
+			DomainOwned: false,
+			Author:      "user3",
+		},
 		Params: map[string]any{
-			"allowlist": []any{"schema1", "schema2"},
-		},
-		Document: document,
-	}
-
-	canPerform, err := s.Test(ctx, policy, context, "distribute")
-	assert.NoError(t, err)
-	assert.True(t, canPerform)
-}
-
-// 4. このメッセージに対してのアクションは特定のスキーマのみ (メッセージレベル想定)
-func TestPolicyMessageLimitAction(t *testing.T) {
-
-	policy := core.Policy{
-		Name:    "MessageLimitAction",
-		Version: "2024-05-01",
-		Statements: []core.Statement{
-			{
-				Actions: []string{"association"},
-				Effect:  "allow",
-				Condition: core.Expr{
-					Operator: "Contains",
-					Args: []core.Expr{
-						{
-							Operator: "LoadParam",
-							Constant: "allowlist",
-						},
-						{
-							Operator: "LoadDocument",
-							Constant: "schema",
-						},
-					},
-				},
-			},
+			"isWritePublic": false,
+			"isReadPublic":  false,
+			"reader":        []any{"user1"},
 		},
 	}
 
-	document := core.AssociationDocument[any]{
-		DocumentBase: core.DocumentBase[any]{
-			Schema: "schema1",
-		},
+	ctx, id = testutil.SetupTraceCtx()
+	result, err = s.Test(ctx, timelinePolicy, rctx3, "timeline.message.read")
+	test3OK := assert.NoError(t, err)
+	test3OK = test3OK && assert.Equal(t, core.PolicyEvalResultAllow, result)
+
+	if !test3OK {
+		testutil.PrintSpans(checker.GetSpans(), id)
 	}
 
-	context := core.RequestContext{
+	rctx4 := core.RequestContext{
+		Requester: core.Entity{
+			ID:     "user2",
+			Domain: "local.example.com",
+		},
+		Self: core.Timeline{
+			DomainOwned: false,
+			Author:      "user3",
+		},
 		Params: map[string]any{
-			"allowlist": []any{"schema1", "schema2"},
+			"isWritePublic": false,
+			"isReadPublic":  false,
+			"reader":        []any{"user1"},
 		},
-		Document: document,
 	}
 
-	canPerform, err := s.Test(ctx, policy, context, "association")
-	assert.NoError(t, err)
-	assert.True(t, canPerform)
+	ctx, id = testutil.SetupTraceCtx()
+	result, err = s.Test(ctx, timelinePolicy, rctx4, "timeline.message.read")
+	test4OK := assert.NoError(t, err)
+	test4OK = test4OK && assert.Equal(t, core.PolicyEvalResultDeny, result)
+
+	if !test4OK {
+		testutil.PrintSpans(checker.GetSpans(), id)
+	}
+
+	// messageでのチェック
+	// リストにあれば許可
+
+	messagePolicyJson := `
+    {
+        "statements": {
+            "message.read": {
+                "condition": {
+                    "op": "Contains",
+                    "args": [
+                        {
+                            "op": "LoadParam",
+                            "const": "reader"
+                        },
+                        {
+                            "op": "RequesterID"
+                        }
+                    ]
+                }
+            }
+        }
+    }`
+
+	var messagePolicy core.Policy
+	err = json.Unmarshal([]byte(messagePolicyJson), &messagePolicy)
+	if err != nil {
+		panic(err)
+	}
+
+	rctx5 := core.RequestContext{
+		Requester: core.Entity{
+			ID:     "user1",
+			Domain: "local.example.com",
+		},
+		Self: core.Message{
+			Author: "user3",
+		},
+		Params: map[string]any{
+			"reader": []any{"user1"},
+		},
+	}
+
+	ctx, id = testutil.SetupTraceCtx()
+	result, err = s.Test(ctx, messagePolicy, rctx5, "message.read")
+	test5OK := assert.NoError(t, err)
+	test5OK = test5OK && assert.Equal(t, core.PolicyEvalResultAllow, result)
+
+	if !test5OK {
+		testutil.PrintSpans(checker.GetSpans(), id)
+	}
+
+	rctx6 := core.RequestContext{
+		Requester: core.Entity{
+			ID:     "user2",
+			Domain: "local.example.com",
+		},
+		Self: core.Message{
+			Author: "user3",
+		},
+		Params: map[string]any{
+			"reader": []any{"user1"},
+		},
+	}
+
+	ctx, id = testutil.SetupTraceCtx()
+	result, err = s.Test(ctx, messagePolicy, rctx6, "message.read")
+	test6OK := assert.NoError(t, err)
+	test6OK = test6OK && assert.Equal(t, core.PolicyEvalResultDeny, result)
+
+	if !test6OK {
+		testutil.PrintSpans(checker.GetSpans(), id)
+	}
 }

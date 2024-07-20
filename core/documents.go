@@ -88,6 +88,12 @@ type TimelineDocument[T any] struct { // type: timeline
 	DomainOwned bool `json:"domainOwned"`
 }
 
+type RetractDocument struct {
+	DocumentBase[any]
+	Timeline string `json:"timeline"`
+	Target   string `json:"target"`
+}
+
 // subscription
 type SubscriptionDocument[T any] struct { // type: subscription
 	DocumentBase[T]

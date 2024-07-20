@@ -61,12 +61,14 @@ func TestLocalRootSuccess(t *testing.T) {
 	mockEntity.EXPECT().GetMeta(gomock.Any(), gomock.Any()).Return(core.EntityMeta{}, nil).AnyTimes()
 	mockDomain := mock_core.NewMockDomainService(ctrl)
 	mockKey := mock_core.NewMockKeyService(ctrl)
+	mockPolicy := mock_core.NewMockPolicyService(ctrl)
+	mockPolicy.EXPECT().TestWithGlobalPolicy(gomock.Any(), gomock.Any(), gomock.Any()).Return(core.PolicyEvalResultAllow, nil)
 
 	config := core.Config{
 		FQDN: "local.example.com",
 	}
 
-	service := NewService(config, mockEntity, mockDomain, mockKey)
+	service := NewService(config, mockEntity, mockDomain, mockKey, mockPolicy)
 
 	c, req, rec, traceID := testutil.CreateHttpRequest()
 
@@ -125,12 +127,14 @@ func TestRemoteRootSuccess(t *testing.T) {
 	}, nil).Times(2)
 
 	mockKey := mock_core.NewMockKeyService(ctrl)
+	mockPolicy := mock_core.NewMockPolicyService(ctrl)
+	mockPolicy.EXPECT().TestWithGlobalPolicy(gomock.Any(), gomock.Any(), gomock.Any()).Return(core.PolicyEvalResultAllow, nil)
 
 	config := core.Config{
 		FQDN: "local.example.com",
 	}
 
-	service := NewService(config, mockEntity, mockDomain, mockKey)
+	service := NewService(config, mockEntity, mockDomain, mockKey, mockPolicy)
 	c, req, rec, traceID := testutil.CreateHttpRequest()
 
 	fmt.Print("traceID: ", traceID, "\n")

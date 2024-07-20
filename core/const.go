@@ -24,10 +24,6 @@ const (
 	CaptchaVerifiedHeader       = "cc-captcha-verified"
 )
 
-const (
-	RequestPathCtxKey = "cc-request-path"
-)
-
 type CommitMode int
 
 const (
@@ -35,6 +31,16 @@ const (
 	CommitModeExecute
 	CommitModeDryRun
 	CommitModeLocalOnlyExec
+)
+
+type PolicyEvalResult int
+
+const (
+	PolicyEvalResultDefault PolicyEvalResult = iota
+	PolicyEvalResultNever
+	PolicyEvalResultDeny
+	PolicyEvalResultAllow
+	PolicyEvalResultAlways
 )
 
 const (

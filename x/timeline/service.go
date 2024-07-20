@@ -369,87 +369,35 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 		return core.TimelineItem{}, err
 	}
 
-	var writable bool
-
-	if tl.Author == author {
-		writable = true
-		goto skipAuth
+	requesterEntity, err := s.entity.Get(ctx, author)
+	if err != nil {
+		span.RecordError(err)
 	}
 
-	if tl.DomainOwned {
-		writable = true
-		if tl.Policy != "" {
-			var params map[string]any = make(map[string]any)
-			if tl.PolicyParams != nil {
-				err := json.Unmarshal([]byte(*tl.PolicyParams), &params)
-				if err != nil {
-					span.SetStatus(codes.Error, err.Error())
-					span.RecordError(err)
-					goto skipAuth
-				}
-			}
-
-			requesterEntity, err := s.entity.Get(ctx, author)
-			if err != nil {
-				span.RecordError(err)
-				goto skipAuth
-			}
-
-			requestContext := core.RequestContext{
-				Self:      tl,
-				Params:    params,
-				Requester: requesterEntity,
-			}
-
-			ok, err := s.policy.TestWithPolicyURL(ctx, tl.Policy, requestContext, "distribute")
-			if err != nil {
-				span.RecordError(err)
-				goto skipAuth
-			}
-
-			if !ok {
-				writable = false
-			}
-		}
-	} else {
-		writable = false
-		if tl.Policy != "" {
-			var params map[string]any = make(map[string]any)
-			if tl.PolicyParams != nil {
-				err := json.Unmarshal([]byte(*tl.PolicyParams), &params)
-				if err != nil {
-					span.SetStatus(codes.Error, err.Error())
-					span.RecordError(err)
-					goto skipAuth
-				}
-			}
-
-			requesterEntity, err := s.entity.Get(ctx, author)
-			if err != nil {
-				span.RecordError(err)
-				goto skipAuth
-			}
-
-			requestContext := core.RequestContext{
-				Self:      tl,
-				Params:    params,
-				Requester: requesterEntity,
-			}
-
-			ok, err := s.policy.TestWithPolicyURL(ctx, tl.Policy, requestContext, "distribute")
-			if err != nil {
-				span.RecordError(err)
-				goto skipAuth
-			}
-
-			if ok {
-				writable = true
-			}
-		}
+	var params map[string]any = make(map[string]any)
+	if tl.PolicyParams != nil {
+		json.Unmarshal([]byte(*tl.PolicyParams), &params)
 	}
-skipAuth:
+
+	result, err := s.policy.TestWithPolicyURL(
+		ctx,
+		tl.Policy,
+		core.RequestContext{
+			Self:      tl,
+			Requester: requesterEntity,
+			Params:    params,
+		},
+		"timeline.distribute",
+	)
+	if err != nil {
+		span.RecordError(err)
+	}
+
+	writable := s.policy.Summerize([]core.PolicyEvalResult{result}, "timeline.distribute")
 
 	if !writable {
+		span.RecordError(fmt.Errorf("You don't have timeline.distribute access to %v", timelineID))
+		span.SetAttributes(attribute.Int("result", int(result)))
 		slog.InfoContext(
 			ctx, "failed to post to timeline",
 			slog.String("type", "audit"),
@@ -552,12 +500,43 @@ func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, docu
 		}
 	}
 
-	if doc.ID == "" { // New
+	signer, err := s.entity.Get(ctx, doc.Signer)
+	if err != nil {
+		span.RecordError(err)
+		return core.Timeline{}, err
+	}
+
+	if doc.ID == "" { // Create
 		hash := core.GetHash([]byte(document))
 		hash10 := [10]byte{}
 		copy(hash10[:], hash[:10])
 		signedAt := doc.SignedAt
 		doc.ID = cdid.New(hash10, signedAt).String()
+
+		// check existence
+		_, err := s.repository.GetTimeline(ctx, doc.ID)
+		if err == nil {
+			return core.Timeline{}, fmt.Errorf("Timeline already exists: %s", doc.ID)
+		}
+
+		policyResult, err := s.policy.TestWithPolicyURL(
+			ctx,
+			"",
+			core.RequestContext{
+				Requester: signer,
+				Document:  doc,
+			},
+			"timeline.create",
+		)
+		if err != nil {
+			return core.Timeline{}, err
+		}
+
+		result := s.policy.Summerize([]core.PolicyEvalResult{policyResult}, "timeline.create")
+		if !result {
+			return core.Timeline{}, fmt.Errorf("You don't have timeline.create access")
+		}
+
 	} else { // Update
 		id, err := s.NormalizeTimelineID(ctx, doc.ID)
 		if err != nil {
@@ -578,6 +557,33 @@ func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, docu
 		}
 
 		doc.DomainOwned = existance.DomainOwned // make sure the domain owned is immutable
+
+		var params map[string]any = make(map[string]any)
+		if existance.PolicyParams != nil {
+			json.Unmarshal([]byte(*existance.PolicyParams), &params)
+		}
+
+		policyResult, err := s.policy.TestWithPolicyURL(
+			ctx,
+			existance.Policy,
+			core.RequestContext{
+				Requester: signer,
+				Self:      existance,
+				Document:  doc,
+				Params:    params,
+			},
+			"timeline.update",
+		)
+
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			span.RecordError(err)
+		}
+
+		result := s.policy.Summerize([]core.PolicyEvalResult{policyResult}, "timeline.update")
+		if !result {
+			return core.Timeline{}, fmt.Errorf("You don't have timeline.update access")
+		}
 	}
 
 	var policyparams *string = nil
@@ -678,12 +684,70 @@ func (s *service) GetItem(ctx context.Context, timeline string, id string) (core
 	return s.repository.GetItem(ctx, timeline, id)
 }
 
-// Remove removes timeline element by ID
-func (s *service) RemoveItem(ctx context.Context, timeline string, id string) {
-	ctx, span := tracer.Start(ctx, "Timeline.Service.RemoveItem")
+// Retract removes timeline element by ID
+func (s *service) Retract(ctx context.Context, mode core.CommitMode, document, signature string) (core.TimelineItem, []string, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Service.Retract")
 	defer span.End()
 
-	s.repository.DeleteItem(ctx, timeline, id)
+	var doc core.RetractDocument
+	err := json.Unmarshal([]byte(document), &doc)
+	if err != nil {
+		return core.TimelineItem{}, []string{}, err
+	}
+
+	existing, err := s.repository.GetItem(ctx, doc.Timeline, doc.Target)
+	if err != nil {
+		return core.TimelineItem{}, []string{}, err
+	}
+
+	signer, err := s.entity.Get(ctx, doc.Signer)
+	if err != nil {
+		span.RecordError(err)
+		return core.TimelineItem{}, []string{}, err
+	}
+
+	timeline, err := s.repository.GetTimeline(ctx, doc.ID)
+	if err != nil {
+		span.RecordError(err)
+		return core.TimelineItem{}, []string{}, err
+	}
+
+	var params map[string]any = make(map[string]any)
+	if timeline.PolicyParams != nil {
+		json.Unmarshal([]byte(*timeline.PolicyParams), &params)
+	}
+
+	policyResult, err := s.policy.TestWithPolicyURL(
+		ctx,
+		timeline.Policy,
+		core.RequestContext{
+			Requester: signer,
+			Self:      timeline,
+			Resource:  existing,
+			Document:  doc,
+			Params:    params,
+		},
+		"timeline.retract",
+	)
+
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		span.RecordError(err)
+	}
+
+	result := s.policy.Summerize([]core.PolicyEvalResult{policyResult}, "timeline.retract")
+	if !result {
+		return core.TimelineItem{}, []string{}, fmt.Errorf("You don't have timeline.retract access")
+	}
+
+	s.repository.DeleteItem(ctx, doc.Timeline, doc.Target)
+
+	affected := []string{timeline.Author}
+	if timeline.DomainOwned {
+		affected = []string{s.config.FQDN}
+	}
+
+	return existing, affected, nil
 }
 
 // Delete deletes
@@ -704,8 +768,35 @@ func (s *service) DeleteTimeline(ctx context.Context, mode core.CommitMode, docu
 		return core.Timeline{}, err
 	}
 
-	if deleteTarget.Author != doc.Signer {
-		return core.Timeline{}, fmt.Errorf("You are not authorized to perform this action")
+	signer, err := s.entity.Get(ctx, doc.Signer)
+	if err != nil {
+		span.RecordError(err)
+		return core.Timeline{}, err
+	}
+
+	var params map[string]any = make(map[string]any)
+	if deleteTarget.PolicyParams != nil {
+		json.Unmarshal([]byte(*deleteTarget.PolicyParams), &params)
+	}
+
+	policyResult, err := s.policy.TestWithPolicyURL(
+		ctx,
+		deleteTarget.Policy,
+		core.RequestContext{
+			Requester: signer,
+			Self:      deleteTarget,
+			Document:  doc,
+		},
+		"timeline.delete",
+	)
+	if err != nil {
+		span.RecordError(err)
+		return core.Timeline{}, err
+	}
+
+	result := s.policy.Summerize([]core.PolicyEvalResult{policyResult}, "timeline.delete")
+	if !result {
+		return core.Timeline{}, errors.New("policy failed")
 	}
 
 	err = s.repository.DeleteTimeline(ctx, doc.Target)
@@ -795,6 +886,31 @@ func (s *service) Realtime(ctx context.Context, request <-chan []string, respons
 			return
 		}
 	}
+}
+
+func (s *service) GetOwners(ctx context.Context, timelines []string) ([]string, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Service.GetOwners")
+	defer span.End()
+
+	var owners_map map[string]bool = make(map[string]bool)
+	for _, timelineID := range timelines {
+		timeline, err := s.GetTimeline(ctx, timelineID)
+		if err != nil {
+			continue
+		}
+		if timeline.DomainOwned {
+			owners_map[s.config.FQDN] = true
+		} else {
+			owners_map[timeline.Author] = true
+		}
+	}
+
+	owners := make([]string, 0)
+	for owner := range owners_map {
+		owners = append(owners, owner)
+	}
+
+	return owners, nil
 }
 
 func (s *service) Clean(ctx context.Context, ccid string) error {

@@ -72,8 +72,28 @@ func (r *repository) Get(ctx context.Context, url string) (core.Policy, error) {
 	}
 
 	// cache policy
+	var policyDoc core.PolicyDocument
+	err = json.Unmarshal(jsonStr, &policyDoc)
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+		return core.Policy{}, err
+	}
+
 	var policy core.Policy
-	err = json.Unmarshal(jsonStr, &policy)
+	policy20240701, ok := policyDoc.Versions["2024-07-01"]
+	if ok {
+		span.AddEvent("use version 2024-07-01")
+		policy = policy20240701
+	} else {
+		span.AddEvent("fallback to latest version")
+		err = json.Unmarshal(jsonStr, &policy)
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			return core.Policy{}, err
+		}
+	}
+
+	jsonStr, err = json.Marshal(policy)
 	if err != nil {
 		span.SetStatus(codes.Error, err.Error())
 		return core.Policy{}, err

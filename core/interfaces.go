@@ -79,7 +79,8 @@ type KeyService interface {
 }
 
 type MessageService interface {
-	Get(ctx context.Context, id string, requester string) (Message, error)
+	GetAsGuest(ctx context.Context, id string) (Message, error)
+	GetAsUser(ctx context.Context, id string, requester Entity) (Message, error)
 	GetWithOwnAssociations(ctx context.Context, id string, requester string) (Message, error)
 	Clean(ctx context.Context, ccid string) error
 	Create(ctx context.Context, mode CommitMode, document string, signature string) (Message, []string, error)

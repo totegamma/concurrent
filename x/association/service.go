@@ -141,7 +141,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 
 		switch doc.Target[0] {
 		case 'm': // message
-			target, err := s.message.Get(ctx, association.Target, doc.Signer)
+			target, err := s.message.GetAsUser(ctx, association.Target, signer)
 			if err != nil {
 				span.RecordError(err)
 				return core.Association{}, []string{}, err
@@ -407,7 +407,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 		// Associationだけの追加対応
 		// メッセージの場合は、ターゲットのタイムラインにも追加する
 		if owner.Domain == s.config.FQDN && mode != core.CommitModeLocalOnlyExec {
-			targetMessage, err := s.message.Get(ctx, association.Target, doc.Signer) //NOTE: これはownerのドメインしか実行できない
+			targetMessage, err := s.message.GetAsUser(ctx, association.Target, signer)
 			if err != nil {
 				span.RecordError(err)
 				return association, []string{}, err
@@ -583,7 +583,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 
 	if targetAssociation.Target[0] == 'm' && mode != core.CommitModeLocalOnlyExec { // distribute is needed only when targetType is messages
 
-		targetMessage, err := s.message.Get(ctx, targetAssociation.Target, doc.Signer)
+		targetMessage, err := s.message.GetAsUser(ctx, targetAssociation.Target, signer)
 		if err != nil {
 			span.RecordError(err)
 			return core.Association{}, []string{}, err

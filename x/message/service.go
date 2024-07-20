@@ -137,8 +137,8 @@ func (s *service) isMessagePublic(ctx context.Context, message core.Message) (bo
 }
 
 // Get returns a message by ID
-func (s *service) Get(ctx context.Context, id string, requester string) (core.Message, error) {
-	ctx, span := tracer.Start(ctx, "Message.Service.Get")
+func (s *service) GetAsGuest(ctx context.Context, id string) (core.Message, error) {
+	ctx, span := tracer.Start(ctx, "Message.Service.GetAsGuest")
 	defer span.End()
 
 	message, err := s.repo.Get(ctx, id)
@@ -154,6 +154,84 @@ func (s *service) Get(ctx context.Context, id string, requester string) (core.Me
 	}
 
 	if !isPublic {
+		return core.Message{}, fmt.Errorf("no read access")
+	}
+
+	return message, nil
+}
+
+func (s *service) GetAsUser(ctx context.Context, id string, requester core.Entity) (core.Message, error) {
+	ctx, span := tracer.Start(ctx, "Message.Service.GetAsUser")
+	defer span.End()
+
+	message, err := s.repo.Get(ctx, id)
+	if err != nil {
+		span.RecordError(err)
+		return core.Message{}, err
+	}
+
+	timelinePolicyResults := make([]core.PolicyEvalResult, len(message.Timelines))
+	for i, timelineID := range message.Timelines {
+		timeline, err := s.timeline.GetTimelineAutoDomain(ctx, timelineID)
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			continue
+		}
+
+		var params map[string]any = make(map[string]any)
+		if timeline.PolicyParams != nil {
+			err := json.Unmarshal([]byte(*timeline.PolicyParams), &params)
+			if err != nil {
+				span.SetStatus(codes.Error, err.Error())
+				span.RecordError(err)
+				continue
+			}
+		}
+
+		result, err := s.policy.TestWithPolicyURL(
+			ctx,
+			timeline.Policy,
+			core.RequestContext{
+				Self:      timeline,
+				Params:    params,
+				Requester: requester,
+			},
+			"timeline.message.read",
+		)
+		if err != nil {
+			span.SetStatus(codes.Error, err.Error())
+			timelinePolicyResults[i] = core.PolicyEvalResultDefault
+			continue
+		}
+		timelinePolicyResults[i] = result
+	}
+
+	timelinePolicyResult := policy.AccumulateOr(timelinePolicyResults)
+	timelinePolicyIsDominant, timelinePolicyAllowed := policy.IsDominant(timelinePolicyResult)
+	if timelinePolicyIsDominant && !timelinePolicyAllowed {
+		return core.Message{}, fmt.Errorf("no read access")
+	}
+
+	messagePolicyResult := core.PolicyEvalResultDefault
+
+	var params map[string]any = make(map[string]any)
+	if message.PolicyParams != nil {
+		json.Unmarshal([]byte(*message.PolicyParams), &params)
+	}
+
+	requestContext := core.RequestContext{
+		Self:      message,
+		Params:    params,
+		Requester: requester,
+	}
+
+	messagePolicyResult, err = s.policy.TestWithPolicyURL(ctx, message.Policy, requestContext, "message.read")
+	if err != nil {
+		span.SetStatus(codes.Error, err.Error())
+	}
+
+	result := s.policy.Summerize([]core.PolicyEvalResult{messagePolicyResult, timelinePolicyResult}, "message.read")
+	if !result {
 		return core.Message{}, fmt.Errorf("no read access")
 	}
 

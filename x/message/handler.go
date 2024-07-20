@@ -45,7 +45,7 @@ func (h handler) Get(c echo.Context) error {
 			return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 		}
 	} else {
-		message, err = h.service.Get(ctx, id, "")
+		message, err = h.service.GetAsGuest(ctx, id)
 		if err != nil {
 			if errors.Is(err, core.ErrorNotFound{}) {
 				return c.JSON(http.StatusNotFound, echo.Map{"error": "Message not found"})

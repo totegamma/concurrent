@@ -68,7 +68,7 @@ func (s *service) GetChunksFromRemote(ctx context.Context, host string, timeline
 }
 
 // NormalizeTimelineID normalizes timelineID
-//
+// t+<hash> -> t+<hash>@<localdomain>
 // t+<hash>@<anydomain> -> t+<hash>@<anydomain>
 // t+<hash>@<anyuser> -> t+<hash>@<anydomain>
 // <semanticID>@<localuser> -> t+<hash>@<localdomain>
@@ -88,6 +88,11 @@ func (s *service) NormalizeTimelineID(ctx context.Context, timeline string) (str
 	var normalized string
 
 	split := strings.Split(timeline, "@")
+
+	if len(split) == 1 {
+		return timeline + "@" + s.config.FQDN, nil
+	}
+
 	id := split[0]
 	domain := split[len(split)-1]
 

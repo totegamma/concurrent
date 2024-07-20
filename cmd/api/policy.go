@@ -103,8 +103,6 @@ var globalPolicyJson = `
             }
         },
         "profile.create": {
-            "dominant": true,
-            "defaultOnFalse": true,
             "condition": {
                 "op": "IsRequesterLocalUser"
             }
@@ -153,8 +151,6 @@ var globalPolicyJson = `
             }
         },
         "subscription.create": {
-            "dominant": true,
-            "defaultOnFalse": true,
             "condition": {
                 "op": "Or",
                 "args": [
@@ -212,8 +208,6 @@ var globalPolicyJson = `
             }
         },
         "timeline.create": {
-            "dominant": true,
-            "defaultOnFalse": true,
             "condition": {
                 "op": "Or",
                 "args": [
@@ -296,8 +290,6 @@ var globalPolicyJson = `
             }
         },
         "timeline.message.read": {
-            "dominant": true,
-            "defaultOnFalse": true,
             "condition": {
                 "op": "Or",
                 "args": [

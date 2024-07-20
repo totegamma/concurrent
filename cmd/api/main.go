@@ -206,7 +206,7 @@ func main() {
 
 	client := client.NewClient()
 
-	globalPolicy := getDefaultGlobalPolicy()
+	globalPolicy := concurrent.GetDefaultGlobalPolicy()
 
 	policy := concurrent.SetupPolicyService(rdb, globalPolicy, conconf)
 	agent := concurrent.SetupAgent(db, rdb, mc, client, policy, conconf, config.Server.RepositoryPath)

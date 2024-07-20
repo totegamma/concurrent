@@ -1,4 +1,4 @@
-package main
+package concurrent
 
 import (
 	"encoding/json"
@@ -320,7 +320,7 @@ var globalPolicyJson = `
     }
 }`
 
-func getDefaultGlobalPolicy() core.Policy {
+func GetDefaultGlobalPolicy() core.Policy {
 	globalPolicy := core.Policy{}
 	err := json.Unmarshal([]byte(globalPolicyJson), &globalPolicy)
 	if err != nil {

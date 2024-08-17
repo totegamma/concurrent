@@ -10,6 +10,7 @@ import (
 	"go.opentelemetry.io/otel"
 
 	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/core"
 )
 
@@ -20,6 +21,7 @@ type agent struct {
 	rdb            *redis.Client
 	store          core.StoreService
 	job            core.JobService
+	client         client.Client
 	config         core.Config
 	repositoryPath string
 }
@@ -30,6 +32,7 @@ func NewAgent(
 	rdb *redis.Client,
 	store core.StoreService,
 	job core.JobService,
+	client client.Client,
 	config core.Config,
 	repositoryPath string,
 ) core.AgentService {
@@ -38,6 +41,7 @@ func NewAgent(
 		rdb,
 		store,
 		job,
+		client,
 		config,
 		repositoryPath,
 	}

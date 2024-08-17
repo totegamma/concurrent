@@ -130,7 +130,7 @@ func SetupEntityService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, cli
 func SetupAgent(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, policy2 core.PolicyService, config core.Config, repositoryPath string) core.AgentService {
 	storeService := SetupStoreService(db, rdb, mc, client2, policy2, config, repositoryPath)
 	jobService := SetupJobService(db)
-	agentService := agent.NewAgent(mc, rdb, storeService, jobService, config, repositoryPath)
+	agentService := agent.NewAgent(mc, rdb, storeService, jobService, client2, config, repositoryPath)
 	return agentService
 }
 

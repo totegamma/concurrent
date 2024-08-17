@@ -177,12 +177,13 @@ func (mr *MockAssociationServiceMockRecorder) Count(ctx any) *gomock.Call {
 }
 
 // Create mocks base method.
-func (m *MockAssociationService) Create(ctx context.Context, mode core.CommitMode, document, signature string) (core.Association, error) {
+func (m *MockAssociationService) Create(ctx context.Context, mode core.CommitMode, document, signature string) (core.Association, []string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Create", ctx, mode, document, signature)
 	ret0, _ := ret[0].(core.Association)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].([]string)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // Create indicates an expected call of Create.
@@ -192,12 +193,13 @@ func (mr *MockAssociationServiceMockRecorder) Create(ctx, mode, document, signat
 }
 
 // Delete mocks base method.
-func (m *MockAssociationService) Delete(ctx context.Context, mode core.CommitMode, document, signature string) (core.Association, error) {
+func (m *MockAssociationService) Delete(ctx context.Context, mode core.CommitMode, document, signature string) (core.Association, []string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Delete", ctx, mode, document, signature)
 	ret0, _ := ret[0].(core.Association)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].([]string)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // Delete indicates an expected call of Delete.
@@ -911,12 +913,13 @@ func (mr *MockMessageServiceMockRecorder) Count(ctx any) *gomock.Call {
 }
 
 // Create mocks base method.
-func (m *MockMessageService) Create(ctx context.Context, mode core.CommitMode, document, signature string) (core.Message, error) {
+func (m *MockMessageService) Create(ctx context.Context, mode core.CommitMode, document, signature string) (core.Message, []string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Create", ctx, mode, document, signature)
 	ret0, _ := ret[0].(core.Message)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].([]string)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // Create indicates an expected call of Create.
@@ -926,12 +929,13 @@ func (mr *MockMessageServiceMockRecorder) Create(ctx, mode, document, signature 
 }
 
 // Delete mocks base method.
-func (m *MockMessageService) Delete(ctx context.Context, mode core.CommitMode, document, signature string) (core.Message, error) {
+func (m *MockMessageService) Delete(ctx context.Context, mode core.CommitMode, document, signature string) (core.Message, []string, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "Delete", ctx, mode, document, signature)
 	ret0, _ := ret[0].(core.Message)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
+	ret1, _ := ret[1].([]string)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
 }
 
 // Delete indicates an expected call of Delete.
@@ -940,19 +944,34 @@ func (mr *MockMessageServiceMockRecorder) Delete(ctx, mode, document, signature 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockMessageService)(nil).Delete), ctx, mode, document, signature)
 }
 
-// Get mocks base method.
-func (m *MockMessageService) Get(ctx context.Context, id, requester string) (core.Message, error) {
+// GetAsGuest mocks base method.
+func (m *MockMessageService) GetAsGuest(ctx context.Context, id string) (core.Message, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Get", ctx, id, requester)
+	ret := m.ctrl.Call(m, "GetAsGuest", ctx, id)
 	ret0, _ := ret[0].(core.Message)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// Get indicates an expected call of Get.
-func (mr *MockMessageServiceMockRecorder) Get(ctx, id, requester any) *gomock.Call {
+// GetAsGuest indicates an expected call of GetAsGuest.
+func (mr *MockMessageServiceMockRecorder) GetAsGuest(ctx, id any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockMessageService)(nil).Get), ctx, id, requester)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAsGuest", reflect.TypeOf((*MockMessageService)(nil).GetAsGuest), ctx, id)
+}
+
+// GetAsUser mocks base method.
+func (m *MockMessageService) GetAsUser(ctx context.Context, id string, requester core.Entity) (core.Message, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetAsUser", ctx, id, requester)
+	ret0, _ := ret[0].(core.Message)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetAsUser indicates an expected call of GetAsUser.
+func (mr *MockMessageServiceMockRecorder) GetAsUser(ctx, id, requester any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAsUser", reflect.TypeOf((*MockMessageService)(nil).GetAsUser), ctx, id, requester)
 }
 
 // GetWithOwnAssociations mocks base method.
@@ -1798,6 +1817,21 @@ func (mr *MockTimelineServiceMockRecorder) GetItem(ctx, timeline, id any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetItem", reflect.TypeOf((*MockTimelineService)(nil).GetItem), ctx, timeline, id)
 }
 
+// GetOwners mocks base method.
+func (m *MockTimelineService) GetOwners(ctx context.Context, timelines []string) ([]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetOwners", ctx, timelines)
+	ret0, _ := ret[0].([]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetOwners indicates an expected call of GetOwners.
+func (mr *MockTimelineServiceMockRecorder) GetOwners(ctx, timelines any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetOwners", reflect.TypeOf((*MockTimelineService)(nil).GetOwners), ctx, timelines)
+}
+
 // GetRecentItems mocks base method.
 func (m *MockTimelineService) GetRecentItems(ctx context.Context, timelines []string, until time.Time, limit int) ([]core.TimelineItem, error) {
 	m.ctrl.T.Helper()
@@ -1959,18 +1993,6 @@ func (mr *MockTimelineServiceMockRecorder) Realtime(ctx, request, response any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Realtime", reflect.TypeOf((*MockTimelineService)(nil).Realtime), ctx, request, response)
 }
 
-// RemoveItem mocks base method.
-func (m *MockTimelineService) RemoveItem(ctx context.Context, timeline, id string) {
-	m.ctrl.T.Helper()
-	m.ctrl.Call(m, "RemoveItem", ctx, timeline, id)
-}
-
-// RemoveItem indicates an expected call of RemoveItem.
-func (mr *MockTimelineServiceMockRecorder) RemoveItem(ctx, timeline, id any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveItem", reflect.TypeOf((*MockTimelineService)(nil).RemoveItem), ctx, timeline, id)
-}
-
 // RemoveItemsByResourceID mocks base method.
 func (m *MockTimelineService) RemoveItemsByResourceID(ctx context.Context, resourceID string) error {
 	m.ctrl.T.Helper()
@@ -1983,6 +2005,22 @@ func (m *MockTimelineService) RemoveItemsByResourceID(ctx context.Context, resou
 func (mr *MockTimelineServiceMockRecorder) RemoveItemsByResourceID(ctx, resourceID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RemoveItemsByResourceID", reflect.TypeOf((*MockTimelineService)(nil).RemoveItemsByResourceID), ctx, resourceID)
+}
+
+// Retract mocks base method.
+func (m *MockTimelineService) Retract(ctx context.Context, mode core.CommitMode, document, signature string) (core.TimelineItem, []string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Retract", ctx, mode, document, signature)
+	ret0, _ := ret[0].(core.TimelineItem)
+	ret1, _ := ret[1].([]string)
+	ret2, _ := ret[2].(error)
+	return ret0, ret1, ret2
+}
+
+// Retract indicates an expected call of Retract.
+func (mr *MockTimelineServiceMockRecorder) Retract(ctx, mode, document, signature any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Retract", reflect.TypeOf((*MockTimelineService)(nil).Retract), ctx, mode, document, signature)
 }
 
 // UpsertTimeline mocks base method.

@@ -136,6 +136,26 @@ func (a *agent) deleteExcessiveSubs(ctx context.Context) {
 func (a *agent) RemoteSubRoutine(ctx context.Context, domain string, timelines []string) {
 	if _, ok := remoteConns[domain]; !ok {
 		// new server, create new connection
+
+		// check server availability
+		domainInfo, err := a.client.GetDomain(ctx, domain, nil)
+		if err != nil {
+			slog.Error(
+				fmt.Sprintf("fail to get domain info: %v", err),
+				slog.String("module", "agent"),
+				slog.String("group", "realtime"),
+			)
+			return
+		}
+		if domainInfo.Dimension != a.config.Dimension {
+			slog.Error(
+				fmt.Sprintf("domain dimention mismatch: %s", domain),
+				slog.String("module", "agent"),
+				slog.String("group", "realtime"),
+			)
+			return
+		}
+
 		u := url.URL{Scheme: "wss", Host: domain, Path: "/api/v1/timelines/realtime"}
 		dialer := websocket.DefaultDialer
 		dialer.HandshakeTimeout = 10 * time.Second
@@ -353,7 +373,7 @@ func (a *agent) connectionKeeperRoutine(ctx context.Context) {
 			a.createInsufficientSubs(ctx)
 			slog.InfoContext(
 				ctx,
-				fmt.Sprintf("connection keeper: %d/%d", len(remoteSubs), len(remoteConns)),
+				fmt.Sprintf("connection keeper: %d/%d", len(remoteConns), len(remoteSubs)),
 				slog.String("module", "agent"),
 				slog.String("group", "realtime"),
 			)

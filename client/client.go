@@ -61,7 +61,11 @@ type Options struct {
 }
 
 func (c *client) IsOnline(domain string) bool {
-	if c.lastFailed[domain].IsZero() {
+	lastfailed, ok := c.lastFailed[domain]
+	if !ok {
+		return true
+	}
+	if lastfailed.IsZero() {
 		return true
 	}
 	return false
@@ -73,6 +77,9 @@ func (c *client) UpKeeper() {
 		time.Sleep(1 * time.Second)
 		for domain, lastFailed := range c.lastFailed {
 			// exponential backoff (max 10 minutes)
+			if _, ok := c.failCount[domain]; !ok {
+				c.failCount[domain] = 0
+			}
 			var span int = 600
 			if c.failCount[domain] < 10 {
 				span = 1 << c.failCount[domain]
@@ -93,8 +100,8 @@ func (c *client) UpKeeper() {
 					}
 				} else {
 					log.Printf("Domain %s is back online :3", domain)
-					c.lastFailed[domain] = time.Time{}
-					c.failCount[domain] = 0
+					delete(c.lastFailed, domain)
+					delete(c.failCount, domain)
 				}
 			}
 		}
@@ -371,6 +378,8 @@ func (c *client) GetDomain(ctx context.Context, domain string, opts *Options) (c
 		span.RecordError(err)
 
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			c.lastFailed[domain] = time.Now()
+		} else if _, ok := err.(*json.SyntaxError); ok {
 			c.lastFailed[domain] = time.Now()
 		}
 

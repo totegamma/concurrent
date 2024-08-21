@@ -128,7 +128,7 @@ func (s *service) isMessagePublic(ctx context.Context, message core.Message) (bo
 	}
 
 	// accumulate polies
-	result := s.policy.Summerize([]core.PolicyEvalResult{messagePolicyResult, timelinePolicyResult}, "message.read")
+	result := s.policy.Summerize([]core.PolicyEvalResult{timelinePolicyResult, messagePolicyResult}, "message.read")
 	if !result {
 		return false, nil
 	}
@@ -230,7 +230,7 @@ func (s *service) GetAsUser(ctx context.Context, id string, requester core.Entit
 		span.SetStatus(codes.Error, err.Error())
 	}
 
-	result := s.policy.Summerize([]core.PolicyEvalResult{messagePolicyResult, timelinePolicyResult}, "message.read")
+	result := s.policy.Summerize([]core.PolicyEvalResult{timelinePolicyResult, messagePolicyResult}, "message.read")
 	if !result {
 		return core.Message{}, fmt.Errorf("no read access")
 	}
@@ -315,7 +315,7 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 		span.SetStatus(codes.Error, err.Error())
 	}
 
-	result := s.policy.Summerize([]core.PolicyEvalResult{messagePolicyResult, timelinePolicyResult}, "message.read")
+	result := s.policy.Summerize([]core.PolicyEvalResult{timelinePolicyResult, messagePolicyResult}, "message.read")
 	if !result {
 		return core.Message{}, fmt.Errorf("no read access")
 	}

@@ -206,7 +206,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 
 			}
 
-			result := s.policy.Summerize([]core.PolicyEvalResult{messagePolicyResult, timelinePolicyResult}, "message.association.attach")
+			result := s.policy.Summerize([]core.PolicyEvalResult{timelinePolicyResult, messagePolicyResult}, "message.association.attach")
 			if !result {
 				return association, []string{}, core.ErrorPermissionDenied{}
 			}

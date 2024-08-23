@@ -147,6 +147,8 @@ type TimelineItem struct {
 	TimelineID string    `json:"timelineID" gorm:"primaryKey;type:char(26);"`
 	Owner      string    `json:"owner" gorm:"type:char(42);"`
 	Author     *string   `json:"author,omitempty" gorm:"type:char(42);"`
+	SchemaID   uint      `json:"-"`
+	Schema     string    `json:"schema,omitempty" gorm:"-"`
 	CDate      time.Time `json:"cdate,omitempty" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 }
 

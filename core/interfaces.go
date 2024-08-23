@@ -179,6 +179,8 @@ type TimelineService interface {
 	NormalizeTimelineID(ctx context.Context, timeline string) (string, error)
 	GetOwners(ctx context.Context, timelines []string) ([]string, error)
 
+	Query(ctx context.Context, timelineID, schema, owner, author string, until time.Time, limit int) ([]TimelineItem, error)
+
 	Realtime(ctx context.Context, request <-chan []string, response chan<- Event)
 }
 

@@ -950,3 +950,30 @@ func (s *service) Clean(ctx context.Context, ccid string) error {
 
 	return nil
 }
+
+func (s *service) Query(ctx context.Context, timelineID, schema, owner, author string, since time.Time, limit int) ([]core.TimelineItem, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Service.Query")
+	defer span.End()
+
+	normalized, err := s.NormalizeTimelineID(ctx, timelineID)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	split := strings.Split(normalized, "@")
+	host := split[len(split)-1]
+	if host != s.config.FQDN {
+		return nil, fmt.Errorf("Remote timeline is not supported")
+	}
+
+	id := split[0]
+
+	items, err := s.repository.Query(ctx, id, schema, owner, author, since, limit)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	return items, nil
+}

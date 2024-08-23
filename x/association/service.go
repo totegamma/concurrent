@@ -359,6 +359,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 					ResourceID: association.ID,
 					Owner:      association.Owner,
 					Author:     &association.Author,
+					Schema:     association.Schema,
 				}, document, signature)
 				if err != nil {
 					span.RecordError(err)

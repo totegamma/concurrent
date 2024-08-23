@@ -162,9 +162,15 @@ func main() {
 		panic("failed to setup tracing plugin")
 	}
 
+	// !! migration from < v1.2.0
+	err = db.Exec("ALTER TABLE \"associations\" DROP CONSTRAINT IF EXISTS \"idx_associations_unique\"").Error
+	if err != nil {
+		panic("failed to drop constraint: " + err.Error())
+	}
+
 	// Migrate the schema
 	slog.Info("start migrate")
-	db.AutoMigrate(
+	err = db.AutoMigrate(
 		&core.Schema{},
 		&core.Message{},
 		&core.Profile{},
@@ -182,6 +188,10 @@ func main() {
 		&core.SemanticID{},
 		&core.Job{},
 	)
+
+	if err != nil {
+		panic("failed to migrate schema: " + err.Error())
+	}
 
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     config.Server.RedisAddr,
@@ -299,6 +309,7 @@ func main() {
 
 	// timeline
 	apiV1.GET("/timeline/:id", timelineHandler.Get)
+	apiV1.GET("/timeline/:id/query", timelineHandler.Query)
 	apiV1.GET("/timelines", timelineHandler.List)
 	apiV1.GET("/timelines/mine", timelineHandler.ListMine)
 	apiV1.GET("/timelines/recent", timelineHandler.Recent)

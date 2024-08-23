@@ -52,6 +52,8 @@ type Repository interface {
 
 	SetNormalizationCache(ctx context.Context, timelineID string, value string) error
 	GetNormalizationCache(ctx context.Context, timelineID string) (string, error)
+
+	Query(ctx context.Context, timelineID, schema, owner, author string, until time.Time, limit int) ([]core.TimelineItem, error)
 }
 
 type repository struct {
@@ -521,7 +523,13 @@ func (r *repository) CreateItem(ctx context.Context, item core.TimelineItem) (co
 		item.TimelineID = item.TimelineID[1:]
 	}
 
-	err := r.db.WithContext(ctx).Create(&item).Error
+	schemaID, err := r.schema.UrlToID(ctx, item.Schema)
+	if err != nil {
+		return core.TimelineItem{}, err
+	}
+	item.SchemaID = schemaID
+
+	err = r.db.WithContext(ctx).Create(&item).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrDuplicatedKey) {
 			return core.TimelineItem{}, core.NewErrorAlreadyExists()
@@ -826,4 +834,47 @@ func (r *repository) GetCurrentSubs(ctx context.Context) []string {
 	}
 
 	return uniqueChannels
+}
+
+func (r *repository) Query(ctx context.Context, timelineID, schema, owner, author string, until time.Time, limit int) ([]core.TimelineItem, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.Query")
+	defer span.End()
+
+	query := r.db.WithContext(ctx).Model(&core.TimelineItem{})
+
+	if timelineID != "" {
+		if len(timelineID) == 27 {
+			if timelineID[0] != 't' {
+				return nil, fmt.Errorf("timeline typed-id must start with 't'")
+			}
+			timelineID = timelineID[1:]
+		}
+
+		query = query.Where("timeline_id = ?", timelineID)
+	}
+
+	if schema != "" {
+		schemaID, err := r.schema.UrlToID(ctx, schema)
+		if err != nil {
+			return nil, err
+		}
+		query = query.Where("schema_id = ?", schemaID)
+	}
+
+	if owner != "" {
+		query = query.Where("owner = ?", owner)
+	}
+
+	if author != "" {
+		query = query.Where("author = ?", author)
+	}
+
+	var items []core.TimelineItem
+	err := query.Where("c_date < ?", until).Order("c_date desc").Limit(limit).Find(&items).Error
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	return items, nil
 }

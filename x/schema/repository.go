@@ -2,9 +2,11 @@ package schema
 
 import (
 	"context"
+	"encoding/json"
 	"github.com/totegamma/concurrent/core"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
+	"net/http"
 )
 
 var tracer = otel.Tracer("schema")
@@ -32,6 +34,25 @@ func (r *repository) Upsert(ctx context.Context, schema string) (core.Schema, er
 	err := r.db.WithContext(ctx).Where("url = ?", schema).First(&s).Error
 	if err != nil {
 		if err == gorm.ErrRecordNotFound {
+
+			client := new(http.Client)
+			req, err := http.NewRequest("GET", schema, nil)
+			if err != nil {
+				return core.Schema{}, err
+			}
+			req.Header.Set("Accept", "application/json")
+			res, err := client.Do(req)
+			if err != nil {
+				return core.Schema{}, err
+			}
+			defer res.Body.Close()
+
+			var _schema any
+			err = json.NewDecoder(res.Body).Decode(&_schema)
+			if err != nil {
+				return core.Schema{}, err
+			}
+
 			s = core.Schema{
 				URL: schema,
 			}

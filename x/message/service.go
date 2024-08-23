@@ -420,6 +420,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 					ResourceID: id,
 					Owner:      doc.Signer,
 					TimelineID: timeline,
+					Schema:     doc.Schema,
 				}
 
 				if !doc.SignedAt.IsZero() {

@@ -28,6 +28,7 @@ type Handler interface {
 	ListMine(c echo.Context) error
 	GetChunks(c echo.Context) error
 	Realtime(c echo.Context) error
+	Query(c echo.Context) error
 }
 
 type handler struct {
@@ -199,6 +200,51 @@ func (h handler) GetChunks(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": chunks})
+}
+
+func (h handler) Query(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.Query")
+	defer span.End()
+
+	timelineID := c.Param("id")
+	schema := c.QueryParam("schema")
+	owner := c.QueryParam("owner")
+	author := c.QueryParam("author")
+	untilStr := c.QueryParam("until")
+	limitStr := c.QueryParam("limit")
+
+	until := time.Now()
+
+	var err error
+	if untilStr != "" {
+		epoch, err := strconv.ParseInt(untilStr, 10, 64)
+		until = time.Unix(epoch, 0)
+		if err != nil {
+			span.RecordError(err)
+			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
+		}
+	}
+
+	limit := 16
+	if limitStr != "" {
+		limit, err = strconv.Atoi(limitStr)
+		if err != nil {
+			span.RecordError(err)
+			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
+		}
+	}
+
+	if limit > 100 {
+		limit = 100
+	}
+
+	items, err := h.service.Query(ctx, timelineID, schema, owner, author, until, limit)
+	if err != nil {
+		span.RecordError(err)
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": items})
 }
 
 // ---

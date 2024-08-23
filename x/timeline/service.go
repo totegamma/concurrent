@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"sort"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/pkg/errors"
@@ -25,6 +26,8 @@ type service struct {
 	subscription core.SubscriptionService
 	policy       core.PolicyService
 	config       core.Config
+
+	socketCounter int64
 }
 
 // NewService creates a new service
@@ -45,6 +48,7 @@ func NewService(
 		subscription,
 		policy,
 		config,
+		0,
 	}
 }
 
@@ -61,6 +65,10 @@ func min(a, b int) int {
 		return a
 	}
 	return b
+}
+
+func (s *service) CurrentRealtimeConnectionCount() int64 {
+	return atomic.LoadInt64(&s.socketCounter)
 }
 
 func (s *service) GetChunksFromRemote(ctx context.Context, host string, timelines []string, pivot time.Time) (map[string]core.Chunk, error) {
@@ -846,6 +854,10 @@ func (s *service) GetTimelineAutoDomain(ctx context.Context, timelineID string) 
 }
 
 func (s *service) Realtime(ctx context.Context, request <-chan []string, response chan<- core.Event) {
+
+	atomic.AddInt64(&s.socketCounter, 1)
+	defer atomic.AddInt64(&s.socketCounter, -1)
+
 	var cancel context.CancelFunc
 	events := make(chan core.Event)
 

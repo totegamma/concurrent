@@ -175,6 +175,7 @@ type TimelineService interface {
 
 	ListTimelineSubscriptions(ctx context.Context) (map[string]int64, error)
 	Count(ctx context.Context) (int64, error)
+	CurrentRealtimeConnectionCount() int64
 	NormalizeTimelineID(ctx context.Context, timeline string) (string, error)
 	GetOwners(ctx context.Context, timelines []string) ([]string, error)
 

@@ -45,7 +45,7 @@ func TestRepository(t *testing.T) {
 	message := core.Message{
 		ID:        "D895NMA837R0C6B90676P2S1J4",
 		Author:    "con18fyqn098jsf6cnw2r8hkjt7zeftfa0vqvjr6fe",
-		Schema:    "https://gammalab.net/test-message-schema.json",
+		Schema:    "https://schema.concrnt.world/m/markdown.json",
 		Document:  "{}",
 		Signature: "DUMMY",
 	}
@@ -59,7 +59,7 @@ func TestRepository(t *testing.T) {
 	like := core.Association{
 		ID:        "EQB2YB2Q529837710676PETFAR",
 		Author:    "con1n42l2lektua69gvza8xhksq3t2we8nnlkmzct4",
-		Schema:    "https://gammalab.net/test-like-schema.json",
+		Schema:    "https://schema.concrnt.world/a/like.json",
 		Target:    messageID,
 		Document:  "{}",
 		Variant:   "",
@@ -72,7 +72,7 @@ func TestRepository(t *testing.T) {
 	emoji1 := core.Association{
 		ID:        "5GBDM539MCXKY2GJ0676PETFAR",
 		Author:    "con1n42l2lektua69gvza8xhksq3t2we8nnlkmzct4",
-		Schema:    "https://gammalab.net/test-emoji-schema.json",
+		Schema:    "https://schema.concrnt.world/a/reaction.json",
 		Target:    messageID,
 		Document:  "{}",
 		Variant:   "smile",
@@ -85,7 +85,7 @@ func TestRepository(t *testing.T) {
 	emoji2 := core.Association{
 		ID:        "1EQW1AEZ3WC1J42C0676PETFAR",
 		Author:    "con1n42l2lektua69gvza8xhksq3t2we8nnlkmzct4",
-		Schema:    "https://gammalab.net/test-emoji-schema.json",
+		Schema:    "https://schema.concrnt.world/a/reaction.json",
 		Target:    messageID,
 		Document:  "{}",
 		Variant:   "ultrafastpolar",
@@ -98,7 +98,7 @@ func TestRepository(t *testing.T) {
 	emoji3 := core.Association{
 		ID:        "KRE2MN45QXFE3AV20676PETFAR",
 		Author:    "con1sh4vuw03nn20hn94tuk7h7u3ne5n20avfl5sjm",
-		Schema:    "https://gammalab.net/test-emoji-schema.json",
+		Schema:    "https://schema.concrnt.world/a/reaction.json",
 		Target:    messageID,
 		Document:  "{}",
 		Variant:   "ultrafastpolar",
@@ -115,23 +115,23 @@ func TestRepository(t *testing.T) {
 	}
 
 	// test GetBySchema
-	associations, err := repo.GetBySchema(ctx, messageID, "https://gammalab.net/test-like-schema.json")
+	associations, err := repo.GetBySchema(ctx, messageID, "https://schema.concrnt.world/a/like.json")
 	if assert.NoError(t, err) {
 		assert.Equal(t, 1, len(associations))
 	}
-	associations, err = repo.GetBySchema(ctx, messageID, "https://gammalab.net/test-emoji-schema.json")
+	associations, err = repo.GetBySchema(ctx, messageID, "https://schema.concrnt.world/a/reaction.json")
 	if assert.NoError(t, err) {
 		assert.Equal(t, 3, len(associations))
 	}
 
 	// test GetCountsBySchemaAndVariant
-	results, err = repo.GetCountsBySchemaAndVariant(ctx, messageID, "https://gammalab.net/test-emoji-schema.json")
+	results, err = repo.GetCountsBySchemaAndVariant(ctx, messageID, "https://schema.concrnt.world/a/reaction.json")
 	if assert.NoError(t, err) {
 		assert.Equal(t, 2, len(results))
 	}
 
 	// test GetBySchemaAndVariant
-	associations, err = repo.GetBySchemaAndVariant(ctx, messageID, "https://gammalab.net/test-emoji-schema.json", "ultrafastpolar")
+	associations, err = repo.GetBySchemaAndVariant(ctx, messageID, "https://schema.concrnt.world/a/reaction.json", "ultrafastpolar")
 	if assert.NoError(t, err) {
 		assert.Equal(t, 2, len(associations))
 	}

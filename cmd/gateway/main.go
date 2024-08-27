@@ -150,6 +150,9 @@ func main() {
 			},
 		},
 		Skipper: func(c echo.Context) bool {
+			if c.Request().Header.Get("Upgrade") == "websocket" {
+				return true
+			}
 			return c.Path() == "/metrics" || c.Path() == "/health"
 		},
 	}))

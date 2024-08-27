@@ -13,6 +13,7 @@ type Event struct {
 
 type Chunk struct {
 	Key   string         `json:"key"`
+	Epoch string         `json:"epoch"`
 	Items []TimelineItem `json:"items"`
 }
 

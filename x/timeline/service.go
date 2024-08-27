@@ -67,6 +67,73 @@ func min(a, b int) int {
 	return b
 }
 
+func (s *service) LookupChunkItr(ctx context.Context, timeliens []string, epoch string) (map[string]string, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Service.LookupChunkItr")
+	defer span.End()
+
+	normalized := make([]string, 0)
+	normtable := make(map[string]string)
+	for _, timeline := range timeliens {
+		normalizedTimeline, err := s.NormalizeTimelineID(ctx, timeline)
+		if err != nil {
+			slog.WarnContext(
+				ctx,
+				fmt.Sprintf("failed to normalize timeline: %s", timeline),
+				slog.String("module", "timeline"),
+			)
+			continue
+		}
+		normalized = append(normalized, normalizedTimeline)
+		normtable[normalizedTimeline] = timeline
+	}
+
+	table, err := s.repository.GetChunkIterators(ctx, normalized, epoch)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	recovered := make(map[string]string)
+	for k, v := range table {
+		split := strings.Split(v, ":")
+		recovered[normtable[k]] = split[len(split)-1]
+	}
+
+	return recovered, nil
+}
+
+func (s *service) LoadChunkBody(ctx context.Context, query map[string]string) (map[string]core.Chunk, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Service.LoadChunkBody")
+	defer span.End()
+
+	result := make(map[string]core.Chunk)
+	for k, v := range query {
+		time := core.Chunk2RecentTime(v)
+
+		chunks, err := s.GetChunks(ctx, []string{k}, time)
+		if err != nil {
+			span.RecordError(err)
+			continue
+		}
+		if len(chunks) == 0 {
+			continue
+		}
+
+		var key string
+		for l := range chunks {
+			key = l
+			break
+		}
+
+		result[k] = core.Chunk{
+			Epoch: v,
+			Items: chunks[key].Items,
+		}
+	}
+
+	return result, nil
+}
+
 func (s *service) CurrentRealtimeConnectionCount() int64 {
 	return atomic.LoadInt64(&s.socketCounter)
 }

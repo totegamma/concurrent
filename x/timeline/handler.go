@@ -29,6 +29,9 @@ type Handler interface {
 	GetChunks(c echo.Context) error
 	Realtime(c echo.Context) error
 	Query(c echo.Context) error
+
+	GetChunkItr(c echo.Context) error
+	GetChunkBody(c echo.Context) error
 }
 
 type handler struct {
@@ -194,6 +197,47 @@ func (h handler) GetChunks(c echo.Context) error {
 	time := time.Unix(timeInt, 0)
 
 	chunks, err := h.service.GetChunks(ctx, timelines, time)
+	if err != nil {
+		span.RecordError(err)
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": chunks})
+}
+
+func (h handler) GetChunkItr(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.GetChunkItr")
+	defer span.End()
+
+	timelinesStr := c.QueryParam("timelines")
+	timelines := strings.Split(timelinesStr, ",")
+
+	epoch := c.QueryParam("epoch")
+	table, err := h.service.LookupChunkItr(ctx, timelines, epoch)
+	if err != nil {
+		span.RecordError(err)
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": table})
+}
+
+func (h handler) GetChunkBody(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.GetChunkBody")
+	defer span.End()
+
+	queryStr := c.QueryParam("query")
+
+	query := make(map[string]string)
+	for _, kv := range strings.Split(queryStr, ",") {
+		pair := strings.Split(kv, ":")
+		if len(pair) != 2 {
+			return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
+		}
+		query[pair[0]] = pair[1]
+	}
+
+	chunks, err := h.service.LoadChunkBody(ctx, query)
 	if err != nil {
 		span.RecordError(err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})

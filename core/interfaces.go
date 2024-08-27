@@ -153,6 +153,9 @@ type TimelineService interface {
 
 	Clean(ctx context.Context, ccid string) error
 
+	LookupChunkItr(ctx context.Context, timeliens []string, epoch string) (map[string]string, error)
+	LoadChunkBody(ctx context.Context, query map[string]string) (map[string]Chunk, error)
+
 	GetRecentItems(ctx context.Context, timelines []string, until time.Time, limit int) ([]TimelineItem, error)
 	GetRecentItemsFromSubscription(ctx context.Context, subscription string, until time.Time, limit int) ([]TimelineItem, error)
 	GetImmediateItems(ctx context.Context, timelines []string, since time.Time, limit int) ([]TimelineItem, error)

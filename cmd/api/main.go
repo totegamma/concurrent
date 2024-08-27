@@ -320,6 +320,10 @@ func main() {
 	apiV1.GET("/timelines/chunks", timelineHandler.GetChunks)
 	apiV1.GET("/timelines/realtime", timelineHandler.Realtime)
 
+	// chunk
+	apiV1.GET("/chunks/itr", timelineHandler.GetChunkItr)
+	apiV1.GET("/chunks/body", timelineHandler.GetChunkBody)
+
 	// userkv
 	apiV1.GET("/kv/:key", userkvHandler.Get, auth.Restrict(auth.ISREGISTERED))
 	apiV1.PUT("/kv/:key", userkvHandler.Upsert, auth.Restrict(auth.ISREGISTERED))

@@ -52,6 +52,11 @@ func NewService(
 	}
 }
 
+func jsonPrint(title string, v interface{}) {
+	b, _ := json.MarshalIndent(v, "", "  ")
+	fmt.Println(title, string(b))
+}
+
 // Count returns the count number of messages
 func (s *service) Count(ctx context.Context) (int64, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.Count")
@@ -154,18 +159,22 @@ func (s *service) GetChunks(ctx context.Context, timelines []string, until time.
 	ctx, span := tracer.Start(ctx, "Timeline.Service.GetChunks")
 	defer span.End()
 
+	var normalized = make([]string, len(timelines))
+	var normalizeMap = make(map[string]string)
+
 	// normalize timelineID and validate
 	for i, timeline := range timelines {
-		normalized, err := s.NormalizeTimelineID(ctx, timeline)
+		n, err := s.NormalizeTimelineID(ctx, timeline)
 		if err != nil {
 			continue
 		}
-		timelines[i] = normalized
+		normalized[i] = n
+		normalizeMap[n] = timeline
 	}
 
 	// first, try to get from cache
 	untilChunk := core.Time2Chunk(until)
-	items, err := s.repository.GetChunksFromCache(ctx, timelines, untilChunk)
+	items, err := s.repository.GetChunksFromCache(ctx, normalized, untilChunk)
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to get chunks from cache", slog.String("error", err.Error()), slog.String("module", "timeline"))
 		span.RecordError(err)
@@ -174,7 +183,7 @@ func (s *service) GetChunks(ctx context.Context, timelines []string, until time.
 
 	// if not found in cache, get from db
 	missingTimelines := make([]string, 0)
-	for _, timeline := range timelines {
+	for _, timeline := range normalized {
 		if _, ok := items[timeline]; !ok {
 			missingTimelines = append(missingTimelines, timeline)
 		}
@@ -182,6 +191,7 @@ func (s *service) GetChunks(ctx context.Context, timelines []string, until time.
 
 	if len(missingTimelines) > 0 {
 		// get from db
+		jsonPrint("missingTimelines", missingTimelines)
 		dbItems, err := s.repository.GetChunksFromDB(ctx, missingTimelines, untilChunk)
 		if err != nil {
 			slog.ErrorContext(ctx, "failed to get chunks from db", slog.String("error", err.Error()), slog.String("module", "timeline"))
@@ -194,7 +204,13 @@ func (s *service) GetChunks(ctx context.Context, timelines []string, until time.
 		}
 	}
 
-	return items, nil
+	// recover original timelineID
+	recovered := make(map[string]core.Chunk)
+	for k, v := range items {
+		recovered[normalizeMap[k]] = v
+	}
+
+	return recovered, nil
 }
 
 func (s *service) GetRecentItemsFromSubscription(ctx context.Context, subscription string, until time.Time, limit int) ([]core.TimelineItem, error) {
@@ -219,34 +235,31 @@ func (s *service) GetRecentItems(ctx context.Context, timelines []string, until 
 	ctx, span := tracer.Start(ctx, "Timeline.Service.GetRecentItems")
 	defer span.End()
 
+	var normalized = []string{}
 	var domainMap = make(map[string][]string)
 
 	// normalize timelineID and validate
-	for i, timeline := range timelines {
-		normalized, err := s.NormalizeTimelineID(ctx, timeline)
+	for _, timeline := range timelines {
+		n, err := s.NormalizeTimelineID(ctx, timeline)
 		if err != nil {
 			continue
 		}
 
-		split := strings.Split(normalized, "@")
+		split := strings.Split(n, "@")
 		domain := split[len(split)-1]
 		if len(split) >= 2 {
 			if _, ok := domainMap[domain]; !ok {
 				domainMap[domain] = make([]string, 0)
 			}
-			if domain == s.config.FQDN {
-				domainMap[domain] = append(domainMap[domain], split[0])
-			} else {
-				domainMap[domain] = append(domainMap[domain], timeline)
-			}
+			domainMap[domain] = append(domainMap[domain], n)
 		}
 
-		timelines[i] = normalized
+		normalized = append(normalized, n)
 	}
 
 	// first, try to get from cache regardless of local or remote
 	untilChunk := core.Time2Chunk(until)
-	items, err := s.repository.GetChunksFromCache(ctx, timelines, untilChunk)
+	items, err := s.repository.GetChunksFromCache(ctx, normalized, untilChunk)
 	if err != nil {
 		slog.ErrorContext(ctx, "failed to get chunks from cache", slog.String("error", err.Error()), slog.String("module", "timeline"))
 		span.RecordError(err)

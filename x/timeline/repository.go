@@ -447,7 +447,6 @@ func (r *repository) GetChunksFromDB(ctx context.Context, timelines []string, ch
 	return result, nil
 }
 
-// GetChunkIterators returns a list of iterated chunk keys
 func (r *repository) GetChunkIterators(ctx context.Context, timelines []string, chunk string) (map[string]string, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.GetChunkIterators")
 	defer span.End()
@@ -455,6 +454,7 @@ func (r *repository) GetChunkIterators(ctx context.Context, timelines []string, 
 	keys := make([]string, len(timelines))
 	for i, timeline := range timelines {
 		keys[i] = "timeline:itr:all:" + timeline + ":" + chunk
+		fmt.Println("cache get ", keys[i])
 	}
 
 	cache, err := r.mc.GetMulti(keys)
@@ -464,29 +464,72 @@ func (r *repository) GetChunkIterators(ctx context.Context, timelines []string, 
 	}
 
 	result := make(map[string]string)
+	missed := make([]string, 0)
 	for i, timeline := range timelines {
-		if cache[keys[i]] != nil { // hit
+		if cache[keys[i]] != nil {
 			result[timeline] = string(cache[keys[i]].Value)
-		} else { // miss
-			var item core.TimelineItem
-			chunkTime := core.Chunk2RecentTime(chunk)
-			dbid := timeline
-			if strings.Contains(dbid, "@") {
-				dbid = strings.Split(timeline, "@")[0]
-			}
-			if len(dbid) == 27 {
-				if dbid[0] != 't' {
-					return nil, fmt.Errorf("timeline typed-id must start with 't'")
-				}
-				dbid = dbid[1:]
-			}
-			err := r.db.WithContext(ctx).Where("timeline_id = ? and c_date <= ?", dbid, chunkTime).Order("c_date desc").First(&item).Error
-			if err != nil {
+			fmt.Println("cache hit ", timeline)
+		} else {
+			missed = append(missed, timeline)
+			fmt.Println("cache miss ", timeline)
+		}
+	}
+
+	jsonPrint("missed", missed)
+
+	dbids := []string{}
+	for _, timeline := range missed {
+		dbid := timeline
+		if strings.Contains(dbid, "@") {
+			split := strings.Split(timeline, "@")
+			if len(split) > 1 && split[len(split)-1] != r.config.FQDN {
+				span.RecordError(fmt.Errorf("invalid timeline id: %s", timeline))
 				continue
 			}
-			key := "timeline:body:all:" + timeline + ":" + core.Time2Chunk(item.CDate)
-			r.mc.Set(&memcache.Item{Key: keys[i], Value: []byte(key)})
-			result[timeline] = key
+			dbid = split[0]
+		}
+		if len(dbid) == 27 {
+			if dbid[0] != 't' {
+				span.RecordError(fmt.Errorf("timeline typed-id must start with 't' %s", timeline))
+				continue
+			}
+			dbid = dbid[1:]
+		}
+		if len(dbid) != 26 {
+			span.RecordError(fmt.Errorf("timeline id must be 26 characters long %s", timeline))
+			continue
+		}
+		dbids = append(dbids, dbid)
+	}
+
+	jsonPrint("dbids", dbids)
+
+	if len(dbids) > 0 {
+		var res []struct {
+			TimelineID string
+			MaxCDate   time.Time
+		}
+
+		err := r.db.WithContext(ctx).
+			Model(&core.TimelineItem{}).
+			Select("timeline_id, max(c_date) as max_c_date").
+			Where("timeline_id in (?) and c_date <= ?", dbids, core.Chunk2RecentTime(chunk)).
+			Group("timeline_id").
+			Scan(&res).Error
+		if err != nil {
+			fmt.Println("err", err)
+			span.RecordError(err)
+			return nil, err
+		}
+
+		jsonPrint("res", res)
+
+		for _, item := range res {
+			itr := "timeline:itr:all:t" + item.TimelineID + "@" + r.config.FQDN + ":" + chunk
+			body := "timeline:body:all:t" + item.TimelineID + "@" + r.config.FQDN + ":" + core.Time2Chunk(item.MaxCDate)
+			r.mc.Set(&memcache.Item{Key: itr, Value: []byte(body)})
+			result[item.TimelineID] = body
+			fmt.Println("cache set ", itr)
 		}
 	}
 

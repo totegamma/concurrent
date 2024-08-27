@@ -48,7 +48,9 @@ func TestRepository(t *testing.T) {
 
 	mockClient := mock_client.NewMockClient(ctrl)
 
-	repo = NewRepository(db, rdb, mc, mockClient, mockSchema, core.Config{})
+	repo = NewRepository(db, rdb, mc, mockClient, mockSchema, core.Config{
+		FQDN: "example.com",
+	})
 
 	// :: Timelineを作成 ::
 	timeline := core.Timeline{
@@ -98,19 +100,19 @@ func TestRepository(t *testing.T) {
 	assert.NoError(t, err)
 
 	// trial1: cache miss test
-	result, err := repo.GetChunkIterators(ctx, []string{"t00000000000000000000000000"}, pivotChunk)
+	result, err := repo.GetChunkIterators(ctx, []string{"t00000000000000000000000000@example.com"}, pivotChunk)
 	if assert.NoError(t, err) {
 		assert.Len(t, result, 1)
 	}
 
-	itemKey := "timeline:body:all:t00000000000000000000000000:" + core.Time2Chunk(createdItem.CDate)
-	assert.Equal(t, result["t00000000000000000000000000"], itemKey)
+	itemKey := "timeline:body:all:t00000000000000000000000000@example.com:" + core.Time2Chunk(createdItem.CDate)
+	assert.Equal(t, result["t00000000000000000000000000@example.com"], itemKey)
 
 	// trial2: cache hit test
-	result2, err := repo.GetChunkIterators(ctx, []string{"t00000000000000000000000000"}, pivotChunk)
+	result2, err := repo.GetChunkIterators(ctx, []string{"t00000000000000000000000000@example.com"}, pivotChunk)
 	if assert.NoError(t, err) {
 		assert.Len(t, result2, 1)
-		assert.Equal(t, result2["t00000000000000000000000000"], itemKey)
+		assert.Equal(t, result2["t00000000000000000000000000@example.com"], itemKey)
 	}
 
 	// :: Timeline1を作成してItemを追加 ::
@@ -143,24 +145,24 @@ func TestRepository(t *testing.T) {
 	mc.DeleteAll()
 
 	// GetChunksFromCacheでキャッシュがないはずなので何も帰ってこないことを確認
-	chunks, err := repo.GetChunksFromCache(ctx, []string{"t00000000000000000000000000", "t11111111111111111111111111"}, pivotChunk)
+	chunks, err := repo.GetChunksFromCache(ctx, []string{"t00000000000000000000000000@example.com", "t11111111111111111111111111@example.com"}, pivotChunk)
 	assert.NoError(t, err)
 	assert.Len(t, chunks, 0)
 
 	// GetChunksFromDBで要素を取得する
-	chunks, err = repo.GetChunksFromDB(ctx, []string{"t00000000000000000000000000", "t11111111111111111111111111"}, pivotChunk)
+	chunks, err = repo.GetChunksFromDB(ctx, []string{"t00000000000000000000000000@example.com", "t11111111111111111111111111@example.com"}, pivotChunk)
 	if assert.NoError(t, err) {
 		assert.Len(t, chunks, 2)
-		assert.Len(t, chunks["t00000000000000000000000000"].Items, 2)
-		assert.Len(t, chunks["t11111111111111111111111111"].Items, 2)
+		assert.Len(t, chunks["t00000000000000000000000000@example.com"].Items, 2)
+		assert.Len(t, chunks["t11111111111111111111111111@example.com"].Items, 2)
 	}
 
 	// GetChunksFromCacheでキャッシュがあるはずなのでキャッシュから取得する
-	chunks, err = repo.GetChunksFromCache(ctx, []string{"t00000000000000000000000000", "t11111111111111111111111111"}, pivotChunk)
+	chunks, err = repo.GetChunksFromCache(ctx, []string{"t00000000000000000000000000@example.com", "t11111111111111111111111111@example.com"}, pivotChunk)
 	if assert.NoError(t, err) {
 		assert.Len(t, chunks, 2)
-		assert.Len(t, chunks["t00000000000000000000000000"].Items, 2)
-		assert.Len(t, chunks["t11111111111111111111111111"].Items, 2)
+		assert.Len(t, chunks["t00000000000000000000000000@example.com"].Items, 2)
+		assert.Len(t, chunks["t11111111111111111111111111@example.com"].Items, 2)
 	}
 
 	// TimelineItemの順番のテスト
@@ -192,12 +194,12 @@ func TestRepository(t *testing.T) {
 
 	mc.DeleteAll()
 
-	chunks, err = repo.GetChunksFromDB(ctx, []string{"t22222222222222222222222222"}, pivotChunk)
+	chunks, err = repo.GetChunksFromDB(ctx, []string{"t22222222222222222222222222@example.com"}, pivotChunk)
 	if assert.NoError(t, err) {
 		assert.Len(t, chunks, 1)
-		assert.Len(t, chunks["t22222222222222222222222222"].Items, 2)
-		assert.Equal(t, "mW4H1PZZ223D1B6ED0676P27J50", chunks["t22222222222222222222222222"].Items[0].ResourceID)
-		assert.Equal(t, "mA1HJCH9NK9MPMV7D0676P25PSR", chunks["t22222222222222222222222222"].Items[1].ResourceID)
+		assert.Len(t, chunks["t22222222222222222222222222@example.com"].Items, 2)
+		assert.Equal(t, "mW4H1PZZ223D1B6ED0676P27J50", chunks["t22222222222222222222222222@example.com"].Items[0].ResourceID)
+		assert.Equal(t, "mA1HJCH9NK9MPMV7D0676P25PSR", chunks["t22222222222222222222222222@example.com"].Items[1].ResourceID)
 	}
 
 	_, err = repo.CreateItem(ctx, core.TimelineItem{
@@ -208,13 +210,13 @@ func TestRepository(t *testing.T) {
 	})
 	assert.NoError(t, err)
 
-	chunks, err = repo.GetChunksFromDB(ctx, []string{"t22222222222222222222222222"}, pivotChunk)
+	chunks, err = repo.GetChunksFromDB(ctx, []string{"t22222222222222222222222222@example.com"}, pivotChunk)
 	if assert.NoError(t, err) {
 		assert.Len(t, chunks, 1)
-		assert.Len(t, chunks["t22222222222222222222222222"].Items, 3)
-		assert.Equal(t, "mT46G7BT5TJQQS4WY0676P2A9ZM", chunks["t22222222222222222222222222"].Items[0].ResourceID)
-		assert.Equal(t, "mW4H1PZZ223D1B6ED0676P27J50", chunks["t22222222222222222222222222"].Items[1].ResourceID)
-		assert.Equal(t, "mA1HJCH9NK9MPMV7D0676P25PSR", chunks["t22222222222222222222222222"].Items[2].ResourceID)
+		assert.Len(t, chunks["t22222222222222222222222222@example.com"].Items, 3)
+		assert.Equal(t, "mT46G7BT5TJQQS4WY0676P2A9ZM", chunks["t22222222222222222222222222@example.com"].Items[0].ResourceID)
+		assert.Equal(t, "mW4H1PZZ223D1B6ED0676P27J50", chunks["t22222222222222222222222222@example.com"].Items[1].ResourceID)
+		assert.Equal(t, "mA1HJCH9NK9MPMV7D0676P25PSR", chunks["t22222222222222222222222222@example.com"].Items[2].ResourceID)
 	}
 
 	remoteKey0 := "timeline:body:all:t00000000000000000000000000@remote.com:" + core.Time2Chunk(pivot.Add(-time.Minute*10))

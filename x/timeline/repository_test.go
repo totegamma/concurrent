@@ -225,7 +225,8 @@ func TestRepository(t *testing.T) {
 	// test SaveToCache
 	testchunks := make(map[string]core.Chunk)
 	testchunks["t00000000000000000000000000@remote.com"] = core.Chunk{
-		Key: remoteKey0,
+		Key:   remoteKey0,
+		Chunk: core.Time2Chunk(pivot.Add(-time.Minute * 10)),
 		Items: []core.TimelineItem{
 			{
 				ResourceID: "mDMZMRRS7N16E1PDN0676P2QH6C",
@@ -238,7 +239,8 @@ func TestRepository(t *testing.T) {
 	testJson0, err := json.Marshal(testchunks["t00000000000000000000000000@remote.com"].Items[0])
 	testJson0 = append(testJson0, ',')
 	testchunks["t11111111111111111111111111@remote.com"] = core.Chunk{
-		Key: remoteKey1,
+		Key:   remoteKey1,
+		Chunk: core.Time2Chunk(pivot.Add(-time.Minute * 30)),
 		Items: []core.TimelineItem{
 			{
 				ResourceID: "mD895NMA837R0C6B90676P2S1J4",

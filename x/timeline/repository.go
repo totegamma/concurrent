@@ -284,7 +284,7 @@ func (r *repository) GetChunksFromRemote(ctx context.Context, host string, timel
 
 	cacheChunks := chunks
 	// 最新のチャンクに関しては、socketが張られてるキャッシュしか温められないのでそれだけ保持
-	if core.Time2Chunk(queryTime) != core.Time2Chunk(time.Now()) {
+	if core.Time2Chunk(queryTime) == core.Time2Chunk(time.Now()) {
 		currentSubsciptions := r.GetCurrentSubs(ctx)
 		cacheChunks := make(map[string]core.Chunk)
 		for timelineID, chunk := range chunks {

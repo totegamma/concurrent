@@ -274,12 +274,23 @@ func (r *repository) GetChunksFromRemote(ctx context.Context, host string, timel
 		return nil, err
 	}
 
-	currentSubsciptions := r.GetCurrentSubs(ctx)
-
-	cacheChunks := make(map[string]core.Chunk)
+	// for compatibility with old version TODO: REMOVE ME
 	for timelineID, chunk := range chunks {
-		if slices.Contains(currentSubsciptions, timelineID) {
-			cacheChunks[timelineID] = chunk
+		split := strings.Split(chunk.Key, ":")
+		chunk.Chunk = split[len(split)-1]
+		chunks[timelineID] = chunk
+	}
+	// ----------------------------------
+
+	cacheChunks := chunks
+	// 最新のチャンクに関しては、socketが張られてるキャッシュしか温められないのでそれだけ保持
+	if core.Time2Chunk(queryTime) != core.Time2Chunk(time.Now()) {
+		currentSubsciptions := r.GetCurrentSubs(ctx)
+		cacheChunks := make(map[string]core.Chunk)
+		for timelineID, chunk := range chunks {
+			if slices.Contains(currentSubsciptions, timelineID) {
+				cacheChunks[timelineID] = chunk
+			}
 		}
 	}
 
@@ -315,7 +326,8 @@ func (r *repository) SaveToCache(ctx context.Context, chunks map[string]core.Chu
 			return err
 		}
 		value := string(b[1:len(b)-1]) + ","
-		err = r.mc.Set(&memcache.Item{Key: chunk.Key, Value: []byte(value)})
+		bodyKey := "timeline:body:all:" + timelineID + ":" + chunk.Chunk
+		err = r.mc.Set(&memcache.Item{Key: bodyKey, Value: []byte(value)})
 		if err != nil {
 			span.RecordError(err)
 			continue
@@ -368,8 +380,11 @@ func (r *repository) GetChunksFromCache(ctx context.Context, timelines []string,
 			continue
 		}
 		slices.Reverse(items)
+		split := strings.Split(targetKey, ":")
+		chunk := split[len(split)-1]
 		result[timeline] = core.Chunk{
 			Key:   targetKey,
+			Chunk: chunk,
 			Items: items,
 		}
 	}
@@ -454,7 +469,6 @@ func (r *repository) GetChunkIterators(ctx context.Context, timelines []string, 
 	keys := make([]string, len(timelines))
 	for i, timeline := range timelines {
 		keys[i] = "timeline:itr:all:" + timeline + ":" + chunk
-		fmt.Println("cache get ", keys[i])
 	}
 
 	cache, err := r.mc.GetMulti(keys)
@@ -468,14 +482,11 @@ func (r *repository) GetChunkIterators(ctx context.Context, timelines []string, 
 	for i, timeline := range timelines {
 		if cache[keys[i]] != nil {
 			result[timeline] = string(cache[keys[i]].Value)
-			fmt.Println("cache hit ", timeline)
 		} else {
 			missed = append(missed, timeline)
-			fmt.Println("cache miss ", timeline)
+			fmt.Println("missed", timeline, chunk)
 		}
 	}
-
-	jsonPrint("missed", missed)
 
 	dbids := []string{}
 	for _, timeline := range missed {
@@ -502,8 +513,6 @@ func (r *repository) GetChunkIterators(ctx context.Context, timelines []string, 
 		dbids = append(dbids, dbid)
 	}
 
-	jsonPrint("dbids", dbids)
-
 	if len(dbids) > 0 {
 		var res []struct {
 			TimelineID string
@@ -521,8 +530,6 @@ func (r *repository) GetChunkIterators(ctx context.Context, timelines []string, 
 			span.RecordError(err)
 			return nil, err
 		}
-
-		jsonPrint("res", res)
 
 		for _, item := range res {
 			itr := "timeline:itr:all:t" + item.TimelineID + "@" + r.config.FQDN + ":" + chunk
@@ -870,7 +877,7 @@ func (r *repository) GetCurrentSubs(ctx context.Context) []string {
 	uniqueChannels := make([]string, 0)
 	for channel := range uniqueChannelsMap {
 		split := strings.Split(channel, "@")
-		if len(split) != 2 {
+		if len(split) < 2 {
 			continue
 		}
 		uniqueChannels = append(uniqueChannels, channel)

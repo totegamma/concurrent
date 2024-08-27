@@ -52,11 +52,6 @@ func NewService(
 	}
 }
 
-func jsonPrint(title string, v interface{}) {
-	b, _ := json.MarshalIndent(v, "", "  ")
-	fmt.Println(title, string(b))
-}
-
 // Count returns the count number of messages
 func (s *service) Count(ctx context.Context) (int64, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.Count")
@@ -191,7 +186,6 @@ func (s *service) GetChunks(ctx context.Context, timelines []string, until time.
 
 	if len(missingTimelines) > 0 {
 		// get from db
-		jsonPrint("missingTimelines", missingTimelines)
 		dbItems, err := s.repository.GetChunksFromDB(ctx, missingTimelines, untilChunk)
 		if err != nil {
 			slog.ErrorContext(ctx, "failed to get chunks from db", slog.String("error", err.Error()), slog.String("module", "timeline"))

@@ -73,6 +73,36 @@ func (mr *MockClientMockRecorder) GetAssociation(ctx, domain, id, opts any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAssociation", reflect.TypeOf((*MockClient)(nil).GetAssociation), ctx, domain, id, opts)
 }
 
+// GetChunkBodies mocks base method.
+func (m *MockClient) GetChunkBodies(ctx context.Context, domain string, query map[string]string, opts *client.Options) (map[string]core.Chunk, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetChunkBodies", ctx, domain, query, opts)
+	ret0, _ := ret[0].(map[string]core.Chunk)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetChunkBodies indicates an expected call of GetChunkBodies.
+func (mr *MockClientMockRecorder) GetChunkBodies(ctx, domain, query, opts any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChunkBodies", reflect.TypeOf((*MockClient)(nil).GetChunkBodies), ctx, domain, query, opts)
+}
+
+// GetChunkItrs mocks base method.
+func (m *MockClient) GetChunkItrs(ctx context.Context, domain string, timelines []string, epoch string, opts *client.Options) (map[string]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetChunkItrs", ctx, domain, timelines, epoch, opts)
+	ret0, _ := ret[0].(map[string]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetChunkItrs indicates an expected call of GetChunkItrs.
+func (mr *MockClientMockRecorder) GetChunkItrs(ctx, domain, timelines, epoch, opts any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChunkItrs", reflect.TypeOf((*MockClient)(nil).GetChunkItrs), ctx, domain, timelines, epoch, opts)
+}
+
 // GetChunks mocks base method.
 func (m *MockClient) GetChunks(ctx context.Context, domain string, timelines []string, queryTime time.Time, opts *client.Options) (map[string]core.Chunk, error) {
 	m.ctrl.T.Helper()

@@ -287,10 +287,10 @@ func (r *repository) lookupLocalItrs(ctx context.Context, timelines []string, ep
 
 		for _, item := range res {
 			id := "t" + item.TimelineID + "@" + r.config.FQDN
-			itr := tlItrCachePrefix + id + ":" + epoch
-			body := tlBodyCachePrefix + id + ":" + core.Time2Chunk(item.MaxCDate)
-			r.mc.Set(&memcache.Item{Key: itr, Value: []byte(body)})
-			result[id] = body
+			key := tlItrCachePrefix + id + ":" + epoch
+			value := core.Time2Chunk(item.MaxCDate)
+			r.mc.Set(&memcache.Item{Key: key, Value: []byte(value)})
+			result[id] = value
 		}
 	}
 
@@ -343,7 +343,7 @@ func (r *repository) loadLocalBody(ctx context.Context, timeline string, epoch s
 
 	// 得られた中で最も古いアイテムがチャンクをまたいでない場合、取得漏れがある可能性がある
 	// 代わりに、チャンク内のレンジの全てのアイテムを取得する
-	if items[len(items)-1].CDate.Before(prevChunkDate) {
+	if items[len(items)-1].CDate.After(prevChunkDate) {
 		err = r.db.WithContext(ctx).
 			Where("timeline_id = ? and ? < c_date and c_date <= ?", timelineID, prevChunkDate, chunkDate).
 			Order("c_date desc").

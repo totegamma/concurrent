@@ -54,6 +54,9 @@ type Repository interface {
 	GetNormalizationCache(ctx context.Context, timelineID string) (string, error)
 
 	Query(ctx context.Context, timelineID, schema, owner, author string, until time.Time, limit int) ([]core.TimelineItem, error)
+
+	LookupChunkItrs(ctx context.Context, timelines []string, epoch string) (map[string]string, error)
+	LoadChunkBodies(ctx context.Context, query map[string]string) (map[string]core.Chunk, error)
 }
 
 type repository struct {
@@ -83,9 +86,340 @@ func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client c
 }
 
 const (
-	normaalizationCachePrefix = "timeline:normalize:"
+	normaalizationCachePrefix = "tl:norm:"
 	normaalizationCacheTTL    = 60 * 15 // 15 minutes
+
+	tlItrCachePrefix  = "tl:itr:"
+	tlBodyCachePrefix = "tl:body:"
+
+	defaultChunkSize = 32
 )
+
+func (r *repository) LookupChunkItrs(ctx context.Context, normalized []string, epoch string) (map[string]string, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.LookupChunkItr")
+	defer span.End()
+
+	cache, err := r.mc.GetMulti(normalized)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	var result = map[string]string{}
+	var missed = []string{}
+	for _, timeline := range normalized {
+		if cache[timeline] != nil {
+			result[timeline] = string(cache[timeline].Value)
+		} else {
+			missed = append(missed, timeline)
+		}
+	}
+
+	var domainMap = make(map[string][]string)
+	for _, timeline := range missed {
+		split := strings.Split(timeline, "@")
+		domain := split[len(split)-1]
+		if len(split) >= 2 {
+			if _, ok := domainMap[domain]; !ok {
+				domainMap[domain] = make([]string, 0)
+			}
+			if domain == r.config.FQDN {
+				domainMap[domain] = append(domainMap[domain], split[0])
+			} else {
+				domainMap[domain] = append(domainMap[domain], timeline)
+			}
+		}
+	}
+
+	for domain, timelines := range domainMap {
+		if domain == r.config.FQDN {
+			res, err := r.lookupLocalItrs(ctx, timelines, epoch)
+			if err != nil {
+				span.RecordError(err)
+				continue
+			}
+			for k, v := range res {
+				result[k] = v
+			}
+		} else {
+			res, err := r.lookupRemoteItrs(ctx, domain, timelines, epoch)
+			if err != nil {
+				span.RecordError(err)
+				continue
+			}
+			for k, v := range res {
+				result[k] = v
+			}
+		}
+	}
+
+	return result, nil
+}
+
+func (r *repository) LoadChunkBodies(ctx context.Context, query map[string]string) (map[string]core.Chunk, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.LoadChunkBodies")
+	defer span.End()
+
+	keys := []string{}
+	keytable := map[string]string{}
+	for timeline, epoch := range query {
+		key := tlBodyCachePrefix + timeline + ":" + epoch
+		keys = append(keys, key)
+		keytable[key] = timeline
+	}
+
+	cache, err := r.mc.GetMulti(keys)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	result := make(map[string]core.Chunk)
+	var missed = map[string]string{}
+
+	for _, key := range keys {
+		timeline := keytable[key]
+		if cache[key] != nil {
+			var items []core.TimelineItem
+			cacheStr := string(cache[key].Value)
+			cacheStr = cacheStr[:len(cacheStr)-1]
+			cacheStr = "[" + cacheStr + "]"
+			err = json.Unmarshal([]byte(cacheStr), &items)
+			if err != nil {
+				span.RecordError(err)
+				continue
+			}
+			slices.Reverse(items)
+			result[timeline] = core.Chunk{
+				Key:   key,
+				Epoch: query[timeline],
+				Items: items,
+			}
+		} else {
+			missed[timeline] = query[timeline]
+		}
+	}
+
+	var domainMap = make(map[string]map[string]string)
+	for timeline, epoch := range missed {
+		split := strings.Split(timeline, "@")
+		domain := split[len(split)-1]
+		if len(split) >= 2 {
+			if _, ok := domainMap[domain]; !ok {
+				domainMap[domain] = make(map[string]string)
+			}
+			domainMap[domain][timeline] = epoch
+		}
+	}
+
+	for domain, q := range domainMap {
+		if domain == r.config.FQDN {
+			for timeline, epoch := range q {
+				res, err := r.loadLocalBody(ctx, timeline, epoch)
+				if err != nil {
+					span.RecordError(err)
+					continue
+				}
+				result[timeline] = res
+			}
+		} else {
+			res, err := r.loadRemoteBodies(ctx, domain, q)
+			if err != nil {
+				span.RecordError(err)
+				continue
+			}
+			for k, v := range res {
+				result[k] = v
+			}
+		}
+	}
+
+	return result, nil
+}
+
+func (r *repository) lookupLocalItrs(ctx context.Context, timelines []string, epoch string) (map[string]string, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.LookupLocalItr")
+	defer span.End()
+
+	dbids := []string{}
+	for _, timeline := range timelines {
+		dbid := timeline
+		if strings.Contains(dbid, "@") {
+			split := strings.Split(timeline, "@")
+			if len(split) > 1 && split[len(split)-1] != r.config.FQDN {
+				span.RecordError(fmt.Errorf("invalid timeline id: %s", timeline))
+				continue
+			}
+			dbid = split[0]
+		}
+		if len(dbid) == 27 {
+			if dbid[0] != 't' {
+				span.RecordError(fmt.Errorf("timeline typed-id must start with 't' %s", timeline))
+				continue
+			}
+			dbid = dbid[1:]
+		}
+		if len(dbid) != 26 {
+			span.RecordError(fmt.Errorf("timeline id must be 26 characters long %s", timeline))
+			continue
+		}
+		dbids = append(dbids, dbid)
+	}
+
+	result := make(map[string]string)
+	if len(dbids) > 0 {
+		var res []struct {
+			TimelineID string
+			MaxCDate   time.Time
+		}
+
+		err := r.db.WithContext(ctx).
+			Model(&core.TimelineItem{}).
+			Select("timeline_id, max(c_date) as max_c_date").
+			Where("timeline_id in (?) and c_date <= ?", dbids, core.Chunk2RecentTime(epoch)).
+			Group("timeline_id").
+			Scan(&res).Error
+		if err != nil {
+			fmt.Println("err", err)
+			span.RecordError(err)
+			return nil, err
+		}
+
+		for _, item := range res {
+			id := "t" + item.TimelineID + "@" + r.config.FQDN
+			itr := tlItrCachePrefix + id + ":" + epoch
+			body := tlBodyCachePrefix + id + ":" + core.Time2Chunk(item.MaxCDate)
+			r.mc.Set(&memcache.Item{Key: itr, Value: []byte(body)})
+			result[id] = body
+		}
+	}
+
+	return result, nil
+}
+
+func (r *repository) lookupRemoteItrs(ctx context.Context, domain string, timelines []string, epoch string) (map[string]string, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.LookupRemoteItr")
+	defer span.End()
+
+	result, err := r.client.GetChunkItrs(ctx, domain, timelines, epoch, nil)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	for timeline, itr := range result {
+		key := tlItrCachePrefix + timeline + ":" + epoch
+		r.mc.Set(&memcache.Item{Key: key, Value: []byte(itr)})
+	}
+
+	return result, nil
+}
+
+func (r *repository) loadLocalBody(ctx context.Context, timeline string, epoch string) (core.Chunk, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.LoadLocalBody")
+	defer span.End()
+
+	chunkDate := core.Chunk2RecentTime(epoch)
+	prevChunkDate := core.Chunk2RecentTime(core.PrevChunk(epoch))
+
+	timelineID := timeline
+	if strings.Contains(timelineID, "@") {
+		timelineID = strings.Split(timelineID, "@")[0]
+	}
+	if len(timelineID) == 27 {
+		if timelineID[0] != 't' {
+			return core.Chunk{}, fmt.Errorf("timeline typed-id must start with 't'")
+		}
+		timelineID = timelineID[1:]
+	}
+
+	var items []core.TimelineItem
+
+	err := r.db.WithContext(ctx).
+		Where("timeline_id = ? and c_date <= ?", timelineID, chunkDate).
+		Order("c_date desc").
+		Limit(defaultChunkSize).
+		Find(&items).Error
+
+	// 得られた中で最も古いアイテムがチャンクをまたいでない場合、取得漏れがある可能性がある
+	// 代わりに、チャンク内のレンジの全てのアイテムを取得する
+	if items[len(items)-1].CDate.Before(prevChunkDate) {
+		err = r.db.WithContext(ctx).
+			Where("timeline_id = ? and ? < c_date and c_date <= ?", timelineID, prevChunkDate, chunkDate).
+			Order("c_date desc").
+			Find(&items).Error
+	}
+
+	if err != nil {
+		span.RecordError(err)
+		return core.Chunk{}, err
+	}
+
+	// append domain to timelineID
+	for i, item := range items {
+		items[i].TimelineID = item.TimelineID + "@" + r.config.FQDN
+	}
+
+	// 新しいものをappendできるように、キャッシュには逆順で保存する
+	reversedItems := make([]core.TimelineItem, len(items))
+	for i, item := range items {
+		reversedItems[len(items)-i-1] = item
+	}
+	b, err := json.Marshal(reversedItems)
+	if err != nil {
+		span.RecordError(err)
+		return core.Chunk{}, err
+	}
+	key := tlBodyCachePrefix + timeline + ":" + epoch
+	cacheStr := string(b[1:len(b)-1]) + ","
+	err = r.mc.Set(&memcache.Item{Key: key, Value: []byte(cacheStr)})
+	if err != nil {
+		span.RecordError(err)
+		return core.Chunk{}, err
+	}
+
+	return core.Chunk{
+		Key:   key,
+		Epoch: epoch,
+		Items: items,
+	}, nil
+
+}
+
+func (r *repository) loadRemoteBodies(ctx context.Context, remote string, query map[string]string) (map[string]core.Chunk, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.LoadRemoteBody")
+	defer span.End()
+
+	result, err := r.client.GetChunkBodies(ctx, remote, query, nil)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	currentSubscriptions := r.GetCurrentSubs(ctx)
+	for timeline, chunk := range result {
+
+		// 最新のチャンクに関しては、socketが張られてるキャッシュしか温められないのでそれだけ保持
+		if chunk.Epoch == core.Time2Chunk(time.Now()) && !slices.Contains(currentSubscriptions, timeline) {
+			continue
+		}
+
+		key := tlBodyCachePrefix + timeline + ":" + chunk.Epoch
+		b, err := json.Marshal(chunk.Items)
+		if err != nil {
+			span.RecordError(err)
+			continue
+		}
+		cacheStr := string(b[1:len(b)-1]) + ","
+		err = r.mc.Set(&memcache.Item{Key: key, Value: []byte(cacheStr)})
+		if err != nil {
+			span.RecordError(err)
+			continue
+		}
+	}
+
+	return result, nil
+}
 
 func (r *repository) SetNormalizationCache(ctx context.Context, timelineID string, value string) error {
 	return r.mc.Set(&memcache.Item{Key: normaalizationCachePrefix + timelineID, Value: []byte(value), Expiration: normaalizationCacheTTL})

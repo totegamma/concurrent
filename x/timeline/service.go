@@ -67,13 +67,13 @@ func min(a, b int) int {
 	return b
 }
 
-func (s *service) LookupChunkItr(ctx context.Context, timeliens []string, epoch string) (map[string]string, error) {
-	ctx, span := tracer.Start(ctx, "Timeline.Service.LookupChunkItr")
+func (s *service) GetChunksNew(ctx context.Context, timelines []string, epoch string) (map[string]core.Chunk, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Service.GetChunk")
 	defer span.End()
 
 	normalized := make([]string, 0)
 	normtable := make(map[string]string)
-	for _, timeline := range timeliens {
+	for _, timeline := range timelines {
 		normalizedTimeline, err := s.NormalizeTimelineID(ctx, timeline)
 		if err != nil {
 			slog.WarnContext(
@@ -87,51 +87,24 @@ func (s *service) LookupChunkItr(ctx context.Context, timeliens []string, epoch 
 		normtable[normalizedTimeline] = timeline
 	}
 
-	table, err := s.repository.GetChunkIterators(ctx, normalized, epoch)
+	query, err := s.repository.LookupChunkItrs(ctx, normalized, epoch)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
 
-	recovered := make(map[string]string)
-	for k, v := range table {
-		split := strings.Split(v, ":")
-		recovered[normtable[k]] = split[len(split)-1]
+	chunks, err := s.repository.LoadChunkBodies(ctx, query)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	recovered := make(map[string]core.Chunk)
+	for k, v := range chunks {
+		recovered[normtable[k]] = v
 	}
 
 	return recovered, nil
-}
-
-func (s *service) LoadChunkBody(ctx context.Context, query map[string]string) (map[string]core.Chunk, error) {
-	ctx, span := tracer.Start(ctx, "Timeline.Service.LoadChunkBody")
-	defer span.End()
-
-	result := make(map[string]core.Chunk)
-	for k, v := range query {
-		time := core.Chunk2RecentTime(v)
-
-		chunks, err := s.GetChunks(ctx, []string{k}, time)
-		if err != nil {
-			span.RecordError(err)
-			continue
-		}
-		if len(chunks) == 0 {
-			continue
-		}
-
-		var key string
-		for l := range chunks {
-			key = l
-			break
-		}
-
-		result[k] = core.Chunk{
-			Epoch: v,
-			Items: chunks[key].Items,
-		}
-	}
-
-	return result, nil
 }
 
 func (s *service) CurrentRealtimeConnectionCount() int64 {
@@ -216,6 +189,78 @@ func (s *service) NormalizeTimelineID(ctx context.Context, timeline string) (str
 	return normalized, nil
 }
 
+func (s *service) LookupChunkItr(ctx context.Context, timeliens []string, epoch string) (map[string]string, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Service.LookupChunkItr")
+	defer span.End()
+
+	normalized := make([]string, 0)
+	normtable := make(map[string]string)
+	for _, timeline := range timeliens {
+		normalizedTimeline, err := s.NormalizeTimelineID(ctx, timeline)
+		if err != nil {
+			slog.WarnContext(
+				ctx,
+				fmt.Sprintf("failed to normalize timeline: %s", timeline),
+				slog.String("module", "timeline"),
+			)
+			continue
+		}
+		normalized = append(normalized, normalizedTimeline)
+		normtable[normalizedTimeline] = timeline
+	}
+
+	table, err := s.repository.GetChunkIterators(ctx, normalized, epoch)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	recovered := make(map[string]string)
+	for k, v := range table {
+		split := strings.Split(v, ":")
+		recovered[normtable[k]] = split[len(split)-1]
+	}
+
+	return recovered, nil
+}
+
+func (s *service) LoadChunkBody(ctx context.Context, query map[string]string) (map[string]core.Chunk, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Service.LoadChunkBody")
+	defer span.End()
+
+	normalized := map[string]string{}
+	normtable := map[string]string{}
+
+	for k, v := range query {
+		normalizedTimeline, err := s.NormalizeTimelineID(ctx, k)
+		if err != nil {
+			slog.WarnContext(
+				ctx,
+				fmt.Sprintf("failed to normalize timeline: %s", k),
+				slog.String("module", "timeline"),
+			)
+			continue
+		}
+		normalized[normalizedTimeline] = v
+		normtable[normalizedTimeline] = k
+	}
+
+	result, err := s.repository.LoadChunkBodies(ctx, normalized)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	recovered := map[string]core.Chunk{}
+	for k, v := range result {
+		recovered[normtable[k]] = v
+	}
+
+	return recovered, nil
+}
+
+// --- deprecated ------------------------------------------------------------------------------------
+
 // GetChunks returns chunks by timelineID and time
 func (s *service) GetChunks(ctx context.Context, timelines []string, until time.Time) (map[string]core.Chunk, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.GetChunks")
@@ -263,6 +308,8 @@ func (s *service) GetChunks(ctx context.Context, timelines []string, until time.
 
 	return items, nil
 }
+
+// ---------------------------------------------------------------------------------------------------
 
 func (s *service) GetRecentItemsFromSubscription(ctx context.Context, subscription string, until time.Time, limit int) ([]core.TimelineItem, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.GetRecentItemsFromSubscription")

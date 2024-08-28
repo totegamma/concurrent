@@ -6,14 +6,28 @@ import (
 	"time"
 )
 
+const (
+	chunkLength = 600
+)
+
 func Time2Chunk(t time.Time) string {
 	// chunk by 10 minutes
-	return fmt.Sprintf("%d", (t.Unix()/600)*600)
+	return fmt.Sprintf("%d", (t.Unix()/chunkLength)*chunkLength)
+}
+
+func NextChunk(chunk string) string {
+	i, _ := strconv.ParseInt(chunk, 10, 64)
+	return fmt.Sprintf("%d", i+chunkLength)
+}
+
+func PrevChunk(chunk string) string {
+	i, _ := strconv.ParseInt(chunk, 10, 64)
+	return fmt.Sprintf("%d", i-chunkLength)
 }
 
 func Chunk2RecentTime(chunk string) time.Time {
 	i, _ := strconv.ParseInt(chunk, 10, 64)
-	return time.Unix(i+600, 0)
+	return time.Unix(i+chunkLength, 0)
 }
 
 func Chunk2ImmediateTime(chunk string) time.Time {

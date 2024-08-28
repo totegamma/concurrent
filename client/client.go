@@ -36,6 +36,8 @@ type Client interface {
 	GetChunks(ctx context.Context, domain string, timelines []string, queryTime time.Time, opts *Options) (map[string]core.Chunk, error)
 	GetKey(ctx context.Context, domain, id string, opts *Options) ([]core.Key, error)
 	GetDomain(ctx context.Context, domain string, opts *Options) (core.Domain, error)
+	GetChunkItrs(ctx context.Context, domain string, timelines []string, epoch string, opts *Options) (map[string]string, error)
+	GetChunkBodies(ctx context.Context, domain string, query map[string]string, opts *Options) (map[string]core.Chunk, error)
 }
 
 type client struct {
@@ -330,6 +332,57 @@ func (c *client) GetChunks(ctx context.Context, domain string, timelines []strin
 	timeStr := fmt.Sprintf("%d", queryTime.Unix())
 
 	response, err := httpRequest[map[string]core.Chunk](ctx, &c.client, "GET", "https://"+domain+"/api/v1/timelines/chunks?timelines="+timelinesStr+"&time="+timeStr, "", opts)
+	if err != nil {
+		span.RecordError(err)
+
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			c.lastFailed[domain] = time.Now()
+		}
+
+		return nil, err
+	}
+
+	return *response, nil
+}
+
+func (c *client) GetChunkItrs(ctx context.Context, domain string, timelines []string, epoch string, opts *Options) (map[string]string, error) {
+	ctx, span := tracer.Start(ctx, "Client.GetChunkItrs")
+	defer span.End()
+
+	if !c.IsOnline(domain) {
+		return nil, fmt.Errorf("Domain is offline")
+	}
+
+	timelinesStr := strings.Join(timelines, ",")
+
+	response, err := httpRequest[map[string]string](ctx, &c.client, "GET", "https://"+domain+"/api/v1/chunks/itr?timelines="+timelinesStr+"&epoch="+epoch, "", opts)
+	if err != nil {
+		span.RecordError(err)
+
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			c.lastFailed[domain] = time.Now()
+		}
+
+		return nil, err
+	}
+
+	return *response, nil
+}
+
+func (c *client) GetChunkBodies(ctx context.Context, domain string, query map[string]string, opts *Options) (map[string]core.Chunk, error) {
+	ctx, span := tracer.Start(ctx, "Client.GetChunkBodies")
+	defer span.End()
+
+	if !c.IsOnline(domain) {
+		return nil, fmt.Errorf("Domain is offline")
+	}
+
+	queryStr := ""
+	for key, value := range query {
+		queryStr += key + ":" + value + ","
+	}
+
+	response, err := httpRequest[map[string]core.Chunk](ctx, &c.client, "GET", "https://"+domain+"/api/v1/chunks/body?"+queryStr, "", opts)
 	if err != nil {
 		span.RecordError(err)
 

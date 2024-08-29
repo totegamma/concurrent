@@ -53,6 +53,11 @@ func NewService(
 	}
 }
 
+func jsonPrint(tag string, obj interface{}) {
+	b, _ := json.MarshalIndent(obj, "", "  ")
+	fmt.Println(tag, string(b))
+}
+
 // Count returns the count number of messages
 func (s *service) Count(ctx context.Context) (int64, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.Count")
@@ -374,13 +379,13 @@ func (s *service) GetRecentItems(ctx context.Context, timelines []string, until 
 	for timeline, chunk := range chunks {
 
 		index := sort.Search(len(chunk.Items), func(i int) bool {
-			return chunk.Items[i].CDate.After(until)
+			return chunk.Items[i].CDate.Before(until)
 		})
 
 		heap.Push(&pq, &QueueItem{
 			Timeline: timeline,
 			Epoch:    epoch,
-			Item:     chunk.Items[0],
+			Item:     chunk.Items[index],
 			Index:    index,
 		})
 	}
@@ -389,7 +394,6 @@ func (s *service) GetRecentItems(ctx context.Context, timelines []string, until 
 	var uniq = make(map[string]bool)
 
 	for len(result) < limit && pq.Len() > 0 {
-
 		smallest := heap.Pop(&pq).(*QueueItem)
 		_, exists := uniq[smallest.Item.ResourceID]
 		if exists {
@@ -405,23 +409,27 @@ func (s *service) GetRecentItems(ctx context.Context, timelines []string, until 
 		if nextIndex < len(chunks[timeline].Items) {
 			heap.Push(&pq, &QueueItem{
 				Timeline: timeline,
+				Epoch:    smallest.Epoch,
 				Item:     chunks[timeline].Items[nextIndex],
 				Index:    nextIndex,
 			})
 		} else {
-			nextEpoch := core.Time2Chunk(smallest.Item.CDate)
-			if nextEpoch != smallest.Epoch {
-				nextEpoch = core.NextChunk(nextEpoch)
+			prevEpoch := core.Time2Chunk(smallest.Item.CDate)
+			if prevEpoch == smallest.Epoch {
+				prevEpoch = core.PrevChunk(prevEpoch)
 			}
-			nextChunks, err := s.GetChunksNew(ctx, []string{timeline}, nextEpoch)
+			prevChunks, err := s.GetChunksNew(ctx, []string{timeline}, prevEpoch)
 			if err != nil {
 				continue
 			}
-			if nextChunk, ok := nextChunks[timeline]; ok {
+			if prevChunk, ok := prevChunks[timeline]; ok {
+				if len(prevChunk.Items) <= 0 {
+					continue
+				}
 				heap.Push(&pq, &QueueItem{
 					Timeline: timeline,
-					Epoch:    nextEpoch,
-					Item:     nextChunk.Items[0],
+					Epoch:    prevEpoch,
+					Item:     prevChunk.Items[0],
 					Index:    0,
 				})
 			}

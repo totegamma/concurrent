@@ -35,6 +35,11 @@ func Chunk2ImmediateTime(chunk string) time.Time {
 	return time.Unix(i, 0)
 }
 
+func EpochTime(epoch string) time.Time {
+    i, _ := strconv.ParseInt(epoch, 10, 64)
+    return time.Unix(i, 0)
+}
+
 func TypedIDToType(id string) string {
 	if len(id) != 27 {
 		return ""

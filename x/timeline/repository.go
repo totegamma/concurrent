@@ -1,3 +1,4 @@
+//go:generate go run go.uber.org/mock/mockgen -source=repository.go -destination=mock/repository.go
 package timeline
 
 import (
@@ -915,17 +916,6 @@ func (r *repository) CreateItem(ctx context.Context, item core.TimelineItem) (co
 	if err != nil {
 		// キャッシュに保存できなかった場合、新しいチャンクをDBから作成する必要がある
 		_, err = r.GetChunksFromDB(ctx, []string{timelineID}, itemChunk)
-
-		// 再実行 (誤り: これをするとデータが重複するでしょ)
-		/*
-			err = r.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
-			if err != nil {
-				// これは致命的にプログラムがおかしい
-				log.Printf("failed to append cache: %v", err)
-				span.RecordError(err)
-				return item, err
-			}
-		*/
 
 		if itemChunk != core.Time2Chunk(time.Now()) {
 			// イテレータを更新する

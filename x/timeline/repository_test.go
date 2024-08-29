@@ -17,6 +17,221 @@ import (
 
 var ctx = context.Background()
 
+func TestLoadRemoteBodies(t *testing.T) {
+	var cleanup_db func()
+	db, cleanup_db := testutil.CreateDB()
+	defer cleanup_db()
+
+	var cleanup_rdb func()
+	rdb, cleanup_rdb := testutil.CreateRDB()
+	defer cleanup_rdb()
+
+	var cleanup_mc func()
+	mc, cleanup_mc := testutil.CreateMC()
+	defer cleanup_mc()
+
+	pivotTime := time.Now()
+	pivotEpoch := core.Time2Chunk(pivotTime)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockSchema := mock_core.NewMockSchemaService(ctrl)
+	mockSchema.EXPECT().UrlToID(gomock.Any(), gomock.Any()).Return(uint(0), nil).AnyTimes()
+	mockSchema.EXPECT().IDToUrl(gomock.Any(), gomock.Any()).Return("", nil).AnyTimes()
+
+	mockClient := mock_client.NewMockClient(ctrl)
+	mockClient.EXPECT().GetChunkBodies(
+		gomock.Any(),
+		"remote.example.com",
+		map[string]string{
+			"t00000000000000000000000000@remote.example.com": pivotEpoch,
+			"t11111111111111111111111111@remote.example.com": pivotEpoch,
+		},
+		nil,
+	).Return(
+		map[string]core.Chunk{
+			"t00000000000000000000000000@remote.example.com": {
+				Epoch: pivotEpoch,
+				Items: []core.TimelineItem{
+					{
+						ResourceID: "m00000000000000000000000000",
+						TimelineID: "t00000000000000000000000000",
+						Owner:      "con1t0tey8uxhkqkd4wcp4hd4jedt7f0vfhk29xdd2",
+						CDate:      pivotTime,
+					},
+				},
+			},
+			"t11111111111111111111111111@remote.example.com": {
+				Epoch: pivotEpoch,
+				Items: []core.TimelineItem{
+					{
+						ResourceID: "m11111111111111111111111111",
+						TimelineID: "t11111111111111111111111111",
+						Owner:      "con1t0tey8uxhkqkd4wcp4hd4jedt7f0vfhk29xdd2",
+						CDate:      pivotTime,
+					},
+				},
+			},
+		},
+		nil,
+	)
+
+	repo := repository{
+		db:     db,
+		rdb:    rdb,
+		mc:     mc,
+		client: mockClient,
+		schema: mockSchema,
+		config: core.Config{
+			FQDN: "example.com",
+		},
+	}
+
+	// subscribe rdb
+	eventChan := make(chan core.Event)
+	subctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go repo.Subscribe(
+		subctx,
+		[]string{"t00000000000000000000000000@remote.example.com"},
+		eventChan,
+	)
+
+	time.Sleep(1 * time.Second) // subscribeが完了するまで待つ
+
+	currentSubs := repo.GetCurrentSubs(ctx)
+	if !assert.Contains(t, currentSubs, "t00000000000000000000000000@remote.example.com") {
+		t.Log("currentSubs:", currentSubs)
+		t.FailNow()
+	}
+
+	bodies, err := repo.loadRemoteBodies(
+		ctx,
+		"remote.example.com",
+		map[string]string{
+			"t00000000000000000000000000@remote.example.com": pivotEpoch,
+			"t11111111111111111111111111@remote.example.com": pivotEpoch,
+		},
+	)
+	assert.NoError(t, err)
+	assert.Len(t, bodies, 2)
+	if assert.Contains(t, bodies, "t00000000000000000000000000@remote.example.com") {
+		assert.Len(t, bodies["t00000000000000000000000000@remote.example.com"].Items, 1)
+		assert.Equal(t, "m00000000000000000000000000", bodies["t00000000000000000000000000@remote.example.com"].Items[0].ResourceID)
+	}
+
+	if assert.Contains(t, bodies, "t11111111111111111111111111@remote.example.com") {
+		assert.Len(t, bodies["t11111111111111111111111111@remote.example.com"].Items, 1)
+		assert.Equal(t, "m11111111111111111111111111", bodies["t11111111111111111111111111@remote.example.com"].Items[0].ResourceID)
+	}
+
+	// ちゃんとキャッシュされているか確認
+	mcKey1 := tlBodyCachePrefix + "t00000000000000000000000000@remote.example.com:" + pivotEpoch
+	mcVal1, err := mc.Get(mcKey1)
+	if assert.NoError(t, err) {
+		cacheStr := string(mcVal1.Value)
+		cacheStr = cacheStr[:len(cacheStr)-1]
+		cacheStr = "[" + cacheStr + "]"
+
+		var items []core.TimelineItem
+		err = json.Unmarshal([]byte(cacheStr), &items)
+		if assert.NoError(t, err) {
+			assert.Len(t, items, 1)
+			assert.Equal(t, "m00000000000000000000000000", items[0].ResourceID)
+		}
+	}
+
+	mcKey2 := tlBodyCachePrefix + "t11111111111111111111111111@remote.example.com:" + pivotEpoch
+	_, err = mc.Get(mcKey2)
+	assert.Error(t, err) // こっちはsubscribeされてないのでキャッシュされない
+}
+
+func TestLookupRemoteItrs(t *testing.T) {
+	var cleanup_db func()
+	db, cleanup_db := testutil.CreateDB()
+	defer cleanup_db()
+
+	var cleanup_rdb func()
+	rdb, cleanup_rdb := testutil.CreateRDB()
+	defer cleanup_rdb()
+
+	var cleanup_mc func()
+	mc, cleanup_mc := testutil.CreateMC()
+	defer cleanup_mc()
+
+	pivotTime := time.Now()
+	pivotEpoch := core.Time2Chunk(pivotTime)
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockSchema := mock_core.NewMockSchemaService(ctrl)
+	mockSchema.EXPECT().UrlToID(gomock.Any(), gomock.Any()).Return(uint(0), nil).AnyTimes()
+	mockSchema.EXPECT().IDToUrl(gomock.Any(), gomock.Any()).Return("", nil).AnyTimes()
+
+	mockClient := mock_client.NewMockClient(ctrl)
+	mockClient.EXPECT().GetChunkItrs(
+		gomock.Any(),
+		"remote.example.com",
+		[]string{
+			"t00000000000000000000000000@remote.example.com",
+			"t11111111111111111111111111@remote.example.com",
+		},
+		pivotEpoch,
+		gomock.Any(),
+	).Return(
+		map[string]string{
+			"t00000000000000000000000000@remote.example.com": pivotEpoch,
+			"t11111111111111111111111111@remote.example.com": pivotEpoch,
+		},
+		nil,
+	)
+
+	repo := repository{
+		db:     db,
+		rdb:    rdb,
+		mc:     mc,
+		client: mockClient,
+		schema: mockSchema,
+		config: core.Config{
+			FQDN: "example.com",
+		},
+	}
+
+	itrs, err := repo.lookupRemoteItrs(
+		ctx,
+		"remote.example.com",
+		[]string{
+			"t00000000000000000000000000@remote.example.com",
+			"t11111111111111111111111111@remote.example.com",
+		},
+		pivotEpoch,
+	)
+	assert.NoError(t, err)
+	assert.Len(t, itrs, 2)
+	if assert.Contains(t, itrs, "t00000000000000000000000000@remote.example.com") {
+		assert.Equal(t, pivotEpoch, itrs["t00000000000000000000000000@remote.example.com"])
+	}
+
+	if assert.Contains(t, itrs, "t11111111111111111111111111@remote.example.com") {
+		assert.Equal(t, pivotEpoch, itrs["t11111111111111111111111111@remote.example.com"])
+	}
+
+	// ちゃんとキャッシュされているか確認
+	mcKey1 := tlItrCachePrefix + "t00000000000000000000000000@remote.example.com:" + pivotEpoch
+	mcKey2 := tlItrCachePrefix + "t11111111111111111111111111@remote.example.com:" + pivotEpoch
+	mcVal1, err := mc.Get(mcKey1)
+	if assert.NoError(t, err) {
+		assert.Equal(t, pivotEpoch, string(mcVal1.Value))
+	}
+
+	mcVal2, err := mc.Get(mcKey2)
+	if assert.NoError(t, err) {
+		assert.Equal(t, pivotEpoch, string(mcVal2.Value))
+	}
+}
+
 func TestLookupLocalItrs(t *testing.T) {
 	var cleanup_db func()
 	db, cleanup_db := testutil.CreateDB()

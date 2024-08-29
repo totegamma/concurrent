@@ -1,6 +1,7 @@
 package timeline
 
 import (
+	"container/heap"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -328,96 +329,106 @@ func (s *service) GetRecentItemsFromSubscription(ctx context.Context, subscripti
 	return s.GetRecentItems(ctx, timelines, until, limit)
 }
 
+type QueueItem struct {
+	Timeline string
+	Epoch    string
+	Item     core.TimelineItem
+	Index    int
+}
+
+type PriorityQueue []*QueueItem
+
+func (pq PriorityQueue) Len() int { return len(pq) }
+func (pq PriorityQueue) Less(i, j int) bool {
+	return pq[i].Item.CDate.After(pq[j].Item.CDate)
+}
+func (pq PriorityQueue) Swap(i, j int) {
+	pq[i], pq[j] = pq[j], pq[i]
+}
+func (pq *PriorityQueue) Push(x interface{}) {
+	item := x.(*QueueItem)
+	*pq = append(*pq, item)
+}
+func (pq *PriorityQueue) Pop() interface{} {
+	old := *pq
+	n := len(old)
+	item := old[n-1]
+	*pq = old[0 : n-1]
+	return item
+}
+
 // GetRecentItems returns recent message from timelines
 func (s *service) GetRecentItems(ctx context.Context, timelines []string, until time.Time, limit int) ([]core.TimelineItem, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.GetRecentItems")
 	defer span.End()
 
-	var domainMap = make(map[string][]string)
-
-	// normalize timelineID and validate
-	for i, timeline := range timelines {
-		normalized, err := s.NormalizeTimelineID(ctx, timeline)
-		if err != nil {
-			continue
-		}
-
-		split := strings.Split(normalized, "@")
-		domain := split[len(split)-1]
-		if len(split) >= 2 {
-			if _, ok := domainMap[domain]; !ok {
-				domainMap[domain] = make([]string, 0)
-			}
-			if domain == s.config.FQDN {
-				domainMap[domain] = append(domainMap[domain], split[0])
-			} else {
-				domainMap[domain] = append(domainMap[domain], timeline)
-			}
-		}
-
-		timelines[i] = normalized
-	}
-
-	// first, try to get from cache regardless of local or remote
-	untilChunk := core.Time2Chunk(until)
-	items, err := s.repository.GetChunksFromCache(ctx, timelines, untilChunk)
+	epoch := core.Time2Chunk(until)
+	chunks, err := s.GetChunksNew(ctx, timelines, epoch)
 	if err != nil {
-		slog.ErrorContext(ctx, "failed to get chunks from cache", slog.String("error", err.Error()), slog.String("module", "timeline"))
-		span.RecordError(err)
 		return nil, err
 	}
 
-	for host, timelines := range domainMap {
-		if host == s.config.FQDN {
-			chunks, err := s.repository.GetChunksFromDB(ctx, timelines, untilChunk)
-			if err != nil {
-				slog.ErrorContext(ctx, "failed to get chunks from db", slog.String("error", err.Error()), slog.String("module", "timeline"))
-				span.RecordError(err)
-				return nil, err
-			}
-			for timeline, chunk := range chunks {
-				items[timeline] = chunk
-			}
+	pq := make(PriorityQueue, 0)
+	heap.Init(&pq)
+
+	for timeline, chunk := range chunks {
+
+		index := sort.Search(len(chunk.Items), func(i int) bool {
+			return chunk.Items[i].CDate.After(until)
+		})
+
+		heap.Push(&pq, &QueueItem{
+			Timeline: timeline,
+			Epoch:    epoch,
+			Item:     chunk.Items[0],
+			Index:    index,
+		})
+	}
+
+	var result []core.TimelineItem
+	var uniq = make(map[string]bool)
+
+	for len(result) < limit && pq.Len() > 0 {
+
+		smallest := heap.Pop(&pq).(*QueueItem)
+		_, exists := uniq[smallest.Item.ResourceID]
+		if exists {
+			continue
+		}
+
+		result = append(result, smallest.Item)
+		uniq[smallest.Item.ResourceID] = true
+
+		nextIndex := smallest.Index + 1
+		timeline := smallest.Timeline
+
+		if nextIndex < len(chunks[timeline].Items) {
+			heap.Push(&pq, &QueueItem{
+				Timeline: timeline,
+				Item:     chunks[timeline].Items[nextIndex],
+				Index:    nextIndex,
+			})
 		} else {
-			chunks, err := s.repository.GetChunksFromRemote(ctx, host, timelines, until)
+			nextEpoch := core.Time2Chunk(smallest.Item.CDate)
+			if nextEpoch != smallest.Epoch {
+				nextEpoch = core.NextChunk(nextEpoch)
+			}
+			nextChunks, err := s.GetChunksNew(ctx, []string{timeline}, nextEpoch)
 			if err != nil {
-				slog.ErrorContext(ctx, "failed to get chunks from remote", slog.String("error", err.Error()), slog.String("module", "timeline"))
-				span.RecordError(err)
 				continue
 			}
-			for timeline, chunk := range chunks {
-				items[timeline] = chunk
+			if nextChunk, ok := nextChunks[timeline]; ok {
+				heap.Push(&pq, &QueueItem{
+					Timeline: timeline,
+					Epoch:    nextEpoch,
+					Item:     nextChunk.Items[0],
+					Index:    0,
+				})
 			}
 		}
 	}
 
-	// summary messages and remove earlier than until
-	var messages []core.TimelineItem
-	for _, item := range items {
-		for _, timelineItem := range item.Items {
-			if timelineItem.CDate.After(until) {
-				continue
-			}
-			messages = append(messages, timelineItem)
-		}
-	}
-
-	var uniq []core.TimelineItem
-	m := make(map[string]bool)
-	for _, elem := range messages {
-		if !m[elem.ResourceID] {
-			m[elem.ResourceID] = true
-			uniq = append(uniq, elem)
-		}
-	}
-
-	sort.Slice(uniq, func(l, r int) bool {
-		return uniq[l].CDate.After(uniq[r].CDate)
-	})
-
-	chopped := uniq[:min(len(uniq), limit)]
-
-	return chopped, nil
+	return result, nil
 }
 
 func (s *service) GetImmediateItemsFromSubscription(ctx context.Context, subscription string, since time.Time, limit int) ([]core.TimelineItem, error) {

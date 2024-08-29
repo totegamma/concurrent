@@ -287,7 +287,7 @@ func (a *agent) RemoteSubRoutine(ctx context.Context, domain string, timelines [
 
 					// update cache
 					// first, try to get itr
-					itr := "timeline:itr:all:" + timelineID + ":" + core.Time2Chunk(event.Item.CDate)
+					itr := "tl:itr:" + timelineID + ":" + core.Time2Chunk(event.Item.CDate)
 					itrVal, err := a.mc.Get(itr)
 					var cacheKey string
 					if err == nil {

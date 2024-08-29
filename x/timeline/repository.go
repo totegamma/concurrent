@@ -909,7 +909,7 @@ func (r *repository) CreateItem(ctx context.Context, item core.TimelineItem) (co
 	json = append(json, ',')
 
 	itemChunk := core.Time2Chunk(item.CDate)
-	cacheKey := "timeline:body:all:" + timelineID + ":" + itemChunk
+	cacheKey := tlBodyCachePrefix + timelineID + ":" + itemChunk
 
 	err = r.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
 	if err != nil {
@@ -929,8 +929,8 @@ func (r *repository) CreateItem(ctx context.Context, item core.TimelineItem) (co
 
 		if itemChunk != core.Time2Chunk(time.Now()) {
 			// イテレータを更新する
-			key := "timeline:itr:all:" + timelineID + ":" + itemChunk
-			dest := "timeline:body:all:" + timelineID + ":" + itemChunk
+			key := tlItrCachePrefix + timelineID + ":" + itemChunk
+			dest := tlBodyCachePrefix + timelineID + ":" + itemChunk
 			r.mc.Set(&memcache.Item{Key: key, Value: []byte(dest)})
 		}
 	}

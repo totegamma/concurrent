@@ -66,6 +66,11 @@ type repository struct {
 	client client.Client
 	schema core.SchemaService
 	config core.Config
+
+	lookupChunkItrsCacheMisses int64
+	lookupChunkItrsCacheHits   int64
+	loadChunkBodiesCacheMisses int64
+	loadChunkBodiesCacheHits   int64
 }
 
 // NewRepository creates a new timeline repository
@@ -82,7 +87,15 @@ func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client c
 
 	mc.Set(&memcache.Item{Key: "timeline_count", Value: []byte(strconv.FormatInt(count, 10))})
 
-	return &repository{db, rdb, mc, client, schema, config}
+	return &repository{
+		db,
+		rdb,
+		mc,
+		client,
+		schema,
+		config,
+		0, 0, 0, 0,
+	}
 }
 
 const (
@@ -99,7 +112,15 @@ func (r *repository) LookupChunkItrs(ctx context.Context, normalized []string, e
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.LookupChunkItr")
 	defer span.End()
 
-	cache, err := r.mc.GetMulti(normalized)
+	keys := make([]string, len(normalized))
+	keytable := make(map[string]string)
+	for i, timeline := range normalized {
+		key := tlItrCachePrefix + timeline + ":" + epoch
+		keys[i] = key
+		keytable[key] = timeline
+	}
+
+	cache, err := r.mc.GetMulti(keys)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -107,11 +128,14 @@ func (r *repository) LookupChunkItrs(ctx context.Context, normalized []string, e
 
 	var result = map[string]string{}
 	var missed = []string{}
-	for _, timeline := range normalized {
-		if cache[timeline] != nil {
-			result[timeline] = string(cache[timeline].Value)
+	for _, key := range keys {
+		timeline := keytable[key]
+		if cache[key] != nil {
+			result[timeline] = string(cache[key].Value)
+			r.lookupChunkItrsCacheHits++
 		} else {
 			missed = append(missed, timeline)
+			r.lookupChunkItrsCacheMisses++
 		}
 	}
 
@@ -195,8 +219,10 @@ func (r *repository) LoadChunkBodies(ctx context.Context, query map[string]strin
 				Epoch: query[timeline],
 				Items: items,
 			}
+			r.loadChunkBodiesCacheHits++
 		} else {
 			missed[timeline] = query[timeline]
+			r.loadChunkBodiesCacheMisses++
 		}
 	}
 

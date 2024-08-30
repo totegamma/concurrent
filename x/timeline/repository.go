@@ -207,14 +207,13 @@ func (r *repository) LoadChunkBodies(ctx context.Context, query map[string]strin
 		if cache[key] != nil {
 			var items []core.TimelineItem
 			cacheStr := string(cache[key].Value)
-			cacheStr = cacheStr[:len(cacheStr)-1]
+			cacheStr = cacheStr[1:]
 			cacheStr = "[" + cacheStr + "]"
 			err = json.Unmarshal([]byte(cacheStr), &items)
 			if err != nil {
 				span.RecordError(err)
 				continue
 			}
-			slices.Reverse(items)
 			result[timeline] = core.Chunk{
 				Key:   key,
 				Epoch: query[timeline],
@@ -387,18 +386,13 @@ func (r *repository) loadLocalBody(ctx context.Context, timeline string, epoch s
 		items[i].TimelineID = item.TimelineID + "@" + r.config.FQDN
 	}
 
-	// 新しいものをappendできるように、キャッシュには逆順で保存する
-	reversedItems := make([]core.TimelineItem, len(items))
-	for i, item := range items {
-		reversedItems[len(items)-i-1] = item
-	}
-	b, err := json.Marshal(reversedItems)
+	b, err := json.Marshal(items)
 	if err != nil {
 		span.RecordError(err)
 		return core.Chunk{}, err
 	}
 	key := tlBodyCachePrefix + timeline + ":" + epoch
-	cacheStr := string(b[1:len(b)-1]) + ","
+	cacheStr := "," + string(b[1:len(b)-1])
 	err = r.mc.Set(&memcache.Item{Key: key, Value: []byte(cacheStr)})
 	if err != nil {
 		span.RecordError(err)
@@ -437,7 +431,7 @@ func (r *repository) loadRemoteBodies(ctx context.Context, remote string, query 
 			span.RecordError(err)
 			continue
 		}
-		cacheStr := string(b[1:len(b)-1]) + ","
+		cacheStr := "," + string(b[1:len(b)-1])
 		err = r.mc.Set(&memcache.Item{Key: key, Value: []byte(cacheStr)})
 		if err != nil {
 			span.RecordError(err)
@@ -669,13 +663,12 @@ func (r *repository) SaveToCache(ctx context.Context, chunks map[string]core.Chu
 		r.mc.Set(&memcache.Item{Key: itrKey, Value: []byte(chunk.Key)})
 
 		// save body
-		slices.Reverse(chunk.Items)
 		b, err := json.Marshal(chunk.Items)
 		if err != nil {
 			span.RecordError(err)
 			return err
 		}
-		value := string(b[1:len(b)-1]) + ","
+		value := "," + string(b[1:len(b)-1])
 		err = r.mc.Set(&memcache.Item{Key: chunk.Key, Value: []byte(value)})
 		if err != nil {
 			span.RecordError(err)
@@ -721,14 +714,13 @@ func (r *repository) GetChunksFromCache(ctx context.Context, timelines []string,
 
 		var items []core.TimelineItem
 		cacheStr := string(cache.Value)
-		cacheStr = cacheStr[:len(cacheStr)-1]
+		cacheStr = cacheStr[1:]
 		cacheStr = "[" + cacheStr + "]"
 		err = json.Unmarshal([]byte(cacheStr), &items)
 		if err != nil {
 			span.RecordError(err)
 			continue
 		}
-		slices.Reverse(items)
 		result[timeline] = core.Chunk{
 			Key:   targetKey,
 			Items: items,
@@ -787,17 +779,12 @@ func (r *repository) GetChunksFromDB(ctx context.Context, timelines []string, ch
 			Items: items,
 		}
 
-		// キャッシュには逆順で保存する
-		reversedItems := make([]core.TimelineItem, len(items))
-		for i, item := range items {
-			reversedItems[len(items)-i-1] = item
-		}
-		b, err := json.Marshal(reversedItems)
+		b, err := json.Marshal(items)
 		if err != nil {
 			span.RecordError(err)
 			continue
 		}
-		cacheStr := string(b[1:len(b)-1]) + ","
+		cacheStr := "," + string(b[1:len(b)-1])
 		err = r.mc.Set(&memcache.Item{Key: targetKey, Value: []byte(cacheStr)})
 		if err != nil {
 			span.RecordError(err)
@@ -907,18 +894,14 @@ func (r *repository) CreateItem(ctx context.Context, item core.TimelineItem) (co
 		return item, err
 	}
 
-	json = append(json, ',')
-
+	val := "," + string(json)
 	itemChunk := core.Time2Chunk(item.CDate)
 	cacheKey := tlBodyCachePrefix + timelineID + ":" + itemChunk
 
-	err = r.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
+	err = r.mc.Prepend(&memcache.Item{Key: cacheKey, Value: []byte(val)})
 	if err != nil {
-		// キャッシュに保存できなかった場合、新しいチャンクをDBから作成する必要がある
-		_, err = r.GetChunksFromDB(ctx, []string{timelineID}, itemChunk)
-
+		_, err = r.loadLocalBody(ctx, timelineID, itemChunk)
 		if itemChunk != core.Time2Chunk(time.Now()) {
-			// イテレータを更新する
 			key := tlItrCachePrefix + timelineID + ":" + itemChunk
 			dest := tlBodyCachePrefix + timelineID + ":" + itemChunk
 			r.mc.Set(&memcache.Item{Key: key, Value: []byte(dest)})

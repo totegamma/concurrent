@@ -17,6 +17,96 @@ import (
 
 var ctx = context.Background()
 
+func TestCreateItem(t *testing.T) {
+	var cleanup_db func()
+	db, cleanup_db := testutil.CreateDB()
+	defer cleanup_db()
+
+	var cleanup_rdb func()
+	rdb, cleanup_rdb := testutil.CreateRDB()
+	defer cleanup_rdb()
+
+	var cleanup_mc func()
+	mc, cleanup_mc := testutil.CreateMC()
+	defer cleanup_mc()
+
+	pivotEpoch := "6000"
+	pivotTime := core.EpochTime("6300")
+
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mockSchema := mock_core.NewMockSchemaService(ctrl)
+	mockSchema.EXPECT().UrlToID(gomock.Any(), gomock.Any()).Return(uint(0), nil).AnyTimes()
+	mockSchema.EXPECT().IDToUrl(gomock.Any(), gomock.Any()).Return("", nil).AnyTimes()
+
+	mockClient := mock_client.NewMockClient(ctrl)
+
+	repo := repository{
+		db:     db,
+		rdb:    rdb,
+		mc:     mc,
+		client: mockClient,
+		schema: mockSchema,
+		config: core.Config{
+			FQDN: "local.example.com",
+		},
+	}
+
+	// シナリオ1: 1チャンク内のアイテム数がdefaultChunkSizeより少ない場合
+	// Timelineを作成
+	_, err := repo.UpsertTimeline(ctx, core.Timeline{
+		ID:        "t00000000000000000000000000",
+		Indexable: true,
+		Author:    "con1t0tey8uxhkqkd4wcp4hd4jedt7f0vfhk29xdd2",
+		Schema:    "https://example.com/testschema.json",
+		Document:  "{}",
+	})
+	assert.NoError(t, err)
+
+	// Itemを追加
+	_, err = repo.CreateItem(ctx, core.TimelineItem{
+		ResourceID: "m00000000000000000000000000",
+		TimelineID: "t00000000000000000000000000",
+		Owner:      "con1t0tey8uxhkqkd4wcp4hd4jedt7f0vfhk29xdd2",
+		CDate:      pivotTime,
+	})
+
+	// 取得してキャッシュを生成
+	_, err = repo.loadLocalBody(
+		ctx,
+		"t00000000000000000000000000@local.example.com",
+		pivotEpoch,
+	)
+	assert.NoError(t, err)
+
+	// Itemを追加
+	_, err = repo.CreateItem(ctx, core.TimelineItem{
+		ResourceID: "m11111111111111111111111111",
+		TimelineID: "t00000000000000000000000000",
+		Owner:      "con1t0tey8uxhkqkd4wcp4hd4jedt7f0vfhk29xdd2",
+		CDate:      pivotTime,
+	})
+	assert.NoError(t, err)
+
+	// キャッシュされているか確認
+	mcKey0 := tlBodyCachePrefix + "t00000000000000000000000000" + "@" + "local.example.com" + ":" + pivotEpoch
+	mcVal0, err := mc.Get(mcKey0)
+	if assert.NoError(t, err) {
+		cacheStr := string(mcVal0.Value)
+		cacheStr = cacheStr[1:]
+		cacheStr = "[" + cacheStr + "]"
+
+		var items []core.TimelineItem
+		err = json.Unmarshal([]byte(cacheStr), &items)
+		if assert.NoError(t, err) {
+			assert.Len(t, items, 2)
+			assert.Equal(t, "m11111111111111111111111111", items[0].ResourceID)
+			assert.Equal(t, "m00000000000000000000000000", items[1].ResourceID)
+		}
+	}
+}
+
 func TestLoadChunkBodies(t *testing.T) {
 	var cleanup_db func()
 	db, cleanup_db := testutil.CreateDB()
@@ -458,7 +548,7 @@ func TestLoadRemoteBodies(t *testing.T) {
 	mcVal1, err := mc.Get(mcKey1)
 	if assert.NoError(t, err) {
 		cacheStr := string(mcVal1.Value)
-		cacheStr = cacheStr[:len(cacheStr)-1]
+		cacheStr = cacheStr[1:]
 		cacheStr = "[" + cacheStr + "]"
 
 		var items []core.TimelineItem
@@ -734,14 +824,14 @@ func TestLoadLocalBody(t *testing.T) {
 	if assert.NoError(t, err) {
 
 		cacheStr := string(mcVal0.Value)
-		cacheStr = cacheStr[:len(cacheStr)-1]
+		cacheStr = cacheStr[1:]
 		cacheStr = "[" + cacheStr + "]"
 
 		var items []core.TimelineItem
 		err = json.Unmarshal([]byte(cacheStr), &items)
 		if assert.NoError(t, err) {
 			assert.Len(t, items, 32)
-			assert.Equal(t, "m00000000000000000000000031", items[0].ResourceID) // 逆順になっているので最後のリソースIDが最初になる
+			assert.Equal(t, "m00000000000000000000000000", items[0].ResourceID)
 		}
 	}
 
@@ -783,14 +873,14 @@ func TestLoadLocalBody(t *testing.T) {
 	if assert.NoError(t, err) {
 
 		cacheStr := string(mcVal1.Value)
-		cacheStr = cacheStr[:len(cacheStr)-1]
+		cacheStr = cacheStr[1:]
 		cacheStr = "[" + cacheStr + "]"
 
 		var items []core.TimelineItem
 		err = json.Unmarshal([]byte(cacheStr), &items)
 		if assert.NoError(t, err) {
 			assert.Len(t, items, 40)
-			assert.Equal(t, "m00000000000000000000000039", items[0].ResourceID) // 逆順になっているので最後のリソースIDが最初になる
+			assert.Equal(t, "m00000000000000000000000000", items[0].ResourceID)
 		}
 	}
 

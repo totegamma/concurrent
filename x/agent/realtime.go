@@ -278,7 +278,7 @@ func (a *agent) RemoteSubRoutine(ctx context.Context, domain string, timelines [
 						)
 						continue
 					}
-					json = append(json, ',')
+					val := "," + string(json)
 
 					timelineID := event.Item.TimelineID
 					if !strings.Contains(timelineID, "@") {
@@ -306,7 +306,7 @@ func (a *agent) RemoteSubRoutine(ctx context.Context, domain string, timelines [
 						continue
 					}
 
-					err = a.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
+					err = a.mc.Prepend(&memcache.Item{Key: cacheKey, Value: []byte(val)})
 					if err != nil {
 						slog.Error(
 							fmt.Sprintf("fail to update cache: %s", itr),

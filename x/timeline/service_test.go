@@ -2,6 +2,8 @@ package timeline
 
 import (
 	"context"
+	"fmt"
+	"strconv"
 	"testing"
 
 	"github.com/pkg/errors"
@@ -97,6 +99,105 @@ func TestGetRecentItemsSimple(t *testing.T) {
 	assert.NoError(t, err)
 
 	assert.Len(t, items, 2)
+}
+
+func TestGetRecentItemsLoadMore(t *testing.T) {
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	pivotEpoch := "6000"
+	pivotTime := core.EpochTime("6300")
+	prevEpoch := "5400"
+
+	mockRepo := mock_timeline.NewMockRepository(ctrl)
+	mockRepo.EXPECT().
+		GetNormalizationCache(gomock.Any(), "t00000000000000000000000000").
+		Return("t00000000000000000000000000@local.example.com", nil).AnyTimes()
+	mockRepo.EXPECT().
+		LookupChunkItrs(gomock.Any(), []string{"t00000000000000000000000000@local.example.com"}, pivotEpoch).
+		Return(map[string]string{"t00000000000000000000000000@local.example.com": pivotEpoch}, nil)
+
+	chunk6000 := []core.TimelineItem{}
+	for i := 0; i < 16; i++ {
+		epoch := 6308 - i
+		chunk6000 = append(chunk6000, core.TimelineItem{
+			ResourceID: fmt.Sprintf("m0000000000000000000000%04d", epoch),
+			TimelineID: "t00000000000000000000000000",
+			Owner:      "con1t0tey8uxhkqkd4wcp4hd4jedt7f0vfhk29xdd2",
+			CDate:      core.EpochTime(strconv.Itoa(epoch)),
+		})
+	}
+
+	chunk5400 := []core.TimelineItem{}
+	for i := 0; i < 16; i++ {
+		epoch := 5399 - i
+		chunk5400 = append(chunk5400, core.TimelineItem{
+			ResourceID: fmt.Sprintf("m0000000000000000000000%04d", epoch),
+			TimelineID: "t00000000000000000000000000",
+			Owner:      "con1t0tey8uxhkqkd4wcp4hd4jedt7f0vfhk29xdd2",
+			CDate:      core.EpochTime(strconv.Itoa(epoch)),
+		})
+	}
+
+	mockRepo.EXPECT().
+		LoadChunkBodies(gomock.Any(), map[string]string{"t00000000000000000000000000@local.example.com": pivotEpoch}).
+		Return(map[string]core.Chunk{
+			"t00000000000000000000000000@local.example.com": {
+				Epoch: pivotEpoch,
+				Items: chunk6000,
+			},
+		}, nil)
+
+	mockRepo.EXPECT().
+		LookupChunkItrs(gomock.Any(), []string{"t00000000000000000000000000@local.example.com"}, prevEpoch).
+		Return(map[string]string{"t00000000000000000000000000@local.example.com": prevEpoch}, nil)
+	mockRepo.EXPECT().
+		LoadChunkBodies(gomock.Any(), map[string]string{"t00000000000000000000000000@local.example.com": prevEpoch}).
+		Return(map[string]core.Chunk{
+			"t00000000000000000000000000@local.example.com": {
+				Epoch: pivotEpoch,
+				Items: chunk5400,
+			},
+		}, nil)
+
+	mockEntity := mock_core.NewMockEntityService(ctrl)
+	mockDomain := mock_core.NewMockDomainService(ctrl)
+	mockSemantic := mock_core.NewMockSemanticIDService(ctrl)
+	mockSubscription := mock_core.NewMockSubscriptionService(ctrl)
+	mockPolicy := mock_core.NewMockPolicyService(ctrl)
+
+	service := NewService(
+		mockRepo,
+		mockEntity,
+		mockDomain,
+		mockSemantic,
+		mockSubscription,
+		mockPolicy,
+		core.Config{
+			FQDN: "local.example.com",
+		},
+	)
+
+	ctx := context.Background()
+
+	items, err := service.GetRecentItems(ctx, []string{"t00000000000000000000000000"}, pivotTime, 16)
+	assert.NoError(t, err)
+
+	assert.Len(t, items, 16)
+
+	expected := []string{}
+	for i := 0; i < 7; i++ {
+		epoch := 6299 - i
+		expected = append(expected, fmt.Sprintf("m0000000000000000000000%04d", epoch))
+	}
+	for i := 0; i < 9; i++ {
+		epoch := 5399 - i
+		expected = append(expected, fmt.Sprintf("m0000000000000000000000%04d", epoch))
+	}
+
+	for i, item := range items {
+		assert.Equal(t, expected[i], item.ResourceID)
+	}
 }
 
 func TestGetRecentItemsWide(t *testing.T) {

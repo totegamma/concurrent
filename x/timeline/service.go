@@ -393,15 +393,15 @@ func (s *service) GetRecentItems(ctx context.Context, timelines []string, until 
 	var result []core.TimelineItem
 	var uniq = make(map[string]bool)
 
-	for len(result) < limit && pq.Len() > 0 {
+	var itrlimit = 1000
+	for len(result) < limit && pq.Len() > 0 && itrlimit > 0 {
+		itrlimit--
 		smallest := heap.Pop(&pq).(*QueueItem)
 		_, exists := uniq[smallest.Item.ResourceID]
-		if exists {
-			continue
+		if !exists {
+			result = append(result, smallest.Item)
+			uniq[smallest.Item.ResourceID] = true
 		}
-
-		result = append(result, smallest.Item)
-		uniq[smallest.Item.ResourceID] = true
 
 		nextIndex := smallest.Index + 1
 		timeline := smallest.Timeline
@@ -426,6 +426,7 @@ func (s *service) GetRecentItems(ctx context.Context, timelines []string, until 
 				if len(prevChunk.Items) <= 0 {
 					continue
 				}
+				chunks[timeline] = prevChunk
 				heap.Push(&pq, &QueueItem{
 					Timeline: timeline,
 					Epoch:    prevEpoch,

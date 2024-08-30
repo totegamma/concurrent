@@ -36,8 +36,8 @@ func Chunk2ImmediateTime(chunk string) time.Time {
 }
 
 func EpochTime(epoch string) time.Time {
-    i, _ := strconv.ParseInt(epoch, 10, 64)
-    return time.Unix(i, 0)
+	i, _ := strconv.ParseInt(epoch, 10, 64)
+	return time.Unix(i, 0)
 }
 
 func TypedIDToType(id string) string {

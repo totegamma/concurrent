@@ -286,35 +286,12 @@ func (a *agent) RemoteSubRoutine(ctx context.Context, domain string, timelines [
 					}
 
 					// update cache
-					// first, try to get itr
-					itr := "tl:itr:" + timelineID + ":" + core.Time2Chunk(event.Item.CDate)
-					itrVal, err := a.mc.Get(itr)
-					var cacheKey string
-					if err == nil {
-						cacheKey = string(itrVal.Value)
-					} else {
-						// 最新時刻のイテレーターがないということは、キャッシュがないということ
-						// とはいえ今後はいい感じにキャッシュを作れるようにしたい
-						// 例えば、今までのキャッシュを(現時点では取得不能)最新のitrが指すようにして
-						// 今までのキャッシュを更新し続けるとか... (TODO)
-						// cacheKey := "timeline:body:all:" + event.Item.TimelienID + ":" + core.Time2Chunk(event.Item.CDate)
-						slog.Info(
-							fmt.Sprintf("no need to update cache: %s", itr),
-							slog.String("module", "agent"),
-							slog.String("group", "realtime"),
-						)
-						continue
-					}
-
-					err = a.mc.Prepend(&memcache.Item{Key: cacheKey, Value: []byte(val)})
-					if err != nil {
-						slog.Error(
-							fmt.Sprintf("fail to update cache: %s", itr),
-							slog.String("error", err.Error()),
-							slog.String("module", "agent"),
-							slog.String("group", "realtime"),
-						)
-					}
+					// Note: see x/timeline/repository.go CreateItem
+					epoch := core.Time2Chunk(event.Item.CDate)
+					itrKey := "tl:itr:" + timelineID + ":" + epoch
+					bodyKey := "tl:body:" + timelineID + ":" + epoch
+					a.mc.Replace(&memcache.Item{Key: itrKey, Value: []byte(epoch)})
+					a.mc.Prepend(&memcache.Item{Key: bodyKey, Value: []byte(val)})
 
 				case <-pingTicker.C:
 					if err := c.WriteMessage(websocket.PingMessage, []byte{}); err != nil {

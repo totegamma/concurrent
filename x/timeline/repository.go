@@ -896,21 +896,22 @@ func (r *repository) CreateItem(ctx context.Context, item core.TimelineItem) (co
 
 	val := "," + string(json)
 	itemChunk := core.Time2Chunk(item.CDate)
+	itrKey := tlItrCachePrefix + timelineID + ":" + itemChunk
 	cacheKey := tlBodyCachePrefix + timelineID + ":" + itemChunk
 
-	err = r.mc.Prepend(&memcache.Item{Key: cacheKey, Value: []byte(val)})
-	if err != nil {
-		_, err = r.loadLocalBody(ctx, timelineID, itemChunk)
-		if itemChunk != core.Time2Chunk(time.Now()) {
-			key := tlItrCachePrefix + timelineID + ":" + itemChunk
-			dest := tlBodyCachePrefix + timelineID + ":" + itemChunk
-			r.mc.Set(&memcache.Item{Key: key, Value: []byte(dest)})
-		}
-	}
+	// もし今からPrependするbodyブロックにイテレーターが向いてない場合は向きを変えておく必要がある
+	// これが発生するのは、タイムラインが久々に更新されたときで、最近のイテレーターが古いbodyブロックを向いている状態になっている
+	// そのため、イテレーターを更新しないと、古いbodyブロック(更新されない)を見続けてしまう為、新しく書き込んだデータが読み込まれない。
+	// Note:
+	// この処理は今から挿入するアイテムが最新のチャンクであることが前提になっている。
+	// 古いデータを挿入する場合は、書き込みを行ったチャンクから最新のチャンクまでのイテレーターを更新する必要があるかも。
+	// 範囲でforを回して、キャッシュをdeleteする処理を追加する必要があるだろう...
+	r.mc.Replace(&memcache.Item{Key: itrKey, Value: []byte(itemChunk)})
+	r.mc.Prepend(&memcache.Item{Key: cacheKey, Value: []byte(val)})
 
 	item.TimelineID = "t" + item.TimelineID
 
-	return item, err
+	return item, nil
 }
 
 // DeleteItem deletes a timeline item

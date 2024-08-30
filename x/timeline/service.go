@@ -117,10 +117,6 @@ func (s *service) CurrentRealtimeConnectionCount() int64 {
 	return atomic.LoadInt64(&s.socketCounter)
 }
 
-func (s *service) GetChunksFromRemote(ctx context.Context, host string, timelines []string, pivot time.Time) (map[string]core.Chunk, error) {
-	return s.repository.GetChunksFromRemote(ctx, host, timelines, pivot)
-}
-
 // NormalizeTimelineID normalizes timelineID
 // t+<hash> -> t+<hash>@<localdomain>
 // t+<hash>@<anydomain> -> t+<hash>@<anydomain>

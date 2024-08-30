@@ -42,8 +42,6 @@ type Repository interface {
 	GetChunksFromCache(ctx context.Context, timelines []string, chunk string) (map[string]core.Chunk, error)
 	GetChunksFromDB(ctx context.Context, timelines []string, chunk string) (map[string]core.Chunk, error)
 	GetChunkIterators(ctx context.Context, timelines []string, chunk string) (map[string]string, error)
-	GetChunksFromRemote(ctx context.Context, host string, timelines []string, queryTime time.Time) (map[string]core.Chunk, error)
-	SaveToCache(ctx context.Context, chunks map[string]core.Chunk, queryTime time.Time) error
 	PublishEvent(ctx context.Context, event core.Event) error
 
 	ListTimelineSubscriptions(ctx context.Context) (map[string]int64, error)
@@ -617,65 +615,6 @@ func (r *repository) GetTimelineFromRemote(ctx context.Context, host string, key
 	}
 
 	return timeline, nil
-}
-
-func (r *repository) GetChunksFromRemote(ctx context.Context, host string, timelines []string, queryTime time.Time) (map[string]core.Chunk, error) {
-	ctx, span := tracer.Start(ctx, "Timeline.Repository.GetChunksFromRemote")
-	defer span.End()
-
-	chunks, err := r.client.GetChunks(ctx, host, timelines, queryTime, nil)
-	if err != nil {
-		span.RecordError(err)
-		return nil, err
-	}
-
-	currentSubsciptions := r.GetCurrentSubs(ctx)
-
-	cacheChunks := make(map[string]core.Chunk)
-	for timelineID, chunk := range chunks {
-		if slices.Contains(currentSubsciptions, timelineID) {
-			cacheChunks[timelineID] = chunk
-		}
-	}
-
-	err = r.SaveToCache(ctx, cacheChunks, queryTime)
-	if err != nil {
-		slog.ErrorContext(
-			ctx, "fail to save cache",
-			slog.String("error", err.Error()),
-			slog.String("module", "timeline"),
-		)
-		span.RecordError(err)
-		return nil, err
-	}
-
-	return chunks, nil
-}
-
-// SaveToCache saves items to cache
-func (r *repository) SaveToCache(ctx context.Context, chunks map[string]core.Chunk, queryTime time.Time) error {
-	ctx, span := tracer.Start(ctx, "Timeline.Repository.SaveToCache")
-	defer span.End()
-
-	for timelineID, chunk := range chunks {
-		//save iterator
-		itrKey := "timeline:itr:all:" + timelineID + ":" + core.Time2Chunk(queryTime)
-		r.mc.Set(&memcache.Item{Key: itrKey, Value: []byte(chunk.Key)})
-
-		// save body
-		b, err := json.Marshal(chunk.Items)
-		if err != nil {
-			span.RecordError(err)
-			return err
-		}
-		value := "," + string(b[1:len(b)-1])
-		err = r.mc.Set(&memcache.Item{Key: chunk.Key, Value: []byte(value)})
-		if err != nil {
-			span.RecordError(err)
-			continue
-		}
-	}
-	return nil
 }
 
 // GetChunksFromCache gets chunks from cache

@@ -68,7 +68,9 @@ func (s *service) isMessagePublic(ctx context.Context, message core.Message) (bo
 		timeline, err := s.timeline.GetTimelineAutoDomain(ctx, timelineID)
 		if err != nil {
 			span.SetStatus(codes.Error, err.Error())
-			continue
+			// ここでエラーが発生した場合は、そのタイムラインにはアクセスできないということなので、安全側に倒してfalseを返す
+			// こうならないように必要なものはキャッシュしておくべき
+			return false, err
 		}
 
 		var params map[string]any = make(map[string]any)
@@ -175,7 +177,7 @@ func (s *service) GetAsUser(ctx context.Context, id string, requester core.Entit
 		timeline, err := s.timeline.GetTimelineAutoDomain(ctx, timelineID)
 		if err != nil {
 			span.SetStatus(codes.Error, err.Error())
-			continue
+			return core.Message{}, err // 評価不能なので、安全側に倒してエラーを返す
 		}
 
 		var params map[string]any = make(map[string]any)
@@ -260,7 +262,7 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 		timeline, err := s.timeline.GetTimelineAutoDomain(ctx, timelineID)
 		if err != nil {
 			span.SetStatus(codes.Error, err.Error())
-			continue
+			return core.Message{}, err // 評価不能なので、安全側に倒してエラーを返す
 		}
 
 		var params map[string]any = make(map[string]any)

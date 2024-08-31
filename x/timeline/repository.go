@@ -56,6 +56,8 @@ type Repository interface {
 
 	LookupChunkItrs(ctx context.Context, timelines []string, epoch string) (map[string]string, error)
 	LoadChunkBodies(ctx context.Context, query map[string]string) (map[string]core.Chunk, error)
+
+	GetMetrics() map[string]int64
 }
 
 type repository struct {
@@ -94,6 +96,15 @@ func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client c
 		schema,
 		config,
 		0, 0, 0, 0,
+	}
+}
+
+func (r *repository) GetMetrics() map[string]int64 {
+	return map[string]int64{
+		"lookup_chunk_itr_cache_misses":  r.lookupChunkItrsCacheMisses,
+		"lookup_chunk_itr_cache_hits":    r.lookupChunkItrsCacheHits,
+		"load_chunk_bodies_cache_misses": r.loadChunkBodiesCacheMisses,
+		"load_chunk_bodies_cache_hits":   r.loadChunkBodiesCacheHits,
 	}
 }
 

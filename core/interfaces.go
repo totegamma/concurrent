@@ -177,13 +177,14 @@ type TimelineService interface {
 
 	ListTimelineSubscriptions(ctx context.Context) (map[string]int64, error)
 	Count(ctx context.Context) (int64, error)
-	CurrentRealtimeConnectionCount() int64
 	NormalizeTimelineID(ctx context.Context, timeline string) (string, error)
 	GetOwners(ctx context.Context, timelines []string) ([]string, error)
 
 	Query(ctx context.Context, timelineID, schema, owner, author string, until time.Time, limit int) ([]TimelineItem, error)
 
 	Realtime(ctx context.Context, request <-chan []string, response chan<- Event)
+
+	UpdateMetrics()
 }
 
 type JobService interface {

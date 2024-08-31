@@ -383,14 +383,6 @@ func main() {
 	)
 	prometheus.MustRegister(resourceCountMetrics)
 
-	var timelineRealtimeConnectionMetrics = prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "cc_timeline_realtime_connections",
-			Help: "timeline realtime connections",
-		},
-	)
-	prometheus.MustRegister(timelineRealtimeConnectionMetrics)
-
 	go func() {
 		for {
 			time.Sleep(15 * time.Second)
@@ -440,8 +432,7 @@ func main() {
 			}
 			resourceCountMetrics.WithLabelValues("timeline").Set(float64(count))
 
-			count = timelineService.CurrentRealtimeConnectionCount()
-			timelineRealtimeConnectionMetrics.Set(float64(count))
+			timelineService.UpdateMetrics()
 		}
 	}()
 

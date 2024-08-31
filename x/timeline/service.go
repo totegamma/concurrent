@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/pkg/errors"
+	"github.com/prometheus/client_golang/prometheus"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
@@ -111,10 +112,6 @@ func (s *service) GetChunksNew(ctx context.Context, timelines []string, epoch st
 	}
 
 	return recovered, nil
-}
-
-func (s *service) CurrentRealtimeConnectionCount() int64 {
-	return atomic.LoadInt64(&s.socketCounter)
 }
 
 // NormalizeTimelineID normalizes timelineID
@@ -1106,4 +1103,49 @@ func (s *service) Query(ctx context.Context, timelineID, schema, owner, author s
 	}
 
 	return items, nil
+}
+
+var (
+	lookupChunkItrsTotal              *prometheus.GaugeVec
+	loadChunkBodiesTotal              *prometheus.GaugeVec
+	timelineRealtimeConnectionMetrics prometheus.Gauge
+)
+
+func (s *service) UpdateMetrics() {
+
+	metrics := s.repository.GetMetrics()
+
+	if lookupChunkItrsTotal == nil {
+		lookupChunkItrsTotal = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "cc_timeline_lookup_chunk_itr_total",
+			Help: "Total number of lookup chunk iterators",
+		}, []string{"status"})
+		prometheus.MustRegister(lookupChunkItrsTotal)
+	}
+
+	lookupChunkItrsTotal.WithLabelValues("hit").Set(float64(metrics["lookup_chunk_itr_cache_hits"]))
+	lookupChunkItrsTotal.WithLabelValues("miss").Set(float64(metrics["lookup_chunk_itr_cache_misses"]))
+
+	if loadChunkBodiesTotal == nil {
+		loadChunkBodiesTotal = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+			Name: "cc_timeline_load_chunk_bodies_total",
+			Help: "Total number of load chunk bodies",
+		}, []string{"status"})
+		prometheus.MustRegister(loadChunkBodiesTotal)
+	}
+
+	loadChunkBodiesTotal.WithLabelValues("hit").Set(float64(metrics["load_chunk_bodies_cache_hits"]))
+	loadChunkBodiesTotal.WithLabelValues("miss").Set(float64(metrics["load_chunk_bodies_cache_misses"]))
+
+	if timelineRealtimeConnectionMetrics == nil {
+		timelineRealtimeConnectionMetrics = prometheus.NewGauge(
+			prometheus.GaugeOpts{
+				Name: "cc_timeline_realtime_connections",
+				Help: "Number of realtime connections",
+			},
+		)
+		prometheus.MustRegister(timelineRealtimeConnectionMetrics)
+	}
+
+	timelineRealtimeConnectionMetrics.Set(float64(atomic.LoadInt64(&s.socketCounter)))
 }

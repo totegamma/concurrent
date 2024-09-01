@@ -280,16 +280,11 @@ func (a *agent) RemoteSubRoutine(ctx context.Context, domain string, timelines [
 					}
 					val := "," + string(json)
 
-					timelineID := event.Item.TimelineID
-					if !strings.Contains(timelineID, "@") {
-						timelineID = timelineID + "@" + domain
-					}
-
 					// update cache
 					// Note: see x/timeline/repository.go CreateItem
 					epoch := core.Time2Chunk(event.Item.CDate)
-					itrKey := "tl:itr:" + timelineID + ":" + epoch
-					bodyKey := "tl:body:" + timelineID + ":" + epoch
+					itrKey := "tl:itr:" + event.Timeline + ":" + epoch
+					bodyKey := "tl:body:" + event.Timeline + ":" + epoch
 					a.mc.Replace(&memcache.Item{Key: itrKey, Value: []byte(epoch)})
 					a.mc.Prepend(&memcache.Item{Key: bodyKey, Value: []byte(val)})
 

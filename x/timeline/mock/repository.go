@@ -158,21 +158,6 @@ func (mr *MockRepositoryMockRecorder) GetChunksFromDB(ctx, timelines, chunk any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChunksFromDB", reflect.TypeOf((*MockRepository)(nil).GetChunksFromDB), ctx, timelines, chunk)
 }
 
-// GetChunksFromRemote mocks base method.
-func (m *MockRepository) GetChunksFromRemote(ctx context.Context, host string, timelines []string, queryTime time.Time) (map[string]core.Chunk, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetChunksFromRemote", ctx, host, timelines, queryTime)
-	ret0, _ := ret[0].(map[string]core.Chunk)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetChunksFromRemote indicates an expected call of GetChunksFromRemote.
-func (mr *MockRepositoryMockRecorder) GetChunksFromRemote(ctx, host, timelines, queryTime any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChunksFromRemote", reflect.TypeOf((*MockRepository)(nil).GetChunksFromRemote), ctx, host, timelines, queryTime)
-}
-
 // GetImmediateItems mocks base method.
 func (m *MockRepository) GetImmediateItems(ctx context.Context, timelineID string, since time.Time, limit int) ([]core.TimelineItem, error) {
 	m.ctrl.T.Helper()
@@ -201,6 +186,20 @@ func (m *MockRepository) GetItem(ctx context.Context, timelineID, objectID strin
 func (mr *MockRepositoryMockRecorder) GetItem(ctx, timelineID, objectID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetItem", reflect.TypeOf((*MockRepository)(nil).GetItem), ctx, timelineID, objectID)
+}
+
+// GetMetrics mocks base method.
+func (m *MockRepository) GetMetrics() map[string]int64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetMetrics")
+	ret0, _ := ret[0].(map[string]int64)
+	return ret0
+}
+
+// GetMetrics indicates an expected call of GetMetrics.
+func (mr *MockRepositoryMockRecorder) GetMetrics() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMetrics", reflect.TypeOf((*MockRepository)(nil).GetMetrics))
 }
 
 // GetNormalizationCache mocks base method.
@@ -380,20 +379,6 @@ func (m *MockRepository) Query(ctx context.Context, timelineID, schema, owner, a
 func (mr *MockRepositoryMockRecorder) Query(ctx, timelineID, schema, owner, author, until, limit any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Query", reflect.TypeOf((*MockRepository)(nil).Query), ctx, timelineID, schema, owner, author, until, limit)
-}
-
-// SaveToCache mocks base method.
-func (m *MockRepository) SaveToCache(ctx context.Context, chunks map[string]core.Chunk, queryTime time.Time) error {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "SaveToCache", ctx, chunks, queryTime)
-	ret0, _ := ret[0].(error)
-	return ret0
-}
-
-// SaveToCache indicates an expected call of SaveToCache.
-func (mr *MockRepositoryMockRecorder) SaveToCache(ctx, chunks, queryTime any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SaveToCache", reflect.TypeOf((*MockRepository)(nil).SaveToCache), ctx, chunks, queryTime)
 }
 
 // SetNormalizationCache mocks base method.

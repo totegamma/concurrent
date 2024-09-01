@@ -336,6 +336,18 @@ func TestLookupChunkItrs(t *testing.T) {
 		},
 	}
 
+	eventChan := make(chan core.Event)
+	subctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go repo.Subscribe(
+		subctx,
+		[]string{
+			"t00000000000000000000000000@remote.example.com",
+			"t11111111111111111111111111@remote.example.com",
+		},
+		eventChan,
+	)
+
 	// Timelineを作成
 	_, err := repo.UpsertTimeline(ctx, core.Timeline{
 		ID:        "t00000000000000000000000000",
@@ -615,6 +627,18 @@ func TestLookupRemoteItrs(t *testing.T) {
 			FQDN: "local.example.com",
 		},
 	}
+
+	eventChan := make(chan core.Event)
+	subctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go repo.Subscribe(
+		subctx,
+		[]string{
+			"t00000000000000000000000000@remote.example.com",
+			"t11111111111111111111111111@remote.example.com",
+		},
+		eventChan,
+	)
 
 	itrs, err := repo.lookupRemoteItrs(
 		ctx,

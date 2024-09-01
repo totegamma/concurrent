@@ -342,7 +342,15 @@ func (r *repository) lookupRemoteItrs(ctx context.Context, domain string, timeli
 		return nil, err
 	}
 
+	currentSubscriptions := r.GetCurrentSubs(ctx)
+
 	for timeline, itr := range result {
+
+		// 最新のチャンクに関しては、socketが張られてるキャッシュしか温められないのでそれだけ保持
+		if epoch == core.Time2Chunk(time.Now()) && !slices.Contains(currentSubscriptions, timeline) {
+			continue
+		}
+
 		key := tlItrCachePrefix + timeline + ":" + epoch
 		r.mc.Set(&memcache.Item{Key: key, Value: []byte(itr)})
 	}

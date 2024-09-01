@@ -64,6 +64,7 @@ type repository struct {
 	db     *gorm.DB
 	rdb    *redis.Client
 	mc     *memcache.Client
+	keeper Keeper
 	client client.Client
 	schema core.SchemaService
 	config core.Config
@@ -75,7 +76,7 @@ type repository struct {
 }
 
 // NewRepository creates a new timeline repository
-func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, schema core.SchemaService, config core.Config) Repository {
+func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, keeper Keeper, client client.Client, schema core.SchemaService, config core.Config) Repository {
 
 	var count int64
 	err := db.Model(&core.Timeline{}).Count(&count).Error
@@ -92,6 +93,7 @@ func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client c
 		db,
 		rdb,
 		mc,
+		keeper,
 		client,
 		schema,
 		config,
@@ -336,18 +338,21 @@ func (r *repository) lookupRemoteItrs(ctx context.Context, domain string, timeli
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.LookupRemoteItr")
 	defer span.End()
 
+	fmt.Println("lookupRemoteItrs", domain, timelines, epoch)
+
 	result, err := r.client.GetChunkItrs(ctx, domain, timelines, epoch, nil)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
 
-	currentSubscriptions := r.GetCurrentSubs(ctx)
+	currentSubscriptions := r.keeper.GetRemoteSubs()
 
 	for timeline, itr := range result {
 
 		// 最新のチャンクに関しては、socketが張られてるキャッシュしか温められないのでそれだけ保持
 		if epoch == core.Time2Chunk(time.Now()) && !slices.Contains(currentSubscriptions, timeline) {
+			fmt.Println("continue", timeline, "/", currentSubscriptions)
 			continue
 		}
 
@@ -434,7 +439,7 @@ func (r *repository) loadRemoteBodies(ctx context.Context, remote string, query 
 		return nil, err
 	}
 
-	currentSubscriptions := r.GetCurrentSubs(ctx)
+	currentSubscriptions := r.keeper.GetRemoteSubs()
 	for timeline, chunk := range result {
 
 		// 最新のチャンクに関しては、socketが張られてるキャッシュしか温められないのでそれだけ保持
@@ -1104,28 +1109,6 @@ func (r *repository) Subscribe(ctx context.Context, channels []string, event cha
 			event <- item
 		}
 	}
-}
-
-func (r *repository) GetCurrentSubs(ctx context.Context) []string {
-
-	query := r.rdb.PubSubChannels(ctx, "*")
-	channels := query.Val()
-
-	uniqueChannelsMap := make(map[string]bool)
-	for _, channel := range channels {
-		uniqueChannelsMap[channel] = true
-	}
-
-	uniqueChannels := make([]string, 0)
-	for channel := range uniqueChannelsMap {
-		split := strings.Split(channel, "@")
-		if len(split) != 2 {
-			continue
-		}
-		uniqueChannels = append(uniqueChannels, channel)
-	}
-
-	return uniqueChannels
 }
 
 func (r *repository) Query(ctx context.Context, timelineID, schema, owner, author string, until time.Time, limit int) ([]core.TimelineItem, error) {

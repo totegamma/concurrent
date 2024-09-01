@@ -12,6 +12,7 @@ import (
 	"github.com/totegamma/concurrent/core"
 	"github.com/totegamma/concurrent/core/mock"
 	"github.com/totegamma/concurrent/internal/testutil"
+	"github.com/totegamma/concurrent/x/timeline/mock"
 	"go.uber.org/mock/gomock"
 )
 
@@ -41,11 +42,13 @@ func TestCreateItem(t *testing.T) {
 	mockSchema.EXPECT().IDToUrl(gomock.Any(), gomock.Any()).Return("", nil).AnyTimes()
 
 	mockClient := mock_client.NewMockClient(ctrl)
+	mockKeeper := mock_timeline.NewMockKeeper(ctrl)
 
 	repo := repository{
 		db:     db,
 		rdb:    rdb,
 		mc:     mc,
+		keeper: mockKeeper,
 		client: mockClient,
 		schema: mockSchema,
 		config: core.Config{
@@ -190,26 +193,20 @@ func TestLoadChunkBodies(t *testing.T) {
 		nil,
 	)
 
+	mockKeeper := mock_timeline.NewMockKeeper(ctrl)
+	mockKeeper.EXPECT().GetRemoteSubs().Return([]string{"t00000000000000000000000000@remote.example.com"}).Times(2)
+
 	repo := repository{
 		db:     db,
 		rdb:    rdb,
 		mc:     mc,
+		keeper: mockKeeper,
 		client: mockClient,
 		schema: mockSchema,
 		config: core.Config{
 			FQDN: "local.example.com",
 		},
 	}
-
-	// subscribe rdb
-	eventChan := make(chan core.Event)
-	subctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	go repo.Subscribe(
-		subctx,
-		[]string{"t00000000000000000000000000@remote.example.com"},
-		eventChan,
-	)
 
 	// Timelineを作成
 	_, err := repo.UpsertTimeline(ctx, core.Timeline{
@@ -325,28 +322,23 @@ func TestLookupChunkItrs(t *testing.T) {
 		nil,
 	)
 
+	mockKeeper := mock_timeline.NewMockKeeper(ctrl)
+	mockKeeper.EXPECT().GetRemoteSubs().Return([]string{
+		"t00000000000000000000000000@remote.example.com",
+		"t11111111111111111111111111@remote.example.com",
+	})
+
 	repo := repository{
 		db:     db,
 		rdb:    rdb,
 		mc:     mc,
+		keeper: mockKeeper,
 		client: mockClient,
 		schema: mockSchema,
 		config: core.Config{
 			FQDN: "local.example.com",
 		},
 	}
-
-	eventChan := make(chan core.Event)
-	subctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	go repo.Subscribe(
-		subctx,
-		[]string{
-			"t00000000000000000000000000@remote.example.com",
-			"t11111111111111111111111111@remote.example.com",
-		},
-		eventChan,
-	)
 
 	// Timelineを作成
 	_, err := repo.UpsertTimeline(ctx, core.Timeline{
@@ -506,33 +498,21 @@ func TestLoadRemoteBodies(t *testing.T) {
 		nil,
 	)
 
+	mockKeeper := mock_timeline.NewMockKeeper(ctrl)
+	mockKeeper.EXPECT().GetRemoteSubs().Return([]string{
+		"t00000000000000000000000000@remote.example.com",
+	})
+
 	repo := repository{
 		db:     db,
 		rdb:    rdb,
 		mc:     mc,
+		keeper: mockKeeper,
 		client: mockClient,
 		schema: mockSchema,
 		config: core.Config{
 			FQDN: "local.example.com",
 		},
-	}
-
-	// subscribe rdb
-	eventChan := make(chan core.Event)
-	subctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	go repo.Subscribe(
-		subctx,
-		[]string{"t00000000000000000000000000@remote.example.com"},
-		eventChan,
-	)
-
-	time.Sleep(1 * time.Second) // subscribeが完了するまで待つ
-
-	currentSubs := repo.GetCurrentSubs(ctx)
-	if !assert.Contains(t, currentSubs, "t00000000000000000000000000@remote.example.com") {
-		t.Log("currentSubs:", currentSubs)
-		t.FailNow()
 	}
 
 	bodies, err := repo.loadRemoteBodies(
@@ -617,28 +597,23 @@ func TestLookupRemoteItrs(t *testing.T) {
 		nil,
 	)
 
+	mockKeeper := mock_timeline.NewMockKeeper(ctrl)
+	mockKeeper.EXPECT().GetRemoteSubs().Return([]string{
+		"t00000000000000000000000000@remote.example.com",
+		"t11111111111111111111111111@remote.example.com",
+	})
+
 	repo := repository{
 		db:     db,
 		rdb:    rdb,
 		mc:     mc,
+		keeper: mockKeeper,
 		client: mockClient,
 		schema: mockSchema,
 		config: core.Config{
 			FQDN: "local.example.com",
 		},
 	}
-
-	eventChan := make(chan core.Event)
-	subctx, cancel := context.WithCancel(ctx)
-	defer cancel()
-	go repo.Subscribe(
-		subctx,
-		[]string{
-			"t00000000000000000000000000@remote.example.com",
-			"t11111111111111111111111111@remote.example.com",
-		},
-		eventChan,
-	)
 
 	itrs, err := repo.lookupRemoteItrs(
 		ctx,
@@ -698,10 +673,13 @@ func TestLookupLocalItrs(t *testing.T) {
 
 	mockClient := mock_client.NewMockClient(ctrl)
 
+	mockKeeper := mock_timeline.NewMockKeeper(ctrl)
+
 	repo := repository{
 		db:     db,
 		rdb:    rdb,
 		mc:     mc,
+		keeper: mockKeeper,
 		client: mockClient,
 		schema: mockSchema,
 		config: core.Config{
@@ -799,10 +777,13 @@ func TestLoadLocalBody(t *testing.T) {
 
 	mockClient := mock_client.NewMockClient(ctrl)
 
+	mockKeeper := mock_timeline.NewMockKeeper(ctrl)
+
 	repo := repository{
 		db:     db,
 		rdb:    rdb,
 		mc:     mc,
+		keeper: mockKeeper,
 		client: mockClient,
 		schema: mockSchema,
 		config: core.Config{

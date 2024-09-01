@@ -51,12 +51,6 @@ func NewAgent(
 func (a *agent) Boot() {
 	slog.Info("agent start!")
 
-	ctx := context.Background()
-
-	go a.watchEventRoutine(ctx)
-	go a.chunkUpdaterRoutine(ctx)
-	go a.connectionKeeperRoutine(ctx)
-
 	ticker60A := time.NewTicker(60 * time.Second)
 	go func() {
 		for {

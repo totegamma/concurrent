@@ -454,6 +454,11 @@ func (r *repository) loadRemoteBodies(ctx context.Context, remote string, query 
 			continue
 		}
 
+		if len(chunk.Items) == 0 {
+			span.AddEvent(fmt.Sprintf("empty chunk: %s", timeline))
+			continue
+		}
+
 		key := tlBodyCachePrefix + timeline + ":" + chunk.Epoch
 		b, err := json.Marshal(chunk.Items)
 		if err != nil {

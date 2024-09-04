@@ -333,6 +333,11 @@ func (s *service) GetRecentItems(ctx context.Context, timelines []string, until 
 
 	for timeline, chunk := range chunks {
 
+		if len(chunk.Items) <= 0 {
+			span.AddEvent(fmt.Sprintf("empty chunk: %s", timeline))
+			continue
+		}
+
 		index := sort.Search(len(chunk.Items), func(i int) bool {
 			return chunk.Items[i].CDate.Before(until)
 		})

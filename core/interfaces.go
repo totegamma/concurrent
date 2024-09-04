@@ -173,7 +173,7 @@ type TimelineService interface {
 	ListTimelineBySchema(ctx context.Context, schema string) ([]Timeline, error)
 	ListTimelineByAuthor(ctx context.Context, author string) ([]Timeline, error)
 
-	GetChunks(ctx context.Context, timelines []string, pivot time.Time) (map[string]Chunk, error)
+	GetChunks(ctx context.Context, timelines []string, epoch string) (map[string]Chunk, error)
 
 	ListTimelineSubscriptions(ctx context.Context) (map[string]int64, error)
 	Count(ctx context.Context) (int64, error)

@@ -39,9 +39,6 @@ type Repository interface {
 	GetRecentItems(ctx context.Context, timelineID string, until time.Time, limit int) ([]core.TimelineItem, error)
 	GetImmediateItems(ctx context.Context, timelineID string, since time.Time, limit int) ([]core.TimelineItem, error)
 
-	GetChunksFromCache(ctx context.Context, timelines []string, chunk string) (map[string]core.Chunk, error)
-	GetChunksFromDB(ctx context.Context, timelines []string, chunk string) (map[string]core.Chunk, error)
-	GetChunkIterators(ctx context.Context, timelines []string, chunk string) (map[string]string, error)
 	PublishEvent(ctx context.Context, event core.Event) error
 
 	ListTimelineSubscriptions(ctx context.Context) (map[string]int64, error)
@@ -102,12 +99,21 @@ func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, keeper K
 }
 
 func (r *repository) GetMetrics() map[string]int64 {
-	return map[string]int64{
+
+	keeperMetrics := r.keeper.GetMetrics()
+
+	repoMetrics := map[string]int64{
 		"lookup_chunk_itr_cache_misses":  r.lookupChunkItrsCacheMisses,
 		"lookup_chunk_itr_cache_hits":    r.lookupChunkItrsCacheHits,
 		"load_chunk_bodies_cache_misses": r.loadChunkBodiesCacheMisses,
 		"load_chunk_bodies_cache_hits":   r.loadChunkBodiesCacheHits,
 	}
+
+	for k, v := range keeperMetrics {
+		repoMetrics[k] = v
+	}
+
+	return repoMetrics
 }
 
 const (
@@ -135,7 +141,7 @@ func (r *repository) LookupChunkItrs(ctx context.Context, normalized []string, e
 	cache, err := r.mc.GetMulti(keys)
 	if err != nil {
 		span.RecordError(err)
-		return nil, err
+		//return nil, err
 	}
 
 	var result = map[string]string{}
@@ -207,7 +213,7 @@ func (r *repository) LoadChunkBodies(ctx context.Context, query map[string]strin
 	cache, err := r.mc.GetMulti(keys)
 	if err != nil {
 		span.RecordError(err)
-		return nil, err
+		//return nil, err
 	}
 
 	result := make(map[string]core.Chunk)
@@ -418,7 +424,6 @@ func (r *repository) loadLocalBody(ctx context.Context, timeline string, epoch s
 	err = r.mc.Set(&memcache.Item{Key: key, Value: []byte(cacheStr)})
 	if err != nil {
 		span.RecordError(err)
-		return core.Chunk{}, err
 	}
 
 	return core.Chunk{
@@ -639,169 +644,6 @@ func (r *repository) GetTimelineFromRemote(ctx context.Context, host string, key
 	}
 
 	return timeline, nil
-}
-
-// GetChunksFromCache gets chunks from cache
-func (r *repository) GetChunksFromCache(ctx context.Context, timelines []string, chunk string) (map[string]core.Chunk, error) {
-	ctx, span := tracer.Start(ctx, "Timeline.Repository.GetChunksFromCache")
-	defer span.End()
-
-	targetKeyMap, err := r.GetChunkIterators(ctx, timelines, chunk)
-	if err != nil {
-		span.RecordError(err)
-		return nil, err
-	}
-
-	targetKeys := make([]string, 0)
-	for _, targetKey := range targetKeyMap {
-		targetKeys = append(targetKeys, targetKey)
-	}
-
-	if len(targetKeys) == 0 {
-		return map[string]core.Chunk{}, nil
-	}
-
-	caches, err := r.mc.GetMulti(targetKeys)
-	if err != nil {
-		span.RecordError(err)
-		return nil, err
-	}
-
-	result := make(map[string]core.Chunk)
-	for _, timeline := range timelines {
-		targetKey := targetKeyMap[timeline]
-		cache, ok := caches[targetKey]
-		if !ok || len(cache.Value) == 0 {
-			continue
-		}
-
-		var items []core.TimelineItem
-		cacheStr := string(cache.Value)
-		cacheStr = cacheStr[1:]
-		cacheStr = "[" + cacheStr + "]"
-		err = json.Unmarshal([]byte(cacheStr), &items)
-		if err != nil {
-			span.RecordError(err)
-			continue
-		}
-		result[timeline] = core.Chunk{
-			Key:   targetKey,
-			Items: items,
-		}
-	}
-
-	return result, nil
-}
-
-// GetChunksFromDB gets chunks from db and cache them
-func (r *repository) GetChunksFromDB(ctx context.Context, timelines []string, chunk string) (map[string]core.Chunk, error) {
-	ctx, span := tracer.Start(ctx, "Timeline.Repository.GetChunksFromDB")
-	defer span.End()
-
-	targetKeyMap, err := r.GetChunkIterators(ctx, timelines, chunk)
-	if err != nil {
-		span.RecordError(err)
-		return nil, err
-	}
-
-	targetKeys := make([]string, 0)
-	for _, targetKey := range targetKeyMap {
-		targetKeys = append(targetKeys, targetKey)
-	}
-
-	result := make(map[string]core.Chunk)
-	for _, timeline := range timelines {
-		targetKey := targetKeyMap[timeline]
-		var items []core.TimelineItem
-		chunkDate := core.Chunk2RecentTime(chunk)
-
-		timelineID := timeline
-		if strings.Contains(timelineID, "@") {
-			timelineID = strings.Split(timelineID, "@")[0]
-		}
-		if len(timelineID) == 27 {
-			if timelineID[0] != 't' {
-				return nil, fmt.Errorf("timeline typed-id must start with 't'")
-			}
-			timelineID = timelineID[1:]
-		}
-
-		err = r.db.WithContext(ctx).Where("timeline_id = ? and c_date <= ?", timelineID, chunkDate).Order("c_date desc").Limit(100).Find(&items).Error
-		if err != nil {
-			span.RecordError(err)
-			continue
-		}
-
-		// append domain to timelineID
-		for i, item := range items {
-			items[i].TimelineID = item.TimelineID + "@" + r.config.FQDN
-		}
-
-		result[timeline] = core.Chunk{
-			Key:   targetKey,
-			Items: items,
-		}
-
-		b, err := json.Marshal(items)
-		if err != nil {
-			span.RecordError(err)
-			continue
-		}
-		cacheStr := "," + string(b[1:len(b)-1])
-		err = r.mc.Set(&memcache.Item{Key: targetKey, Value: []byte(cacheStr)})
-		if err != nil {
-			span.RecordError(err)
-			continue
-		}
-	}
-
-	return result, nil
-}
-
-// GetChunkIterators returns a list of iterated chunk keys
-func (r *repository) GetChunkIterators(ctx context.Context, timelines []string, chunk string) (map[string]string, error) {
-	ctx, span := tracer.Start(ctx, "Timeline.Repository.GetChunkIterators")
-	defer span.End()
-
-	keys := make([]string, len(timelines))
-	for i, timeline := range timelines {
-		keys[i] = "timeline:itr:all:" + timeline + ":" + chunk
-	}
-
-	cache, err := r.mc.GetMulti(keys)
-	if err != nil {
-		span.RecordError(err)
-		return nil, err
-	}
-
-	result := make(map[string]string)
-	for i, timeline := range timelines {
-		if cache[keys[i]] != nil { // hit
-			result[timeline] = string(cache[keys[i]].Value)
-		} else { // miss
-			var item core.TimelineItem
-			chunkTime := core.Chunk2RecentTime(chunk)
-			dbid := timeline
-			if strings.Contains(dbid, "@") {
-				dbid = strings.Split(timeline, "@")[0]
-			}
-			if len(dbid) == 27 {
-				if dbid[0] != 't' {
-					return nil, fmt.Errorf("timeline typed-id must start with 't'")
-				}
-				dbid = dbid[1:]
-			}
-			err := r.db.WithContext(ctx).Where("timeline_id = ? and c_date <= ?", dbid, chunkTime).Order("c_date desc").First(&item).Error
-			if err != nil {
-				continue
-			}
-			key := "timeline:body:all:" + timeline + ":" + core.Time2Chunk(item.CDate)
-			r.mc.Set(&memcache.Item{Key: keys[i], Value: []byte(key)})
-			result[timeline] = key
-		}
-	}
-
-	return result, nil
 }
 
 // GetItem returns a timeline item by TimelineID and ObjectID

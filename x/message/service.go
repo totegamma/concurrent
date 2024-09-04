@@ -439,7 +439,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 					// eventを放流
 					event := core.Event{
 						Timeline:  timeline,
-						Item:      posted,
+						Item:      &posted,
 						Document:  sendDocument,
 						Signature: sendSignature,
 						Resource:  sendResource,

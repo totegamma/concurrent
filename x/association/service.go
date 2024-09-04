@@ -368,7 +368,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 
 				event := core.Event{
 					Timeline:  timeline,
-					Item:      posted,
+					Item:      &posted,
 					Document:  document,
 					Signature: signature,
 					Resource:  association,

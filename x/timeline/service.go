@@ -74,8 +74,8 @@ func min(a, b int) int {
 	return b
 }
 
-func (s *service) GetChunksNew(ctx context.Context, timelines []string, epoch string) (map[string]core.Chunk, error) {
-	ctx, span := tracer.Start(ctx, "Timeline.Service.GetChunk")
+func (s *service) GetChunks(ctx context.Context, timelines []string, epoch string) (map[string]core.Chunk, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Service.GetChunks")
 	defer span.End()
 
 	normalized := make([]string, 0)
@@ -208,7 +208,7 @@ func (s *service) LookupChunkItr(ctx context.Context, timeliens []string, epoch 
 		normtable[normalizedTimeline] = timeline
 	}
 
-	table, err := s.repository.GetChunkIterators(ctx, normalized, epoch)
+	table, err := s.repository.LookupChunkItrs(ctx, normalized, epoch)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -257,58 +257,6 @@ func (s *service) LoadChunkBody(ctx context.Context, query map[string]string) (m
 
 	return recovered, nil
 }
-
-// --- deprecated ------------------------------------------------------------------------------------
-
-// GetChunks returns chunks by timelineID and time
-func (s *service) GetChunks(ctx context.Context, timelines []string, until time.Time) (map[string]core.Chunk, error) {
-	ctx, span := tracer.Start(ctx, "Timeline.Service.GetChunks")
-	defer span.End()
-
-	// normalize timelineID and validate
-	for i, timeline := range timelines {
-		normalized, err := s.NormalizeTimelineID(ctx, timeline)
-		if err != nil {
-			continue
-		}
-		timelines[i] = normalized
-	}
-
-	// first, try to get from cache
-	untilChunk := core.Time2Chunk(until)
-	items, err := s.repository.GetChunksFromCache(ctx, timelines, untilChunk)
-	if err != nil {
-		slog.ErrorContext(ctx, "failed to get chunks from cache", slog.String("error", err.Error()), slog.String("module", "timeline"))
-		span.RecordError(err)
-		return nil, err
-	}
-
-	// if not found in cache, get from db
-	missingTimelines := make([]string, 0)
-	for _, timeline := range timelines {
-		if _, ok := items[timeline]; !ok {
-			missingTimelines = append(missingTimelines, timeline)
-		}
-	}
-
-	if len(missingTimelines) > 0 {
-		// get from db
-		dbItems, err := s.repository.GetChunksFromDB(ctx, missingTimelines, untilChunk)
-		if err != nil {
-			slog.ErrorContext(ctx, "failed to get chunks from db", slog.String("error", err.Error()), slog.String("module", "timeline"))
-			span.RecordError(err)
-			return nil, err
-		}
-		// merge
-		for k, v := range dbItems {
-			items[k] = v
-		}
-	}
-
-	return items, nil
-}
-
-// ---------------------------------------------------------------------------------------------------
 
 func (s *service) GetRecentItemsFromSubscription(ctx context.Context, subscription string, until time.Time, limit int) ([]core.TimelineItem, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.GetRecentItemsFromSubscription")
@@ -360,11 +308,16 @@ func (s *service) GetRecentItems(ctx context.Context, timelines []string, until 
 	ctx, span := tracer.Start(ctx, "Timeline.Service.GetRecentItems")
 	defer span.End()
 
+	span.SetAttributes(attribute.StringSlice("timelines", timelines))
+
 	epoch := core.Time2Chunk(until)
-	chunks, err := s.GetChunksNew(ctx, timelines, epoch)
+	chunks, err := s.GetChunks(ctx, timelines, epoch)
 	if err != nil {
+		span.RecordError(err)
 		return nil, err
 	}
+
+	span.SetAttributes(attribute.Int("chunks", len(chunks)))
 
 	pq := make(PriorityQueue, 0)
 	heap.Init(&pq)
@@ -411,12 +364,14 @@ func (s *service) GetRecentItems(ctx context.Context, timelines []string, until 
 			if prevEpoch == smallest.Epoch {
 				prevEpoch = core.PrevChunk(prevEpoch)
 			}
-			prevChunks, err := s.GetChunksNew(ctx, []string{timeline}, prevEpoch)
+			prevChunks, err := s.GetChunks(ctx, []string{timeline}, prevEpoch)
 			if err != nil {
+				span.RecordError(err)
 				continue
 			}
 			if prevChunk, ok := prevChunks[timeline]; ok {
 				if len(prevChunk.Items) <= 0 {
+					span.AddEvent("empty chunk")
 					continue
 				}
 				chunks[timeline] = prevChunk
@@ -429,6 +384,8 @@ func (s *service) GetRecentItems(ctx context.Context, timelines []string, until 
 			}
 		}
 	}
+
+	span.SetAttributes(attribute.Int("iterating", 1000-itrlimit))
 
 	return result, nil
 }
@@ -601,10 +558,10 @@ func (s *service) Event(ctx context.Context, mode core.CommitMode, document, sig
 
 	event := core.Event{
 		Timeline:  doc.Timeline,
-		Item:      doc.Item,
+		Item:      &doc.Item,
 		Document:  doc.Document,
 		Signature: doc.Signature,
-		Resource:  doc.Resource,
+		Resource:  &doc.Resource,
 	}
 
 	return event, s.repository.PublishEvent(ctx, event)
@@ -1109,6 +1066,7 @@ var (
 	lookupChunkItrsTotal              *prometheus.GaugeVec
 	loadChunkBodiesTotal              *prometheus.GaugeVec
 	timelineRealtimeConnectionMetrics prometheus.Gauge
+	outerConnection                   *prometheus.GaugeVec
 )
 
 func (s *service) UpdateMetrics() {
@@ -1148,4 +1106,18 @@ func (s *service) UpdateMetrics() {
 	}
 
 	timelineRealtimeConnectionMetrics.Set(float64(atomic.LoadInt64(&s.socketCounter)))
+
+	if outerConnection == nil {
+		outerConnection = prometheus.NewGaugeVec(
+			prometheus.GaugeOpts{
+				Name: "cc_timeline_outer_connections",
+				Help: "Number of outer connections",
+			},
+			[]string{"type"},
+		)
+		prometheus.MustRegister(outerConnection)
+	}
+
+	outerConnection.WithLabelValues("desired").Set(float64(metrics["remoteSubs"]))
+	outerConnection.WithLabelValues("current").Set(float64(metrics["remoteConns"]))
 }

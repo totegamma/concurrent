@@ -31,6 +31,7 @@ type Keeper interface {
 	Start(ctx context.Context)
 	GetRemoteSubs() []string
 	GetCurrentSubs(ctx context.Context) []string
+	GetMetrics() map[string]int64
 }
 
 type keeper struct {
@@ -52,6 +53,13 @@ func NewKeeper(rdb *redis.Client, mc *memcache.Client, client client.Client, con
 type channelRequest struct {
 	Type     string   `json:"type"`
 	Channels []string `json:"channels"`
+}
+
+func (k *keeper) GetMetrics() map[string]int64 {
+	metrics := make(map[string]int64)
+	metrics["remoteSubs"] = int64(len(remoteSubs))
+	metrics["remoteConns"] = int64(len(remoteConns))
+	return metrics
 }
 
 func (k *keeper) Start(ctx context.Context) {
@@ -309,6 +317,10 @@ func (k *keeper) remoteSubRoutine(ctx context.Context, domain string, timelines 
 						continue
 					}
 
+					if event.Item == nil || event.Item.ResourceID == "" {
+						continue
+					}
+
 					// update cache
 					json, err := json.Marshal(event.Item)
 					if err != nil {
@@ -388,12 +400,6 @@ func (k *keeper) connectionkeeperRoutine(ctx context.Context) {
 		select {
 		case <-ticker.C:
 			k.createInsufficientSubs(ctx)
-			slog.InfoContext(
-				ctx,
-				fmt.Sprintf("connection keeper: %d/%d", len(remoteConns), len(remoteSubs)),
-				slog.String("module", "agent"),
-				slog.String("group", "realtime"),
-			)
 			for domain := range remoteSubs {
 				if _, ok := remoteConns[domain]; !ok {
 					slog.Info(

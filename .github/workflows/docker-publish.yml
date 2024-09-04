@@ -75,6 +75,15 @@ jobs:
             type=raw,value=latest,enable=${{ !contains(env.TAG, 'beta') }}
             type=semver,pattern={{raw}}
 
+      - name: Set platforms based on tag
+        id: set-platforms
+        run: |
+          if [[ "${{ env.TAG }}" == *"beta"* ]]; then
+            echo "PLATFORMS=linux/amd64" >> $GITHUB_ENV
+          else
+            echo "PLATFORMS=linux/amd64,linux/arm64,linux/arm64/v8" >> $GITHUB_ENV
+          fi
+
       # Build and push Docker image with Buildx (don't push on PR)
       # https://github.com/docker/build-push-action
       - name: Build and push Docker image
@@ -84,7 +93,7 @@ jobs:
           context: .
           file: ${{ matrix.dockerfile }}
           push: ${{ github.event_name != 'pull_request' }}
-          platforms: linux/amd64,linux/arm64,linux/arm64/v8
+          platforms: ${{ env.PLATFORMS }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=gha

@@ -195,7 +195,8 @@ func (h handler) GetChunks(c echo.Context) error {
 		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
 	}
 	time := time.Unix(timeInt, 0)
-	epoch := core.NextChunk(core.Time2Chunk(time))
+	epoch := core.Time2Chunk(time)
+	fmt.Println("epoch", epoch)
 
 	chunks, err := h.service.GetChunks(ctx, timelines, epoch)
 	if err != nil {

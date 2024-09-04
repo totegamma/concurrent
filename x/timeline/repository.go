@@ -332,6 +332,7 @@ func (r *repository) lookupLocalItrs(ctx context.Context, timelines []string, ep
 			id := "t" + item.TimelineID + "@" + r.config.FQDN
 			key := tlItrCachePrefix + id + ":" + epoch
 			value := core.Time2Chunk(item.MaxCDate)
+			fmt.Println("cache lookupLocalItrs ", key, value)
 			r.mc.Set(&memcache.Item{Key: key, Value: []byte(value)})
 			result[id] = value
 		}
@@ -421,6 +422,7 @@ func (r *repository) loadLocalBody(ctx context.Context, timeline string, epoch s
 	}
 	key := tlBodyCachePrefix + timeline + ":" + epoch
 	cacheStr := "," + string(b[1:len(b)-1])
+	fmt.Println("cache loadLocalBody ", key)
 	err = r.mc.Set(&memcache.Item{Key: key, Value: []byte(cacheStr)})
 	if err != nil {
 		span.RecordError(err)
@@ -711,8 +713,11 @@ func (r *repository) CreateItem(ctx context.Context, item core.TimelineItem) (co
 	// この処理は今から挿入するアイテムが最新のチャンクであることが前提になっている。
 	// 古いデータを挿入する場合は、書き込みを行ったチャンクから最新のチャンクまでのイテレーターを更新する必要があるかも。
 	// 範囲でforを回して、キャッシュをdeleteする処理を追加する必要があるだろう...
-	r.mc.Replace(&memcache.Item{Key: itrKey, Value: []byte(itemChunk)})
-	r.mc.Prepend(&memcache.Item{Key: cacheKey, Value: []byte(val)})
+	fmt.Println("[repo] set cache", itrKey, " -> ", cacheKey)
+	err = r.mc.Replace(&memcache.Item{Key: itrKey, Value: []byte(itemChunk)})
+	fmt.Println("[repo] replace err", err)
+	err = r.mc.Prepend(&memcache.Item{Key: cacheKey, Value: []byte(val)})
+	fmt.Println("[repo] prepend err", err)
 
 	item.TimelineID = "t" + item.TimelineID
 

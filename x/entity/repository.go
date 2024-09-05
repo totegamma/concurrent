@@ -37,9 +37,12 @@ type repository struct {
 
 // NewRepository creates a new host repository
 func NewRepository(db *gorm.DB, mc *memcache.Client, schema core.SchemaService) Repository {
+	return &repository{db, mc, schema}
+}
 
+func (r *repository) setCurrentCount() {
 	var count int64
-	err := db.Model(&core.Entity{}).Count(&count).Error
+	err := r.db.Model(&core.Entity{}).Count(&count).Error
 	if err != nil {
 		slog.Error(
 			"failed to count entities",
@@ -47,9 +50,7 @@ func NewRepository(db *gorm.DB, mc *memcache.Client, schema core.SchemaService) 
 		)
 	}
 
-	mc.Set(&memcache.Item{Key: "entity_count", Value: []byte(strconv.FormatInt(count, 10))})
-
-	return &repository{db, mc, schema}
+	r.mc.Set(&memcache.Item{Key: "entity_count", Value: []byte(strconv.FormatInt(count, 10))})
 }
 
 // Count returns the total number of entities
@@ -60,6 +61,11 @@ func (r *repository) Count(ctx context.Context) (int64, error) {
 	item, err := r.mc.Get("entity_count")
 	if err != nil {
 		span.RecordError(err)
+		span.RecordError(err)
+		if errors.Is(err, memcache.ErrCacheMiss) {
+			r.setCurrentCount()
+			return 0, errors.Wrap(err, "trying to fix...")
+		}
 		return 0, err
 	}
 
@@ -140,11 +146,22 @@ func (r *repository) Upsert(ctx context.Context, entity core.Entity) (core.Entit
 	ctx, span := tracer.Start(ctx, "Entity.Repository.Upsert")
 	defer span.End()
 
+	isNewRecord := false
+
+	// check existence
+	var existing core.Entity
+	err := r.db.WithContext(ctx).First(&existing, "id = ?", entity.ID).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		isNewRecord = true
+	}
+
 	if err := r.db.WithContext(ctx).Save(&entity).Error; err != nil {
 		return core.Entity{}, err
 	}
 
-	r.mc.Increment("entity_count", 1)
+	if isNewRecord {
+		r.mc.Increment("entity_count", 1)
+	}
 
 	return entity, nil
 }

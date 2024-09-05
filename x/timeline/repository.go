@@ -74,18 +74,6 @@ type repository struct {
 
 // NewRepository creates a new timeline repository
 func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, keeper Keeper, client client.Client, schema core.SchemaService, config core.Config) Repository {
-
-	var count int64
-	err := db.Model(&core.Timeline{}).Count(&count).Error
-	if err != nil {
-		slog.Error(
-			"failed to count timelines",
-			slog.String("error", err.Error()),
-		)
-	}
-
-	mc.Set(&memcache.Item{Key: "timeline_count", Value: []byte(strconv.FormatInt(count, 10))})
-
 	return &repository{
 		db,
 		rdb,
@@ -96,6 +84,19 @@ func NewRepository(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, keeper K
 		config,
 		0, 0, 0, 0,
 	}
+}
+
+func (r *repository) setCurrentCount() {
+	var count int64
+	err := r.db.Model(&core.Timeline{}).Count(&count).Error
+	if err != nil {
+		slog.Error(
+			"failed to count timelines",
+			slog.String("error", err.Error()),
+		)
+	}
+
+	r.mc.Set(&memcache.Item{Key: "timeline_count", Value: []byte(strconv.FormatInt(count, 10))})
 }
 
 func (r *repository) GetMetrics() map[string]int64 {
@@ -575,6 +576,12 @@ func (r *repository) Count(ctx context.Context) (int64, error) {
 	item, err := r.mc.Get("timeline_count")
 	if err != nil {
 		span.RecordError(err)
+
+		if errors.Is(err, memcache.ErrCacheMiss) {
+			r.setCurrentCount()
+			return 0, errors.Wrap(err, "trying to fix...")
+		}
+
 		return 0, err
 	}
 

@@ -2,12 +2,13 @@ package association
 
 import (
 	"context"
-	"errors"
-	"github.com/bradfitz/gomemcache/memcache"
-	"github.com/totegamma/concurrent/core"
 	"gorm.io/gorm"
 	"log/slog"
 	"strconv"
+
+	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/pkg/errors"
+	"github.com/totegamma/concurrent/core"
 )
 
 // Repository is the interface for association repository
@@ -34,19 +35,19 @@ type repository struct {
 
 // NewRepository creates a new association repository
 func NewRepository(db *gorm.DB, mc *memcache.Client, schema core.SchemaService) Repository {
+	return &repository{db, mc, schema}
+}
 
+func (r *repository) setCurrentCount() {
 	var count int64
-	err := db.Model(&core.Association{}).Count(&count).Error
+	err := r.db.Model(&core.Association{}).Count(&count).Error
 	if err != nil {
 		slog.Error(
 			"failed to count associations",
 			slog.String("error", err.Error()),
 		)
 	}
-
-	mc.Set(&memcache.Item{Key: "association_count", Value: []byte(strconv.FormatInt(count, 10))})
-
-	return &repository{db, mc, schema}
+	r.mc.Set(&memcache.Item{Key: "association_count", Value: []byte(strconv.FormatInt(count, 10))})
 }
 
 // Total returns the total number of associations
@@ -57,6 +58,10 @@ func (r *repository) Count(ctx context.Context) (int64, error) {
 	item, err := r.mc.Get("association_count")
 	if err != nil {
 		span.RecordError(err)
+		if errors.Is(err, memcache.ErrCacheMiss) {
+			r.setCurrentCount()
+			return 0, errors.Wrap(err, "trying to fix...")
+		}
 		return 0, err
 	}
 

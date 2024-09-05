@@ -2,11 +2,11 @@ package profile
 
 import (
 	"context"
-	"errors"
 	"log/slog"
 	"strconv"
 
 	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/pkg/errors"
 	"gorm.io/gorm"
 
 	"github.com/totegamma/concurrent/core"
@@ -28,6 +28,47 @@ type repository struct {
 	db     *gorm.DB
 	mc     *memcache.Client
 	schema core.SchemaService
+}
+
+// NewRepository creates a new profile repository
+func NewRepository(db *gorm.DB, mc *memcache.Client, schema core.SchemaService) Repository {
+	return &repository{db, mc, schema}
+}
+
+func (r *repository) setCurrentCount() {
+	var count int64
+	err := r.db.Model(&core.Profile{}).Count(&count).Error
+	if err != nil {
+		slog.Error(
+			"failed to count profiles",
+			slog.String("error", err.Error()),
+		)
+	}
+
+	r.mc.Set(&memcache.Item{Key: "profile_count", Value: []byte(strconv.FormatInt(count, 10))})
+}
+
+// Total returns the total number of profiles
+func (r *repository) Count(ctx context.Context) (int64, error) {
+	ctx, span := tracer.Start(ctx, "Profile.Repository.Count")
+	defer span.End()
+
+	item, err := r.mc.Get("profile_count")
+	if err != nil {
+		span.RecordError(err)
+		if errors.Is(err, memcache.ErrCacheMiss) {
+			r.setCurrentCount()
+			return 0, errors.Wrap(err, "trying to fix...")
+		}
+		return 0, err
+	}
+
+	count, err := strconv.ParseInt(string(item.Value), 10, 64)
+	if err != nil {
+		span.RecordError(err)
+		return 0, err
+	}
+	return count, nil
 }
 
 func (r *repository) normalizeDBID(id string) (string, error) {
@@ -98,42 +139,6 @@ func (r *repository) postProcess(ctx context.Context, profile *core.Profile) err
 	}
 
 	return nil
-}
-
-// NewRepository creates a new profile repository
-func NewRepository(db *gorm.DB, mc *memcache.Client, schema core.SchemaService) Repository {
-
-	var count int64
-	err := db.Model(&core.Profile{}).Count(&count).Error
-	if err != nil {
-		slog.Error(
-			"failed to count profiles",
-			slog.String("error", err.Error()),
-		)
-	}
-
-	mc.Set(&memcache.Item{Key: "profile_count", Value: []byte(strconv.FormatInt(count, 10))})
-
-	return &repository{db, mc, schema}
-}
-
-// Total returns the total number of profiles
-func (r *repository) Count(ctx context.Context) (int64, error) {
-	ctx, span := tracer.Start(ctx, "Profile.Repository.Count")
-	defer span.End()
-
-	item, err := r.mc.Get("profile_count")
-	if err != nil {
-		span.RecordError(err)
-		return 0, err
-	}
-
-	count, err := strconv.ParseInt(string(item.Value), 10, 64)
-	if err != nil {
-		span.RecordError(err)
-		return 0, err
-	}
-	return count, nil
 }
 
 // Upsert creates and updates profile

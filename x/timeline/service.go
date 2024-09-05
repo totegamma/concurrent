@@ -342,6 +342,11 @@ func (s *service) GetRecentItems(ctx context.Context, timelines []string, until 
 			return chunk.Items[i].CDate.Before(until)
 		})
 
+		if index >= len(chunk.Items) {
+			span.AddEvent(fmt.Sprintf("no item in target range: %s", timeline))
+			continue
+		}
+
 		heap.Push(&pq, &QueueItem{
 			Timeline: timeline,
 			Epoch:    epoch,

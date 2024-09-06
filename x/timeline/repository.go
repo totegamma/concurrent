@@ -14,6 +14,7 @@ import (
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/pkg/errors"
 	"github.com/redis/go-redis/v9"
+	"go.opentelemetry.io/otel/attribute"
 	"gorm.io/gorm"
 
 	"github.com/totegamma/concurrent/client"
@@ -122,7 +123,9 @@ const (
 	normaalizationCacheTTL    = 60 * 15 // 15 minutes
 
 	tlItrCachePrefix  = "tl:itr:"
+	tlItrCacheTTL     = 60 * 60 * 24 * 2 // 2 days
 	tlBodyCachePrefix = "tl:body:"
+	tlBodyCacheTTL    = 60 * 60 * 24 * 2 // 2 days
 
 	defaultChunkSize = 32
 )
@@ -324,7 +327,6 @@ func (r *repository) lookupLocalItrs(ctx context.Context, timelines []string, ep
 			Group("timeline_id").
 			Scan(&res).Error
 		if err != nil {
-			fmt.Println("err", err)
 			span.RecordError(err)
 			return nil, err
 		}
@@ -333,8 +335,8 @@ func (r *repository) lookupLocalItrs(ctx context.Context, timelines []string, ep
 			id := "t" + item.TimelineID + "@" + r.config.FQDN
 			key := tlItrCachePrefix + id + ":" + epoch
 			value := core.Time2Chunk(item.MaxCDate)
-			fmt.Println("cache lookupLocalItrs ", key, value)
-			r.mc.Set(&memcache.Item{Key: key, Value: []byte(value)})
+			span.AddEvent(fmt.Sprintf("cache lookupLocalItrs: %s", key))
+			r.mc.Set(&memcache.Item{Key: key, Value: []byte(value), Expiration: tlItrCacheTTL})
 			result[id] = value
 		}
 	}
@@ -346,7 +348,11 @@ func (r *repository) lookupRemoteItrs(ctx context.Context, domain string, timeli
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.LookupRemoteItr")
 	defer span.End()
 
-	fmt.Println("lookupRemoteItrs", domain, timelines, epoch)
+	span.SetAttributes(
+		attribute.String("domain", domain),
+		attribute.StringSlice("timelines", timelines),
+		attribute.String("epoch", epoch),
+	)
 
 	result, err := r.client.GetChunkItrs(ctx, domain, timelines, epoch, nil)
 	if err != nil {
@@ -355,17 +361,18 @@ func (r *repository) lookupRemoteItrs(ctx context.Context, domain string, timeli
 	}
 
 	currentSubscriptions := r.keeper.GetRemoteSubs()
-
+	span.SetAttributes(attribute.StringSlice("currentSubscriptions", currentSubscriptions))
 	for timeline, itr := range result {
 
 		// 最新のチャンクに関しては、socketが張られてるキャッシュしか温められないのでそれだけ保持
 		if epoch == core.Time2Chunk(time.Now()) && !slices.Contains(currentSubscriptions, timeline) {
-			fmt.Println("continue", timeline, "/", currentSubscriptions)
+			span.AddEvent(fmt.Sprintf("continue: %s", timeline))
 			continue
 		}
 
 		key := tlItrCachePrefix + timeline + ":" + epoch
-		r.mc.Set(&memcache.Item{Key: key, Value: []byte(itr)})
+		span.AddEvent(fmt.Sprintf("cache lookupRemoteItrs: %s", key))
+		r.mc.Set(&memcache.Item{Key: key, Value: []byte(itr), Expiration: tlItrCacheTTL})
 	}
 
 	return result, nil
@@ -423,8 +430,8 @@ func (r *repository) loadLocalBody(ctx context.Context, timeline string, epoch s
 	}
 	key := tlBodyCachePrefix + timeline + ":" + epoch
 	cacheStr := "," + string(b[1:len(b)-1])
-	fmt.Println("cache loadLocalBody ", key)
-	err = r.mc.Set(&memcache.Item{Key: key, Value: []byte(cacheStr)})
+	span.AddEvent(fmt.Sprintf("cache loadLocalBody: %s", key))
+	err = r.mc.Set(&memcache.Item{Key: key, Value: []byte(cacheStr), Expiration: tlBodyCacheTTL})
 	if err != nil {
 		span.RecordError(err)
 	}
@@ -452,6 +459,7 @@ func (r *repository) loadRemoteBodies(ctx context.Context, remote string, query 
 
 		// 最新のチャンクに関しては、socketが張られてるキャッシュしか温められないのでそれだけ保持
 		if chunk.Epoch == core.Time2Chunk(time.Now()) && !slices.Contains(currentSubscriptions, timeline) {
+			span.AddEvent(fmt.Sprintf("continue: %s", timeline))
 			continue
 		}
 
@@ -467,7 +475,8 @@ func (r *repository) loadRemoteBodies(ctx context.Context, remote string, query 
 			continue
 		}
 		cacheStr := "," + string(b[1:len(b)-1])
-		err = r.mc.Set(&memcache.Item{Key: key, Value: []byte(cacheStr)})
+		span.AddEvent(fmt.Sprintf("cache loadRemoteBodies: %s", key))
+		err = r.mc.Set(&memcache.Item{Key: key, Value: []byte(cacheStr), Expiration: tlBodyCacheTTL})
 		if err != nil {
 			span.RecordError(err)
 			continue
@@ -725,11 +734,11 @@ func (r *repository) CreateItem(ctx context.Context, item core.TimelineItem) (co
 	// この処理は今から挿入するアイテムが最新のチャンクであることが前提になっている。
 	// 古いデータを挿入する場合は、書き込みを行ったチャンクから最新のチャンクまでのイテレーターを更新する必要があるかも。
 	// 範囲でforを回して、キャッシュをdeleteする処理を追加する必要があるだろう...
-	fmt.Println("[repo] set cache", itrKey, " -> ", cacheKey)
+	span.AddEvent(fmt.Sprintf("cache CreateItem: %s -> %s", itrKey, cacheKey))
 	err = r.mc.Replace(&memcache.Item{Key: itrKey, Value: []byte(itemChunk)})
-	fmt.Println("[repo] replace err", err)
+	span.AddEvent(fmt.Sprintf("replace err: %v", err))
 	err = r.mc.Prepend(&memcache.Item{Key: cacheKey, Value: []byte(val)})
-	fmt.Println("[repo] prepend err", err)
+	span.AddEvent(fmt.Sprintf("prepend err: %v", err))
 
 	item.TimelineID = "t" + item.TimelineID
 

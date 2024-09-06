@@ -339,11 +339,11 @@ func (k *keeper) remoteSubRoutine(ctx context.Context, domain string, timelines 
 					epoch := core.Time2Chunk(event.Item.CDate)
 					itrKey := "tl:itr:" + event.Timeline + ":" + epoch
 					bodyKey := "tl:body:" + event.Timeline + ":" + epoch
-					fmt.Println("[keep] set cache", itrKey, " -> ", bodyKey)
+					// fmt.Println("[keep] set cache", itrKey, " -> ", bodyKey)
 					err = k.mc.Replace(&memcache.Item{Key: itrKey, Value: []byte(epoch)})
-					fmt.Println("[keep] replace err", err)
+					// fmt.Println("[keep] replace err", err)
 					err = k.mc.Prepend(&memcache.Item{Key: bodyKey, Value: []byte(val)})
-					fmt.Println("[keep] prepend err", err)
+					// fmt.Println("[keep] prepend err", err)
 
 				case <-pingTicker.C:
 					if err := c.WriteMessage(websocket.PingMessage, []byte{}); err != nil {

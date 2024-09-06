@@ -144,12 +144,12 @@ type Timeline struct {
 // immutable
 type TimelineItem struct {
 	ResourceID string    `json:"resourceID" gorm:"primaryKey;type:char(27);"`
-	TimelineID string    `json:"timelineID" gorm:"primaryKey;type:char(26);"`
+	TimelineID string    `json:"timelineID" gorm:"primaryKey;type:char(26);index:idx_timeline_id_c_date"`
 	Owner      string    `json:"owner" gorm:"type:char(42);"`
 	Author     *string   `json:"author,omitempty" gorm:"type:char(42);"`
 	SchemaID   uint      `json:"-"`
 	Schema     string    `json:"schema,omitempty" gorm:"-"`
-	CDate      time.Time `json:"cdate,omitempty" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
+	CDate      time.Time `json:"cdate,omitempty" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp();index:idx_timeline_id_c_date"`
 }
 
 type Ack struct {

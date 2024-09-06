@@ -1757,21 +1757,6 @@ func (mr *MockTimelineServiceMockRecorder) GetChunks(ctx, timelines, pivot any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChunks", reflect.TypeOf((*MockTimelineService)(nil).GetChunks), ctx, timelines, pivot)
 }
 
-// GetChunksFromRemote mocks base method.
-func (m *MockTimelineService) GetChunksFromRemote(ctx context.Context, host string, timelines []string, pivot time.Time) (map[string]core.Chunk, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetChunksFromRemote", ctx, host, timelines, pivot)
-	ret0, _ := ret[0].(map[string]core.Chunk)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetChunksFromRemote indicates an expected call of GetChunksFromRemote.
-func (mr *MockTimelineServiceMockRecorder) GetChunksFromRemote(ctx, host, timelines, pivot any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChunksFromRemote", reflect.TypeOf((*MockTimelineService)(nil).GetChunksFromRemote), ctx, host, timelines, pivot)
-}
-
 // GetImmediateItems mocks base method.
 func (m *MockTimelineService) GetImmediateItems(ctx context.Context, timelines []string, since time.Time, limit int) ([]core.TimelineItem, error) {
 	m.ctrl.T.Helper()
@@ -1937,6 +1922,36 @@ func (mr *MockTimelineServiceMockRecorder) ListTimelineSubscriptions(ctx any) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTimelineSubscriptions", reflect.TypeOf((*MockTimelineService)(nil).ListTimelineSubscriptions), ctx)
 }
 
+// LoadChunkBody mocks base method.
+func (m *MockTimelineService) LoadChunkBody(ctx context.Context, query map[string]string) (map[string]core.Chunk, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LoadChunkBody", ctx, query)
+	ret0, _ := ret[0].(map[string]core.Chunk)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// LoadChunkBody indicates an expected call of LoadChunkBody.
+func (mr *MockTimelineServiceMockRecorder) LoadChunkBody(ctx, query any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LoadChunkBody", reflect.TypeOf((*MockTimelineService)(nil).LoadChunkBody), ctx, query)
+}
+
+// LookupChunkItr mocks base method.
+func (m *MockTimelineService) LookupChunkItr(ctx context.Context, timeliens []string, epoch string) (map[string]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "LookupChunkItr", ctx, timeliens, epoch)
+	ret0, _ := ret[0].(map[string]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// LookupChunkItr indicates an expected call of LookupChunkItr.
+func (mr *MockTimelineServiceMockRecorder) LookupChunkItr(ctx, timeliens, epoch any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "LookupChunkItr", reflect.TypeOf((*MockTimelineService)(nil).LookupChunkItr), ctx, timeliens, epoch)
+}
+
 // NormalizeTimelineID mocks base method.
 func (m *MockTimelineService) NormalizeTimelineID(ctx context.Context, timeline string) (string, error) {
 	m.ctrl.T.Helper()
@@ -1981,6 +1996,21 @@ func (mr *MockTimelineServiceMockRecorder) PublishEvent(ctx, event any) *gomock.
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "PublishEvent", reflect.TypeOf((*MockTimelineService)(nil).PublishEvent), ctx, event)
 }
 
+// Query mocks base method.
+func (m *MockTimelineService) Query(ctx context.Context, timelineID, schema, owner, author string, until time.Time, limit int) ([]core.TimelineItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Query", ctx, timelineID, schema, owner, author, until, limit)
+	ret0, _ := ret[0].([]core.TimelineItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Query indicates an expected call of Query.
+func (mr *MockTimelineServiceMockRecorder) Query(ctx, timelineID, schema, owner, author, until, limit any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Query", reflect.TypeOf((*MockTimelineService)(nil).Query), ctx, timelineID, schema, owner, author, until, limit)
+}
+
 // Realtime mocks base method.
 func (m *MockTimelineService) Realtime(ctx context.Context, request <-chan []string, response chan<- core.Event) {
 	m.ctrl.T.Helper()
@@ -2021,6 +2051,18 @@ func (m *MockTimelineService) Retract(ctx context.Context, mode core.CommitMode,
 func (mr *MockTimelineServiceMockRecorder) Retract(ctx, mode, document, signature any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Retract", reflect.TypeOf((*MockTimelineService)(nil).Retract), ctx, mode, document, signature)
+}
+
+// UpdateMetrics mocks base method.
+func (m *MockTimelineService) UpdateMetrics() {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "UpdateMetrics")
+}
+
+// UpdateMetrics indicates an expected call of UpdateMetrics.
+func (mr *MockTimelineServiceMockRecorder) UpdateMetrics() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateMetrics", reflect.TypeOf((*MockTimelineService)(nil).UpdateMetrics))
 }
 
 // UpsertTimeline mocks base method.

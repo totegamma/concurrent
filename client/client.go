@@ -36,6 +36,8 @@ type Client interface {
 	GetChunks(ctx context.Context, domain string, timelines []string, queryTime time.Time, opts *Options) (map[string]core.Chunk, error)
 	GetKey(ctx context.Context, domain, id string, opts *Options) ([]core.Key, error)
 	GetDomain(ctx context.Context, domain string, opts *Options) (core.Domain, error)
+	GetChunkItrs(ctx context.Context, domain string, timelines []string, epoch string, opts *Options) (map[string]string, error)
+	GetChunkBodies(ctx context.Context, domain string, query map[string]string, opts *Options) (map[string]core.Chunk, error)
 }
 
 type client struct {
@@ -215,7 +217,10 @@ func (c *client) GetEntity(ctx context.Context, domain, address string, opts *Op
 		return core.Entity{}, fmt.Errorf("Domain is offline")
 	}
 
-	response, err := httpRequest[core.Entity](ctx, &c.client, "GET", "https://"+domain+"/api/v1/entity/"+address, "", opts)
+	url := "https://" + domain + "/api/v1/entity/" + address
+	span.SetAttributes(attribute.String("url", url))
+
+	response, err := httpRequest[core.Entity](ctx, &c.client, "GET", url, "", opts)
 	if err != nil {
 		span.RecordError(err)
 
@@ -238,7 +243,10 @@ func (c *client) GetMessage(ctx context.Context, domain, id string, opts *Option
 
 	}
 
-	response, err := httpRequest[core.Message](ctx, &c.client, "GET", "https://"+domain+"/api/v1/message/"+id, "", opts)
+	url := "https://" + domain + "/api/v1/message/" + id
+	span.SetAttributes(attribute.String("url", url))
+
+	response, err := httpRequest[core.Message](ctx, &c.client, "GET", url, "", opts)
 	if err != nil {
 		span.RecordError(err)
 
@@ -260,7 +268,10 @@ func (c *client) GetAssociation(ctx context.Context, domain, id string, opts *Op
 		return core.Association{}, fmt.Errorf("Domain is offline")
 	}
 
-	response, err := httpRequest[core.Association](ctx, &c.client, "GET", "https://"+domain+"/api/v1/association/"+id, "", opts)
+	url := "https://" + domain + "/api/v1/association/" + id
+	span.SetAttributes(attribute.String("url", url))
+
+	response, err := httpRequest[core.Association](ctx, &c.client, "GET", url, "", opts)
 	if err != nil {
 		span.RecordError(err)
 
@@ -282,7 +293,10 @@ func (c *client) GetProfile(ctx context.Context, domain, id string, opts *Option
 		return core.Profile{}, fmt.Errorf("Domain is offline")
 	}
 
-	response, err := httpRequest[core.Profile](ctx, &c.client, "GET", "https://"+domain+"/api/v1/profile/"+id, "", opts)
+	url := "https://" + domain + "/api/v1/profile/" + id
+	span.SetAttributes(attribute.String("url", url))
+
+	response, err := httpRequest[core.Profile](ctx, &c.client, "GET", url, "", opts)
 	if err != nil {
 		span.RecordError(err)
 
@@ -304,7 +318,10 @@ func (c *client) GetTimeline(ctx context.Context, domain, id string, opts *Optio
 		return core.Timeline{}, fmt.Errorf("Domain is offline")
 	}
 
-	response, err := httpRequest[core.Timeline](ctx, &c.client, "GET", "https://"+domain+"/api/v1/timeline/"+id, "", opts)
+	url := "https://" + domain + "/api/v1/timeline/" + id
+	span.SetAttributes(attribute.String("url", url))
+
+	response, err := httpRequest[core.Timeline](ctx, &c.client, "GET", url, "", opts)
 	if err != nil {
 		span.RecordError(err)
 
@@ -329,7 +346,67 @@ func (c *client) GetChunks(ctx context.Context, domain string, timelines []strin
 	timelinesStr := strings.Join(timelines, ",")
 	timeStr := fmt.Sprintf("%d", queryTime.Unix())
 
-	response, err := httpRequest[map[string]core.Chunk](ctx, &c.client, "GET", "https://"+domain+"/api/v1/timelines/chunks?timelines="+timelinesStr+"&time="+timeStr, "", opts)
+	url := "https://" + domain + "/api/v1/timelines/chunks?timelines=" + timelinesStr + "&time=" + timeStr
+	span.SetAttributes(attribute.String("url", url))
+
+	response, err := httpRequest[map[string]core.Chunk](ctx, &c.client, "GET", url, "", opts)
+	if err != nil {
+		span.RecordError(err)
+
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			c.lastFailed[domain] = time.Now()
+		}
+
+		return nil, err
+	}
+
+	return *response, nil
+}
+
+func (c *client) GetChunkItrs(ctx context.Context, domain string, timelines []string, epoch string, opts *Options) (map[string]string, error) {
+	ctx, span := tracer.Start(ctx, "Client.GetChunkItrs")
+	defer span.End()
+
+	if !c.IsOnline(domain) {
+		return nil, fmt.Errorf("Domain is offline")
+	}
+
+	timelinesStr := strings.Join(timelines, ",")
+
+	url := "https://" + domain + "/api/v1/chunks/itr?timelines=" + timelinesStr + "&epoch=" + epoch
+	span.SetAttributes(attribute.String("url", url))
+
+	response, err := httpRequest[map[string]string](ctx, &c.client, "GET", url, "", opts)
+	if err != nil {
+		span.RecordError(err)
+
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			c.lastFailed[domain] = time.Now()
+		}
+
+		return nil, err
+	}
+
+	return *response, nil
+}
+
+func (c *client) GetChunkBodies(ctx context.Context, domain string, query map[string]string, opts *Options) (map[string]core.Chunk, error) {
+	ctx, span := tracer.Start(ctx, "Client.GetChunkBodies")
+	defer span.End()
+
+	if !c.IsOnline(domain) {
+		return nil, fmt.Errorf("Domain is offline")
+	}
+
+	queries := []string{}
+	for key, value := range query {
+		queries = append(queries, key+":"+value)
+	}
+
+	url := "https://" + domain + "/api/v1/chunks/body?query=" + strings.Join(queries, ",")
+	span.SetAttributes(attribute.String("url", url))
+
+	response, err := httpRequest[map[string]core.Chunk](ctx, &c.client, "GET", url, "", opts)
 	if err != nil {
 		span.RecordError(err)
 
@@ -351,7 +428,10 @@ func (c *client) GetKey(ctx context.Context, domain, id string, opts *Options) (
 		return nil, fmt.Errorf("Domain is offline")
 	}
 
-	response, err := httpRequest[[]core.Key](ctx, &c.client, "GET", "https://"+domain+"/api/v1/key/"+id, "", opts)
+	url := "https://" + domain + "/api/v1/key/" + id
+	span.SetAttributes(attribute.String("url", url))
+
+	response, err := httpRequest[[]core.Key](ctx, &c.client, "GET", url, "", opts)
 	if err != nil {
 		span.RecordError(err)
 
@@ -373,7 +453,10 @@ func (c *client) GetDomain(ctx context.Context, domain string, opts *Options) (c
 		return core.Domain{}, fmt.Errorf("Domain is offline")
 	}
 
-	response, err := httpRequest[core.Domain](ctx, &c.client, "GET", "https://"+domain+"/api/v1/domain", "", opts)
+	url := "https://" + domain + "/api/v1/domain"
+	span.SetAttributes(attribute.String("url", url))
+
+	response, err := httpRequest[core.Domain](ctx, &c.client, "GET", url, "", opts)
 	if err != nil {
 		span.RecordError(err)
 

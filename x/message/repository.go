@@ -2,12 +2,14 @@ package message
 
 import (
 	"context"
-	"errors"
-	"github.com/bradfitz/gomemcache/memcache"
-	"github.com/totegamma/concurrent/core"
-	"gorm.io/gorm"
 	"log/slog"
 	"strconv"
+
+	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/pkg/errors"
+	"gorm.io/gorm"
+
+	"github.com/totegamma/concurrent/core"
 )
 
 // Repository is the interface for message repository
@@ -28,9 +30,12 @@ type repository struct {
 
 // NewRepository creates a new message repository
 func NewRepository(db *gorm.DB, mc *memcache.Client, schema core.SchemaService) Repository {
+	return &repository{db, mc, schema}
+}
 
+func (r *repository) setCurrentCount() {
 	var count int64
-	err := db.Model(&core.Message{}).Count(&count).Error
+	err := r.db.Model(&core.Message{}).Count(&count).Error
 	if err != nil {
 		slog.Error(
 			"failed to count messages",
@@ -38,9 +43,7 @@ func NewRepository(db *gorm.DB, mc *memcache.Client, schema core.SchemaService) 
 		)
 	}
 
-	mc.Set(&memcache.Item{Key: "message_count", Value: []byte(strconv.FormatInt(count, 10))})
-
-	return &repository{db, mc, schema}
+	r.mc.Set(&memcache.Item{Key: "message_count", Value: []byte(strconv.FormatInt(count, 10))})
 }
 
 func (r *repository) normalizeDBID(id string) (string, error) {
@@ -121,6 +124,10 @@ func (r *repository) Count(ctx context.Context) (int64, error) {
 	item, err := r.mc.Get("message_count")
 	if err != nil {
 		span.RecordError(err)
+		if errors.Is(err, memcache.ErrCacheMiss) {
+			r.setCurrentCount()
+			return 0, errors.Wrap(err, "trying to fix...")
+		}
 		return 0, err
 	}
 

@@ -218,11 +218,12 @@ func main() {
 	defer mc.Close()
 
 	client := client.NewClient()
+	timelineKeeper := timeline.NewKeeper(rdb, mc, client, conconf)
 
 	globalPolicy := concurrent.GetDefaultGlobalPolicy()
 
 	policy := concurrent.SetupPolicyService(rdb, globalPolicy, conconf)
-	agent := concurrent.SetupAgent(db, rdb, mc, client, policy, conconf, config.Server.RepositoryPath)
+	agent := concurrent.SetupAgent(db, rdb, mc, timelineKeeper, client, policy, conconf, config.Server.RepositoryPath)
 
 	domainService := concurrent.SetupDomainService(db, client, conconf)
 	domainHandler := domain.NewHandler(domainService)
@@ -230,16 +231,16 @@ func main() {
 	userKvService := concurrent.SetupUserkvService(db)
 	userkvHandler := userkv.NewHandler(userKvService)
 
-	messageService := concurrent.SetupMessageService(db, rdb, mc, client, policy, conconf)
+	messageService := concurrent.SetupMessageService(db, rdb, mc, timelineKeeper, client, policy, conconf)
 	messageHandler := message.NewHandler(messageService)
 
-	associationService := concurrent.SetupAssociationService(db, rdb, mc, client, policy, conconf)
+	associationService := concurrent.SetupAssociationService(db, rdb, mc, timelineKeeper, client, policy, conconf)
 	associationHandler := association.NewHandler(associationService)
 
 	profileService := concurrent.SetupProfileService(db, rdb, mc, client, policy, conconf)
 	profileHandler := profile.NewHandler(profileService)
 
-	timelineService := concurrent.SetupTimelineService(db, rdb, mc, client, policy, conconf)
+	timelineService := concurrent.SetupTimelineService(db, rdb, mc, timelineKeeper, client, policy, conconf)
 	timelineHandler := timeline.NewHandler(timelineService)
 
 	entityService := concurrent.SetupEntityService(db, rdb, mc, client, policy, conconf)
@@ -254,7 +255,7 @@ func main() {
 	ackService := concurrent.SetupAckService(db, rdb, mc, client, policy, conconf)
 	ackHandler := ack.NewHandler(ackService)
 
-	storeService := concurrent.SetupStoreService(db, rdb, mc, client, policy, conconf, config.Server.RepositoryPath)
+	storeService := concurrent.SetupStoreService(db, rdb, mc, timelineKeeper, client, policy, conconf, config.Server.RepositoryPath)
 	storeHandler := store.NewHandler(storeService)
 
 	subscriptionService := concurrent.SetupSubscriptionService(db, rdb, mc, client, policy, conconf)
@@ -383,14 +384,6 @@ func main() {
 	)
 	prometheus.MustRegister(resourceCountMetrics)
 
-	var timelineRealtimeConnectionMetrics = prometheus.NewGauge(
-		prometheus.GaugeOpts{
-			Name: "cc_timeline_realtime_connections",
-			Help: "timeline realtime connections",
-		},
-	)
-	prometheus.MustRegister(timelineRealtimeConnectionMetrics)
-
 	go func() {
 		for {
 			time.Sleep(15 * time.Second)
@@ -440,13 +433,13 @@ func main() {
 			}
 			resourceCountMetrics.WithLabelValues("timeline").Set(float64(count))
 
-			count = timelineService.CurrentRealtimeConnectionCount()
-			timelineRealtimeConnectionMetrics.Set(float64(count))
+			timelineService.UpdateMetrics()
 		}
 	}()
 
 	e.GET("/metrics", echoprometheus.NewHandler())
 
+	timelineKeeper.Start(context.Background())
 	agent.Boot()
 
 	port := ":8000"

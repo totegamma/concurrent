@@ -1,4 +1,5 @@
-package agent
+//go:generate go run go.uber.org/mock/mockgen -source=keeper.go -destination=mock/keeper.go
+package timeline
 
 import (
 	"context"
@@ -12,8 +13,11 @@ import (
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/gorilla/websocket"
-	"github.com/totegamma/concurrent/core"
+	"github.com/redis/go-redis/v9"
 	"go.opentelemetry.io/otel/attribute"
+
+	"github.com/totegamma/concurrent/client"
+	"github.com/totegamma/concurrent/core"
 )
 
 var (
@@ -23,14 +27,60 @@ var (
 	remoteConns       = make(map[string]*websocket.Conn)
 )
 
+type Keeper interface {
+	Start(ctx context.Context)
+	GetRemoteSubs() []string
+	GetCurrentSubs(ctx context.Context) []string
+	GetMetrics() map[string]int64
+}
+
+type keeper struct {
+	rdb    *redis.Client
+	mc     *memcache.Client
+	client client.Client
+	config core.Config
+}
+
+func NewKeeper(rdb *redis.Client, mc *memcache.Client, client client.Client, config core.Config) Keeper {
+	return &keeper{
+		rdb:    rdb,
+		mc:     mc,
+		client: client,
+		config: config,
+	}
+}
+
 type channelRequest struct {
 	Type     string   `json:"type"`
 	Channels []string `json:"channels"`
 }
 
-func (a *agent) GetCurrentSubs(ctx context.Context) []string {
+func (k *keeper) GetMetrics() map[string]int64 {
+	metrics := make(map[string]int64)
+	metrics["remoteSubs"] = int64(len(remoteSubs))
+	metrics["remoteConns"] = int64(len(remoteConns))
+	return metrics
+}
 
-	query := a.rdb.PubSubChannels(ctx, "*")
+func (k *keeper) Start(ctx context.Context) {
+	go k.watchEventRoutine(ctx)
+	go k.chunkUpdaterRoutine(ctx)
+	go k.connectionkeeperRoutine(ctx)
+}
+
+func (k *keeper) GetRemoteSubs() []string {
+	var subs []string
+	for _, timelines := range remoteSubs {
+		for _, timeline := range timelines {
+			subs = append(subs, timeline)
+		}
+	}
+	return subs
+}
+
+func (k *keeper) GetCurrentSubs(ctx context.Context) []string {
+
+	query := k.rdb.PubSubChannels(ctx, "*")
 	channels := query.Val()
 
 	uniqueChannelsMap := make(map[string]bool)
@@ -52,9 +102,9 @@ func (a *agent) GetCurrentSubs(ctx context.Context) []string {
 
 // update m.remoteSubs
 // also update remoteConns if needed
-func (a *agent) createInsufficientSubs(ctx context.Context) {
+func (k *keeper) createInsufficientSubs(ctx context.Context) {
 
-	currentSubs := a.GetCurrentSubs(ctx)
+	currentSubs := k.GetCurrentSubs(ctx)
 
 	// update remoteSubs
 	// only add new subscriptions
@@ -67,7 +117,7 @@ func (a *agent) createInsufficientSubs(ctx context.Context) {
 		}
 		domain := split[len(split)-1]
 
-		if domain == a.config.FQDN {
+		if domain == k.config.FQDN {
 			continue
 		}
 
@@ -87,14 +137,14 @@ func (a *agent) createInsufficientSubs(ctx context.Context) {
 	}
 
 	for _, domain := range changedRemotes {
-		a.RemoteSubRoutine(ctx, domain, remoteSubs[domain])
+		k.remoteSubRoutine(ctx, domain, remoteSubs[domain])
 	}
 }
 
 // DeleteExcessiveSubs deletes subscriptions that are not needed anymore
-func (a *agent) deleteExcessiveSubs(ctx context.Context) {
+func (k *keeper) deleteExcessiveSubs(ctx context.Context) {
 
-	currentSubs := a.GetCurrentSubs(ctx)
+	currentSubs := k.GetCurrentSubs(ctx)
 
 	var closeList []string
 
@@ -133,12 +183,12 @@ func (a *agent) deleteExcessiveSubs(ctx context.Context) {
 }
 
 // RemoteSubRoutine subscribes to a remote server
-func (a *agent) RemoteSubRoutine(ctx context.Context, domain string, timelines []string) {
+func (k *keeper) remoteSubRoutine(ctx context.Context, domain string, timelines []string) {
 	if _, ok := remoteConns[domain]; !ok {
 		// new server, create new connection
 
 		// check server availability
-		domainInfo, err := a.client.GetDomain(ctx, domain, nil)
+		domainInfo, err := k.client.GetDomain(ctx, domain, nil)
 		if err != nil {
 			slog.Error(
 				fmt.Sprintf("fail to get domain info: %v", err),
@@ -147,7 +197,7 @@ func (a *agent) RemoteSubRoutine(ctx context.Context, domain string, timelines [
 			)
 			return
 		}
-		if domainInfo.Dimension != a.config.Dimension {
+		if domainInfo.Dimension != k.config.Dimension {
 			slog.Error(
 				fmt.Sprintf("domain dimention mismatch: %s", domain),
 				slog.String("module", "agent"),
@@ -256,7 +306,7 @@ func (a *agent) RemoteSubRoutine(ctx context.Context, domain string, timelines [
 					}
 
 					// publish message to Redis
-					err = a.rdb.Publish(ctx, event.Timeline, string(message)).Err()
+					err = k.rdb.Publish(ctx, event.Timeline, string(message)).Err()
 					if err != nil {
 						slog.Error(
 							fmt.Sprintf("fail to publish message to Redis"),
@@ -264,6 +314,10 @@ func (a *agent) RemoteSubRoutine(ctx context.Context, domain string, timelines [
 							slog.String("module", "agent"),
 							slog.String("group", "realtime"),
 						)
+						continue
+					}
+
+					if event.Item == nil || event.Item.ResourceID == "" {
 						continue
 					}
 
@@ -278,43 +332,18 @@ func (a *agent) RemoteSubRoutine(ctx context.Context, domain string, timelines [
 						)
 						continue
 					}
-					json = append(json, ',')
-
-					timelineID := event.Item.TimelineID
-					if !strings.Contains(timelineID, "@") {
-						timelineID = timelineID + "@" + domain
-					}
+					val := "," + string(json)
 
 					// update cache
-					// first, try to get itr
-					itr := "timeline:itr:all:" + timelineID + ":" + core.Time2Chunk(event.Item.CDate)
-					itrVal, err := a.mc.Get(itr)
-					var cacheKey string
-					if err == nil {
-						cacheKey = string(itrVal.Value)
-					} else {
-						// 最新時刻のイテレーターがないということは、キャッシュがないということ
-						// とはいえ今後はいい感じにキャッシュを作れるようにしたい
-						// 例えば、今までのキャッシュを(現時点では取得不能)最新のitrが指すようにして
-						// 今までのキャッシュを更新し続けるとか... (TODO)
-						// cacheKey := "timeline:body:all:" + event.Item.TimelienID + ":" + core.Time2Chunk(event.Item.CDate)
-						slog.Info(
-							fmt.Sprintf("no need to update cache: %s", itr),
-							slog.String("module", "agent"),
-							slog.String("group", "realtime"),
-						)
-						continue
-					}
-
-					err = a.mc.Append(&memcache.Item{Key: cacheKey, Value: json})
-					if err != nil {
-						slog.Error(
-							fmt.Sprintf("fail to update cache: %s", itr),
-							slog.String("error", err.Error()),
-							slog.String("module", "agent"),
-							slog.String("group", "realtime"),
-						)
-					}
+					// Note: see x/timeline/repository.go CreateItem
+					epoch := core.Time2Chunk(event.Item.CDate)
+					itrKey := "tl:itr:" + event.Timeline + ":" + epoch
+					bodyKey := "tl:body:" + event.Timeline + ":" + epoch
+					// fmt.Println("[keep] set cache", itrKey, " -> ", bodyKey)
+					err = k.mc.Replace(&memcache.Item{Key: itrKey, Value: []byte(epoch)})
+					// fmt.Println("[keep] replace err", err)
+					err = k.mc.Prepend(&memcache.Item{Key: bodyKey, Value: []byte(val)})
+					// fmt.Println("[keep] prepend err", err)
 
 				case <-pingTicker.C:
 					if err := c.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
@@ -360,9 +389,9 @@ func (a *agent) RemoteSubRoutine(ctx context.Context, domain string, timelines [
 	)
 }
 
-// ConnectionKeeperRoutine
+// ConnectionkeeperRoutine
 // 接続が失われている場合、再接続を試みる
-func (a *agent) connectionKeeperRoutine(ctx context.Context) {
+func (k *keeper) connectionkeeperRoutine(ctx context.Context) {
 
 	ticker := time.NewTicker(time.Second * 10)
 	defer ticker.Stop()
@@ -370,13 +399,7 @@ func (a *agent) connectionKeeperRoutine(ctx context.Context) {
 	for {
 		select {
 		case <-ticker.C:
-			a.createInsufficientSubs(ctx)
-			slog.InfoContext(
-				ctx,
-				fmt.Sprintf("connection keeper: %d/%d", len(remoteConns), len(remoteSubs)),
-				slog.String("module", "agent"),
-				slog.String("group", "realtime"),
-			)
+			k.createInsufficientSubs(ctx)
 			for domain := range remoteSubs {
 				if _, ok := remoteConns[domain]; !ok {
 					slog.Info(
@@ -384,7 +407,7 @@ func (a *agent) connectionKeeperRoutine(ctx context.Context) {
 						slog.String("module", "agent"),
 						slog.String("group", "realtime"),
 					)
-					a.RemoteSubRoutine(ctx, domain, remoteSubs[domain])
+					k.remoteSubRoutine(ctx, domain, remoteSubs[domain])
 				}
 			}
 		}
@@ -392,7 +415,7 @@ func (a *agent) connectionKeeperRoutine(ctx context.Context) {
 }
 
 // ChunkUpdaterRoutine
-func (a *agent) chunkUpdaterRoutine(ctx context.Context) {
+func (k *keeper) chunkUpdaterRoutine(ctx context.Context) {
 	currentChunk := core.Time2Chunk(time.Now())
 	for {
 		// 次の実行時刻を計算
@@ -423,16 +446,16 @@ func (a *agent) chunkUpdaterRoutine(ctx context.Context) {
 			slog.String("group", "realtime"),
 		)
 
-		a.deleteExcessiveSubs(ctx)
+		k.deleteExcessiveSubs(ctx)
 
 		currentChunk = newChunk
 	}
 }
 
 // watchEventRoutine
-func (a *agent) watchEventRoutine(ctx context.Context) {
+func (k *keeper) watchEventRoutine(ctx context.Context) {
 
-	pubsub := a.rdb.Subscribe(ctx, "concrnt:subscription:updated")
+	pubsub := k.rdb.Subscribe(ctx, "concrnt:subscription:updated")
 	defer pubsub.Close()
 
 	psch := pubsub.Channel()
@@ -456,7 +479,7 @@ func (a *agent) watchEventRoutine(ctx context.Context) {
 				slog.String("module", "agent"),
 				slog.String("group", "realtime"),
 			)
-			a.createInsufficientSubs(ctx)
+			k.createInsufficientSubs(ctx)
 		}
 	}
 

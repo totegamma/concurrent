@@ -113,51 +113,6 @@ func (mr *MockRepositoryMockRecorder) DeleteTimeline(ctx, key any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteTimeline", reflect.TypeOf((*MockRepository)(nil).DeleteTimeline), ctx, key)
 }
 
-// GetChunkIterators mocks base method.
-func (m *MockRepository) GetChunkIterators(ctx context.Context, timelines []string, chunk string) (map[string]string, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetChunkIterators", ctx, timelines, chunk)
-	ret0, _ := ret[0].(map[string]string)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetChunkIterators indicates an expected call of GetChunkIterators.
-func (mr *MockRepositoryMockRecorder) GetChunkIterators(ctx, timelines, chunk any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChunkIterators", reflect.TypeOf((*MockRepository)(nil).GetChunkIterators), ctx, timelines, chunk)
-}
-
-// GetChunksFromCache mocks base method.
-func (m *MockRepository) GetChunksFromCache(ctx context.Context, timelines []string, chunk string) (map[string]core.Chunk, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetChunksFromCache", ctx, timelines, chunk)
-	ret0, _ := ret[0].(map[string]core.Chunk)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetChunksFromCache indicates an expected call of GetChunksFromCache.
-func (mr *MockRepositoryMockRecorder) GetChunksFromCache(ctx, timelines, chunk any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChunksFromCache", reflect.TypeOf((*MockRepository)(nil).GetChunksFromCache), ctx, timelines, chunk)
-}
-
-// GetChunksFromDB mocks base method.
-func (m *MockRepository) GetChunksFromDB(ctx context.Context, timelines []string, chunk string) (map[string]core.Chunk, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetChunksFromDB", ctx, timelines, chunk)
-	ret0, _ := ret[0].(map[string]core.Chunk)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetChunksFromDB indicates an expected call of GetChunksFromDB.
-func (mr *MockRepositoryMockRecorder) GetChunksFromDB(ctx, timelines, chunk any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChunksFromDB", reflect.TypeOf((*MockRepository)(nil).GetChunksFromDB), ctx, timelines, chunk)
-}
-
 // GetImmediateItems mocks base method.
 func (m *MockRepository) GetImmediateItems(ctx context.Context, timelineID string, since time.Time, limit int) ([]core.TimelineItem, error) {
 	m.ctrl.T.Helper()

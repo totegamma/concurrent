@@ -1743,18 +1743,18 @@ func (mr *MockTimelineServiceMockRecorder) Event(ctx, mode, document, signature 
 }
 
 // GetChunks mocks base method.
-func (m *MockTimelineService) GetChunks(ctx context.Context, timelines []string, pivot time.Time) (map[string]core.Chunk, error) {
+func (m *MockTimelineService) GetChunks(ctx context.Context, timelines []string, epoch string) (map[string]core.Chunk, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetChunks", ctx, timelines, pivot)
+	ret := m.ctrl.Call(m, "GetChunks", ctx, timelines, epoch)
 	ret0, _ := ret[0].(map[string]core.Chunk)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetChunks indicates an expected call of GetChunks.
-func (mr *MockTimelineServiceMockRecorder) GetChunks(ctx, timelines, pivot any) *gomock.Call {
+func (mr *MockTimelineServiceMockRecorder) GetChunks(ctx, timelines, epoch any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChunks", reflect.TypeOf((*MockTimelineService)(nil).GetChunks), ctx, timelines, pivot)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChunks", reflect.TypeOf((*MockTimelineService)(nil).GetChunks), ctx, timelines, epoch)
 }
 
 // GetImmediateItems mocks base method.

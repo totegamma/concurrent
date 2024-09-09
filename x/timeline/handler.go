@@ -167,12 +167,14 @@ func (h handler) ListMine(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.ListMine")
 	defer span.End()
 
+	selfOwned := c.QueryParam("self_owned")
+
 	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
 	if !ok {
 		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
 	}
 
-	list, err := h.service.ListTimelineByAuthor(ctx, requester)
+	list, err := h.service.ListTimelineByAuthor(ctx, requester, selfOwned == "true")
 	if err != nil {
 		span.RecordError(err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})

@@ -53,6 +53,20 @@ func (mr *MockKeeperMockRecorder) GetCurrentSubs(ctx any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetCurrentSubs", reflect.TypeOf((*MockKeeper)(nil).GetCurrentSubs), ctx)
 }
 
+// GetMetrics mocks base method.
+func (m *MockKeeper) GetMetrics() map[string]int64 {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetMetrics")
+	ret0, _ := ret[0].(map[string]int64)
+	return ret0
+}
+
+// GetMetrics indicates an expected call of GetMetrics.
+func (mr *MockKeeperMockRecorder) GetMetrics() *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMetrics", reflect.TypeOf((*MockKeeper)(nil).GetMetrics))
+}
+
 // GetRemoteSubs mocks base method.
 func (m *MockKeeper) GetRemoteSubs() []string {
 	m.ctrl.T.Helper()

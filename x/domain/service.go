@@ -28,8 +28,19 @@ func (s *service) Upsert(ctx context.Context, host core.Domain) (core.Domain, er
 	return s.repository.Upsert(ctx, host)
 }
 
+func (s *service) Get(ctx context.Context, query string) (core.Domain, error) {
+	ctx, span := tracer.Start(ctx, "Domain.Service.Get")
+	defer span.End()
+
+	if core.IsCCID(query) {
+		return s.getByCCID(ctx, query)
+	} else {
+		return s.getByFQDN(ctx, query)
+	}
+}
+
 // GetByFQDN returns domain by FQDN
-func (s *service) GetByFQDN(ctx context.Context, fqdn string) (core.Domain, error) {
+func (s *service) getByFQDN(ctx context.Context, fqdn string) (core.Domain, error) {
 	ctx, span := tracer.Start(ctx, "Domain.Service.GetByFQDN")
 	defer span.End()
 
@@ -56,9 +67,17 @@ func (s *service) GetByFQDN(ctx context.Context, fqdn string) (core.Domain, erro
 }
 
 // GetByCCID returns domain by CCID
-func (s *service) GetByCCID(ctx context.Context, key string) (core.Domain, error) {
+func (s *service) getByCCID(ctx context.Context, key string) (core.Domain, error) {
 	ctx, span := tracer.Start(ctx, "Domain.Service.GetByCCID")
 	defer span.End()
+
+	if key == s.config.CCID {
+		return core.Domain{
+			ID:        s.config.FQDN,
+			CCID:      s.config.CCID,
+			Dimension: s.config.Dimension,
+		}, nil
+	}
 
 	return s.repository.GetByCCID(ctx, key)
 }

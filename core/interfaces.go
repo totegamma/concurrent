@@ -42,8 +42,7 @@ type AuthService interface {
 
 type DomainService interface {
 	Upsert(ctx context.Context, host Domain) (Domain, error)
-	GetByFQDN(ctx context.Context, key string) (Domain, error)
-	GetByCCID(ctx context.Context, key string) (Domain, error)
+	Get(ctx context.Context, query string) (Domain, error)
 	List(ctx context.Context) ([]Domain, error)
 	Delete(ctx context.Context, id string) error
 	Update(ctx context.Context, host Domain) error
@@ -171,7 +170,7 @@ type TimelineService interface {
 	GetTimelineAutoDomain(ctx context.Context, timelineID string) (Timeline, error)
 
 	ListTimelineBySchema(ctx context.Context, schema string) ([]Timeline, error)
-	ListTimelineByAuthor(ctx context.Context, author string) ([]Timeline, error)
+	ListTimelineByAuthor(ctx context.Context, author string, onlyOwned bool) ([]Timeline, error)
 
 	GetChunks(ctx context.Context, timelines []string, epoch string) (map[string]Chunk, error)
 

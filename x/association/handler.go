@@ -18,6 +18,7 @@ type Handler interface {
 	GetFiltered(c echo.Context) error
 	GetCounts(c echo.Context) error
 	GetOwnByTarget(c echo.Context) error
+	GetAttached(c echo.Context) error
 }
 
 type handler struct {
@@ -115,4 +116,17 @@ func (h handler) GetFiltered(c echo.Context) error {
 		}
 		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": associations})
 	}
+}
+
+func (h handler) GetAttached(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "Association.Handler.GetAttached")
+	defer span.End()
+
+	messageID := c.Param("id")
+	associations, err := h.service.GetByTarget(ctx, messageID)
+	if err != nil {
+		span.RecordError(err)
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": associations})
 }

@@ -394,7 +394,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 				continue
 			}
 
-			_, err = s.domain.GetByFQDN(ctx, domain)
+			_, err = s.domain.Get(ctx, domain)
 			if err != nil {
 				span.RecordError(err)
 				continue

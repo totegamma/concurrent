@@ -417,34 +417,19 @@ func (mr *MockDomainServiceMockRecorder) Delete(ctx, id any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockDomainService)(nil).Delete), ctx, id)
 }
 
-// GetByCCID mocks base method.
-func (m *MockDomainService) GetByCCID(ctx context.Context, key string) (core.Domain, error) {
+// Get mocks base method.
+func (m *MockDomainService) Get(ctx context.Context, query string) (core.Domain, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetByCCID", ctx, key)
+	ret := m.ctrl.Call(m, "Get", ctx, query)
 	ret0, _ := ret[0].(core.Domain)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// GetByCCID indicates an expected call of GetByCCID.
-func (mr *MockDomainServiceMockRecorder) GetByCCID(ctx, key any) *gomock.Call {
+// Get indicates an expected call of Get.
+func (mr *MockDomainServiceMockRecorder) Get(ctx, query any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByCCID", reflect.TypeOf((*MockDomainService)(nil).GetByCCID), ctx, key)
-}
-
-// GetByFQDN mocks base method.
-func (m *MockDomainService) GetByFQDN(ctx context.Context, key string) (core.Domain, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetByFQDN", ctx, key)
-	ret0, _ := ret[0].(core.Domain)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// GetByFQDN indicates an expected call of GetByFQDN.
-func (mr *MockDomainServiceMockRecorder) GetByFQDN(ctx, key any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetByFQDN", reflect.TypeOf((*MockDomainService)(nil).GetByFQDN), ctx, key)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockDomainService)(nil).Get), ctx, query)
 }
 
 // List mocks base method.
@@ -1743,18 +1728,18 @@ func (mr *MockTimelineServiceMockRecorder) Event(ctx, mode, document, signature 
 }
 
 // GetChunks mocks base method.
-func (m *MockTimelineService) GetChunks(ctx context.Context, timelines []string, pivot time.Time) (map[string]core.Chunk, error) {
+func (m *MockTimelineService) GetChunks(ctx context.Context, timelines []string, epoch string) (map[string]core.Chunk, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetChunks", ctx, timelines, pivot)
+	ret := m.ctrl.Call(m, "GetChunks", ctx, timelines, epoch)
 	ret0, _ := ret[0].(map[string]core.Chunk)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetChunks indicates an expected call of GetChunks.
-func (mr *MockTimelineServiceMockRecorder) GetChunks(ctx, timelines, pivot any) *gomock.Call {
+func (mr *MockTimelineServiceMockRecorder) GetChunks(ctx, timelines, epoch any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChunks", reflect.TypeOf((*MockTimelineService)(nil).GetChunks), ctx, timelines, pivot)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChunks", reflect.TypeOf((*MockTimelineService)(nil).GetChunks), ctx, timelines, epoch)
 }
 
 // GetImmediateItems mocks base method.
@@ -1878,18 +1863,18 @@ func (mr *MockTimelineServiceMockRecorder) GetTimelineAutoDomain(ctx, timelineID
 }
 
 // ListTimelineByAuthor mocks base method.
-func (m *MockTimelineService) ListTimelineByAuthor(ctx context.Context, author string) ([]core.Timeline, error) {
+func (m *MockTimelineService) ListTimelineByAuthor(ctx context.Context, author string, onlyOwned bool) ([]core.Timeline, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListTimelineByAuthor", ctx, author)
+	ret := m.ctrl.Call(m, "ListTimelineByAuthor", ctx, author, onlyOwned)
 	ret0, _ := ret[0].([]core.Timeline)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // ListTimelineByAuthor indicates an expected call of ListTimelineByAuthor.
-func (mr *MockTimelineServiceMockRecorder) ListTimelineByAuthor(ctx, author any) *gomock.Call {
+func (mr *MockTimelineServiceMockRecorder) ListTimelineByAuthor(ctx, author, onlyOwned any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTimelineByAuthor", reflect.TypeOf((*MockTimelineService)(nil).ListTimelineByAuthor), ctx, author)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTimelineByAuthor", reflect.TypeOf((*MockTimelineService)(nil).ListTimelineByAuthor), ctx, author, onlyOwned)
 }
 
 // ListTimelineBySchema mocks base method.

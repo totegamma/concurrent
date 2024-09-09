@@ -781,11 +781,18 @@ func (s *service) ListTimelineBySchema(ctx context.Context, schema string) ([]co
 }
 
 // TimelineListByAuthor returns timelineList by author
-func (s *service) ListTimelineByAuthor(ctx context.Context, author string) ([]core.Timeline, error) {
+func (s *service) ListTimelineByAuthor(ctx context.Context, author string, onlyOwned bool) ([]core.Timeline, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.ListTimelineByAuthor")
 	defer span.End()
 
-	timelines, err := s.repository.ListTimelineByAuthor(ctx, author)
+	var timelines []core.Timeline
+	var err error
+	if onlyOwned {
+		timelines, err = s.repository.ListTimelineByAuthorOwned(ctx, author)
+	} else {
+		timelines, err = s.repository.ListTimelineByAuthor(ctx, author)
+	}
+
 	for i := 0; i < len(timelines); i++ {
 		timelines[i].ID = timelines[i].ID + "@" + s.config.FQDN
 	}

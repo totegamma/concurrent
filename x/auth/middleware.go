@@ -71,7 +71,7 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				goto skipCheckPassport
 			}
 
-			domain, err := s.domain.GetByFQDN(ctx, passportDoc.Domain)
+			domain, err := s.domain.Get(ctx, passportDoc.Domain)
 			if err != nil {
 				span.RecordError(errors.Wrap(err, "failed to get domain by fqdn"))
 				goto skipCheckPassport
@@ -227,7 +227,7 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				span.SetAttributes(attribute.String("RequesterType", core.RequesterTypeString(core.LocalUser)))
 			} else {
 
-				domain, err = s.domain.GetByFQDN(ctx, entity.Domain)
+				domain, err = s.domain.Get(ctx, entity.Domain)
 				if err != nil {
 					span.RecordError(errors.Wrap(err, "failed to get domain by fqdn"))
 					return c.JSON(http.StatusForbidden, echo.Map{})

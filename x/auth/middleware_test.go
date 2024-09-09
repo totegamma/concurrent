@@ -121,7 +121,7 @@ func TestRemoteRootSuccess(t *testing.T) {
 	mockEntity.EXPECT().GetMeta(gomock.Any(), gomock.Any()).Return(core.EntityMeta{}, nil).AnyTimes()
 
 	mockDomain := mock_core.NewMockDomainService(ctrl)
-	mockDomain.EXPECT().GetByFQDN(gomock.Any(), RemoteDomainFQDN).Return(core.Domain{
+	mockDomain.EXPECT().Get(gomock.Any(), RemoteDomainFQDN).Return(core.Domain{
 		ID:   RemoteDomainFQDN,
 		CCID: RemoteDomainCCID,
 	}, nil).Times(2)

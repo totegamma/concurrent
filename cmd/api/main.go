@@ -165,12 +165,6 @@ func main() {
 		panic("failed to setup tracing plugin")
 	}
 
-	// !! migration from < v1.2.0
-	err = db.Exec("ALTER TABLE \"associations\" DROP CONSTRAINT IF EXISTS \"idx_associations_unique\"").Error
-	if err != nil {
-		panic("failed to drop constraint: " + err.Error())
-	}
-
 	// Migrate the schema
 	slog.Info("start migrate")
 	err = db.AutoMigrate(

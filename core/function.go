@@ -74,7 +74,7 @@ func IsCCID(keyID string) bool {
 }
 
 func IsCSID(keyID string) bool {
-	return len(keyID) == 42 && keyID[:3] == "ccn" && !hasChar(keyID, '.')
+	return len(keyID) == 42 && keyID[:3] == "ccs" && !hasChar(keyID, '.')
 }
 
 func JsonPrint(tag string, obj interface{}) {

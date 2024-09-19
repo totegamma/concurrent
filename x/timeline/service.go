@@ -54,11 +54,6 @@ func NewService(
 	}
 }
 
-func jsonPrint(tag string, obj interface{}) {
-	b, _ := json.MarshalIndent(obj, "", "  ")
-	fmt.Println(tag, string(b))
-}
-
 // Count returns the count number of messages
 func (s *service) Count(ctx context.Context) (int64, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.Count")

@@ -94,6 +94,7 @@ type EntityMeta struct {
 type Domain struct {
 	ID           string      `json:"fqdn" gorm:"type:text"` // FQDN
 	CCID         string      `json:"ccid" gorm:"type:char(42)"`
+	CSID         string      `json:"csid" gorm:"type:char(42)"`
 	Tag          string      `json:"tag" gorm:"type:text"`
 	Score        int         `json:"score" gorm:"type:integer;default:0"`
 	Meta         interface{} `json:"meta" gorm:"-"`

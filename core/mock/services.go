@@ -417,6 +417,21 @@ func (mr *MockDomainServiceMockRecorder) Delete(ctx, id any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockDomainService)(nil).Delete), ctx, id)
 }
 
+// ForceFetch mocks base method.
+func (m *MockDomainService) ForceFetch(ctx context.Context, fqdn string) (core.Domain, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ForceFetch", ctx, fqdn)
+	ret0, _ := ret[0].(core.Domain)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ForceFetch indicates an expected call of ForceFetch.
+func (mr *MockDomainServiceMockRecorder) ForceFetch(ctx, fqdn any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ForceFetch", reflect.TypeOf((*MockDomainService)(nil).ForceFetch), ctx, fqdn)
+}
+
 // GetByCCID mocks base method.
 func (m *MockDomainService) GetByCCID(ctx context.Context, key string) (core.Domain, error) {
 	m.ctrl.T.Helper()

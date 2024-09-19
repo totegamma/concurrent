@@ -55,6 +55,27 @@ func (s *service) GetByFQDN(ctx context.Context, fqdn string) (core.Domain, erro
 	return domain, nil
 }
 
+func (s *service) ForceFetch(ctx context.Context, fqdn string) (core.Domain, error) {
+	ctx, span := tracer.Start(ctx, "Domain.Service.ForceFetch")
+	defer span.End()
+
+	domain, err := s.client.GetDomain(ctx, fqdn, nil)
+	if err != nil {
+		return core.Domain{}, err
+	}
+
+	if domain.Dimension != s.config.Dimension {
+		return core.Domain{}, fmt.Errorf("domain is not in the same dimension")
+	}
+
+	_, err = s.repository.Upsert(ctx, domain)
+	if err != nil {
+		return core.Domain{}, err
+	}
+
+	return domain, nil
+}
+
 // GetByCCID returns domain by CCID
 func (s *service) GetByCCID(ctx context.Context, key string) (core.Domain, error) {
 	ctx, span := tracer.Start(ctx, "Domain.Service.GetByCCID")

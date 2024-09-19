@@ -44,6 +44,7 @@ type DomainService interface {
 	Upsert(ctx context.Context, host Domain) (Domain, error)
 	GetByFQDN(ctx context.Context, key string) (Domain, error)
 	GetByCCID(ctx context.Context, key string) (Domain, error)
+	ForceFetch(ctx context.Context, fqdn string) (Domain, error)
 	List(ctx context.Context) ([]Domain, error)
 	Delete(ctx context.Context, id string) error
 	Update(ctx context.Context, host Domain) error

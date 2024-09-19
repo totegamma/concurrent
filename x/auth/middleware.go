@@ -83,7 +83,8 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				goto skipCheckPassport
 			}
 
-			if core.IsCSID(passportDoc.Signer) && domain.CSID != "" {
+			if core.IsCSID(passportDoc.Signer) && domain.CSID == "" {
+				span.AddEvent("force fetch domain")
 				_, err := s.domain.ForceFetch(ctx, domain.ID)
 				if err != nil {
 					span.RecordError(errors.Wrap(err, "failed to force fetch domain"))

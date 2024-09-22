@@ -190,6 +190,10 @@ func main() {
 		panic("failed to migrate schema: " + err.Error())
 	}
 
+	// migration from 1.3.2 to 1.3.3
+	db.Model(&core.Timeline{}).Where("owner IS NULL").Update("owner", gorm.Expr("author"))
+	db.Model(&core.Subscription{}).Where("owner IS NULL").Update("owner", gorm.Expr("author"))
+
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     config.Server.RedisAddr,
 		Password: "", // no password set

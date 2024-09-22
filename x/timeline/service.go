@@ -1019,11 +1019,7 @@ func (s *service) GetOwners(ctx context.Context, timelines []string) ([]string, 
 		if err != nil {
 			continue
 		}
-		if timeline.DomainOwned {
-			owners_map[s.config.FQDN] = true
-		} else {
-			owners_map[timeline.Author] = true
-		}
+		owners_map[timeline.Owner] = true
 	}
 
 	owners := make([]string, 0)

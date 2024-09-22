@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"slices"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -481,6 +482,10 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 	affected, err := s.timeline.GetOwners(ctx, doc.Timelines)
 	if err != nil {
 		span.RecordError(err)
+	}
+
+	if !slices.Contains(affected, doc.Signer) {
+		affected = append(affected, doc.Signer)
 	}
 
 	return created, affected, nil

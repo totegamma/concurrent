@@ -196,7 +196,7 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 		entry := fmt.Sprintf("%s %s", signature, document)
 
 		for _, owner := range owners {
-			if owner != s.config.FQDN {
+			if owner != s.config.CSID {
 				ownerEntity, err := s.entity.Get(ctx, owner)
 				if err != nil {
 					span.RecordError(errors.Wrap(err, "failed to get owner entity"))

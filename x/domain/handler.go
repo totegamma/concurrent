@@ -33,7 +33,7 @@ func (h handler) Get(c echo.Context) error {
 	defer span.End()
 
 	id := c.Param("id")
-	host, err := h.service.GetByFQDN(ctx, id)
+	host, err := h.service.Get(ctx, id)
 	if err != nil {
 		if errors.Is(err, core.ErrorNotFound{}) {
 			return c.JSON(http.StatusNotFound, echo.Map{"error": "Domain not found"})

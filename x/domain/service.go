@@ -28,6 +28,29 @@ func (s *service) Upsert(ctx context.Context, host core.Domain) (core.Domain, er
 	return s.repository.Upsert(ctx, host)
 }
 
+func (s *service) Get(ctx context.Context, id string) (core.Domain, error) {
+	ctx, span := tracer.Start(ctx, "Domain.Service.Get")
+	defer span.End()
+
+	if core.IsCCID(id) {
+		return s.repository.GetByCCID(ctx, id)
+	}
+
+	if core.IsCSID(id) {
+		if id == s.config.CSID {
+			return core.Domain{
+				ID:        s.config.FQDN,
+				Dimension: s.config.Dimension,
+				CSID:      s.config.CSID,
+				CCID:      s.config.CCID,
+			}, nil
+		}
+		return s.repository.GetByCSID(ctx, id)
+	}
+
+	return s.repository.GetByFQDN(ctx, id)
+}
+
 // GetByFQDN returns domain by FQDN
 func (s *service) GetByFQDN(ctx context.Context, fqdn string) (core.Domain, error) {
 	ctx, span := tracer.Start(ctx, "Domain.Service.GetByFQDN")

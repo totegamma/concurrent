@@ -191,8 +191,8 @@ func main() {
 	}
 
 	// migration from 1.3.2 to 1.3.3
-	db.Model(&core.Timeline{}).Where("owner IS NULL").Update("owner", gorm.Expr("author"))
-	db.Model(&core.Subscription{}).Where("owner IS NULL").Update("owner", gorm.Expr("author"))
+	db.Model(&core.Timeline{}).Where("owner IS NULL").Update("owner", gorm.Expr("CASE WHEN domain_owned THEN ? ELSE author END", conconf.CSID))
+	db.Model(&core.Subscription{}).Where("owner IS NULL").Update("owner", gorm.Expr("CASE WHEN domain_owned THEN ? ELSE author END", conconf.CSID))
 
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     config.Server.RedisAddr,

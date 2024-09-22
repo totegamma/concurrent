@@ -50,7 +50,7 @@ func (s *service) IssuePassport(ctx context.Context, requester string, keys []co
 		Entity: entity,
 		Keys:   keys,
 		DocumentBase: core.DocumentBase[any]{
-			Signer:   s.config.CCID,
+			Signer:   s.config.CSID,
 			Type:     "passport",
 			SignedAt: time.Now(),
 		},

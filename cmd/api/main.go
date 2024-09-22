@@ -309,10 +309,12 @@ func main() {
 	apiV1.GET("/profile/:id", profileHandler.Get)
 	apiV1.GET("/profile/:owner/:semanticid", profileHandler.GetBySemanticID)
 	apiV1.GET("/profiles", profileHandler.Query)
+	apiV1.GET("/profile/:id/associations", associationHandler.GetAttached)
 
 	// timeline
 	apiV1.GET("/timeline/:id", timelineHandler.Get)
 	apiV1.GET("/timeline/:id/query", timelineHandler.Query)
+	apiV1.GET("/timeline/:id/associations", associationHandler.GetAttached)
 	apiV1.GET("/timelines", timelineHandler.List)
 	apiV1.GET("/timelines/mine", timelineHandler.ListMine)
 	apiV1.GET("/timelines/recent", timelineHandler.Recent)
@@ -337,6 +339,7 @@ func main() {
 
 	// subscription
 	apiV1.GET("/subscription/:id", subscriptionHandler.GetSubscription)
+	apiV1.GET("/subscription/:id/associations", associationHandler.GetAttached)
 	apiV1.GET("/subscriptions/mine", subscriptionHandler.GetOwnSubscriptions, auth.Restrict(auth.ISLOCAL))
 
 	// storage

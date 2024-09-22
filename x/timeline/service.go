@@ -617,6 +617,10 @@ func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, docu
 		return core.Timeline{}, err
 	}
 
+	if doc.Owner == "" {
+		doc.Owner = doc.Signer
+	}
+
 	if doc.ID == "" { // Create
 		hash := core.GetHash([]byte(document))
 		hash10 := [10]byte{}
@@ -667,6 +671,7 @@ func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, docu
 			return core.Timeline{}, err
 		}
 
+		doc.Owner = existance.Owner             // make sure the owner is immutable
 		doc.DomainOwned = existance.DomainOwned // make sure the domain owned is immutable
 
 		var params map[string]any = make(map[string]any)
@@ -704,8 +709,9 @@ func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, docu
 
 	saved, err := s.repository.UpsertTimeline(ctx, core.Timeline{
 		ID:           doc.ID,
-		Indexable:    doc.Indexable,
+		Owner:        doc.Owner,
 		Author:       doc.Signer,
+		Indexable:    doc.Indexable,
 		DomainOwned:  doc.DomainOwned,
 		Schema:       doc.Schema,
 		Policy:       doc.Policy,

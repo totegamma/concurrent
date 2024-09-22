@@ -128,8 +128,9 @@ type Message struct {
 type Timeline struct {
 	ID           string    `json:"id" gorm:"primaryKey;type:char(26);"`
 	Indexable    bool      `json:"indexable" gorm:"type:boolean;default:false"`
+	Owner        string    `json:"owner" gorm:"type:char(42)"`
 	Author       string    `json:"author" gorm:"type:char(42)"`
-	DomainOwned  bool      `json:"domainOwned" gorm:"type:boolean;default:false"`
+	DomainOwned  bool      `json:"domainOwned" gorm:"type:boolean;default:false"` // Deprecated
 	SchemaID     uint      `json:"-"`
 	Schema       string    `json:"schema" gorm:"-"`
 	PolicyID     uint      `json:"-"`
@@ -164,9 +165,10 @@ type Ack struct {
 // Subscription
 type Subscription struct {
 	ID           string             `json:"id" gorm:"primaryKey;type:char(26)"`
+	Owner        string             `json:"owner" gorm:"type:char(42)"`
 	Author       string             `json:"author" gorm:"type:char(42);"`
 	Indexable    bool               `json:"indexable" gorm:"type:boolean;default:false"`
-	DomainOwned  bool               `json:"domainOwned" gorm:"type:boolean;default:false"`
+	DomainOwned  bool               `json:"domainOwned" gorm:"type:boolean;default:false"` // Deprecated
 	SchemaID     uint               `json:"-"`
 	Schema       string             `json:"schema" gorm:"-"`
 	PolicyID     uint               `json:"-"`

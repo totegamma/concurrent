@@ -48,6 +48,10 @@ func (s *service) UpsertSubscription(ctx context.Context, mode core.CommitMode, 
 		return core.Subscription{}, err
 	}
 
+	if doc.Owner == "" {
+		doc.Owner = doc.Signer
+	}
+
 	if doc.ID == "" { // New
 		hash := core.GetHash([]byte(document))
 		hash10 := [10]byte{}
@@ -86,6 +90,7 @@ func (s *service) UpsertSubscription(ctx context.Context, mode core.CommitMode, 
 			return core.Subscription{}, err
 		}
 
+		doc.Owner = existance.Owner             // make sure the owner is immutable
 		doc.DomainOwned = existance.DomainOwned // make sure the domain owned is immutable
 
 		var params map[string]any = make(map[string]any)
@@ -126,6 +131,7 @@ func (s *service) UpsertSubscription(ctx context.Context, mode core.CommitMode, 
 
 	created, err := s.repo.CreateSubscription(ctx, core.Subscription{
 		ID:           doc.ID,
+		Owner:        doc.Owner,
 		Author:       doc.Signer,
 		Indexable:    doc.Indexable,
 		DomainOwned:  doc.DomainOwned,

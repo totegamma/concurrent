@@ -113,11 +113,7 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 		var t core.Timeline
 		t, err = s.timeline.UpsertTimeline(ctx, mode, document, signature)
 		result = t
-		if !t.DomainOwned {
-			owners = []string{t.Author}
-		} else {
-			owners = []string{s.config.FQDN}
-		}
+		owners = []string{t.Owner}
 
 	case "retract":
 		result, owners, err = s.timeline.Retract(ctx, mode, document, signature)
@@ -147,11 +143,7 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 		var sub core.Subscription
 		sub, err = s.subscription.UpsertSubscription(ctx, mode, document, signature)
 		result = sub
-		if !sub.DomainOwned {
-			owners = []string{sub.Author}
-		} else {
-			owners = []string{s.config.FQDN}
-		}
+		owners = []string{sub.Owner}
 
 	case "subscribe":
 		var si core.SubscriptionItem
@@ -186,20 +178,12 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 			var dt core.Timeline
 			dt, err = s.timeline.DeleteTimeline(ctx, mode, document)
 			result = dt
-			if !dt.DomainOwned {
-				owners = []string{dt.Author}
-			} else {
-				owners = []string{s.config.FQDN}
-			}
+			owners = []string{dt.Owner}
 		case 's': // subscription
 			var ds core.Subscription
 			ds, err = s.subscription.DeleteSubscription(ctx, mode, document)
 			result = ds
-			if !ds.DomainOwned {
-				owners = []string{ds.Author}
-			} else {
-				owners = []string{s.config.FQDN}
-			}
+			owners = []string{ds.Owner}
 		default:
 			result, err = nil, fmt.Errorf("unknown document type: %s", string(typ))
 		}

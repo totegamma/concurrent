@@ -48,3 +48,30 @@ look at detailed documentation: [concrnt square](https://square.concrnt.net/oper
 
 ## Contributing
 When creating a PR, we generally recommend creating an issue first and reaching a consensus on whether or not to proceed. (Concrnt is currently being heavily developed, and there may be changes that cannot be made due to its policy.)
+
+# Upgrading Steps
+
+### v1.3.3 CheckPoint
+これ以下のバージョンから上のバージョンにアップデートする際、このバージョンを経由する必要があります
+
+### v1.3.0 CheckPoint
+これ以下のバージョンから上のバージョンにアップデートする際、このバージョンを経由する必要があります
+
+### v1.2.1
+
+### v1.2.0
+
+### v1.1.3
+
+### v1.1.1
+
+### v1.1.0
+
+### v1.0.13
+
+### v1.0.12
+
+### v1.0.9
+
+### v1.0.3
+

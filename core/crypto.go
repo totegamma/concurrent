@@ -106,7 +106,12 @@ func PrivKeyToAddr(privKeyHex string, hrp string) (string, error) {
 
 func SetupConfig(base ConfigInput) Config {
 
-	addr, err := PrivKeyToAddr(base.PrivateKey, "con")
+	ccid, err := PrivKeyToAddr(base.PrivateKey, "con")
+	if err != nil {
+		panic(err)
+	}
+
+	csid, err := PrivKeyToAddr(base.PrivateKey, "ccs")
 	if err != nil {
 		panic(err)
 	}
@@ -117,6 +122,7 @@ func SetupConfig(base ConfigInput) Config {
 		Registration: base.Registration,
 		SiteKey:      base.SiteKey,
 		Dimension:    base.Dimension,
-		CCID:         addr,
+		CCID:         ccid,
+		CSID:         csid,
 	}
 }

@@ -54,11 +54,6 @@ func NewService(
 	}
 }
 
-func jsonPrint(tag string, obj interface{}) {
-	b, _ := json.MarshalIndent(obj, "", "  ")
-	fmt.Println(tag, string(b))
-}
-
 // Count returns the count number of messages
 func (s *service) Count(ctx context.Context) (int64, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.Count")
@@ -622,6 +617,10 @@ func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, docu
 		return core.Timeline{}, err
 	}
 
+	if doc.Owner == "" {
+		doc.Owner = doc.Signer
+	}
+
 	if doc.ID == "" { // Create
 		hash := core.GetHash([]byte(document))
 		hash10 := [10]byte{}
@@ -672,6 +671,7 @@ func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, docu
 			return core.Timeline{}, err
 		}
 
+		doc.Owner = existance.Owner             // make sure the owner is immutable
 		doc.DomainOwned = existance.DomainOwned // make sure the domain owned is immutable
 
 		var params map[string]any = make(map[string]any)
@@ -709,8 +709,9 @@ func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, docu
 
 	saved, err := s.repository.UpsertTimeline(ctx, core.Timeline{
 		ID:           doc.ID,
-		Indexable:    doc.Indexable,
+		Owner:        doc.Owner,
 		Author:       doc.Signer,
+		Indexable:    doc.Indexable,
 		DomainOwned:  doc.DomainOwned,
 		Schema:       doc.Schema,
 		Policy:       doc.Policy,
@@ -1018,11 +1019,7 @@ func (s *service) GetOwners(ctx context.Context, timelines []string) ([]string, 
 		if err != nil {
 			continue
 		}
-		if timeline.DomainOwned {
-			owners_map[s.config.FQDN] = true
-		} else {
-			owners_map[timeline.Author] = true
-		}
+		owners_map[timeline.Owner] = true
 	}
 
 	owners := make([]string, 0)

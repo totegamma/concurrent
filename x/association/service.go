@@ -108,10 +108,23 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 		return core.Association{}, []string{}, err
 	}
 
-	owner, err := s.entity.Get(ctx, doc.Owner)
-	if err != nil {
-		span.RecordError(err)
-		return core.Association{}, []string{}, err
+	isLocalEntry := false
+
+	if core.IsCCID(doc.Owner) {
+		ownerEntity, err := s.entity.Get(ctx, doc.Owner)
+		if err != nil {
+			span.RecordError(err)
+			return core.Association{}, []string{}, err
+		}
+		if ownerEntity.Domain == s.config.FQDN {
+			isLocalEntry = true
+		}
+	} else if core.IsCSID(doc.Owner) {
+		if doc.Owner == s.config.CSID {
+			isLocalEntry = true
+		}
+	} else {
+		return core.Association{}, []string{}, errors.New("invalid owner")
 	}
 
 	bodyStr, err := json.Marshal(doc.Body)
@@ -137,7 +150,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 		Unique:    unique,
 	}
 
-	if owner.Domain == s.config.FQDN { // signerが自ドメイン管轄の場合、リソースを作成
+	if isLocalEntry { // signerが自ドメイン管轄の場合、リソースを作成
 
 		switch doc.Target[0] {
 		case 'm': // message
@@ -381,7 +394,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 					continue
 				}
 			}
-		} else if owner.Domain == s.config.FQDN && mode != core.CommitModeLocalOnlyExec { // ここでリソースを作成したなら、リモートにもリレー
+		} else if isLocalEntry && mode != core.CommitModeLocalOnlyExec { // ここでリソースを作成したなら、リモートにもリレー
 			// send to remote
 			packet := core.Commit{
 				Document:  document,
@@ -407,7 +420,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 	if doc.Target[0] == 'm' {
 		// Associationだけの追加対応
 		// メッセージの場合は、ターゲットのタイムラインにも追加する
-		if owner.Domain == s.config.FQDN && mode != core.CommitModeLocalOnlyExec {
+		if isLocalEntry && mode != core.CommitModeLocalOnlyExec {
 			targetMessage, err := s.message.GetAsUser(ctx, association.Target, signer)
 			if err != nil {
 				span.RecordError(err)

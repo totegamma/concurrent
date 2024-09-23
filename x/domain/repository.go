@@ -14,6 +14,7 @@ import (
 type Repository interface {
 	GetByFQDN(ctx context.Context, key string) (core.Domain, error)
 	GetByCCID(ctx context.Context, ccid string) (core.Domain, error)
+	GetByCSID(ctx context.Context, ccid string) (core.Domain, error)
 	Upsert(ctx context.Context, host core.Domain) (core.Domain, error)
 	GetList(ctx context.Context) ([]core.Domain, error)
 	Delete(ctx context.Context, id string) error
@@ -55,6 +56,23 @@ func (r *repository) GetByCCID(ctx context.Context, ccid string) (core.Domain, e
 
 	var host core.Domain
 	err := r.db.WithContext(ctx).First(&host, "cc_id = ?", ccid).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return core.Domain{}, core.NewErrorNotFound()
+		}
+		span.RecordError(err)
+		return host, err
+	}
+
+	return host, nil
+}
+
+func (r *repository) GetByCSID(ctx context.Context, csid string) (core.Domain, error) {
+	ctx, span := tracer.Start(ctx, "Domain.Repository.GetByCSID")
+	defer span.End()
+
+	var host core.Domain
+	err := r.db.WithContext(ctx).First(&host, "cs_id = ?", csid).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return core.Domain{}, core.NewErrorNotFound()

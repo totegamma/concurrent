@@ -148,6 +148,9 @@ func TestRemoteRootSuccess(t *testing.T) {
 	req.Header.Set("Authorization", "Bearer "+jwt)
 
 	passportDoc := core.PassportDocument{
+		DocumentBase: core.DocumentBase[any]{
+			Signer: "con1er7kuzrw6vtv6nrq98d4jg7n2r0ayz772zvwxz",
+		},
 		Domain: RemoteDomainFQDN,
 		Entity: core.Entity{
 			ID:     User1ID,

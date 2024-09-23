@@ -190,6 +190,10 @@ func main() {
 		panic("failed to migrate schema: " + err.Error())
 	}
 
+	// migration from 1.3.2 to 1.3.3
+	db.Model(&core.Timeline{}).Where("owner IS NULL").Update("owner", gorm.Expr("CASE WHEN domain_owned THEN ? ELSE author END", conconf.CSID))
+	db.Model(&core.Subscription{}).Where("owner IS NULL").Update("owner", gorm.Expr("CASE WHEN domain_owned THEN ? ELSE author END", conconf.CSID))
+
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     config.Server.RedisAddr,
 		Password: "", // no password set
@@ -258,6 +262,22 @@ func main() {
 	jobService := concurrent.SetupJobService(db)
 	jobHandler := job.NewHandler(jobService)
 
+	// migration from 1.3.2 to 1.3.3
+	var remotes []core.Domain
+	db.Find(&remotes)
+	for _, remote := range remotes {
+		go func(remote core.Domain) {
+			ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+			defer cancel()
+			msg := "succeed"
+			_, err := domainService.ForceFetch(ctx, remote.ID)
+			if err != nil {
+				msg = err.Error()
+			}
+			fmt.Println("force fetch", remote.ID, msg)
+		}(remote)
+	}
+
 	apiV1 := e.Group("", auth.ReceiveGatewayAuthPropagation)
 	// store
 	apiV1.POST("/commit", storeHandler.Commit)
@@ -277,6 +297,7 @@ func main() {
 		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": core.Domain{
 			ID:        conconf.FQDN,
 			CCID:      conconf.CCID,
+			CSID:      conconf.CSID,
 			Dimension: conconf.Dimension,
 			Meta:      meta,
 		}})
@@ -304,10 +325,12 @@ func main() {
 	apiV1.GET("/profile/:id", profileHandler.Get)
 	apiV1.GET("/profile/:owner/:semanticid", profileHandler.GetBySemanticID)
 	apiV1.GET("/profiles", profileHandler.Query)
+	apiV1.GET("/profile/:id/associations", associationHandler.GetAttached)
 
 	// timeline
 	apiV1.GET("/timeline/:id", timelineHandler.Get)
 	apiV1.GET("/timeline/:id/query", timelineHandler.Query)
+	apiV1.GET("/timeline/:id/associations", associationHandler.GetAttached)
 	apiV1.GET("/timelines", timelineHandler.List)
 	apiV1.GET("/timelines/mine", timelineHandler.ListMine)
 	apiV1.GET("/timelines/recent", timelineHandler.Recent)
@@ -332,6 +355,7 @@ func main() {
 
 	// subscription
 	apiV1.GET("/subscription/:id", subscriptionHandler.GetSubscription)
+	apiV1.GET("/subscription/:id/associations", associationHandler.GetAttached)
 	apiV1.GET("/subscriptions/mine", subscriptionHandler.GetOwnSubscriptions, auth.Restrict(auth.ISLOCAL))
 
 	// storage

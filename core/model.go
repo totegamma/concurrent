@@ -64,6 +64,7 @@ type Config struct {
 	SiteKey      string `yaml:"sitekey"`
 	Dimension    string `yaml:"dimension"`
 	CCID         string `yaml:"ccid"`
+	CSID         string `yaml:"csid"`
 }
 
 type ConfigInput struct {

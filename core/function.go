@@ -1,6 +1,7 @@
 package core
 
 import (
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -70,4 +71,13 @@ func IsCKID(keyID string) bool {
 
 func IsCCID(keyID string) bool {
 	return len(keyID) == 42 && keyID[:3] == "con" && !hasChar(keyID, '.')
+}
+
+func IsCSID(keyID string) bool {
+	return len(keyID) == 42 && keyID[:3] == "ccs" && !hasChar(keyID, '.')
+}
+
+func JsonPrint(tag string, obj interface{}) {
+	b, _ := json.MarshalIndent(obj, "", "  ")
+	fmt.Println(tag, string(b))
 }

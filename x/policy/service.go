@@ -437,6 +437,18 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 			Result:   value,
 		}, nil
 
+	case "DomainFQDN":
+		return core.EvalResult{
+			Operator: "DomainFQDN",
+			Result:   s.config.FQDN,
+		}, nil
+
+	case "DomainCSID":
+		return core.EvalResult{
+			Operator: "DomainCSID",
+			Result:   s.config.CSID,
+		}, nil
+
 	case "IsRequesterLocalUser":
 		domain := requestCtx.Requester.Domain
 		return core.EvalResult{

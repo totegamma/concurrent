@@ -90,7 +90,7 @@ services:
 
   db:
     restart: always
-    image: postgres
+    image: postgres:16-bookworm
     healthcheck:
       test: "pg_isready -U postgres"
       interval: 5s
@@ -107,7 +107,7 @@ services:
 
   redis:
     restart: always
-    image: redis
+    image: redis:7-bookworm
     volumes:
       - ./_composeData/redis:/data
     healthcheck:
@@ -121,7 +121,7 @@ services:
 
   memcached:
     restart: always
-    image: memcached
+    image: memcached:1.6-bookworm
     expose:
       - 11211
     networks:

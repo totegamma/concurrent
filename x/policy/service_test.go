@@ -43,8 +43,16 @@ var globalPolicyJson = `
                 "op": "Or",
                 "args": [
                     {
-                        "op": "LoadSelf",
-                        "const": "domainOwned"
+                        "op": "Eq",
+                        "args": [
+                            {
+                                "op": "LoadSelf",
+                                "const": "owner"
+                            },
+                            {
+                                "op": "DomainCSID"
+                            }
+                        ]
                     },
                     {
                         "op": "Eq",

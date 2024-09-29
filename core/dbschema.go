@@ -130,7 +130,6 @@ type Timeline struct {
 	Indexable    bool      `json:"indexable" gorm:"type:boolean;default:false"`
 	Owner        string    `json:"owner" gorm:"type:char(42)"`
 	Author       string    `json:"author" gorm:"type:char(42)"`
-	DomainOwned  bool      `json:"domainOwned" gorm:"type:boolean;default:false"` // Deprecated
 	SchemaID     uint      `json:"-"`
 	Schema       string    `json:"schema" gorm:"-"`
 	PolicyID     uint      `json:"-"`
@@ -168,7 +167,6 @@ type Subscription struct {
 	Owner        string             `json:"owner" gorm:"type:char(42)"`
 	Author       string             `json:"author" gorm:"type:char(42);"`
 	Indexable    bool               `json:"indexable" gorm:"type:boolean;default:false"`
-	DomainOwned  bool               `json:"domainOwned" gorm:"type:boolean;default:false"` // Deprecated
 	SchemaID     uint               `json:"-"`
 	Schema       string             `json:"schema" gorm:"-"`
 	PolicyID     uint               `json:"-"`

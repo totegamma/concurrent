@@ -432,6 +432,21 @@ func (mr *MockDomainServiceMockRecorder) ForceFetch(ctx, fqdn any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ForceFetch", reflect.TypeOf((*MockDomainService)(nil).ForceFetch), ctx, fqdn)
 }
 
+// Get mocks base method.
+func (m *MockDomainService) Get(ctx context.Context, key string) (core.Domain, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Get", ctx, key)
+	ret0, _ := ret[0].(core.Domain)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Get indicates an expected call of Get.
+func (mr *MockDomainServiceMockRecorder) Get(ctx, key any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockDomainService)(nil).Get), ctx, key)
+}
+
 // GetByCCID mocks base method.
 func (m *MockDomainService) GetByCCID(ctx context.Context, key string) (core.Domain, error) {
 	m.ctrl.T.Helper()

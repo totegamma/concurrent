@@ -671,8 +671,7 @@ func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, docu
 			return core.Timeline{}, err
 		}
 
-		doc.Owner = existance.Owner             // make sure the owner is immutable
-		doc.DomainOwned = existance.DomainOwned // make sure the domain owned is immutable
+		doc.Owner = existance.Owner // make sure the owner is immutable
 
 		var params map[string]any = make(map[string]any)
 		if existance.PolicyParams != nil {
@@ -712,7 +711,6 @@ func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, docu
 		Owner:        doc.Owner,
 		Author:       doc.Signer,
 		Indexable:    doc.Indexable,
-		DomainOwned:  doc.DomainOwned,
 		Schema:       doc.Schema,
 		Policy:       doc.Policy,
 		PolicyParams: policyparams,
@@ -859,10 +857,7 @@ func (s *service) Retract(ctx context.Context, mode core.CommitMode, document, s
 
 	s.repository.DeleteItem(ctx, doc.Timeline, doc.Target)
 
-	affected := []string{timeline.Author}
-	if timeline.DomainOwned {
-		affected = []string{s.config.FQDN}
-	}
+	affected := []string{timeline.Owner}
 
 	return existing, affected, nil
 }

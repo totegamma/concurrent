@@ -90,8 +90,7 @@ func (s *service) UpsertSubscription(ctx context.Context, mode core.CommitMode, 
 			return core.Subscription{}, err
 		}
 
-		doc.Owner = existance.Owner             // make sure the owner is immutable
-		doc.DomainOwned = existance.DomainOwned // make sure the domain owned is immutable
+		doc.Owner = existance.Owner // make sure the owner is immutable
 
 		var params map[string]any = make(map[string]any)
 		if existance.PolicyParams != nil {
@@ -134,7 +133,6 @@ func (s *service) UpsertSubscription(ctx context.Context, mode core.CommitMode, 
 		Owner:        doc.Owner,
 		Author:       doc.Signer,
 		Indexable:    doc.Indexable,
-		DomainOwned:  doc.DomainOwned,
 		Schema:       doc.Schema,
 		Policy:       doc.Policy,
 		PolicyParams: policyparams,

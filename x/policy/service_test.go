@@ -84,6 +84,7 @@ func TestMain(m *testing.M) {
 		globalPolicy,
 		core.Config{
 			FQDN: "local.example.com",
+			CSID: "domain",
 		},
 	)
 
@@ -251,8 +252,8 @@ func TestPolicyMessageRead(t *testing.T) {
 			Domain: "local.example.com",
 		},
 		Self: core.Timeline{
-			DomainOwned: true,
-			Author:      "user1",
+			Owner:  "domain",
+			Author: "user1",
 		},
 	}
 
@@ -271,8 +272,8 @@ func TestPolicyMessageRead(t *testing.T) {
 			Domain: "local.example.com",
 		},
 		Self: core.Timeline{
-			DomainOwned: false,
-			Author:      "user1",
+			Owner:  "user1",
+			Author: "user1",
 		},
 	}
 
@@ -291,8 +292,8 @@ func TestPolicyMessageRead(t *testing.T) {
 			Domain: "local.example.com",
 		},
 		Self: core.Timeline{
-			DomainOwned: false,
-			Author:      "user1",
+			Owner:  "user1",
+			Author: "user1",
 		},
 	}
 
@@ -349,8 +350,8 @@ func TestPolicyMessageRead(t *testing.T) {
 			Domain: "local.example.com",
 		},
 		Self: core.Timeline{
-			DomainOwned: false,
-			Author:      "user3",
+			Owner:  "user3",
+			Author: "user3",
 		},
 		Params: map[string]any{
 			"isWritePublic": false,
@@ -374,8 +375,8 @@ func TestPolicyMessageRead(t *testing.T) {
 			Domain: "local.example.com",
 		},
 		Self: core.Timeline{
-			DomainOwned: false,
-			Author:      "user3",
+			Owner:  "user3",
+			Author: "user3",
 		},
 		Params: map[string]any{
 			"isWritePublic": false,

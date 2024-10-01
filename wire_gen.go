@@ -13,7 +13,6 @@ import (
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/core"
 	"github.com/totegamma/concurrent/x/ack"
-	"github.com/totegamma/concurrent/x/agent"
 	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/domain"
@@ -127,13 +126,6 @@ func SetupEntityService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, cli
 	return entityService
 }
 
-func SetupAgent(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, keeper timeline.Keeper, client2 client.Client, policy2 core.PolicyService, config core.Config, repositoryPath string) core.AgentService {
-	storeService := SetupStoreService(db, rdb, mc, keeper, client2, policy2, config, repositoryPath)
-	jobService := SetupJobService(db)
-	agentService := agent.NewAgent(mc, rdb, storeService, jobService, client2, config, repositoryPath)
-	return agentService
-}
-
 func SetupAuthService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client2 client.Client, policy2 core.PolicyService, config core.Config) core.AuthService {
 	entityService := SetupEntityService(db, rdb, mc, client2, policy2, config)
 	domainService := SetupDomainService(db, client2, config)
@@ -155,7 +147,7 @@ func SetupSchemaService(db *gorm.DB) core.SchemaService {
 }
 
 func SetupStoreService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, keeper timeline.Keeper, client2 client.Client, policy2 core.PolicyService, config core.Config, repositoryPath string) core.StoreService {
-	repository := store.NewRepository(rdb)
+	repository := store.NewRepository(db)
 	keyService := SetupKeyService(db, rdb, mc, client2, config)
 	entityService := SetupEntityService(db, rdb, mc, client2, policy2, config)
 	messageService := SetupMessageService(db, rdb, mc, keeper, client2, policy2, config)
@@ -234,6 +226,3 @@ var storeServiceProvider = wire.NewSet(store.NewService, store.NewRepository, Se
 	SetupSubscriptionService,
 	SetupSemanticidService,
 )
-
-// Lv7
-var agentServiceProvider = wire.NewSet(agent.NewAgent, SetupStoreService, SetupJobService)

@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"fmt"
+
 	"gorm.io/gorm"
 
 	"github.com/totegamma/concurrent/core"
@@ -9,6 +11,7 @@ import (
 
 type Repository interface {
 	Log(ctx context.Context, commit core.CommitLog) (core.CommitLog, error)
+	GetArchiveByOwner(ctx context.Context, owner string) (string, error)
 }
 
 type repository struct {
@@ -34,4 +37,28 @@ func (r *repository) GetByOwner(ctx context.Context, owner string) ([]core.Commi
 	var commits []core.CommitLog
 	err := r.db.WithContext(ctx).Where("ANY(owners) = ?", owner).Find(&commits).Error
 	return commits, err
+}
+
+func (r *repository) GetArchiveByOwner(ctx context.Context, owner string) (string, error) {
+	ctx, span := tracer.Start(ctx, "Store.Repository.GetLogsByOwner")
+	defer span.End()
+
+	var commits []core.CommitLog
+	err := r.db.WithContext(ctx).Where("? = ANY(owners)", owner).Find(&commits).Error
+	if err != nil {
+		return "", err
+	}
+
+	var logs string
+	for _, commit := range commits {
+		// ID Owner Signature Document
+		id := commit.Resource
+		if id == "" {
+			id = fmt.Sprintf("%d", commit.ID)
+		}
+
+		logs += fmt.Sprintf("%s %s %s %s\n", id, owner, commit.Signature, commit.Document)
+	}
+
+	return logs, nil
 }

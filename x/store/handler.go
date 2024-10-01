@@ -1,7 +1,6 @@
 package store
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
@@ -80,21 +79,20 @@ func (h *handler) Commit(c echo.Context) error {
 }
 
 func (h *handler) Get(c echo.Context) error {
-	_, span := tracer.Start(c.Request().Context(), "Store.Handler.Get")
+	ctx, span := tracer.Start(c.Request().Context(), "Store.Handler.Get")
 	defer span.End()
 
-	//requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
-	//if !ok {
-	//	return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Unauthorized"})
-	//}
+	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Unauthorized"})
+	}
 
-	//path := h.service.GetPath(ctx, requester)
+	result, err := h.service.GetArchiveByOwner(ctx, requester)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	}
 
-	//fmt.Printf("path: %s\n", path)
-
-	//return c.Attachment(path, "archive.log")
-
-	return c.JSON(http.StatusNotImplemented, echo.Map{"error": fmt.Sprintf("Not implemented yet")})
+	return c.String(http.StatusOK, result)
 }
 
 func (h *handler) Post(c echo.Context) error {

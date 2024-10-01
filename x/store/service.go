@@ -236,6 +236,13 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 	return result, err
 }
 
+func (s *service) GetArchiveByOwner(ctx context.Context, owner string) (string, error) {
+	ctx, span := tracer.Start(ctx, "Store.Service.GetArchiveByOwner")
+	defer span.End()
+
+	return s.repo.GetArchiveByOwner(ctx, owner)
+}
+
 func (s *service) Restore(ctx context.Context, archive io.Reader, from string) ([]core.BatchResult, error) {
 	ctx, span := tracer.Start(ctx, "Store.Service.Restore")
 	defer span.End()

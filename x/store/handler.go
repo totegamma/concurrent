@@ -80,19 +80,21 @@ func (h *handler) Commit(c echo.Context) error {
 }
 
 func (h *handler) Get(c echo.Context) error {
-	ctx, span := tracer.Start(c.Request().Context(), "Store.Handler.Get")
+	_, span := tracer.Start(c.Request().Context(), "Store.Handler.Get")
 	defer span.End()
 
-	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
-	if !ok {
-		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Unauthorized"})
-	}
+	//requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
+	//if !ok {
+	//	return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Unauthorized"})
+	//}
 
-	path := h.service.GetPath(ctx, requester)
+	//path := h.service.GetPath(ctx, requester)
 
-	fmt.Printf("path: %s\n", path)
+	//fmt.Printf("path: %s\n", path)
 
-	return c.Attachment(path, "archive.log")
+	//return c.Attachment(path, "archive.log")
+
+	return c.JSON(http.StatusNotImplemented, echo.Map{"error": fmt.Sprintf("Not implemented yet")})
 }
 
 func (h *handler) Post(c echo.Context) error {

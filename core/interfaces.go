@@ -130,8 +130,6 @@ type SocketManager interface {
 
 type StoreService interface {
 	Commit(ctx context.Context, mode CommitMode, document, signature, option string, keys []Key) (any, error)
-	Since(ctx context.Context, since string) ([]CommitLog, error)
-	GetPath(ctx context.Context, id string) string
 	Restore(ctx context.Context, archive io.Reader, from string) ([]BatchResult, error)
 	ValidateDocument(ctx context.Context, document, signature string, keys []Key) error
 	CleanUserAllData(ctx context.Context, target string) error

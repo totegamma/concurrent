@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"path/filepath"
+	"reflect"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -192,53 +192,48 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 	}
 
 	if err == nil && (mode == core.CommitModeExecute || mode == core.CommitModeLocalOnlyExec) {
-
-		entry := fmt.Sprintf("%s %s", signature, document)
-
+		var localOwners []string
 		for _, owner := range owners {
-			if owner != s.config.CSID {
+			if owner == s.config.CSID {
+				localOwners = append(localOwners, owner)
+			}
+			if core.IsCCID(owner) {
 				ownerEntity, err := s.entity.Get(ctx, owner)
 				if err != nil {
 					span.RecordError(errors.Wrap(err, "failed to get owner entity"))
 					continue
 				}
 
-				if ownerEntity.Domain != s.config.FQDN {
-					continue
+				if ownerEntity.Domain == s.config.FQDN {
+					localOwners = append(localOwners, owner)
 				}
 			}
+		}
 
-			err = s.repo.Log(ctx, owner, entry)
-			if err != nil {
-				span.RecordError(errors.Wrap(err, "failed to log document"))
+		var resource string
+		v := reflect.ValueOf(result)
+		if v.Kind() == reflect.Ptr {
+			v = v.Elem()
+		}
+		if v.Kind() == reflect.Struct {
+			f := v.FieldByName("ID")
+			if f.IsValid() && f.Kind() == reflect.String {
+				resource = f.String()
 			}
 		}
+
+		commitLog := core.CommitLog{
+			Resource:  resource,
+			Document:  document,
+			Signature: signature,
+			SignedAt:  base.SignedAt,
+			Owners:    localOwners,
+		}
+
+		_, err = s.repo.Log(ctx, commitLog)
 	}
 
 	return result, err
-}
-
-func (s *service) Since(ctx context.Context, since string) ([]core.CommitLog, error) {
-	ctx, span := tracer.Start(ctx, "Store.Service.Since")
-	defer span.End()
-
-	entries, err := s.repo.Since(ctx, since)
-	if err != nil {
-		span.RecordError(err)
-		return nil, err
-	}
-
-	return entries, nil
-}
-
-func (s *service) GetPath(ctx context.Context, id string) string {
-	ctx, span := tracer.Start(ctx, "Store.Service.GetPath")
-	defer span.End()
-
-	filename := fmt.Sprintf("%s.log", id)
-	path := filepath.Join(s.repositoryPath, "user", filename)
-
-	return path
 }
 
 func (s *service) Restore(ctx context.Context, archive io.Reader, from string) ([]core.BatchResult, error) {

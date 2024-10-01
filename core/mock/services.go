@@ -1505,20 +1505,6 @@ func (mr *MockStoreServiceMockRecorder) Commit(ctx, mode, document, signature, o
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Commit", reflect.TypeOf((*MockStoreService)(nil).Commit), ctx, mode, document, signature, option, keys)
 }
 
-// GetPath mocks base method.
-func (m *MockStoreService) GetPath(ctx context.Context, id string) string {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetPath", ctx, id)
-	ret0, _ := ret[0].(string)
-	return ret0
-}
-
-// GetPath indicates an expected call of GetPath.
-func (mr *MockStoreServiceMockRecorder) GetPath(ctx, id any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPath", reflect.TypeOf((*MockStoreService)(nil).GetPath), ctx, id)
-}
-
 // Restore mocks base method.
 func (m *MockStoreService) Restore(ctx context.Context, archive io.Reader, from string) ([]core.BatchResult, error) {
 	m.ctrl.T.Helper()
@@ -1532,21 +1518,6 @@ func (m *MockStoreService) Restore(ctx context.Context, archive io.Reader, from 
 func (mr *MockStoreServiceMockRecorder) Restore(ctx, archive, from any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Restore", reflect.TypeOf((*MockStoreService)(nil).Restore), ctx, archive, from)
-}
-
-// Since mocks base method.
-func (m *MockStoreService) Since(ctx context.Context, since string) ([]core.CommitLog, error) {
-	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Since", ctx, since)
-	ret0, _ := ret[0].([]core.CommitLog)
-	ret1, _ := ret[1].(error)
-	return ret0, ret1
-}
-
-// Since indicates an expected call of Since.
-func (mr *MockStoreServiceMockRecorder) Since(ctx, since any) *gomock.Call {
-	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Since", reflect.TypeOf((*MockStoreService)(nil).Since), ctx, since)
 }
 
 // ValidateDocument mocks base method.

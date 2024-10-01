@@ -212,3 +212,13 @@ type Job struct {
 	CompletedAt time.Time `json:"completedAt" gorm:"autoUpdateTime"`
 	TraceID     string    `json:"traceID" gorm:"type:text"`
 }
+
+type CommitLog struct {
+	ID        uint           `json:"id" gorm:"primaryKey;auto_increment"`
+	Resource  string         `json:"resource" gorm:"type:text"`
+	Document  string         `json:"document" gorm:"type:json"`
+	Signature string         `json:"signature" gorm:"type:char(130)"`
+	SignedAt  time.Time      `json:"signedAt" gorm:"type:timestamp with time zone;not null;default:clock_timestamp()"`
+	Owners    pq.StringArray `json:"owners" gorm:"type:char(42)[]"`
+	CDate     time.Time      `json:"cdate" gorm:"type:timestamp with time zone;not null;default:clock_timestamp()"`
+}

@@ -449,6 +449,108 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 			Result:   s.config.CSID,
 		}, nil
 
+	case "IsCCID":
+		if len(expr.Args) != 1 {
+			err := fmt.Errorf("bad argument length for IsCCID. Expected 1 but got %d\n", len(expr.Args))
+			return core.EvalResult{
+				Operator: "IsCCID",
+				Error:    err.Error(),
+			}, err
+		}
+
+		arg0_raw, err := s.eval(expr.Args[0], requestCtx)
+		if err != nil {
+			return core.EvalResult{
+				Operator: "IsCCID",
+				Args:     []core.EvalResult{arg0_raw},
+				Error:    err.Error(),
+			}, err
+		}
+
+		arg0, ok := arg0_raw.Result.(string)
+		if !ok {
+			err := fmt.Errorf("bad argument type for IsCCID. Expected string but got %s\n", reflect.TypeOf(arg0_raw.Result))
+			return core.EvalResult{
+				Operator: "IsCCID",
+				Args:     []core.EvalResult{arg0_raw},
+				Error:    err.Error(),
+			}, err
+		}
+
+		return core.EvalResult{
+			Operator: "IsCCID",
+			Args:     []core.EvalResult{arg0_raw},
+			Result:   core.IsCCID(arg0),
+		}, nil
+
+	case "IsCSID":
+		if len(expr.Args) != 1 {
+			err := fmt.Errorf("bad argument length for IsCSID. Expected 1 but got %d\n", len(expr.Args))
+			return core.EvalResult{
+				Operator: "IsCSID",
+				Error:    err.Error(),
+			}, err
+		}
+
+		arg0_raw, err := s.eval(expr.Args[0], requestCtx)
+		if err != nil {
+			return core.EvalResult{
+				Operator: "IsCSID",
+				Args:     []core.EvalResult{arg0_raw},
+				Error:    err.Error(),
+			}, err
+		}
+
+		arg0, ok := arg0_raw.Result.(string)
+		if !ok {
+			err := fmt.Errorf("bad argument type for IsCSID. Expected string but got %s\n", reflect.TypeOf(arg0_raw.Result))
+			return core.EvalResult{
+				Operator: "IsCSID",
+				Args:     []core.EvalResult{arg0_raw},
+				Error:    err.Error(),
+			}, err
+		}
+
+		return core.EvalResult{
+			Operator: "IsCSID",
+			Args:     []core.EvalResult{arg0_raw},
+			Result:   core.IsCSID(arg0),
+		}, nil
+
+	case "IsCKID":
+		if len(expr.Args) != 1 {
+			err := fmt.Errorf("bad argument length for IsCKID. Expected 1 but got %d\n", len(expr.Args))
+			return core.EvalResult{
+				Operator: "IsCKID",
+				Error:    err.Error(),
+			}, err
+		}
+
+		arg0_raw, err := s.eval(expr.Args[0], requestCtx)
+		if err != nil {
+			return core.EvalResult{
+				Operator: "IsCKID",
+				Args:     []core.EvalResult{arg0_raw},
+				Error:    err.Error(),
+			}, err
+		}
+
+		arg0, ok := arg0_raw.Result.(string)
+		if !ok {
+			err := fmt.Errorf("bad argument type for IsCKID. Expected string but got %s\n", reflect.TypeOf(arg0_raw.Result))
+			return core.EvalResult{
+				Operator: "IsCKID",
+				Args:     []core.EvalResult{arg0_raw},
+				Error:    err.Error(),
+			}, err
+		}
+
+		return core.EvalResult{
+			Operator: "IsCKID",
+			Args:     []core.EvalResult{arg0_raw},
+			Result:   core.IsCKID(arg0),
+		}, nil
+
 	case "IsRequesterLocalUser":
 		domain := requestCtx.Requester.Domain
 		return core.EvalResult{

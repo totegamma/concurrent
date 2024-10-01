@@ -269,14 +269,11 @@ var globalPolicyJson = `
                 "op": "Or",
                 "args": [
                     {
-                        "op": "Eq",
+                        "op": "IsCSID",
                         "args": [
                             {
                                 "op": "LoadSelf",
                                 "const": "owner"
-                            },
-                            {
-                                "op": "DomainCSID"
                             }
                         ]
                     },
@@ -300,14 +297,11 @@ var globalPolicyJson = `
                 "op": "Or",
                 "args": [
                     {
-                        "op": "Eq",
+                        "op": "IsCSID",
                         "args": [
                             {
                                 "op": "LoadSelf",
                                 "const": "owner"
-                            },
-                            {
-                                "op": "DomainCSID"
                             }
                         ]
                     },

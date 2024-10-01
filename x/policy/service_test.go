@@ -43,14 +43,11 @@ var globalPolicyJson = `
                 "op": "Or",
                 "args": [
                     {
-                        "op": "Eq",
+                        "op": "IsCSID",
                         "args": [
                             {
                                 "op": "LoadSelf",
                                 "const": "owner"
-                            },
-                            {
-                                "op": "DomainCSID"
                             }
                         ]
                     },
@@ -92,7 +89,7 @@ func TestMain(m *testing.M) {
 		globalPolicy,
 		core.Config{
 			FQDN: "local.example.com",
-			CSID: "domain",
+			CSID: "ccs16djx38r2qx8j49fx53ewugl90t3y6ndgye8ykt",
 		},
 	)
 
@@ -260,7 +257,7 @@ func TestPolicyMessageRead(t *testing.T) {
 			Domain: "local.example.com",
 		},
 		Self: core.Timeline{
-			Owner:  "domain",
+			Owner:  "ccs16djx38r2qx8j49fx53ewugl90t3y6ndgye8ykt",
 			Author: "user1",
 		},
 	}

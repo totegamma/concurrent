@@ -203,7 +203,7 @@ func (s *service) Commit(
 		return nil, fmt.Errorf("unknown document type: %s", base.Type)
 	}
 
-	if err == nil && (mode == core.CommitModeExecute || mode == core.CommitModeLocalOnlyExec) {
+	if err == nil && base.Type != "event" && (mode == core.CommitModeExecute || mode == core.CommitModeLocalOnlyExec) {
 		var localOwners []string
 		for _, owner := range owners {
 			if owner == s.config.CSID {
@@ -247,6 +247,10 @@ func (s *service) Commit(
 		}
 
 		_, err = s.repo.Log(ctx, commitLog)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
 	}
 
 	return result, err

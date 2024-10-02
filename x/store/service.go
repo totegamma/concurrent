@@ -7,11 +7,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"reflect"
 	"strings"
 
 	"github.com/pkg/errors"
 
+	"github.com/totegamma/concurrent/cdid"
 	"github.com/totegamma/concurrent/core"
 	"github.com/totegamma/concurrent/x/key"
 )
@@ -61,7 +61,19 @@ func NewService(
 	}
 }
 
-func (s *service) Commit(ctx context.Context, mode core.CommitMode, document string, signature string, option string, keys []core.Key) (any, error) {
+type CommitOption struct {
+	IsEphemeral bool `json:"isEphemeral,omitempty"`
+}
+
+func (s *service) Commit(
+	ctx context.Context,
+	mode core.CommitMode,
+	document string,
+	signature string,
+	option string,
+	keys []core.Key,
+	IP string,
+) (any, error) {
 	ctx, span := tracer.Start(ctx, "Store.Service.Commit")
 	defer span.End()
 
@@ -210,24 +222,28 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 			}
 		}
 
-		var resource string
-		v := reflect.ValueOf(result)
-		if v.Kind() == reflect.Ptr {
-			v = v.Elem()
-		}
-		if v.Kind() == reflect.Struct {
-			f := v.FieldByName("ID")
-			if f.IsValid() && f.Kind() == reflect.String {
-				resource = f.String()
-			}
+		isEphemeral := false
+		var commitOption CommitOption
+		err = json.Unmarshal([]byte(option), &commitOption)
+		if err == nil {
+			isEphemeral = commitOption.IsEphemeral
 		}
 
+		hash := core.GetHash([]byte(document))
+		hash10 := [10]byte{}
+		copy(hash10[:], hash[:10])
+		signedAt := base.SignedAt
+		documentID := cdid.New(hash10, signedAt).String()
+
 		commitLog := core.CommitLog{
-			Resource:  resource,
-			Document:  document,
-			Signature: signature,
-			SignedAt:  base.SignedAt,
-			Owners:    localOwners,
+			IP:          IP,
+			DocumentID:  documentID,
+			IsEphemeral: isEphemeral,
+			Type:        base.Type,
+			Document:    document,
+			Signature:   signature,
+			SignedAt:    base.SignedAt,
+			Owners:      localOwners,
 		}
 
 		_, err = s.repo.Log(ctx, commitLog)
@@ -243,7 +259,7 @@ func (s *service) GetArchiveByOwner(ctx context.Context, owner string) (string, 
 	return s.repo.GetArchiveByOwner(ctx, owner)
 }
 
-func (s *service) Restore(ctx context.Context, archive io.Reader, from string) ([]core.BatchResult, error) {
+func (s *service) Restore(ctx context.Context, archive io.Reader, from string, IP string) ([]core.BatchResult, error) {
 	ctx, span := tracer.Start(ctx, "Store.Service.Restore")
 	defer span.End()
 
@@ -290,7 +306,7 @@ func (s *service) Restore(ctx context.Context, archive io.Reader, from string) (
 			continue
 		}
 
-		_, err = s.Commit(ctx, core.CommitModeLocalOnlyExec, document, signature, "", keys)
+		_, err = s.Commit(ctx, core.CommitModeLocalOnlyExec, document, signature, "", keys, IP)
 		results = append(results, core.BatchResult{ID: split[0], Error: fmt.Sprintf("%v", err)})
 	}
 

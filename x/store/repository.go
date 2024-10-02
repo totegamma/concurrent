@@ -44,7 +44,13 @@ func (r *repository) GetArchiveByOwner(ctx context.Context, owner string) (strin
 	defer span.End()
 
 	var commits []core.CommitLog
-	err := r.db.WithContext(ctx).Where("? = ANY(owners)", owner).Find(&commits).Error
+	err := r.db.
+		WithContext(ctx).
+		Where("? = ANY(owners)", owner).
+		Where("is_ephemeral = ?", false).
+		Order("signed_at ASC").
+		Find(&commits).
+		Error
 	if err != nil {
 		return "", err
 	}
@@ -52,12 +58,7 @@ func (r *repository) GetArchiveByOwner(ctx context.Context, owner string) (strin
 	var logs string
 	for _, commit := range commits {
 		// ID Owner Signature Document
-		id := commit.Resource
-		if id == "" {
-			id = fmt.Sprintf("%d", commit.ID)
-		}
-
-		logs += fmt.Sprintf("%s %s %s %s\n", id, owner, commit.Signature, commit.Document)
+		logs += fmt.Sprintf("%s %s %s %s\n", commit.DocumentID, owner, commit.Signature, commit.Document)
 	}
 
 	return logs, nil

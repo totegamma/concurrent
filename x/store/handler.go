@@ -59,7 +59,9 @@ func (h *handler) Commit(c echo.Context) error {
 		keys = []core.Key{}
 	}
 
-	result, err := h.service.Commit(ctx, core.CommitModeExecute, request.Document, request.Signature, request.Option, keys)
+	requesterIP := c.RealIP()
+
+	result, err := h.service.Commit(ctx, core.CommitModeExecute, request.Document, request.Signature, request.Option, keys, requesterIP)
 	if err != nil {
 		if errors.Is(err, core.ErrorPermissionDenied{}) {
 			return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "error": err.Error()})
@@ -102,8 +104,10 @@ func (h *handler) Post(c echo.Context) error {
 	body := c.Request().Body
 	defer body.Close()
 
+	requesterIP := c.RealIP()
+
 	from := c.QueryParam("from")
-	result, err := h.service.Restore(ctx, body, from)
+	result, err := h.service.Restore(ctx, body, from, requesterIP)
 
 	if err != nil {
 		span.RecordError(err)

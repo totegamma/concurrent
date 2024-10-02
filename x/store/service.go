@@ -7,11 +7,11 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"path/filepath"
 	"strings"
 
 	"github.com/pkg/errors"
 
+	"github.com/totegamma/concurrent/cdid"
 	"github.com/totegamma/concurrent/core"
 	"github.com/totegamma/concurrent/x/key"
 )
@@ -61,7 +61,19 @@ func NewService(
 	}
 }
 
-func (s *service) Commit(ctx context.Context, mode core.CommitMode, document string, signature string, option string, keys []core.Key) (any, error) {
+type CommitOption struct {
+	IsEphemeral bool `json:"isEphemeral,omitempty"`
+}
+
+func (s *service) Commit(
+	ctx context.Context,
+	mode core.CommitMode,
+	document string,
+	signature string,
+	option string,
+	keys []core.Key,
+	IP string,
+) (any, error) {
 	ctx, span := tracer.Start(ctx, "Store.Service.Commit")
 	defer span.End()
 
@@ -191,57 +203,67 @@ func (s *service) Commit(ctx context.Context, mode core.CommitMode, document str
 		return nil, fmt.Errorf("unknown document type: %s", base.Type)
 	}
 
-	if err == nil && (mode == core.CommitModeExecute || mode == core.CommitModeLocalOnlyExec) {
-
-		entry := fmt.Sprintf("%s %s", signature, document)
-
+	if err == nil && base.Type != "event" && (mode == core.CommitModeExecute || mode == core.CommitModeLocalOnlyExec) {
+		var localOwners []string
 		for _, owner := range owners {
-			if owner != s.config.CSID {
+			if owner == s.config.CSID {
+				localOwners = append(localOwners, owner)
+			}
+			if core.IsCCID(owner) {
 				ownerEntity, err := s.entity.Get(ctx, owner)
 				if err != nil {
 					span.RecordError(errors.Wrap(err, "failed to get owner entity"))
 					continue
 				}
 
-				if ownerEntity.Domain != s.config.FQDN {
-					continue
+				if ownerEntity.Domain == s.config.FQDN {
+					localOwners = append(localOwners, owner)
 				}
 			}
+		}
 
-			err = s.repo.Log(ctx, owner, entry)
-			if err != nil {
-				span.RecordError(errors.Wrap(err, "failed to log document"))
-			}
+		isEphemeral := false
+		var commitOption CommitOption
+		err = json.Unmarshal([]byte(option), &commitOption)
+		if err == nil {
+			isEphemeral = commitOption.IsEphemeral
+		}
+
+		hash := core.GetHash([]byte(document))
+		hash10 := [10]byte{}
+		copy(hash10[:], hash[:10])
+		signedAt := base.SignedAt
+		documentID := cdid.New(hash10, signedAt).String()
+
+		commitLog := core.CommitLog{
+			IP:          IP,
+			DocumentID:  documentID,
+			IsEphemeral: isEphemeral,
+			Type:        base.Type,
+			Document:    document,
+			Signature:   signature,
+			SignedAt:    base.SignedAt,
+			Owners:      localOwners,
+		}
+
+		_, err = s.repo.Log(ctx, commitLog)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
 		}
 	}
 
 	return result, err
 }
 
-func (s *service) Since(ctx context.Context, since string) ([]core.CommitLog, error) {
-	ctx, span := tracer.Start(ctx, "Store.Service.Since")
+func (s *service) GetArchiveByOwner(ctx context.Context, owner string) (string, error) {
+	ctx, span := tracer.Start(ctx, "Store.Service.GetArchiveByOwner")
 	defer span.End()
 
-	entries, err := s.repo.Since(ctx, since)
-	if err != nil {
-		span.RecordError(err)
-		return nil, err
-	}
-
-	return entries, nil
+	return s.repo.GetArchiveByOwner(ctx, owner)
 }
 
-func (s *service) GetPath(ctx context.Context, id string) string {
-	ctx, span := tracer.Start(ctx, "Store.Service.GetPath")
-	defer span.End()
-
-	filename := fmt.Sprintf("%s.log", id)
-	path := filepath.Join(s.repositoryPath, "user", filename)
-
-	return path
-}
-
-func (s *service) Restore(ctx context.Context, archive io.Reader, from string) ([]core.BatchResult, error) {
+func (s *service) Restore(ctx context.Context, archive io.Reader, from string, IP string) ([]core.BatchResult, error) {
 	ctx, span := tracer.Start(ctx, "Store.Service.Restore")
 	defer span.End()
 
@@ -288,7 +310,7 @@ func (s *service) Restore(ctx context.Context, archive io.Reader, from string) (
 			continue
 		}
 
-		_, err = s.Commit(ctx, core.CommitModeLocalOnlyExec, document, signature, "", keys)
+		_, err = s.Commit(ctx, core.CommitModeLocalOnlyExec, document, signature, "", keys, IP)
 		results = append(results, core.BatchResult{ID: split[0], Error: fmt.Sprintf("%v", err)})
 	}
 

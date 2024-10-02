@@ -1,7 +1,6 @@
 package store
 
 import (
-	"fmt"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
@@ -60,7 +59,9 @@ func (h *handler) Commit(c echo.Context) error {
 		keys = []core.Key{}
 	}
 
-	result, err := h.service.Commit(ctx, core.CommitModeExecute, request.Document, request.Signature, request.Option, keys)
+	requesterIP := c.RealIP()
+
+	result, err := h.service.Commit(ctx, core.CommitModeExecute, request.Document, request.Signature, request.Option, keys, requesterIP)
 	if err != nil {
 		if errors.Is(err, core.ErrorPermissionDenied{}) {
 			return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "error": err.Error()})
@@ -88,11 +89,12 @@ func (h *handler) Get(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Unauthorized"})
 	}
 
-	path := h.service.GetPath(ctx, requester)
+	result, err := h.service.GetArchiveByOwner(ctx, requester)
+	if err != nil {
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	}
 
-	fmt.Printf("path: %s\n", path)
-
-	return c.Attachment(path, "archive.log")
+	return c.String(http.StatusOK, result)
 }
 
 func (h *handler) Post(c echo.Context) error {
@@ -102,8 +104,10 @@ func (h *handler) Post(c echo.Context) error {
 	body := c.Request().Body
 	defer body.Close()
 
+	requesterIP := c.RealIP()
+
 	from := c.QueryParam("from")
-	result, err := h.service.Restore(ctx, body, from)
+	result, err := h.service.Restore(ctx, body, from, requesterIP)
 
 	if err != nil {
 		span.RecordError(err)

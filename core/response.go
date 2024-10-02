@@ -21,9 +21,3 @@ type BatchResult struct {
 	ID    string
 	Error string
 }
-
-type CommitLog struct {
-	ID      string
-	Owner   string
-	Content string
-}

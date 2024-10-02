@@ -184,6 +184,7 @@ func main() {
 		&core.SubscriptionItem{},
 		&core.SemanticID{},
 		&core.Job{},
+		&core.CommitLog{},
 	)
 
 	if err != nil {
@@ -221,7 +222,6 @@ func main() {
 	globalPolicy := concurrent.GetDefaultGlobalPolicy()
 
 	policy := concurrent.SetupPolicyService(rdb, globalPolicy, conconf)
-	agent := concurrent.SetupAgent(db, rdb, mc, timelineKeeper, client, policy, conconf, config.Server.RepositoryPath)
 
 	domainService := concurrent.SetupDomainService(db, client, conconf)
 	domainHandler := domain.NewHandler(domainService)
@@ -261,6 +261,7 @@ func main() {
 
 	jobService := concurrent.SetupJobService(db)
 	jobHandler := job.NewHandler(jobService)
+	jobReactor := job.NewReactor(storeService, jobService)
 
 	// migration from 1.3.2 to 1.3.3
 	var remotes []core.Domain
@@ -458,7 +459,7 @@ func main() {
 	e.GET("/metrics", echoprometheus.NewHandler())
 
 	timelineKeeper.Start(context.Background())
-	agent.Boot()
+	jobReactor.Start(context.Background())
 
 	port := ":8000"
 	envport := os.Getenv("CC_API_PORT")

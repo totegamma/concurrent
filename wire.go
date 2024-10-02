@@ -12,7 +12,6 @@ import (
 	"github.com/totegamma/concurrent/core"
 
 	"github.com/totegamma/concurrent/x/ack"
-	"github.com/totegamma/concurrent/x/agent"
 	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/auth"
 	"github.com/totegamma/concurrent/x/domain"
@@ -74,9 +73,6 @@ var storeServiceProvider = wire.NewSet(
 	SetupSemanticidService,
 )
 
-// Lv7
-var agentServiceProvider = wire.NewSet(agent.NewAgent, SetupStoreService, SetupJobService)
-
 // -----------
 
 func SetupPolicyService(rdb *redis.Client, globalPolicy core.Policy, config core.Config) core.PolicyService {
@@ -131,11 +127,6 @@ func SetupDomainService(db *gorm.DB, client client.Client, config core.Config) c
 
 func SetupEntityService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, client client.Client, policy core.PolicyService, config core.Config) core.EntityService {
 	wire.Build(entityServiceProvider)
-	return nil
-}
-
-func SetupAgent(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, keeper timeline.Keeper, client client.Client, policy core.PolicyService, config core.Config, repositoryPath string) core.AgentService {
-	wire.Build(agentServiceProvider)
 	return nil
 }
 

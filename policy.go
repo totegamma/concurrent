@@ -288,6 +288,10 @@ var globalPolicyJson = `
                                 "op": "RequesterID"
                             }
                         ]
+                    },
+                    {
+                        "op": "LoadSelf",
+                        "const": "domainOwned"
                     }
                 ]
             }
@@ -316,6 +320,10 @@ var globalPolicyJson = `
                                 "op": "RequesterID"
                             }
                         ]
+                    },
+                    {
+                        "op": "LoadSelf",
+                        "const": "domainOwned"
                     }
                 ]
             }

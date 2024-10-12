@@ -163,12 +163,9 @@ func (r *repository) SyncCommitFile(ctx context.Context, owner string) error {
 	ctx, span := tracer.Start(ctx, "Store.Repository.GetLogsByOwner")
 	defer span.End()
 
-	fmt.Println("SyncCommitFile start")
-	defer fmt.Println("SyncCommitFile end")
-
 	// accuire lock
 	lockKey := fmt.Sprintf("store:lock:%s", owner)
-	_, err := r.rdb.SetNX(ctx, lockKey, "1", 10*time.Minute).Result()
+	_, err := r.rdb.SetNX(ctx, lockKey, "1", time.Hour).Result()
 	if err != nil && err != redis.Nil {
 		span.RecordError(err)
 		return err
@@ -183,6 +180,54 @@ func (r *repository) SyncCommitFile(ctx context.Context, owner string) error {
 	}
 
 	var pageSize = 10
+
+	var firstCommitDate time.Time
+	err = r.db.
+		WithContext(ctx).
+		Model(&core.CommitLog{}).
+		Where("? = ANY(owners)", owner).
+		Where("is_ephemeral = ?", false).
+		Order("signed_at ASC").
+		Limit(1).
+		Pluck("signed_at", &firstCommitDate).
+		Error
+
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	var latestCommitDate time.Time
+	err = r.db.
+		WithContext(ctx).
+		Model(&core.CommitLog{}).
+		Where("? = ANY(owners)", owner).
+		Where("is_ephemeral = ?", false).
+		Order("signed_at DESC").
+		Limit(1).
+		Pluck("signed_at", &latestCommitDate).
+		Error
+
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	progressCtx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	// log dump progress
+	go func() {
+		for {
+			select {
+			case <-progressCtx.Done():
+				return
+			case <-time.After(1 * time.Second):
+				progress := float64(time.Since(firstCommitDate)) / float64(latestCommitDate.Sub(firstCommitDate))
+				fmt.Printf("dumping %s logs. (%.2f%%)\n", owner, progress*100)
+			}
+		}
+	}()
 
 	for {
 		fmt.Printf("dump lastSignedAt: %v\n", lastSignedAt)

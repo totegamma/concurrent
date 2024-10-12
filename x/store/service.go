@@ -256,13 +256,6 @@ func (s *service) Commit(
 	return result, err
 }
 
-func (s *service) GetArchiveByOwner(ctx context.Context, owner string) (string, error) {
-	ctx, span := tracer.Start(ctx, "Store.Service.GetArchiveByOwner")
-	defer span.End()
-
-	return s.repo.GetArchiveByOwner(ctx, owner)
-}
-
 func (s *service) Restore(ctx context.Context, archive io.Reader, from string, IP string) ([]core.BatchResult, error) {
 	ctx, span := tracer.Start(ctx, "Store.Service.Restore")
 	defer span.End()
@@ -439,4 +432,25 @@ func (s *service) CleanUserAllData(ctx context.Context, target string) error {
 	}
 
 	return nil
+}
+
+func (s *service) SyncCommitFile(ctx context.Context, owner string) (core.SyncStatus, error) {
+	ctx, span := tracer.Start(ctx, "Store.Service.SyncCommitFile")
+	defer span.End()
+
+	go s.repo.SyncCommitFile(context.Background(), owner)
+	status, err := s.repo.SyncStatus(ctx, owner)
+	if err != nil {
+		span.RecordError(err)
+		return core.SyncStatus{}, err
+	}
+	status.Status = "syncing"
+	return status, nil
+}
+
+func (s *service) SyncStatus(ctx context.Context, owner string) (core.SyncStatus, error) {
+	ctx, span := tracer.Start(ctx, "Store.Service.SyncStatus")
+	defer span.End()
+
+	return s.repo.SyncStatus(ctx, owner)
 }

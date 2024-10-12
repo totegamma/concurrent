@@ -147,7 +147,7 @@ func SetupSchemaService(db *gorm.DB) core.SchemaService {
 }
 
 func SetupStoreService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, keeper timeline.Keeper, client2 client.Client, policy2 core.PolicyService, config core.Config, repositoryPath string) core.StoreService {
-	repository := store.NewRepository(db)
+	repository := store.NewRepository(db, rdb)
 	keyService := SetupKeyService(db, rdb, mc, client2, config)
 	entityService := SetupEntityService(db, rdb, mc, client2, policy2, config)
 	messageService := SetupMessageService(db, rdb, mc, keeper, client2, policy2, config)

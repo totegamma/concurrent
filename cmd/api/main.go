@@ -362,6 +362,8 @@ func main() {
 	// storage
 	apiV1.GET("/repository", storeHandler.Get, auth.Restrict(auth.ISREGISTERED))
 	apiV1.POST("/repository", storeHandler.Post, auth.Restrict(auth.ISLOCAL))
+	apiV1.GET("/repositories/sync", storeHandler.GetSyncStatus, auth.Restrict(auth.ISREGISTERED))
+	apiV1.POST("/repositories/sync", storeHandler.PerformSync, auth.Restrict(auth.ISREGISTERED))
 
 	// job
 	apiV1.GET("/jobs", jobHandler.List, auth.Restrict(auth.ISREGISTERED))

@@ -130,10 +130,11 @@ type SocketManager interface {
 
 type StoreService interface {
 	Commit(ctx context.Context, mode CommitMode, document, signature, option string, keys []Key, IP string) (any, error)
-	GetArchiveByOwner(ctx context.Context, owner string) (string, error)
 	Restore(ctx context.Context, archive io.Reader, from, IP string) ([]BatchResult, error)
 	ValidateDocument(ctx context.Context, document, signature string, keys []Key) error
 	CleanUserAllData(ctx context.Context, target string) error
+	SyncCommitFile(ctx context.Context, owner string) (SyncStatus, error)
+	SyncStatus(ctx context.Context, owner string) (SyncStatus, error)
 }
 
 type SubscriptionService interface {

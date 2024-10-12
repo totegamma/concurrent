@@ -1,6 +1,8 @@
 package core
 
-import ()
+import (
+	"time"
+)
 
 // Event is websocket root packet model
 type Event struct {
@@ -73,4 +75,12 @@ type ConfigInput struct {
 	Registration string `yaml:"registration"` // open, invite, close
 	SiteKey      string `yaml:"sitekey"`
 	Dimension    string `yaml:"dimension"`
+}
+
+type SyncStatus struct {
+	Owner string `json:"owner"`
+	// "insync", "outofsync", "syncing"
+	Status       string    `json:"status"`
+	LatestOnFile time.Time `json:"latestOnFile"`
+	LatestOnDB   time.Time `json:"latestOnDB"`
 }

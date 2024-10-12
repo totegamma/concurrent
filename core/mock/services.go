@@ -1491,33 +1491,62 @@ func (mr *MockStoreServiceMockRecorder) CleanUserAllData(ctx, target any) *gomoc
 }
 
 // Commit mocks base method.
-func (m *MockStoreService) Commit(ctx context.Context, mode core.CommitMode, document, signature, option string, keys []core.Key) (any, error) {
+func (m *MockStoreService) Commit(ctx context.Context, mode core.CommitMode, document, signature, option string, keys []core.Key, IP string) (any, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Commit", ctx, mode, document, signature, option, keys)
+	ret := m.ctrl.Call(m, "Commit", ctx, mode, document, signature, option, keys, IP)
 	ret0, _ := ret[0].(any)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Commit indicates an expected call of Commit.
-func (mr *MockStoreServiceMockRecorder) Commit(ctx, mode, document, signature, option, keys any) *gomock.Call {
+func (mr *MockStoreServiceMockRecorder) Commit(ctx, mode, document, signature, option, keys, IP any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Commit", reflect.TypeOf((*MockStoreService)(nil).Commit), ctx, mode, document, signature, option, keys)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Commit", reflect.TypeOf((*MockStoreService)(nil).Commit), ctx, mode, document, signature, option, keys, IP)
 }
 
 // Restore mocks base method.
-func (m *MockStoreService) Restore(ctx context.Context, archive io.Reader, from string) ([]core.BatchResult, error) {
+func (m *MockStoreService) Restore(ctx context.Context, archive io.Reader, from, IP string) ([]core.BatchResult, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Restore", ctx, archive, from)
+	ret := m.ctrl.Call(m, "Restore", ctx, archive, from, IP)
 	ret0, _ := ret[0].([]core.BatchResult)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // Restore indicates an expected call of Restore.
-func (mr *MockStoreServiceMockRecorder) Restore(ctx, archive, from any) *gomock.Call {
+func (mr *MockStoreServiceMockRecorder) Restore(ctx, archive, from, IP any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Restore", reflect.TypeOf((*MockStoreService)(nil).Restore), ctx, archive, from)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Restore", reflect.TypeOf((*MockStoreService)(nil).Restore), ctx, archive, from, IP)
+}
+
+// SyncCommitFile mocks base method.
+func (m *MockStoreService) SyncCommitFile(ctx context.Context, owner string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SyncCommitFile", ctx, owner)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// SyncCommitFile indicates an expected call of SyncCommitFile.
+func (mr *MockStoreServiceMockRecorder) SyncCommitFile(ctx, owner any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SyncCommitFile", reflect.TypeOf((*MockStoreService)(nil).SyncCommitFile), ctx, owner)
+}
+
+// SyncStatus mocks base method.
+func (m *MockStoreService) SyncStatus(ctx context.Context, owner string) (core.SyncStatus, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "SyncStatus", ctx, owner)
+	ret0, _ := ret[0].(core.SyncStatus)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// SyncStatus indicates an expected call of SyncStatus.
+func (mr *MockStoreServiceMockRecorder) SyncStatus(ctx, owner any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SyncStatus", reflect.TypeOf((*MockStoreService)(nil).SyncStatus), ctx, owner)
 }
 
 // ValidateDocument mocks base method.

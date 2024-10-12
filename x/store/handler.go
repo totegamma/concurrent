@@ -1,6 +1,7 @@
 package store
 
 import (
+	"fmt"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
@@ -17,6 +18,8 @@ type Handler interface {
 	Commit(c echo.Context) error
 	Get(c echo.Context) error
 	Post(c echo.Context) error
+	GetSyncStatus(c echo.Context) error
+	PerformSync(c echo.Context) error
 }
 
 type handler struct {
@@ -89,12 +92,45 @@ func (h *handler) Get(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Unauthorized"})
 	}
 
-	result, err := h.service.GetArchiveByOwner(ctx, requester)
+	path := fmt.Sprintf("/tmp/concrnt/user/%s.log", requester)
+	return c.Attachment(path, requester+".log")
+
+}
+
+func (h *handler) GetSyncStatus(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "Store.Handler.GetSyncStatus")
+	defer span.End()
+
+	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Unauthorized"})
+	}
+
+	status, err := h.service.SyncStatus(ctx, requester)
 	if err != nil {
+		span.RecordError(err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 
-	return c.String(http.StatusOK, result)
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": status})
+}
+
+func (h *handler) PerformSync(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "Store.Handler.PerformSync")
+	defer span.End()
+
+	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
+	if !ok {
+		return c.JSON(http.StatusUnauthorized, echo.Map{"error": "Unauthorized"})
+	}
+
+	status, err := h.service.SyncCommitFile(ctx, requester)
+	if err != nil {
+		span.RecordError(err)
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": status})
 }
 
 func (h *handler) Post(c echo.Context) error {

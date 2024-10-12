@@ -125,8 +125,8 @@ func (r *repository) SyncStatus(ctx context.Context, owner string) (core.SyncSta
 	defer span.End()
 
 	lockKey := fmt.Sprintf("store:lock:%s", owner)
-	_, err := r.rdb.Get(ctx, lockKey).Result()
-	if err != nil && err != redis.Nil {
+	value, err := r.rdb.Get(ctx, lockKey).Result()
+	if err == nil && value != "" {
 		return core.SyncStatus{Owner: owner, Status: "syncing"}, nil
 	}
 
@@ -163,6 +163,9 @@ func (r *repository) SyncCommitFile(ctx context.Context, owner string) error {
 	ctx, span := tracer.Start(ctx, "Store.Repository.GetLogsByOwner")
 	defer span.End()
 
+	fmt.Println("SyncCommitFile start")
+	defer fmt.Println("SyncCommitFile end")
+
 	// accuire lock
 	lockKey := fmt.Sprintf("store:lock:%s", owner)
 	_, err := r.rdb.SetNX(ctx, lockKey, "1", 10*time.Minute).Result()
@@ -182,6 +185,7 @@ func (r *repository) SyncCommitFile(ctx context.Context, owner string) error {
 	var pageSize = 10
 
 	for {
+		fmt.Printf("dump lastSignedAt: %v\n", lastSignedAt)
 		var commits []core.CommitLog
 		err := r.db.
 			WithContext(ctx).

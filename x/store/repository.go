@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"gorm.io/gorm"
 
@@ -43,22 +44,40 @@ func (r *repository) GetArchiveByOwner(ctx context.Context, owner string) (strin
 	ctx, span := tracer.Start(ctx, "Store.Repository.GetLogsByOwner")
 	defer span.End()
 
-	var commits []core.CommitLog
-	err := r.db.
-		WithContext(ctx).
-		Where("? = ANY(owners)", owner).
-		Where("is_ephemeral = ?", false).
-		Order("signed_at ASC").
-		Find(&commits).
-		Error
-	if err != nil {
-		return "", err
-	}
-
 	var logs string
-	for _, commit := range commits {
-		// ID Owner Signature Document
-		logs += fmt.Sprintf("%s %s %s %s\n", commit.DocumentID, owner, commit.Signature, commit.Document)
+	var lastSignedAt time.Time
+
+	var pageSize = 10
+
+	for {
+		var commits []core.CommitLog
+		err := r.db.
+			WithContext(ctx).
+			Where("? = ANY(owners)", owner).
+			Where("is_ephemeral = ?", false).
+			Where("signed_at > ?", lastSignedAt).
+			Order("signed_at ASC").
+			Find(&commits).
+			Limit(pageSize).
+			Error
+
+		if err != nil {
+			span.RecordError(err)
+			return "", err
+		}
+
+		for _, commit := range commits {
+			// ID Owner Signature Document
+			logs += fmt.Sprintf("%s %s %s %s\n", commit.DocumentID, owner, commit.Signature, commit.Document)
+		}
+
+		if len(commits) > 0 {
+			lastSignedAt = commits[len(commits)-1].SignedAt
+		}
+
+		if len(commits) < pageSize {
+			break
+		}
 	}
 
 	return logs, nil

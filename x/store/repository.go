@@ -127,7 +127,13 @@ func (r *repository) SyncStatus(ctx context.Context, owner string) (core.SyncSta
 	lockKey := fmt.Sprintf("store:lock:%s", owner)
 	value, err := r.rdb.Get(ctx, lockKey).Result()
 	if err == nil && value != "" {
-		return core.SyncStatus{Owner: owner, Status: "syncing"}, nil
+		progress, _ := r.rdb.Get(ctx, fmt.Sprintf("store:progress:%s", owner)).Result()
+
+		return core.SyncStatus{
+			Owner:    owner,
+			Status:   "syncing",
+			Progress: progress,
+		}, nil
 	}
 
 	lastSignedAt, err := r.getLatestCommitDateByOwner(ctx, owner)
@@ -222,9 +228,10 @@ func (r *repository) SyncCommitFile(ctx context.Context, owner string) error {
 			select {
 			case <-progressCtx.Done():
 				return
-			case <-time.After(1 * time.Second):
-				progress := float64(time.Since(firstCommitDate)) / float64(latestCommitDate.Sub(firstCommitDate))
+			case <-time.After(10 * time.Second):
+				progress := float64(lastSignedAt.Sub(firstCommitDate)) / float64(latestCommitDate.Sub(firstCommitDate))
 				fmt.Printf("dumping %s logs. (%.2f%%)\n", owner, progress*100)
+				r.rdb.SetNX(ctx, fmt.Sprintf("store:progress:%s", owner), fmt.Sprintf("%.2f%%", progress), time.Hour)
 			}
 		}
 	}()

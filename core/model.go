@@ -83,4 +83,5 @@ type SyncStatus struct {
 	Status       string    `json:"status"`
 	LatestOnFile time.Time `json:"latestOnFile"`
 	LatestOnDB   time.Time `json:"latestOnDB"`
+	Progress     string    `json:"progress"`
 }

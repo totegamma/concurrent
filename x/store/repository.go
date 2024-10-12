@@ -242,15 +242,16 @@ func (r *repository) SyncCommitFile(ctx context.Context, owner string) error {
 	for {
 		fmt.Printf("dump lastSignedAt: %v\n", lastSignedAt)
 		var commits []core.CommitLog
-		err := r.db.
-			WithContext(ctx).
+
+		query := r.db.WithContext(ctx).
 			Where("? = ANY(owners)", owner).
-			Where("is_ephemeral = ?", false).
-			Where("signed_at > ?", lastSignedAt).
-			Order("signed_at ASC").
-			Find(&commits).
-			Limit(pageSize).
-			Error
+			Where("is_ephemeral = ?", false)
+
+		if lastSignedAt.IsZero() {
+			query = query.Order("signed_at ASC")
+		}
+
+		err = query.Find(&commits).Limit(pageSize).Error
 
 		if err != nil {
 			span.RecordError(err)

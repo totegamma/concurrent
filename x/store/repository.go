@@ -36,7 +36,32 @@ func (r *repository) Log(ctx context.Context, commit core.CommitLog) (core.Commi
 	ctx, span := tracer.Start(ctx, "Store.Repository.Log")
 	defer span.End()
 
-	err := r.db.WithContext(ctx).Create(&commit).Error
+	tx := r.db.Begin()
+	defer func() {
+		if r := recover(); r != nil {
+			tx.Rollback()
+		}
+	}()
+
+	err := tx.WithContext(ctx).Create(&commit).Error
+	if err != nil {
+		tx.Rollback()
+		return core.CommitLog{}, err
+	}
+
+	for _, owner := range commit.Owners {
+		ownerRecord := core.CommitOwner{
+			CommitLogID: commit.ID,
+			Owner:       owner,
+		}
+		err = tx.WithContext(ctx).Create(&ownerRecord).Error
+		if err != nil {
+			tx.Rollback()
+			return core.CommitLog{}, err
+		}
+	}
+
+	err = tx.Commit().Error
 	return commit, err
 }
 
@@ -143,14 +168,14 @@ func (r *repository) SyncStatus(ctx context.Context, owner string) (core.SyncSta
 	}
 
 	var latestSignedAt time.Time
-	err = r.db.
-		WithContext(ctx).
+	err = r.db.WithContext(ctx).
 		Model(&core.CommitLog{}).
-		Where("? = ANY(owners)", owner).
-		Where("is_ephemeral = ?", false).
-		Order("signed_at DESC").
+		Joins("JOIN commit_owners ON commit_owners.commit_log_id = commit_logs.id").
+		Where("commit_owners.owner = ?", owner).
+		Where("commit_logs.is_ephemeral = ?", false).
+		Order("commit_logs.signed_at DESC").
 		Limit(1).
-		Pluck("signed_at", &latestSignedAt).
+		Pluck("commit_logs.signed_at", &latestSignedAt).
 		Error
 
 	if err != nil {
@@ -188,14 +213,14 @@ func (r *repository) SyncCommitFile(ctx context.Context, owner string) error {
 	var pageSize = 10
 
 	var firstCommitDate time.Time
-	err = r.db.
-		WithContext(ctx).
+	err = r.db.WithContext(ctx).
 		Model(&core.CommitLog{}).
-		Where("? = ANY(owners)", owner).
-		Where("is_ephemeral = ?", false).
-		Order("signed_at ASC").
+		Joins("JOIN commit_owners ON commit_owners.commit_log_id = commit_logs.id").
+		Where("commit_owners.owner = ?", owner).
+		Where("commit_logs.is_ephemeral = ?", false).
+		Order("commit_logs.signed_at ASC").
 		Limit(1).
-		Pluck("signed_at", &firstCommitDate).
+		Pluck("commit_logs.signed_at", &firstCommitDate).
 		Error
 
 	if err != nil {
@@ -204,14 +229,14 @@ func (r *repository) SyncCommitFile(ctx context.Context, owner string) error {
 	}
 
 	var latestCommitDate time.Time
-	err = r.db.
-		WithContext(ctx).
+	err = r.db.WithContext(ctx).
 		Model(&core.CommitLog{}).
-		Where("? = ANY(owners)", owner).
-		Where("is_ephemeral = ?", false).
-		Order("signed_at DESC").
+		Joins("JOIN commit_owners ON commit_owners.commit_log_id = commit_logs.id").
+		Where("commit_owners.owner = ?", owner).
+		Where("commit_logs.is_ephemeral = ?", false).
+		Order("commit_logs.signed_at DESC").
 		Limit(1).
-		Pluck("signed_at", &latestCommitDate).
+		Pluck("commit_logs.signed_at", &latestCommitDate).
 		Error
 
 	if err != nil {
@@ -244,11 +269,12 @@ func (r *repository) SyncCommitFile(ctx context.Context, owner string) error {
 		var commits []core.CommitLog
 
 		query := r.db.WithContext(ctx).
-			Where("? = ANY(owners)", owner).
-			Where("is_ephemeral = ?", false)
+			Joins("JOIN commit_owners ON commit_owners.commit_log_id = commit_logs.id").
+			Where("commit_owners.owner = ?", owner).
+			Where("commit_logs.is_ephemeral = ?", false)
 
 		if lastSignedAt.IsZero() {
-			query = query.Order("signed_at ASC")
+			query = query.Order("commit_logs.signed_at ASC")
 		}
 
 		err = query.Find(&commits).Limit(pageSize).Error

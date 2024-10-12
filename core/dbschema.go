@@ -217,15 +217,22 @@ type Job struct {
 	TraceID     string    `json:"traceID" gorm:"type:text"`
 }
 
+type CommitOwner struct {
+	ID          uint   `json:"id" gorm:"primaryKey;auto_increment"`
+	CommitLogID uint   `json:"commitLogID" gorm:"index"`
+	Owner       string `json:"owner" gorm:"type:char(42)"`
+}
+
 type CommitLog struct {
-	ID          uint           `json:"id" gorm:"primaryKey;auto_increment"`
-	IP          string         `json:"ip" gorm:"type:text"`
-	DocumentID  string         `json:"documentID" gorm:"type:char(26);uniqueIndex:idx_document_id"`
-	IsEphemeral bool           `json:"isEphemeral" gorm:"type:boolean;default:false"`
-	Type        string         `json:"type" gorm:"type:text"`
-	Document    string         `json:"document" gorm:"type:json"`
-	Signature   string         `json:"signature" gorm:"type:char(130)"`
-	SignedAt    time.Time      `json:"signedAt" gorm:"type:timestamp with time zone;not null;default:clock_timestamp()"`
-	Owners      pq.StringArray `json:"owners" gorm:"type:char(42)[]"`
-	CDate       time.Time      `json:"cdate" gorm:"type:timestamp with time zone;not null;default:clock_timestamp()"`
+	ID           uint          `json:"id" gorm:"primaryKey;auto_increment"`
+	IP           string        `json:"ip" gorm:"type:text"`
+	DocumentID   string        `json:"documentID" gorm:"type:char(26);uniqueIndex:idx_document_id"`
+	IsEphemeral  bool          `json:"isEphemeral" gorm:"type:boolean;default:false"`
+	Type         string        `json:"type" gorm:"type:text"`
+	Document     string        `json:"document" gorm:"type:json"`
+	Signature    string        `json:"signature" gorm:"type:char(130)"`
+	SignedAt     time.Time     `json:"signedAt" gorm:"type:timestamp with time zone;not null;default:clock_timestamp()"`
+	CommitOwners []CommitOwner `json:"commitOwners" gorm:"foreignKey:CommitLogID"`
+	Owners       []string      `json:"owners" gorm:"-"`
+	CDate        time.Time     `json:"cdate" gorm:"type:timestamp with time zone;not null;default:clock_timestamp()"`
 }

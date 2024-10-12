@@ -96,7 +96,7 @@ func main() {
 
 	err := config.Load(configPath)
 	if err != nil {
-		slog.Error("Failed to load config: ", err)
+		slog.Error("Failed to load config: ", slog.String("error", err.Error()))
 	}
 
 	conconf := core.SetupConfig(config.Concrnt)
@@ -185,6 +185,7 @@ func main() {
 		&core.SemanticID{},
 		&core.Job{},
 		&core.CommitLog{},
+		&core.CommitOwner{},
 	)
 
 	if err != nil {

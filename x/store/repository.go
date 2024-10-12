@@ -171,7 +171,7 @@ func (r *repository) SyncCommitFile(ctx context.Context, owner string) error {
 
 	// accuire lock
 	lockKey := fmt.Sprintf("store:lock:%s", owner)
-	_, err := r.rdb.SetNX(ctx, lockKey, "1", time.Hour).Result()
+	_, err := r.rdb.SetNX(ctx, lockKey, "1", time.Minute).Result()
 	if err != nil && err != redis.Nil {
 		span.RecordError(err)
 		return err
@@ -229,9 +229,12 @@ func (r *repository) SyncCommitFile(ctx context.Context, owner string) error {
 			case <-progressCtx.Done():
 				return
 			case <-time.After(10 * time.Second):
-				progress := float64(lastSignedAt.Sub(firstCommitDate)) / float64(latestCommitDate.Sub(firstCommitDate))
+				progress := float64(lastSignedAt.Sub(firstCommitDate).Seconds()) / float64(latestCommitDate.Sub(firstCommitDate).Seconds())
 				fmt.Printf("dumping %s logs. (%.2f%%)\n", owner, progress*100)
 				r.rdb.SetNX(ctx, fmt.Sprintf("store:progress:%s", owner), fmt.Sprintf("%.2f%%", progress), time.Hour)
+
+				// re-set lock
+				r.rdb.SetNX(ctx, lockKey, "1", time.Minute)
 			}
 		}
 	}()

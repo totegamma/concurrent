@@ -284,7 +284,7 @@ func (r *repository) SyncCommitFile(ctx context.Context, owner string) error {
 	for {
 		var commits []core.CommitLog
 
-		query := r.db.Debug().WithContext(ctx).
+		query := r.db.WithContext(ctx).
 			Joins("JOIN commit_owners ON commit_owners.commit_log_id = commit_logs.id").
 			Where("commit_owners.owner = ?", owner).
 			Where("commit_logs.is_ephemeral = ?", false)

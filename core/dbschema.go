@@ -219,8 +219,8 @@ type Job struct {
 
 type CommitOwner struct {
 	ID          uint   `json:"id" gorm:"primaryKey;auto_increment"`
-	CommitLogID uint   `json:"commitLogID" gorm:"index"`
-	Owner       string `json:"owner" gorm:"type:char(42);index"`
+	CommitLogID uint   `json:"commitLogID" gorm:"index;uniqueIndex:idx_commit_owner"`
+	Owner       string `json:"owner" gorm:"type:char(42);index;uniqueIndex:idx_commit_owner"`
 }
 
 type CommitLog struct {

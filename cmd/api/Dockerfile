@@ -7,7 +7,7 @@ COPY ./go.mod ./go.sum ./
 RUN go mod download && go mod verify
 COPY ./ ./
 
-RUN go install github.com/concrnt/conctl@v0.0.1
+RUN go install github.com/concrnt/conctl@v0.0.3
 
 RUN VERSION=${VERSION:-$(git describe)} \
  && BUILD_MACHINE=$(uname -srmo) \

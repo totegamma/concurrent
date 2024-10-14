@@ -107,15 +107,6 @@ func (s *service) GetChunks(ctx context.Context, timelines []string, epoch strin
 		recovered[normtable[k]] = v
 	}
 
-	// for backward compatibility
-	for f, t := range normtable {
-		if chunk, ok := recovered[t]; !ok {
-			chunk.Key = strings.Replace(chunk.Key, "tl:body:", "timeline:body:all:", 1)
-			chunk.Key = strings.Replace(chunk.Key, t, f, 1)
-			recovered[f] = chunk
-		}
-	}
-
 	return recovered, nil
 }
 

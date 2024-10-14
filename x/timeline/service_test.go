@@ -74,6 +74,7 @@ func TestGetRecentItemsSimple(t *testing.T) {
 	mockRepo.EXPECT().
 		LoadChunkBodies(gomock.Any(), map[string]string{"t00000000000000000000000000@local.example.com": prevEpoch}).
 		Return(nil, errors.New("not found"))
+	mockRepo.EXPECT().ListRecentlyRemovedItems(gomock.Any(), gomock.Any()).Return(map[string][]string{}, nil)
 
 	mockEntity := mock_core.NewMockEntityService(ctrl)
 	mockDomain := mock_core.NewMockDomainService(ctrl)
@@ -159,6 +160,7 @@ func TestGetRecentItemsLoadMore(t *testing.T) {
 				Items: chunk5400,
 			},
 		}, nil)
+	mockRepo.EXPECT().ListRecentlyRemovedItems(gomock.Any(), gomock.Any()).Return(map[string][]string{}, nil)
 
 	mockEntity := mock_core.NewMockEntityService(ctrl)
 	mockDomain := mock_core.NewMockDomainService(ctrl)
@@ -234,6 +236,8 @@ func TestGetRecentItemsWide(t *testing.T) {
 			"taaaaaaaaaaaaaaaaaaaaaaaaaa@remote.example.com": pivotEpoch,
 			"tbbbbbbbbbbbbbbbbbbbbbbbbbb@remote.example.com": pivotEpoch,
 		}, nil)
+
+	mockRepo.EXPECT().ListRecentlyRemovedItems(gomock.Any(), gomock.Any()).Return(map[string][]string{}, nil)
 
 	mockRepo.EXPECT().
 		LoadChunkBodies(gomock.Any(), map[string]string{

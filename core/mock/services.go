@@ -1521,11 +1521,12 @@ func (mr *MockStoreServiceMockRecorder) Restore(ctx, archive, from, IP any) *gom
 }
 
 // SyncCommitFile mocks base method.
-func (m *MockStoreService) SyncCommitFile(ctx context.Context, owner string) error {
+func (m *MockStoreService) SyncCommitFile(ctx context.Context, owner string) (core.SyncStatus, error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "SyncCommitFile", ctx, owner)
-	ret0, _ := ret[0].(error)
-	return ret0
+	ret0, _ := ret[0].(core.SyncStatus)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
 }
 
 // SyncCommitFile indicates an expected call of SyncCommitFile.
@@ -1905,6 +1906,21 @@ func (m *MockTimelineService) GetTimelineAutoDomain(ctx context.Context, timelin
 func (mr *MockTimelineServiceMockRecorder) GetTimelineAutoDomain(ctx, timelineID any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTimelineAutoDomain", reflect.TypeOf((*MockTimelineService)(nil).GetTimelineAutoDomain), ctx, timelineID)
+}
+
+// ListLocalRecentlyRemovedItems mocks base method.
+func (m *MockTimelineService) ListLocalRecentlyRemovedItems(ctx context.Context, timelines []string) (map[string][]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListLocalRecentlyRemovedItems", ctx, timelines)
+	ret0, _ := ret[0].(map[string][]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListLocalRecentlyRemovedItems indicates an expected call of ListLocalRecentlyRemovedItems.
+func (mr *MockTimelineServiceMockRecorder) ListLocalRecentlyRemovedItems(ctx, timelines any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListLocalRecentlyRemovedItems", reflect.TypeOf((*MockTimelineService)(nil).ListLocalRecentlyRemovedItems), ctx, timelines)
 }
 
 // ListTimelineByAuthor mocks base method.

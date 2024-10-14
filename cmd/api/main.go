@@ -338,6 +338,7 @@ func main() {
 	apiV1.GET("/timelines/recent", timelineHandler.Recent)
 	apiV1.GET("/timelines/range", timelineHandler.Range)
 	apiV1.GET("/timelines/chunks", timelineHandler.GetChunks)
+	apiV1.GET("/timelines/retracted", timelineHandler.Retracted)
 	apiV1.GET("/timelines/realtime", timelineHandler.Realtime)
 
 	// chunk

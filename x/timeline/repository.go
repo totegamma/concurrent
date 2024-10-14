@@ -55,6 +55,9 @@ type Repository interface {
 	LookupChunkItrs(ctx context.Context, timelines []string, epoch string) (map[string]string, error)
 	LoadChunkBodies(ctx context.Context, query map[string]string) (map[string]core.Chunk, error)
 
+	ListRecentlyRemovedItems(ctx context.Context, normalized []string) (map[string][]string, error)
+	ListRecentlyRemovedItemsLocal(ctx context.Context, timelineIDs []string) (map[string][]string, error)
+
 	GetMetrics() map[string]int64
 }
 
@@ -674,8 +677,13 @@ func (r *repository) GetItem(ctx context.Context, timelineID string, objectID st
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.GetItem")
 	defer span.End()
 
+	timelineID, err := r.normalizeLocalDBID(timelineID)
+	if err != nil {
+		return core.TimelineItem{}, err
+	}
+
 	var item core.TimelineItem
-	err := r.db.WithContext(ctx).First(&item, "timeline_id = ? and resource_id = ?", timelineID, objectID).Error
+	err = r.db.WithContext(ctx).First(&item, "timeline_id = ? and resource_id = ?", timelineID, objectID).Error
 	if err != nil {
 		if errors.Is(err, gorm.ErrRecordNotFound) {
 			return core.TimelineItem{}, core.NewErrorNotFound()
@@ -750,6 +758,14 @@ func (r *repository) DeleteItem(ctx context.Context, timelineID string, objectID
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.DeleteItem")
 	defer span.End()
 
+	timelineID, err := r.normalizeLocalDBID(timelineID)
+	if err != nil {
+		return err
+	}
+
+	r.rdb.SAdd(ctx, "timeline:"+timelineID+":deleted", objectID)
+	r.rdb.Expire(ctx, "timeline:"+timelineID+":deleted", time.Hour*24*2) // 2 days
+
 	return r.db.WithContext(ctx).Delete(&core.TimelineItem{}, "timeline_id = ? and resource_id = ?", timelineID, objectID).Error
 }
 
@@ -757,7 +773,80 @@ func (r *repository) DeleteItemByResourceID(ctx context.Context, resourceID stri
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.DeleteItemByResourceID")
 	defer span.End()
 
+	var items []core.TimelineItem
+	err := r.db.WithContext(ctx).Where("resource_id = ?", resourceID).Find(&items).Error
+	if err != nil {
+		return err
+	}
+
+	for _, item := range items {
+		r.rdb.SAdd(ctx, "timeline:"+item.TimelineID+":deleted", item.ResourceID)
+		r.rdb.Expire(ctx, "timeline:"+item.TimelineID+":deleted", time.Hour*24*2) // 2 days
+	}
+
 	return r.db.WithContext(ctx).Delete(&core.TimelineItem{}, "resource_id = ?", resourceID).Error
+}
+
+func (r *repository) ListRecentlyRemovedItems(ctx context.Context, normalized []string) (map[string][]string, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.ListRecentlyRemovedItems")
+	defer span.End()
+
+	var domainMap = make(map[string][]string)
+	for _, timeline := range normalized {
+		split := strings.Split(timeline, "@")
+		domain := split[len(split)-1]
+		if len(split) >= 2 {
+			if _, ok := domainMap[domain]; !ok {
+				domainMap[domain] = make([]string, 0)
+			}
+			domainMap[domain] = append(domainMap[domain], timeline)
+		}
+	}
+
+	result := make(map[string][]string)
+	for domain, timelines := range domainMap {
+		if domain == r.config.FQDN {
+			local, err := r.ListRecentlyRemovedItemsLocal(ctx, timelines)
+			if err != nil {
+				return nil, err
+			}
+			for k, v := range local {
+				result[k] = v
+			}
+		} else {
+			remote, err := r.client.GetRetracted(ctx, domain, timelines, nil)
+			if err != nil {
+				return nil, err
+			}
+			for k, v := range remote {
+				result[k] = v
+			}
+		}
+	}
+
+	return result, nil
+}
+
+func (r *repository) ListRecentlyRemovedItemsLocal(ctx context.Context, timelineIDs []string) (map[string][]string, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.ListRecentlyRemovedItemsLocal")
+	defer span.End()
+
+	var removedItems = make(map[string][]string)
+	for _, timelineID := range timelineIDs {
+
+		normalized, err := r.normalizeLocalDBID(timelineID)
+		if err != nil {
+			continue
+		}
+
+		deleted, err := r.rdb.SMembers(ctx, "timeline:"+normalized+":deleted").Result()
+		if err != nil {
+			return nil, err
+		}
+		removedItems[timelineID] = deleted
+	}
+
+	return removedItems, nil
 }
 
 // GetTimelineRecent returns a list of timeline items by TimelineID and time range

@@ -38,6 +38,7 @@ type Client interface {
 	GetDomain(ctx context.Context, domain string, opts *Options) (core.Domain, error)
 	GetChunkItrs(ctx context.Context, domain string, timelines []string, epoch string, opts *Options) (map[string]string, error)
 	GetChunkBodies(ctx context.Context, domain string, query map[string]string, opts *Options) (map[string]core.Chunk, error)
+	GetRetracted(ctx context.Context, domain string, timelines []string, opts *Options) (map[string][]string, error)
 }
 
 type client struct {
@@ -136,11 +137,6 @@ func (c *client) Commit(ctx context.Context, domain, body string, response any, 
 		req.Header.Set(core.RequesterPassportHeader, passport)
 	}
 	span.SetAttributes(attribute.String("passport", passport))
-
-	if err != nil {
-		span.RecordError(err)
-		return &http.Response{}, err
-	}
 
 	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
 
@@ -467,6 +463,32 @@ func (c *client) GetDomain(ctx context.Context, domain string, opts *Options) (c
 		}
 
 		return core.Domain{}, err
+	}
+
+	return *response, nil
+}
+
+func (c *client) GetRetracted(ctx context.Context, domain string, timelines []string, opts *Options) (map[string][]string, error) {
+	ctx, span := tracer.Start(ctx, "Client.GetRetracted")
+	defer span.End()
+
+	if !c.IsOnline(domain) {
+		return nil, fmt.Errorf("Domain is offline")
+	}
+
+	timelinesStr := strings.Join(timelines, ",")
+	url := "https://" + domain + "/api/v1/timelines/retracted?timelines=" + timelinesStr
+	span.SetAttributes(attribute.String("url", url))
+
+	response, err := httpRequest[map[string][]string](ctx, &c.client, "GET", url, "", opts)
+	if err != nil {
+		span.RecordError(err)
+
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			c.lastFailed[domain] = time.Now()
+		}
+
+		return nil, err
 	}
 
 	return *response, nil

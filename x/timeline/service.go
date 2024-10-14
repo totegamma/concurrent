@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"slices"
 	"sort"
 	"strings"
 	"sync/atomic"
@@ -314,6 +315,12 @@ func (s *service) GetRecentItems(ctx context.Context, timelines []string, until 
 
 	span.SetAttributes(attribute.StringSlice("timelines", timelines))
 
+	cancelMap, err := s.ListRecentlyRemovedItems(ctx, timelines)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
 	epoch := core.Time2Chunk(until)
 	chunks, err := s.GetChunks(ctx, timelines, epoch)
 	if err != nil {
@@ -358,7 +365,13 @@ func (s *service) GetRecentItems(ctx context.Context, timelines []string, until 
 		itrlimit--
 		smallest := heap.Pop(&pq).(*QueueItem)
 		_, exists := uniq[smallest.Item.ResourceID]
-		if !exists {
+		retracted := false
+		cancelList, ok := cancelMap[smallest.Timeline]
+		if ok {
+			retracted = slices.Contains(cancelList, smallest.Item.ResourceID)
+		}
+
+		if !exists && !retracted {
 			result = append(result, smallest.Item)
 			uniq[smallest.Item.ResourceID] = true
 		}
@@ -821,7 +834,7 @@ func (s *service) Retract(ctx context.Context, mode core.CommitMode, document, s
 		return core.TimelineItem{}, []string{}, err
 	}
 
-	timeline, err := s.repository.GetTimeline(ctx, doc.ID)
+	timeline, err := s.repository.GetTimeline(ctx, doc.Timeline)
 	if err != nil {
 		span.RecordError(err)
 		return core.TimelineItem{}, []string{}, err
@@ -1131,4 +1144,59 @@ func (s *service) UpdateMetrics() {
 
 	outerConnection.WithLabelValues("desired").Set(float64(metrics["remoteSubs"]))
 	outerConnection.WithLabelValues("current").Set(float64(metrics["remoteConns"]))
+}
+
+func (s *service) ListLocalRecentlyRemovedItems(ctx context.Context, timelines []string) (map[string][]string, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Service.GetRecentlyRemovedItems")
+	defer span.End()
+
+	normalized := make([]string, 0)
+	for _, timeline := range timelines {
+		normalizedTimeline, err := s.NormalizeTimelineID(ctx, timeline)
+		if err != nil {
+			slog.WarnContext(
+				ctx,
+				fmt.Sprintf("failed to normalize timeline: %s", timeline),
+				slog.String("module", "timeline"),
+			)
+			continue
+		}
+		normalized = append(normalized, normalizedTimeline)
+	}
+
+	return s.repository.ListRecentlyRemovedItemsLocal(ctx, normalized)
+}
+
+func (s *service) ListRecentlyRemovedItems(ctx context.Context, timelines []string) (map[string][]string, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Service.GetRecentlyRemovedItems")
+	defer span.End()
+
+	normalized := make([]string, 0)
+	normtable := make(map[string]string)
+	for _, timeline := range timelines {
+		normalizedTimeline, err := s.NormalizeTimelineID(ctx, timeline)
+		if err != nil {
+			slog.WarnContext(
+				ctx,
+				fmt.Sprintf("failed to normalize timeline: %s", timeline),
+				slog.String("module", "timeline"),
+			)
+			continue
+		}
+		normalized = append(normalized, normalizedTimeline)
+		normtable[normalizedTimeline] = timeline
+	}
+
+	retracted, err := s.repository.ListRecentlyRemovedItems(ctx, normalized)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	recovered := make(map[string][]string)
+	for k, v := range retracted {
+		recovered[normtable[k]] = v
+	}
+
+	return recovered, nil
 }

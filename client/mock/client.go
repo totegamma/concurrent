@@ -193,6 +193,21 @@ func (mr *MockClientMockRecorder) GetProfile(ctx, domain, address, opts any) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetProfile", reflect.TypeOf((*MockClient)(nil).GetProfile), ctx, domain, address, opts)
 }
 
+// GetRetracted mocks base method.
+func (m *MockClient) GetRetracted(ctx context.Context, domain string, timelines []string, opts *client.Options) (map[string][]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetRetracted", ctx, domain, timelines, opts)
+	ret0, _ := ret[0].(map[string][]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetRetracted indicates an expected call of GetRetracted.
+func (mr *MockClientMockRecorder) GetRetracted(ctx, domain, timelines, opts any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRetracted", reflect.TypeOf((*MockClient)(nil).GetRetracted), ctx, domain, timelines, opts)
+}
+
 // GetTimeline mocks base method.
 func (m *MockClient) GetTimeline(ctx context.Context, domain, id string, opts *client.Options) (core.Timeline, error) {
 	m.ctrl.T.Helper()

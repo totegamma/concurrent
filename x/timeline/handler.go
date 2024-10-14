@@ -32,6 +32,7 @@ type Handler interface {
 
 	GetChunkItr(c echo.Context) error
 	GetChunkBody(c echo.Context) error
+	Retracted(c echo.Context) error
 }
 
 type handler struct {
@@ -285,6 +286,22 @@ func (h handler) Query(c echo.Context) error {
 	}
 
 	items, err := h.service.Query(ctx, timelineID, schema, owner, author, until, limit)
+	if err != nil {
+		span.RecordError(err)
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": items})
+}
+
+func (h handler) Retracted(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.Retracted")
+	defer span.End()
+
+	timelinesStr := c.QueryParam("timelines")
+	timelines := strings.Split(timelinesStr, ",")
+
+	items, err := h.service.ListLocalRecentlyRemovedItems(ctx, timelines)
 	if err != nil {
 		span.RecordError(err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})

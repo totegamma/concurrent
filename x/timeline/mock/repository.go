@@ -217,6 +217,36 @@ func (mr *MockRepositoryMockRecorder) GetTimelineFromRemote(ctx, host, key any) 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTimelineFromRemote", reflect.TypeOf((*MockRepository)(nil).GetTimelineFromRemote), ctx, host, key)
 }
 
+// ListRecentlyRemovedItems mocks base method.
+func (m *MockRepository) ListRecentlyRemovedItems(ctx context.Context, normalized []string) (map[string][]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRecentlyRemovedItems", ctx, normalized)
+	ret0, _ := ret[0].(map[string][]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRecentlyRemovedItems indicates an expected call of ListRecentlyRemovedItems.
+func (mr *MockRepositoryMockRecorder) ListRecentlyRemovedItems(ctx, normalized any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRecentlyRemovedItems", reflect.TypeOf((*MockRepository)(nil).ListRecentlyRemovedItems), ctx, normalized)
+}
+
+// ListRecentlyRemovedItemsLocal mocks base method.
+func (m *MockRepository) ListRecentlyRemovedItemsLocal(ctx context.Context, timelineIDs []string) (map[string][]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ListRecentlyRemovedItemsLocal", ctx, timelineIDs)
+	ret0, _ := ret[0].(map[string][]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ListRecentlyRemovedItemsLocal indicates an expected call of ListRecentlyRemovedItemsLocal.
+func (mr *MockRepositoryMockRecorder) ListRecentlyRemovedItemsLocal(ctx, timelineIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListRecentlyRemovedItemsLocal", reflect.TypeOf((*MockRepository)(nil).ListRecentlyRemovedItemsLocal), ctx, timelineIDs)
+}
+
 // ListTimelineByAuthor mocks base method.
 func (m *MockRepository) ListTimelineByAuthor(ctx context.Context, author string) ([]core.Timeline, error) {
 	m.ctrl.T.Helper()

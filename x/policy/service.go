@@ -437,6 +437,31 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 			Result:   value,
 		}, nil
 
+	case "LoadResource":
+		key, ok := expr.Constant.(string)
+		if !ok {
+			err := fmt.Errorf("bad argument type for LoadResource. Expected string but got %s\n", reflect.TypeOf(expr.Constant))
+			return core.EvalResult{
+				Operator: "LoadResource",
+				Error:    err.Error(),
+			}, err
+		}
+
+		mappedResource := structToMap(requestCtx.Resource)
+		value, ok := resolveDotNotation(mappedResource, key)
+		if !ok {
+			err := fmt.Errorf("key not found: %s\n", key)
+			return core.EvalResult{
+				Operator: "LoadResource",
+				Error:    err.Error(),
+			}, err
+		}
+
+		return core.EvalResult{
+			Operator: "LoadResource",
+			Result:   value,
+		}, nil
+
 	case "DomainFQDN":
 		return core.EvalResult{
 			Operator: "DomainFQDN",

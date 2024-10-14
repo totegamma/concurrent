@@ -814,7 +814,7 @@ func (r *repository) ListRecentlyRemovedItems(ctx context.Context, normalized []
 				result[k] = v
 			}
 		} else {
-			remote, err := r.client.GetRetracted(ctx, domain, timelines, nil)
+			remote, err := r.ListRecentlyRemovedItemsRemote(ctx, domain, timelines)
 			if err != nil {
 				return nil, err
 			}
@@ -847,6 +847,80 @@ func (r *repository) ListRecentlyRemovedItemsLocal(ctx context.Context, timeline
 	}
 
 	return removedItems, nil
+}
+
+func (r *repository) ListRecentlyRemovedItemsRemote(ctx context.Context, domain string, timelineIDs []string) (map[string][]string, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.ListRecentlyRemovedItemsRemote")
+	defer span.End()
+
+	// get from cache
+	cacheKeys := make([]string, len(timelineIDs))
+	cacheMap := make(map[string]string)
+	for i, timelineID := range timelineIDs {
+		key := "tl:retracted:data:" + domain + ":" + timelineID
+		cacheKeys[i] = key
+		cacheMap[key] = timelineID
+	}
+
+	cache, err := r.mc.GetMulti(cacheKeys)
+	if err != nil {
+		span.RecordError(err)
+	}
+
+	var result = map[string][]string{}
+	for _, key := range cacheKeys {
+		timelineID := cacheMap[key]
+		value, ok := cache[key]
+		if ok {
+			result[timelineID] = strings.Split(string(value.Value), ",")
+		} else {
+			result[timelineID] = []string{}
+		}
+	}
+
+	// create cache in background
+	go func() {
+		freshKeys := make([]string, len(timelineIDs))
+		freshMap := make(map[string]string)
+		for i, timelineID := range timelineIDs {
+			key := "tl:retracted:fresh:" + domain + ":" + timelineID
+			freshKeys[i] = key
+			freshMap[key] = timelineID
+		}
+
+		fresh, err := r.mc.GetMulti(freshKeys)
+		if err != nil {
+			span.RecordError(err)
+		}
+
+		targets := []string{}
+
+		for _, key := range freshKeys {
+			timelineID := freshMap[key]
+			_, ok := fresh[key]
+			if ok {
+				continue
+			}
+			targets = append(targets, timelineID)
+		}
+
+		cache, err := r.client.GetRetracted(ctx, domain, targets, nil)
+		if err != nil {
+			span.RecordError(err)
+			return
+		}
+
+		for timelineID, retracted := range cache {
+			datakey := "tl:retracted:data:" + domain + ":" + timelineID
+			value := strings.Join(retracted, ",")
+			r.mc.Set(&memcache.Item{Key: datakey, Value: []byte(value), Expiration: 60 * 60 * 24 * 2})
+
+			freshkey := "tl:retracted:fresh:" + domain + ":" + timelineID
+			r.mc.Set(&memcache.Item{Key: freshkey, Value: []byte("1"), Expiration: 60}) // 1 minute
+		}
+	}()
+
+	return result, nil
 }
 
 // GetTimelineRecent returns a list of timeline items by TimelineID and time range

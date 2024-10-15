@@ -624,22 +624,12 @@ func (r *repository) PublishEvent(ctx context.Context, event core.Event) error {
 	return nil
 }
 
-// GetTimelineFromRemote gets a timeline from remote
-func (r *repository) GetTimelineFromRemote(ctx context.Context, host string, key string) (core.Timeline, error) {
-	ctx, span := tracer.Start(ctx, "Timeline.Repository.GetTimelineFromRemote")
+func (r *repository) getTimelineFromRemote(ctx context.Context, host, key string) (core.Timeline, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.getTimelineFromRemote")
 	defer span.End()
 
-	// check cache
-	cacheKey := "timeline:" + key + "@" + host
-	item, err := r.mc.Get(cacheKey)
-	if err == nil {
-		var timeline core.Timeline
-		err = json.Unmarshal(item.Value, &timeline)
-		if err == nil {
-			return timeline, nil
-		}
-		span.RecordError(err)
-	}
+	cacheKey := "tl:data:" + key + "@" + host
+	freshKey := "tl:fresh:" + key + "@" + host
 
 	timeline, err := r.client.GetTimeline(ctx, host, key, nil)
 	if err != nil {
@@ -648,28 +638,72 @@ func (r *repository) GetTimelineFromRemote(ctx context.Context, host string, key
 	}
 
 	// save to cache
-	body, err := json.Marshal(timeline)
-	if err != nil {
-		span.RecordError(err)
-		slog.ErrorContext(
-			ctx, "fail to marshal timeline",
-			slog.String("error", err.Error()),
-			slog.String("module", "timeline"),
-		)
-		return core.Timeline{}, err
+	go func() {
+		body, err := json.Marshal(timeline)
+		if err != nil {
+			span.RecordError(err)
+			slog.ErrorContext(
+				ctx, "fail to marshal timeline",
+				slog.String("error", err.Error()),
+				slog.String("module", "timeline"),
+			)
+			return
+		}
+
+		err = r.mc.Set(&memcache.Item{Key: cacheKey, Value: body, Expiration: 60 * 60 * 24 * 7}) // 7 days
+		if err != nil {
+			span.RecordError(err)
+			slog.ErrorContext(
+				ctx, "fail to save cache",
+				slog.String("error", err.Error()),
+				slog.String("module", "timeline"),
+			)
+		}
+		err = r.mc.Set(&memcache.Item{Key: freshKey, Value: []byte("1"), Expiration: 300}) // 5 minutes
+		if err != nil {
+			span.RecordError(err)
+			slog.ErrorContext(
+				ctx, "fail to save cache",
+				slog.String("error", err.Error()),
+				slog.String("module", "timeline"),
+			)
+		}
+	}()
+
+	return timeline, err
+}
+
+// GetTimelineFromRemote gets a timeline from remote
+func (r *repository) GetTimelineFromRemote(ctx context.Context, host string, key string) (core.Timeline, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.GetTimelineFromRemote")
+	defer span.End()
+
+	var timeline *core.Timeline
+
+	// check cache
+	cacheKey := "tl:data:" + key + "@" + host
+	freshKey := "tl:fresh:" + key + "@" + host
+	item, err := r.mc.Get(cacheKey)
+	if err == nil {
+		err = json.Unmarshal(item.Value, &timeline)
+		if err != nil {
+			span.RecordError(err)
+		}
 	}
 
-	err = r.mc.Set(&memcache.Item{Key: cacheKey, Value: body, Expiration: 300}) // 5 minutes
-	if err != nil {
-		span.RecordError(err)
-		slog.ErrorContext(
-			ctx, "fail to save cache",
-			slog.String("error", err.Error()),
-			slog.String("module", "timeline"),
-		)
+	if timeline == nil {
+		return r.getTimelineFromRemote(ctx, host, key)
 	}
 
-	return timeline, nil
+	// revalidate cache in background
+	_, err = r.mc.Get(freshKey)
+	if err != nil && errors.Is(err, memcache.ErrCacheMiss) {
+		go func() {
+			r.getTimelineFromRemote(ctx, host, key)
+		}()
+	}
+
+	return *timeline, nil
 }
 
 // GetItem returns a timeline item by TimelineID and ObjectID

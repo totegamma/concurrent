@@ -8,10 +8,13 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/redis/go-redis/v9"
+
 	"github.com/totegamma/concurrent/core"
 )
 
 type service struct {
+	rdb    *redis.Client
 	config core.Config
 	entity core.EntityService
 	domain core.DomainService
@@ -21,13 +24,14 @@ type service struct {
 
 // NewService creates a new auth service
 func NewService(
+	rdb *redis.Client,
 	config core.Config,
 	entity core.EntityService,
 	domain core.DomainService,
 	key core.KeyService,
 	policy core.PolicyService,
 ) core.AuthService {
-	return &service{config, entity, domain, key, policy}
+	return &service{rdb, config, entity, domain, key, policy}
 }
 
 // GetPassport takes client signed JWT and returns server signed JWT

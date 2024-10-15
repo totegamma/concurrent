@@ -4,6 +4,8 @@ import (
 	"github.com/go-yaml/yaml"
 	"log"
 	"os"
+
+	"github.com/totegamma/concurrent/core"
 )
 
 type GatewayConfig struct {
@@ -15,12 +17,13 @@ type ServiceInfo struct {
 }
 
 type Service struct {
-	Name         string `yaml:"name"`
-	Host         string `yaml:"host"`
-	Port         int    `yaml:"port"`
-	Path         string `yaml:"path"`
-	PreservePath bool   `yaml:"preservePath"`
-	InjectCors   bool   `yaml:"injectCors"`
+	Name          string                  `yaml:"name"`
+	Host          string                  `yaml:"host"`
+	Port          int                     `yaml:"port"`
+	Path          string                  `yaml:"path"`
+	PreservePath  bool                    `yaml:"preservePath"`
+	InjectCors    bool                    `yaml:"injectCors"`
+	RateLimitConf core.RateLimitConfigMap `yaml:"rateLimit"`
 }
 
 // Load loads concurrent config from given path

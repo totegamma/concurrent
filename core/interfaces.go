@@ -38,6 +38,7 @@ type AssociationService interface {
 type AuthService interface {
 	IssuePassport(ctx context.Context, requester string, key []Key) (string, error)
 	IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc
+	RateLimiter(configMap RateLimitConfigMap) echo.MiddlewareFunc
 }
 
 type DomainService interface {

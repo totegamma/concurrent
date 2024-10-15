@@ -245,7 +245,9 @@ func main() {
 
 		proxy.Transport = otelhttp.NewTransport(http.DefaultTransport)
 
-		middlewares := []echo.MiddlewareFunc{}
+		middlewares := []echo.MiddlewareFunc{
+			authService.RateLimiter(service.RateLimitConf),
+		}
 		if service.InjectCors {
 			middlewares = append(middlewares, cors)
 		}

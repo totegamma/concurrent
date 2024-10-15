@@ -130,7 +130,7 @@ func SetupAuthService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, clien
 	entityService := SetupEntityService(db, rdb, mc, client2, policy2, config)
 	domainService := SetupDomainService(db, client2, config)
 	keyService := SetupKeyService(db, rdb, mc, client2, config)
-	authService := auth.NewService(config, entityService, domainService, keyService, policy2)
+	authService := auth.NewService(rdb, config, entityService, domainService, keyService, policy2)
 	return authService
 }
 

@@ -68,7 +68,7 @@ func TestLocalRootSuccess(t *testing.T) {
 		FQDN: "local.example.com",
 	}
 
-	service := NewService(config, mockEntity, mockDomain, mockKey, mockPolicy)
+	service := NewService(nil, config, mockEntity, mockDomain, mockKey, mockPolicy)
 
 	c, req, rec, traceID := testutil.CreateHttpRequest()
 
@@ -134,7 +134,7 @@ func TestRemoteRootSuccess(t *testing.T) {
 		FQDN: "local.example.com",
 	}
 
-	service := NewService(config, mockEntity, mockDomain, mockKey, mockPolicy)
+	service := NewService(nil, config, mockEntity, mockDomain, mockKey, mockPolicy)
 	c, req, rec, traceID := testutil.CreateHttpRequest()
 
 	fmt.Print("traceID: ", traceID, "\n")

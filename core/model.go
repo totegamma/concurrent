@@ -85,3 +85,10 @@ type SyncStatus struct {
 	LatestOnDB   time.Time `json:"latestOnDB"`
 	Progress     string    `json:"progress"`
 }
+
+type RateLimitConfig struct {
+	BucketSize int     `yaml:"bucketSize"`
+	RefillSpan float64 `yaml:"refillSpan"`
+}
+
+type RateLimitConfigMap map[string]RateLimitConfig

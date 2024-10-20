@@ -6,18 +6,19 @@ import (
 
 // commons
 type DocumentBase[T any] struct {
-	ID           string    `json:"id,omitempty"`
-	Signer       string    `json:"signer"`
-	Owner        string    `json:"owner,omitempty"`
-	Type         string    `json:"type"`
-	Schema       string    `json:"schema,omitempty"`
-	Policy       string    `json:"policy,omitempty"`
-	PolicyParams string    `json:"policyParams,omitempty"`
-	KeyID        string    `json:"keyID,omitempty"`
-	Body         T         `json:"body,omitempty"`
-	Meta         any       `json:"meta,omitempty"`
-	SemanticID   string    `json:"semanticID,omitempty"`
-	SignedAt     time.Time `json:"signedAt"`
+	ID             string    `json:"id,omitempty"`
+	Signer         string    `json:"signer"`
+	Owner          string    `json:"owner,omitempty"`
+	Type           string    `json:"type"`
+	Schema         string    `json:"schema,omitempty"`
+	Policy         string    `json:"policy,omitempty"`
+	PolicyParams   string    `json:"policyParams,omitempty"`
+	PolicyDefaults string    `json:"policyDefaults,omitempty"`
+	KeyID          string    `json:"keyID,omitempty"`
+	Body           T         `json:"body,omitempty"`
+	Meta           any       `json:"meta,omitempty"`
+	SemanticID     string    `json:"semanticID,omitempty"`
+	SignedAt       time.Time `json:"signedAt"`
 }
 
 // entity

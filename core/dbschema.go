@@ -115,6 +115,7 @@ type Message struct {
 	PolicyID        uint           `json:"-"`
 	Policy          string         `json:"policy,omitempty" gorm:"-"`
 	PolicyParams    *string        `json:"policyParams,omitempty" gorm:"type:json"`
+	PolicyDefaults  *string        `json:"policyDefaults,omitempty" gorm:"type:json"`
 	Document        string         `json:"document" gorm:"type:json"`
 	Signature       string         `json:"signature" gorm:"type:char(130)"`
 	CDate           time.Time      `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`

@@ -35,6 +35,8 @@ func AccumulateOr(results []core.PolicyEvalResult) core.PolicyEvalResult {
 			hasAllow = true
 		} else if r == core.PolicyEvalResultDeny {
 			hasDeny = true
+		} else if r == core.PolicyEvalResultError {
+			return core.PolicyEvalResultError
 		}
 	}
 

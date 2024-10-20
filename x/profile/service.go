@@ -153,7 +153,7 @@ func (s *service) Upsert(ctx context.Context, mode core.CommitMode, document, si
 			return core.Profile{}, err
 		}
 
-		result := s.policy.Summerize([]core.PolicyEvalResult{policyResult}, "profile.create")
+		result := s.policy.Summerize([]core.PolicyEvalResult{policyResult}, "profile.create", nil)
 		if !result {
 			return core.Profile{}, errors.New("policy failed")
 		}
@@ -188,7 +188,7 @@ func (s *service) Upsert(ctx context.Context, mode core.CommitMode, document, si
 			span.RecordError(err)
 		}
 
-		result := s.policy.Summerize([]core.PolicyEvalResult{policyResult}, "profile.update")
+		result := s.policy.Summerize([]core.PolicyEvalResult{policyResult}, "profile.update", nil)
 		if !result {
 			return core.Profile{}, errors.New("policy failed")
 		}
@@ -270,7 +270,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document str
 		return core.Profile{}, err
 	}
 
-	result := s.policy.Summerize([]core.PolicyEvalResult{policyResult}, "profile.delete")
+	result := s.policy.Summerize([]core.PolicyEvalResult{policyResult}, "profile.delete", nil)
 	if !result {
 		return core.Profile{}, errors.New("policy failed")
 	}

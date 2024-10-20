@@ -31,11 +31,25 @@ func NewService(repository Repository, globalPolicy core.Policy, config core.Con
 	}
 }
 
-func (s service) Summerize(results []core.PolicyEvalResult, action string) bool {
-	result, ok := s.global.Defaults[action]
-	if !ok {
-		result = false
+func (s service) Summerize(results []core.PolicyEvalResult, action string, override *map[string]bool) bool {
+	_, span := tracer.Start(context.Background(), "Policy.Service.Summerize")
+	defer span.End()
+
+	var defaultResult bool = false
+	var ok bool = false
+	if override != nil {
+		defaultResult, ok = (*override)[action]
 	}
+	if !ok {
+		defaultResult, ok = s.global.Defaults[action]
+		if !ok {
+			defaultResult = false
+		}
+	}
+
+	span.SetAttributes(attribute.Bool("defaultResult", defaultResult))
+
+	var result bool = defaultResult
 
 	for _, r := range results {
 		switch r {
@@ -47,12 +61,74 @@ func (s service) Summerize(results []core.PolicyEvalResult, action string) bool 
 			result = true
 		case core.PolicyEvalResultDeny:
 			result = false
+		case core.PolicyEvalResultError:
+			result = defaultResult
 		case core.PolicyEvalResultDefault:
 			continue
 		}
 	}
 
 	return result
+}
+
+func (s service) AccumulateOr(results []core.PolicyEvalResult, action string, override *map[string]bool) core.PolicyEvalResult {
+	_, span := tracer.Start(context.Background(), "Policy.Service.AccumulateOr")
+	defer span.End()
+
+	var defaultResult bool = false
+	var ok bool = false
+	if override != nil {
+		defaultResult, ok = (*override)[action]
+	}
+	if !ok {
+		defaultResult, ok = s.global.Defaults[action]
+		if !ok {
+			defaultResult = false
+		}
+	}
+
+	span.SetAttributes(attribute.Bool("defaultResult", defaultResult))
+
+	var hasAlways bool
+	var hasNever bool
+	var hasAllow bool
+	var hasDeny bool
+
+	for _, r := range results {
+		if r == core.PolicyEvalResultAlways {
+			hasAlways = true
+		} else if r == core.PolicyEvalResultNever {
+			hasNever = true
+		} else if r == core.PolicyEvalResultAllow {
+			hasAllow = true
+		} else if r == core.PolicyEvalResultDeny {
+			hasDeny = true
+		} else if r == core.PolicyEvalResultError {
+			if defaultResult {
+				hasAllow = true
+			} else {
+				hasDeny = true
+			}
+		}
+	}
+
+	if hasAlways && hasNever {
+		return core.PolicyEvalResultDefault
+	} else if hasAlways {
+		return core.PolicyEvalResultAlways
+	} else if hasNever {
+		return core.PolicyEvalResultNever
+	}
+
+	if hasAllow && hasDeny {
+		return core.PolicyEvalResultDefault
+	} else if hasAllow {
+		return core.PolicyEvalResultAllow
+	} else if hasDeny {
+		return core.PolicyEvalResultDeny
+	}
+
+	return core.PolicyEvalResultDefault
 }
 
 func (s service) TestWithGlobalPolicy(ctx context.Context, context core.RequestContext, action string) (core.PolicyEvalResult, error) {

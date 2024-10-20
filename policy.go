@@ -382,6 +382,7 @@ var globalPolicyJson = `
         }
     },
     "defaults": {
+        "timeline.message.read": true,
         "message.association.attach": true,
         "timeline.association.attach": true,
         "subscription.association.attach": true

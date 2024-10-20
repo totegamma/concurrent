@@ -219,7 +219,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 
 			}
 
-			result := s.policy.Summerize([]core.PolicyEvalResult{timelinePolicyResult, messagePolicyResult}, "message.association.attach")
+			result := s.policy.Summerize([]core.PolicyEvalResult{timelinePolicyResult, messagePolicyResult}, "message.association.attach", nil)
 			if !result {
 				return association, []string{}, core.ErrorPermissionDenied{}
 			}
@@ -255,7 +255,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 				span.SetStatus(codes.Error, err.Error())
 			}
 
-			result := s.policy.Summerize([]core.PolicyEvalResult{policyEvalResult}, "profile.association.attach")
+			result := s.policy.Summerize([]core.PolicyEvalResult{policyEvalResult}, "profile.association.attach", nil)
 			if !result {
 				return association, []string{}, core.ErrorPermissionDenied{}
 			}
@@ -291,7 +291,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 				span.SetStatus(codes.Error, err.Error())
 			}
 
-			result := s.policy.Summerize([]core.PolicyEvalResult{policyEvalResult}, "timeline.association.attach")
+			result := s.policy.Summerize([]core.PolicyEvalResult{policyEvalResult}, "timeline.association.attach", nil)
 			if !result {
 				return association, []string{}, core.ErrorPermissionDenied{}
 			}
@@ -327,7 +327,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 				span.SetStatus(codes.Error, err.Error())
 			}
 
-			result := s.policy.Summerize([]core.PolicyEvalResult{policyEvalResult}, "subscription.association.attach")
+			result := s.policy.Summerize([]core.PolicyEvalResult{policyEvalResult}, "subscription.association.attach", nil)
 			if !result {
 				return association, []string{}, core.ErrorPermissionDenied{}
 			}
@@ -564,7 +564,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 		return core.Association{}, []string{}, err
 	}
 
-	finally := s.policy.Summerize([]core.PolicyEvalResult{result}, "association.delete")
+	finally := s.policy.Summerize([]core.PolicyEvalResult{result}, "association.delete", nil)
 	if !finally {
 		return core.Association{}, []string{}, core.ErrorPermissionDenied{}
 	}

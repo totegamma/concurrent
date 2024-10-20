@@ -63,23 +63,27 @@ func (s *service) isMessagePublic(ctx context.Context, message core.Message) (bo
 	ctx, span := tracer.Start(ctx, "Message.Service.isMessagePublic")
 	defer span.End()
 
+	var defaults map[string]bool
+	if message.PolicyDefaults != nil {
+		json.Unmarshal([]byte(*message.PolicyDefaults), &defaults)
+	}
+
 	// timeline policy check
 	timelinePolicyResults := make([]core.PolicyEvalResult, len(message.Timelines))
 	for i, timelineID := range message.Timelines {
 		timeline, err := s.timeline.GetTimelineAutoDomain(ctx, timelineID)
 		if err != nil {
-			span.SetStatus(codes.Error, err.Error())
-			// ここでエラーが発生した場合は、そのタイムラインにはアクセスできないということなので、安全側に倒してfalseを返す
-			// こうならないように必要なものはキャッシュしておくべき
-			return false, err
+			span.RecordError(err)
+			timelinePolicyResults[i] = core.PolicyEvalResultError
+			continue
 		}
 
 		var params map[string]any = make(map[string]any)
 		if timeline.PolicyParams != nil {
 			err := json.Unmarshal([]byte(*timeline.PolicyParams), &params)
 			if err != nil {
-				span.SetStatus(codes.Error, err.Error())
 				span.RecordError(err)
+				timelinePolicyResults[i] = core.PolicyEvalResultError
 				continue
 			}
 		}
@@ -94,15 +98,15 @@ func (s *service) isMessagePublic(ctx context.Context, message core.Message) (bo
 			"timeline.message.read",
 		)
 		if err != nil {
-			span.SetStatus(codes.Error, err.Error())
-			timelinePolicyResults[i] = core.PolicyEvalResultDefault
+			span.RecordError(err)
+			timelinePolicyResults[i] = core.PolicyEvalResultError
 			continue
 		}
 
 		timelinePolicyResults[i] = result
 	}
 
-	timelinePolicyResult := policy.AccumulateOr(timelinePolicyResults)
+	timelinePolicyResult := s.policy.AccumulateOr(timelinePolicyResults, "timeline.message.read", &defaults)
 	timelinePolicyIsDominant, timelinePolicyAllowed := policy.IsDominant(timelinePolicyResult)
 	if timelinePolicyIsDominant && !timelinePolicyAllowed {
 		return false, nil
@@ -131,7 +135,7 @@ func (s *service) isMessagePublic(ctx context.Context, message core.Message) (bo
 	}
 
 	// accumulate polies
-	result := s.policy.Summerize([]core.PolicyEvalResult{timelinePolicyResult, messagePolicyResult}, "message.read")
+	result := s.policy.Summerize([]core.PolicyEvalResult{timelinePolicyResult, messagePolicyResult}, "message.read", &defaults)
 	if !result {
 		return false, nil
 	}
@@ -173,20 +177,26 @@ func (s *service) GetAsUser(ctx context.Context, id string, requester core.Entit
 		return core.Message{}, err
 	}
 
+	var defaults map[string]bool
+	if message.PolicyDefaults != nil {
+		json.Unmarshal([]byte(*message.PolicyDefaults), &defaults)
+	}
+
 	timelinePolicyResults := make([]core.PolicyEvalResult, len(message.Timelines))
 	for i, timelineID := range message.Timelines {
 		timeline, err := s.timeline.GetTimelineAutoDomain(ctx, timelineID)
 		if err != nil {
-			span.SetStatus(codes.Error, err.Error())
-			return core.Message{}, err // 評価不能なので、安全側に倒してエラーを返す
+			span.RecordError(err)
+			timelinePolicyResults[i] = core.PolicyEvalResultError
+			continue
 		}
 
 		var params map[string]any = make(map[string]any)
 		if timeline.PolicyParams != nil {
 			err := json.Unmarshal([]byte(*timeline.PolicyParams), &params)
 			if err != nil {
-				span.SetStatus(codes.Error, err.Error())
 				span.RecordError(err)
+				timelinePolicyResults[i] = core.PolicyEvalResultError
 				continue
 			}
 		}
@@ -202,14 +212,14 @@ func (s *service) GetAsUser(ctx context.Context, id string, requester core.Entit
 			"timeline.message.read",
 		)
 		if err != nil {
-			span.SetStatus(codes.Error, err.Error())
-			timelinePolicyResults[i] = core.PolicyEvalResultDefault
+			span.RecordError(err)
+			timelinePolicyResults[i] = core.PolicyEvalResultError
 			continue
 		}
 		timelinePolicyResults[i] = result
 	}
 
-	timelinePolicyResult := policy.AccumulateOr(timelinePolicyResults)
+	timelinePolicyResult := s.policy.AccumulateOr(timelinePolicyResults, "timeline.message.read", &defaults)
 	timelinePolicyIsDominant, timelinePolicyAllowed := policy.IsDominant(timelinePolicyResult)
 	if timelinePolicyIsDominant && !timelinePolicyAllowed {
 		return core.Message{}, fmt.Errorf("no read access")
@@ -233,7 +243,7 @@ func (s *service) GetAsUser(ctx context.Context, id string, requester core.Entit
 		span.SetStatus(codes.Error, err.Error())
 	}
 
-	result := s.policy.Summerize([]core.PolicyEvalResult{timelinePolicyResult, messagePolicyResult}, "message.read")
+	result := s.policy.Summerize([]core.PolicyEvalResult{timelinePolicyResult, messagePolicyResult}, "message.read", &defaults)
 	if !result {
 		return core.Message{}, fmt.Errorf("no read access")
 	}
@@ -252,6 +262,11 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 		return core.Message{}, err
 	}
 
+	var defaults map[string]bool
+	if message.PolicyDefaults != nil {
+		json.Unmarshal([]byte(*message.PolicyDefaults), &defaults)
+	}
+
 	requesterEntity, err := s.entity.Get(ctx, requester)
 	if err != nil {
 		span.RecordError(err)
@@ -262,16 +277,17 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 	for i, timelineID := range message.Timelines {
 		timeline, err := s.timeline.GetTimelineAutoDomain(ctx, timelineID)
 		if err != nil {
-			span.SetStatus(codes.Error, err.Error())
-			return core.Message{}, err // 評価不能なので、安全側に倒してエラーを返す
+			span.RecordError(err)
+			timelinePolicyResults[i] = core.PolicyEvalResultError
+			continue
 		}
 
 		var params map[string]any = make(map[string]any)
 		if timeline.PolicyParams != nil {
 			err := json.Unmarshal([]byte(*timeline.PolicyParams), &params)
 			if err != nil {
-				span.SetStatus(codes.Error, err.Error())
 				span.RecordError(err)
+				timelinePolicyResults[i] = core.PolicyEvalResultError
 				continue
 			}
 		}
@@ -287,14 +303,14 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 			"timeline.message.read",
 		)
 		if err != nil {
-			span.SetStatus(codes.Error, err.Error())
-			timelinePolicyResults[i] = core.PolicyEvalResultDefault
+			span.RecordError(err)
+			timelinePolicyResults[i] = core.PolicyEvalResultError
 			continue
 		}
 		timelinePolicyResults[i] = result
 	}
 
-	timelinePolicyResult := policy.AccumulateOr(timelinePolicyResults)
+	timelinePolicyResult := s.policy.AccumulateOr(timelinePolicyResults, "timeline.message.read", &defaults)
 	timelinePolicyIsDominant, timelinePolicyAllowed := policy.IsDominant(timelinePolicyResult)
 	if timelinePolicyIsDominant && !timelinePolicyAllowed {
 		return core.Message{}, fmt.Errorf("no read access")
@@ -318,7 +334,7 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 		span.SetStatus(codes.Error, err.Error())
 	}
 
-	result := s.policy.Summerize([]core.PolicyEvalResult{timelinePolicyResult, messagePolicyResult}, "message.read")
+	result := s.policy.Summerize([]core.PolicyEvalResult{timelinePolicyResult, messagePolicyResult}, "message.read", &defaults)
 	if !result {
 		return core.Message{}, fmt.Errorf("no read access")
 	}
@@ -358,17 +374,23 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 		policyparams = &doc.PolicyParams
 	}
 
+	var policydefaults *string = nil
+	if doc.PolicyDefaults != "" {
+		policydefaults = &doc.PolicyDefaults
+	}
+
 	if signer.Domain == s.config.FQDN { // signerが自ドメイン管轄の場合、リソースを作成
 
 		message := core.Message{
-			ID:           id,
-			Author:       doc.Signer,
-			Schema:       doc.Schema,
-			Policy:       doc.Policy,
-			PolicyParams: policyparams,
-			Document:     document,
-			Signature:    signature,
-			Timelines:    doc.Timelines,
+			ID:             id,
+			Author:         doc.Signer,
+			Schema:         doc.Schema,
+			Policy:         doc.Policy,
+			PolicyParams:   policyparams,
+			PolicyDefaults: policydefaults,
+			Document:       document,
+			Signature:      signature,
+			Timelines:      doc.Timelines,
 		}
 
 		created, err = s.repo.Create(ctx, message)
@@ -538,7 +560,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 		return core.Message{}, []string{}, err
 	}
 
-	finally := s.policy.Summerize([]core.PolicyEvalResult{result}, "message.delete")
+	finally := s.policy.Summerize([]core.PolicyEvalResult{result}, "message.delete", nil)
 	if !finally {
 		return core.Message{}, []string{}, core.ErrorPermissionDenied{}
 	}

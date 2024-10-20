@@ -41,6 +41,7 @@ const (
 	PolicyEvalResultDeny
 	PolicyEvalResultAllow
 	PolicyEvalResultAlways
+	PolicyEvalResultError
 )
 
 const (

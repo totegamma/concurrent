@@ -95,7 +95,8 @@ type PolicyService interface {
 	Test(ctx context.Context, policy Policy, context RequestContext, action string) (PolicyEvalResult, error)
 	TestWithPolicyURL(ctx context.Context, url string, context RequestContext, action string) (PolicyEvalResult, error)
 	TestWithGlobalPolicy(ctx context.Context, context RequestContext, action string) (PolicyEvalResult, error)
-	Summerize(results []PolicyEvalResult, action string) bool
+	Summerize(results []PolicyEvalResult, action string, overrides *map[string]bool) bool
+	AccumulateOr(results []PolicyEvalResult, action string, override *map[string]bool) PolicyEvalResult
 }
 
 type ProfileService interface {

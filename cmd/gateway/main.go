@@ -324,10 +324,10 @@ func main() {
 	<body>
 		<h1>Concurrent Domain - `+config.Concrnt.FQDN+`</h1>
 		Yay! You're on ccgateway!<br>
-		You might looking for <a href="https://concurrent.world">concurrent.world</a>.<br>
+		You might looking for <a href="https://concrnt.world">concrnt.world</a>.<br>
 		This domain is currently registration: `+config.Concrnt.Registration+`<br>
 		<h2>Information</h2>
-		CDID: `+conconf.CCID+`
+		CSID: `+conconf.CSID+`
 		<h2>Services</h2>
 		<ul>
 		`+func() string {

@@ -523,6 +523,11 @@ func (s *service) RateLimiter(configMap core.RateLimitConfigMap) echo.Middleware
 			ctx := c.Request().Context()
 			path := resolvePath(c)
 
+			// Skip rate limiting for OPTIONS requests
+			if c.Request().Method == "OPTIONS" {
+				return next(c)
+			}
+
 			config, ok := configMap[path]
 			if !ok {
 				config = configMap["DEFAULT"]

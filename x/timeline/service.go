@@ -544,6 +544,9 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 		return core.TimelineItem{}, err
 	}
 
+	m := timelinePostCounters.WithLabelValues(item.TimelineID)
+	m.Inc()
+
 	return created, nil
 }
 
@@ -1090,6 +1093,7 @@ var (
 	loadChunkBodiesTotal              *prometheus.GaugeVec
 	timelineRealtimeConnectionMetrics prometheus.Gauge
 	outerConnection                   *prometheus.GaugeVec
+	timelinePostCounters              *prometheus.CounterVec
 )
 
 func (s *service) UpdateMetrics() {
@@ -1139,6 +1143,14 @@ func (s *service) UpdateMetrics() {
 			[]string{"type"},
 		)
 		prometheus.MustRegister(outerConnection)
+	}
+
+	if timelinePostCounters == nil {
+		timelinePostCounters = prometheus.NewCounterVec(
+			prometheus.CounterOpts{Name: "cc_timeline_post_count", Help: "Count of timeline posts"},
+			[]string{"timeline"},
+		)
+		prometheus.MustRegister(timelinePostCounters)
 	}
 
 	outerConnection.WithLabelValues("desired").Set(float64(metrics["remoteSubs"]))

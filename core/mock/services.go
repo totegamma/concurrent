@@ -749,6 +749,20 @@ func (mr *MockEntityServiceMockRecorder) Tombstone(ctx, mode, document, signatur
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Tombstone", reflect.TypeOf((*MockEntityService)(nil).Tombstone), ctx, mode, document, signature)
 }
 
+// UpdateMeta mocks base method.
+func (m *MockEntityService) UpdateMeta(ctx context.Context, key, info string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "UpdateMeta", ctx, key, info)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// UpdateMeta indicates an expected call of UpdateMeta.
+func (mr *MockEntityServiceMockRecorder) UpdateMeta(ctx, key, info any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "UpdateMeta", reflect.TypeOf((*MockEntityService)(nil).UpdateMeta), ctx, key, info)
+}
+
 // UpdateScore mocks base method.
 func (m *MockEntityService) UpdateScore(ctx context.Context, id string, score int) error {
 	m.ctrl.T.Helper()
@@ -1269,6 +1283,21 @@ func (m *MockProfileService) GetBySemanticID(ctx context.Context, semanticID, ow
 func (mr *MockProfileServiceMockRecorder) GetBySemanticID(ctx, semanticID, owner any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetBySemanticID", reflect.TypeOf((*MockProfileService)(nil).GetBySemanticID), ctx, semanticID, owner)
+}
+
+// Query mocks base method.
+func (m *MockProfileService) Query(ctx context.Context, author, schema string, limit int, since, until time.Time) ([]core.Profile, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Query", ctx, author, schema, limit, since, until)
+	ret0, _ := ret[0].([]core.Profile)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Query indicates an expected call of Query.
+func (mr *MockProfileServiceMockRecorder) Query(ctx, author, schema, limit, since, until any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Query", reflect.TypeOf((*MockProfileService)(nil).Query), ctx, author, schema, limit, since, until)
 }
 
 // Upsert mocks base method.
@@ -2273,6 +2302,35 @@ func NewMockNotificationService(ctrl *gomock.Controller) *MockNotificationServic
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockNotificationService) EXPECT() *MockNotificationServiceMockRecorder {
 	return m.recorder
+}
+
+// Delete mocks base method.
+func (m *MockNotificationService) Delete(ctx context.Context, vendorID, owner string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Delete", ctx, vendorID, owner)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// Delete indicates an expected call of Delete.
+func (mr *MockNotificationServiceMockRecorder) Delete(ctx, vendorID, owner any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Delete", reflect.TypeOf((*MockNotificationService)(nil).Delete), ctx, vendorID, owner)
+}
+
+// Get mocks base method.
+func (m *MockNotificationService) Get(ctx context.Context, vendorID, owner string) (core.NotificationSubscription, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Get", ctx, vendorID, owner)
+	ret0, _ := ret[0].(core.NotificationSubscription)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Get indicates an expected call of Get.
+func (mr *MockNotificationServiceMockRecorder) Get(ctx, vendorID, owner any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockNotificationService)(nil).Get), ctx, vendorID, owner)
 }
 
 // GetAllSubscriptions mocks base method.

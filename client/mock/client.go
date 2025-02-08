@@ -222,3 +222,27 @@ func (mr *MockClientMockRecorder) GetTimeline(ctx, domain, id, opts any) *gomock
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTimeline", reflect.TypeOf((*MockClient)(nil).GetTimeline), ctx, domain, id, opts)
 }
+
+// RegisterHostRemap mocks base method.
+func (m *MockClient) RegisterHostRemap(host, remap string, useHttps bool) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "RegisterHostRemap", host, remap, useHttps)
+}
+
+// RegisterHostRemap indicates an expected call of RegisterHostRemap.
+func (mr *MockClientMockRecorder) RegisterHostRemap(host, remap, useHttps any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RegisterHostRemap", reflect.TypeOf((*MockClient)(nil).RegisterHostRemap), host, remap, useHttps)
+}
+
+// SetUserAgent mocks base method.
+func (m *MockClient) SetUserAgent(software, version string) {
+	m.ctrl.T.Helper()
+	m.ctrl.Call(m, "SetUserAgent", software, version)
+}
+
+// SetUserAgent indicates an expected call of SetUserAgent.
+func (mr *MockClientMockRecorder) SetUserAgent(software, version any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "SetUserAgent", reflect.TypeOf((*MockClient)(nil).SetUserAgent), software, version)
+}

@@ -457,3 +457,10 @@ func (s *service) GetMeta(ctx context.Context, ccid string) (core.EntityMeta, er
 
 	return s.repository.GetMeta(ctx, ccid)
 }
+
+func (s *service) UpdateMeta(ctx context.Context, key, info string) error {
+	ctx, span := tracer.Start(ctx, "Entity.Service.UpdateMeta")
+	defer span.End()
+
+	return s.repository.UpdateMeta(ctx, key, info)
+}

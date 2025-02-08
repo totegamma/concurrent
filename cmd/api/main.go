@@ -308,6 +308,8 @@ func main() {
 	apiV1.GET("/entity/:id/acking", ackHandler.GetAcking)
 	apiV1.GET("/entity/:id/acker", ackHandler.GetAcker)
 	apiV1.GET("/entities", entityHandler.List)
+	apiV1.GET("/entity/meta", entityHandler.GetMeta, auth.Restrict(auth.ISREGISTERED))
+	apiV1.PUT("/entity/meta", entityHandler.UpdateMeta, auth.Restrict(auth.ISREGISTERED))
 
 	// message
 	apiV1.GET("/message/:id", messageHandler.Get)

@@ -18,6 +18,8 @@ type Handler interface {
 	Get(c echo.Context) error
 	GetSelf(c echo.Context) error
 	List(c echo.Context) error
+	GetMeta(c echo.Context) error
+	UpdateMeta(c echo.Context) error
 }
 
 type handler struct {
@@ -84,6 +86,53 @@ func (h handler) GetSelf(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": entity})
+}
+
+func (h handler) GetMeta(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "Entity.Handler.GetMeta")
+	defer span.End()
+
+	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
+	if !ok {
+		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
+	}
+
+	meta, err := h.service.GetMeta(ctx, requester)
+	if err != nil {
+		if errors.Is(err, core.ErrorNotFound{}) {
+			return c.JSON(http.StatusNotFound, echo.Map{"error": "entity not found"})
+		}
+		span.RecordError(err)
+		return c.JSON(http.StatusInternalServerError, echo.Map{"status": "error", "message": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": meta})
+}
+
+func (h handler) UpdateMeta(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "Entity.Handler.UpdateMeta")
+	defer span.End()
+
+	requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
+	if !ok {
+		return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "message": "requester not found"})
+	}
+
+	infoStruct := struct {
+		Info string `json:"info"`
+	}{}
+
+	if err := c.Bind(&infoStruct); err != nil {
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": err.Error()})
+	}
+
+	err := h.service.UpdateMeta(ctx, requester, infoStruct.Info)
+	if err != nil {
+		span.RecordError(err)
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	}
+
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok"})
 }
 
 // List returns a list of entities

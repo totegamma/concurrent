@@ -18,6 +18,7 @@ type Repository interface {
 	GetByAlias(ctx context.Context, alias string) (core.Entity, error)
 	SetAlias(ctx context.Context, id, alias string) error
 	GetMeta(ctx context.Context, key string) (core.EntityMeta, error)
+	UpdateMeta(ctx context.Context, key, info string) error
 	Upsert(ctx context.Context, entity core.Entity) (core.Entity, error)
 	UpsertWithMeta(ctx context.Context, entity core.Entity, meta core.EntityMeta) (core.Entity, core.EntityMeta, error)
 	UpdateScore(ctx context.Context, id string, score int) error
@@ -139,6 +140,13 @@ func (r *repository) GetMeta(ctx context.Context, key string) (core.EntityMeta, 
 	var meta core.EntityMeta
 	err := r.db.WithContext(ctx).First(&meta, "id = ?", key).Error
 	return meta, err
+}
+
+func (r *repository) UpdateMeta(ctx context.Context, key, info string) error {
+	ctx, span := tracer.Start(ctx, "Entity.Repository.UpdateMeta")
+	defer span.End()
+
+	return r.db.WithContext(ctx).Model(&core.EntityMeta{}).Where("id = ?", key).Update("info", info).Error
 }
 
 // Create creates new entity

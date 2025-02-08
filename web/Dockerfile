@@ -1,4 +1,4 @@
-FROM node:18 AS webBuilder
+FROM node:18 AS webbuilder
 WORKDIR /work
 
 COPY /web ./
@@ -7,5 +7,5 @@ RUN npm i -g pnpm \
 
 FROM nginx
 COPY ./web/nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=webBuilder /work/dist /usr/share/nginx/html
+COPY --from=webbuilder /work/dist /usr/share/nginx/html
 

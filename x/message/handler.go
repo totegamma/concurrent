@@ -42,6 +42,9 @@ func (h handler) Get(c echo.Context) error {
 			if errors.Is(err, core.ErrorNotFound{}) {
 				return c.JSON(http.StatusNotFound, echo.Map{"error": "Message not found"})
 			}
+			if errors.Is(err, core.ErrorPermissionDenied{}) {
+				return c.JSON(http.StatusForbidden, echo.Map{"error": "Permission denied"})
+			}
 			return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 		}
 	} else {
@@ -50,6 +53,10 @@ func (h handler) Get(c echo.Context) error {
 			if errors.Is(err, core.ErrorNotFound{}) {
 				return c.JSON(http.StatusNotFound, echo.Map{"error": "Message not found"})
 			}
+			if errors.Is(err, core.ErrorPermissionDenied{}) {
+				return c.JSON(http.StatusForbidden, echo.Map{"error": "Permission denied"})
+			}
+
 			return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 		}
 	}

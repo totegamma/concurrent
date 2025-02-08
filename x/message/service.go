@@ -161,7 +161,7 @@ func (s *service) GetAsGuest(ctx context.Context, id string) (core.Message, erro
 	}
 
 	if !isPublic {
-		return core.Message{}, fmt.Errorf("no read access")
+		return core.Message{}, core.NewErrorPermissionDenied()
 	}
 
 	return message, nil
@@ -222,7 +222,7 @@ func (s *service) GetAsUser(ctx context.Context, id string, requester core.Entit
 	timelinePolicyResult := s.policy.AccumulateOr(timelinePolicyResults, "timeline.message.read", &defaults)
 	timelinePolicyIsDominant, timelinePolicyAllowed := policy.IsDominant(timelinePolicyResult)
 	if timelinePolicyIsDominant && !timelinePolicyAllowed {
-		return core.Message{}, fmt.Errorf("no read access")
+		return core.Message{}, core.NewErrorPermissionDenied()
 	}
 
 	messagePolicyResult := core.PolicyEvalResultDefault
@@ -245,7 +245,7 @@ func (s *service) GetAsUser(ctx context.Context, id string, requester core.Entit
 
 	result := s.policy.Summerize([]core.PolicyEvalResult{timelinePolicyResult, messagePolicyResult}, "message.read", &defaults)
 	if !result {
-		return core.Message{}, fmt.Errorf("no read access")
+		return core.Message{}, core.NewErrorPermissionDenied()
 	}
 
 	return message, nil
@@ -313,7 +313,7 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 	timelinePolicyResult := s.policy.AccumulateOr(timelinePolicyResults, "timeline.message.read", &defaults)
 	timelinePolicyIsDominant, timelinePolicyAllowed := policy.IsDominant(timelinePolicyResult)
 	if timelinePolicyIsDominant && !timelinePolicyAllowed {
-		return core.Message{}, fmt.Errorf("no read access")
+		return core.Message{}, core.NewErrorPermissionDenied()
 	}
 
 	messagePolicyResult := core.PolicyEvalResultDefault
@@ -336,7 +336,7 @@ func (s *service) GetWithOwnAssociations(ctx context.Context, id string, request
 
 	result := s.policy.Summerize([]core.PolicyEvalResult{timelinePolicyResult, messagePolicyResult}, "message.read", &defaults)
 	if !result {
-		return core.Message{}, fmt.Errorf("no read access")
+		return core.Message{}, core.NewErrorPermissionDenied()
 	}
 
 	return message, nil

@@ -60,7 +60,7 @@ jobs:
           images: ${{ matrix.image }}
 
       - name: Build and push Docker image
-        id: build-and-push
+        id: build
         uses: docker/build-push-action@v4
         with:
           context: .

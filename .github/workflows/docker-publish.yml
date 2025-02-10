@@ -18,6 +18,11 @@ jobs:
         arch:
           - ubuntu-24.04
           - ubuntu-24.04-arm
+        includes:
+          - target: ccgateway
+            file: ./cmd/gateway/Dockerfile
+          - target: ccapi
+            file: ./cmd/api/Dockerfile
 
     runs-on: ${{ matrix.arch }}
 
@@ -57,7 +62,7 @@ jobs:
         uses: docker/build-push-action@v4
         with:
           context: .
-          file: ./cmd/${{ matrix.target }}/Dockerfile
+          file: ${{ matrix.file }}
           push: ${{ github.event_name != 'pull_request' }}
           labels: ${{ steps.meta.outputs.labels }}
           outputs: type=image,name=${{ env.REGISTRY }}/${{ matrix.target }},push-by-digest=true,name-canonical=true,push=true

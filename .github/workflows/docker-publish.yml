@@ -21,8 +21,10 @@ jobs:
         include:
           - target: ccgateway
             file: ./cmd/gateway/Dockerfile
+            image: ghcr.io/totegamma/ccgateway
           - target: ccapi
             file: ./cmd/api/Dockerfile
+            image: ghcr.io/totegamma/ccapi
 
     runs-on: ${{ matrix.arch }}
 
@@ -55,7 +57,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ matrix.target }}
+          images: ${{ matrix.image }}
 
       - name: Build and push Docker image
         id: build-and-push
@@ -65,7 +67,7 @@ jobs:
           file: ${{ matrix.file }}
           push: ${{ github.event_name != 'pull_request' }}
           labels: ${{ steps.meta.outputs.labels }}
-          outputs: type=image,name=${{ env.REGISTRY }}/${{ matrix.target }},push-by-digest=true,name-canonical=true,push=true
+          outputs: type=image,name=${{ matrix.image }},push-by-digest=true,name-canonical=true,push=true
           cache-from: type=gha
           cache-to: type=gha,mode=max
           build-args: VERSION=${{env.TAG}}
@@ -92,9 +94,11 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        target:
-          - ccgateway
-          - ccapi
+        include:
+          - target: ccgateway
+            image: ghcr.io/totegamma/ccgateway
+          - target: ccapi
+            image: ghcr.io/totegamma/ccapi
 
     permissions:
       contents: read
@@ -129,7 +133,7 @@ jobs:
         id: meta
         uses: docker/metadata-action@v5
         with:
-          images: ${{ env.REGISTRY }}/${{ matrix.target }}
+          images: ${{ matrix.image }}
           tags: |
             type=raw,value=latest,enable=${{ !contains(env.TAG, 'beta') }}
             type=semver,pattern={{raw}}
@@ -138,5 +142,5 @@ jobs:
         working-directory: /tmp/digests
         run: |
           docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ env.REGISTRY }}/${{ matrix.target }}@sha256:%s ' *)
+            $(printf '${{ matrix.image }}@sha256:%s ' *)
 

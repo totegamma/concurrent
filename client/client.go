@@ -10,10 +10,12 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/url"
 	"reflect"
 	"strings"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/totegamma/concurrent/core"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -41,6 +43,7 @@ type Client interface {
 	GetChunkItrs(ctx context.Context, domain string, timelines []string, epoch string, opts *Options) (map[string]string, error)
 	GetChunkBodies(ctx context.Context, domain string, query map[string]string, opts *Options) (map[string]core.Chunk, error)
 	GetRetracted(ctx context.Context, domain string, timelines []string, opts *Options) (map[string][]string, error)
+	ConnectWebsocket(ctx context.Context, domain string, path string) (*websocket.Conn, error)
 }
 
 type remapRecord struct {
@@ -530,4 +533,23 @@ func (c *client) GetRetracted(ctx context.Context, domain string, timelines []st
 	}
 
 	return *response, nil
+}
+
+func (c *client) ConnectWebsocket(ctx context.Context, domain string, path string) (*websocket.Conn, error) {
+	_, span := tracer.Start(ctx, "Client.ConnectWebsocket")
+	defer span.End()
+
+	if !c.IsOnline(domain) {
+		return nil, fmt.Errorf("Domain is offline")
+	}
+
+	u := url.URL{Scheme: "wss", Host: domain, Path: path}
+	dialer := websocket.DefaultDialer
+	dialer.HandshakeTimeout = 10 * time.Second
+
+	header := http.Header{}
+	header.Set("User-Agent", c.userAgent)
+
+	conn, _, err := dialer.Dial(u.String(), nil)
+	return conn, err
 }

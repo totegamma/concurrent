@@ -973,6 +973,7 @@ func (s *service) Realtime(ctx context.Context, request <-chan []string, respons
 	events := make(chan core.Event)
 
 	var mapper map[string]string
+	var allowed map[string]bool = make(map[string]bool)
 
 	for {
 		select {
@@ -983,6 +984,7 @@ func (s *service) Realtime(ctx context.Context, request <-chan []string, respons
 
 			normalized := make([]string, 0)
 			mapper = make(map[string]string)
+			allowed = make(map[string]bool)
 			for _, timeline := range timelines {
 				normalizedTimeline, err := s.NormalizeTimelineID(ctx, timeline)
 				if err != nil {
@@ -993,6 +995,26 @@ func (s *service) Realtime(ctx context.Context, request <-chan []string, respons
 					)
 					continue
 				}
+
+				split := strings.Split(normalizedTimeline, "@")
+				domainName := split[len(split)-1]
+
+				if domainName != s.config.FQDN {
+					allow, ok := allowed[domainName]
+					if ok && !allow {
+						continue
+					}
+
+					if !ok {
+						_, err := s.domain.GetByFQDN(ctx, domainName)
+						if err != nil {
+							allowed[domainName] = false
+							continue
+						}
+						allowed[domainName] = true
+					}
+				}
+
 				normalized = append(normalized, normalizedTimeline)
 				mapper[normalizedTimeline] = timeline
 			}

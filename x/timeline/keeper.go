@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -187,30 +186,7 @@ func (k *keeper) remoteSubRoutine(ctx context.Context, domain string, timelines 
 	if _, ok := remoteConns[domain]; !ok {
 		// new server, create new connection
 
-		// check server availability
-		domainInfo, err := k.client.GetDomain(ctx, domain, nil)
-		if err != nil {
-			slog.Error(
-				fmt.Sprintf("fail to get domain info: %v", err),
-				slog.String("module", "agent"),
-				slog.String("group", "realtime"),
-			)
-			return
-		}
-		if domainInfo.Dimension != k.config.Dimension {
-			slog.Error(
-				fmt.Sprintf("domain dimention mismatch: %s", domain),
-				slog.String("module", "agent"),
-				slog.String("group", "realtime"),
-			)
-			return
-		}
-
-		u := url.URL{Scheme: "wss", Host: domain, Path: "/api/v1/timelines/realtime"}
-		dialer := websocket.DefaultDialer
-		dialer.HandshakeTimeout = 10 * time.Second
-
-		c, _, err := dialer.Dial(u.String(), nil)
+		c, err := k.client.ConnectWebsocket(ctx, domain, "/api/v1/timelines/realtime")
 		if err != nil {
 			slog.Error(
 				fmt.Sprintf("fail to dial to %v (%v)", domain, err),

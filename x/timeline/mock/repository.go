@@ -172,6 +172,21 @@ func (mr *MockRepositoryMockRecorder) GetNormalizationCache(ctx, timelineID any)
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNormalizationCache", reflect.TypeOf((*MockRepository)(nil).GetNormalizationCache), ctx, timelineID)
 }
 
+// GetNormalizationCaches mocks base method.
+func (m *MockRepository) GetNormalizationCaches(ctx context.Context, timelineIDs []string) (map[string]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetNormalizationCaches", ctx, timelineIDs)
+	ret0, _ := ret[0].(map[string]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetNormalizationCaches indicates an expected call of GetNormalizationCaches.
+func (mr *MockRepositoryMockRecorder) GetNormalizationCaches(ctx, timelineIDs any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetNormalizationCaches", reflect.TypeOf((*MockRepository)(nil).GetNormalizationCaches), ctx, timelineIDs)
+}
+
 // GetRecentItems mocks base method.
 func (m *MockRepository) GetRecentItems(ctx context.Context, timelineID string, until time.Time, limit int) ([]core.TimelineItem, error) {
 	m.ctrl.T.Helper()

@@ -2070,6 +2070,21 @@ func (mr *MockTimelineServiceMockRecorder) NormalizeTimelineID(ctx, timeline any
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NormalizeTimelineID", reflect.TypeOf((*MockTimelineService)(nil).NormalizeTimelineID), ctx, timeline)
 }
 
+// NormalizeTimelineIDs mocks base method.
+func (m *MockTimelineService) NormalizeTimelineIDs(ctx context.Context, timelines []string) (map[string]string, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "NormalizeTimelineIDs", ctx, timelines)
+	ret0, _ := ret[0].(map[string]string)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// NormalizeTimelineIDs indicates an expected call of NormalizeTimelineIDs.
+func (mr *MockTimelineServiceMockRecorder) NormalizeTimelineIDs(ctx, timelines any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "NormalizeTimelineIDs", reflect.TypeOf((*MockTimelineService)(nil).NormalizeTimelineIDs), ctx, timelines)
+}
+
 // PostItem mocks base method.
 func (m *MockTimelineService) PostItem(ctx context.Context, timeline string, item core.TimelineItem, document, signature string) (core.TimelineItem, error) {
 	m.ctrl.T.Helper()

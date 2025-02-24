@@ -152,9 +152,6 @@ func (k *keeper) deleteExcessiveSubs(ctx context.Context) {
 
 	closeList := make([]string, 0)
 
-	fmt.Println("currentSubs", currentSubs)
-	fmt.Println("remoteSubs", remoteSubs)
-
 	for domain, timelines := range remoteSubs {
 		var newSubs []string
 		for _, timeline := range timelines { // domainのtimelineとcurrentSubsの積を取る

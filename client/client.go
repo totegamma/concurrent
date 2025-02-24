@@ -239,7 +239,7 @@ func httpRequest[T any](ctx context.Context, client *http.Client, method, url, b
 	}
 
 	if response.Status != "ok" {
-		log.Printf("error: %v", string(body))
+		log.Printf("%v %v %v", url, resp.Status, string(body))
 		return nil, fmt.Errorf("Request failed(%s): %v", resp.Status, string(body))
 	}
 

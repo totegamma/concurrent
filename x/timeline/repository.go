@@ -123,8 +123,8 @@ func (r *repository) GetMetrics() map[string]int64 {
 }
 
 const (
-	normaalizationCachePrefix = "tl:norm:"
-	normaalizationCacheTTL    = 60 * 15 // 15 minutes
+	normalizationCachePrefix = "tl:norm:"
+	normalizationCacheTTL    = 60 * 15 // 15 minutes
 
 	tlItrCachePrefix  = "tl:itr:"
 	tlItrCacheTTL     = 60 * 60 * 24 * 2 // 2 days
@@ -410,7 +410,7 @@ func (r *repository) loadLocalBody(ctx context.Context, timeline string, epoch s
 
 	// 得られた中で最も古いアイテムがチャンクをまたいでない場合、取得漏れがある可能性がある
 	// 代わりに、チャンク内のレンジの全てのアイテムを取得する
-	if items[len(items)-1].CDate.After(prevChunkDate) {
+	if len(items) == 0 || items[len(items)-1].CDate.After(prevChunkDate) {
 		err = r.db.WithContext(ctx).
 			Where("timeline_id = ? and ? < c_date and c_date <= ?", timelineID, prevChunkDate, chunkDate).
 			Order("c_date desc").
@@ -491,11 +491,11 @@ func (r *repository) loadRemoteBodies(ctx context.Context, remote string, query 
 }
 
 func (r *repository) SetNormalizationCache(ctx context.Context, timelineID string, value string) error {
-	return r.mc.Set(&memcache.Item{Key: normaalizationCachePrefix + timelineID, Value: []byte(value), Expiration: normaalizationCacheTTL})
+	return r.mc.Set(&memcache.Item{Key: normalizationCachePrefix + timelineID, Value: []byte(value), Expiration: normalizationCacheTTL})
 }
 
 func (r *repository) GetNormalizationCache(ctx context.Context, timelineID string) (string, error) {
-	item, err := r.mc.Get(normaalizationCachePrefix + timelineID)
+	item, err := r.mc.Get(normalizationCachePrefix + timelineID)
 	if err != nil {
 		return "", err
 	}
@@ -505,7 +505,7 @@ func (r *repository) GetNormalizationCache(ctx context.Context, timelineID strin
 func (r *repository) GetNormalizationCaches(ctx context.Context, timelineIDs []string) (map[string]string, error) {
 	keys := make([]string, len(timelineIDs))
 	for i, id := range timelineIDs {
-		keys[i] = normaalizationCachePrefix + id
+		keys[i] = normalizationCachePrefix + id
 	}
 
 	cache, err := r.mc.GetMulti(keys)
@@ -516,7 +516,8 @@ func (r *repository) GetNormalizationCaches(ctx context.Context, timelineIDs []s
 	result := make(map[string]string)
 	for _, key := range keys {
 		if cache[key] != nil {
-			result[key] = string(cache[key].Value)
+			originalKey := strings.TrimPrefix(key, normalizationCachePrefix)
+			result[originalKey] = string(cache[key].Value)
 		}
 	}
 

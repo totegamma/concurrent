@@ -214,18 +214,18 @@ func TestGetRecentItemsWide(t *testing.T) {
 	mockRepo := mock_timeline.NewMockRepository(ctrl)
 	mockRepo.EXPECT().
 		GetNormalizationCaches(gomock.Any(),
-			[]string{
+			gomock.InAnyOrder([]string{
 				"t00000000000000000000000000",
 				"test@con1t0tey8uxhkqkd4wcp4hd4jedt7f0vfhk29xdd2",
 				"taaaaaaaaaaaaaaaaaaaaaaaaaa@remote.example.com",
 				"test@con1jmcread5dear85emug5gh3wvaf6st9av0kuxaj",
-			},
+			}),
 		).Return(map[string]string{
-			"t00000000000000000000000000":  "t00000000000000000000000000@local.example.com",
-			"test@con1t0tey8uxhkqkd4wcp4hd4jedt7f0vfhk29xdd2": "t11111111111111111111111111@local.example.com",
-			"taaaaaaaaaaaaaaaaaaaaaaaaaa@remote.example.com": "taaaaaaaaaaaaaaaaaaaaaaaaaa@remote.example.com",
-			"test@con1jmcread5dear85emug5gh3wvaf6st9av0kuxaj": "tbbbbbbbbbbbbbbbbbbbbbbbbbb@remote.example.com",
-		}, nil).AnyTimes()
+		"t00000000000000000000000000":                     "t00000000000000000000000000@local.example.com",
+		"test@con1t0tey8uxhkqkd4wcp4hd4jedt7f0vfhk29xdd2": "t11111111111111111111111111@local.example.com",
+		"taaaaaaaaaaaaaaaaaaaaaaaaaa@remote.example.com":  "taaaaaaaaaaaaaaaaaaaaaaaaaa@remote.example.com",
+		"test@con1jmcread5dear85emug5gh3wvaf6st9av0kuxaj": "tbbbbbbbbbbbbbbbbbbbbbbbbbb@remote.example.com",
+	}, nil).AnyTimes()
 
 	mockRepo.EXPECT().
 		LookupChunkItrs(gomock.Any(), []string{

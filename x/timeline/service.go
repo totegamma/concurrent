@@ -285,8 +285,8 @@ func (s *service) LoadChunkBody(ctx context.Context, query map[string]string) (m
 	defer span.End()
 
 	timelines := make([]string, 0)
-	for _, v := range query {
-		timelines = append(timelines, v)
+	for k := range query {
+		timelines = append(timelines, k)
 	}
 
 	normalizedMap, err := s.NormalizeTimelineIDs(ctx, timelines)

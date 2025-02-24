@@ -175,6 +175,10 @@ func (s *service) Commit(
 		if err != nil {
 			return nil, err
 		}
+		if len(doc.Target) == 0 {
+			core.JsonPrint("PROGRAM ERROR", doc)
+			return nil, fmt.Errorf("target is empty")
+		}
 		typ := doc.Target[0]
 		switch typ {
 		case 'm': // message

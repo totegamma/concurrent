@@ -9,6 +9,7 @@ import (
 	"slices"
 	"sort"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -63,32 +64,23 @@ func (s *service) Count(ctx context.Context) (int64, error) {
 	return s.repository.Count(ctx)
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 func (s *service) GetChunks(ctx context.Context, timelines []string, epoch string) (map[string]core.Chunk, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.GetChunks")
 	defer span.End()
 
-	normalized := make([]string, 0)
-	normtable := make(map[string]string)
-	var allowed map[string]bool = make(map[string]bool)
-	for _, timeline := range timelines {
-		normalizedTimeline, err := s.NormalizeTimelineID(ctx, timeline)
-		if err != nil {
-			slog.WarnContext(
-				ctx,
-				fmt.Sprintf("failed to normalize timeline: %s", timeline),
-				slog.String("module", "timeline"),
-			)
-			continue
-		}
+	normalizeMap, err := s.NormalizeTimelineIDs(ctx, timelines)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
 
-		split := strings.Split(normalizedTimeline, "@")
+	normalized := make([]string, 0)
+	recovTable := make(map[string]string)
+	var allowed map[string]bool = make(map[string]bool)
+
+	for tl, norm := range normalizeMap {
+
+		split := strings.Split(norm, "@")
 		domainName := split[len(split)-1]
 
 		if domainName != s.config.FQDN {
@@ -107,8 +99,8 @@ func (s *service) GetChunks(ctx context.Context, timelines []string, epoch strin
 			}
 		}
 
-		normalized = append(normalized, normalizedTimeline)
-		normtable[normalizedTimeline] = timeline
+		normalized = append(normalized, norm)
+		recovTable[norm] = tl
 	}
 
 	query, err := s.repository.LookupChunkItrs(ctx, normalized, epoch)
@@ -125,7 +117,7 @@ func (s *service) GetChunks(ctx context.Context, timelines []string, epoch strin
 
 	recovered := make(map[string]core.Chunk)
 	for k, v := range chunks {
-		recovered[normtable[k]] = v
+		recovered[recovTable[k]] = v
 	}
 
 	return recovered, nil
@@ -205,24 +197,72 @@ func (s *service) NormalizeTimelineID(ctx context.Context, timeline string) (str
 	return normalized, nil
 }
 
+func (s *service) NormalizeTimelineIDs(ctx context.Context, timelines []string) (map[string]string, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Service.NormalizeTimelineIDs")
+	defer span.End()
+
+	normalizedMap, err := s.repository.GetNormalizationCaches(ctx, timelines)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	type result struct {
+		timeline   string
+		normalized string
+		err        error
+	}
+
+	const maxConcurrency = 10
+	sem := make(chan struct{}, maxConcurrency)
+	results := make(chan result, len(timelines))
+	var wg sync.WaitGroup
+
+	for _, timeline := range timelines {
+		if _, ok := normalizedMap[timeline]; !ok {
+			wg.Add(1)
+			sem <- struct{}{}
+			go func(timeline string) {
+				defer func() {
+					<-sem
+					wg.Done()
+				}()
+
+				normalized, err := s.NormalizeTimelineID(ctx, timeline)
+				results <- result{timeline, normalized, err}
+			}(timeline)
+		}
+	}
+
+	wg.Wait()
+	close(results)
+
+	for r := range results {
+		if r.err != nil {
+			span.RecordError(r.err)
+			continue
+		}
+		normalizedMap[r.timeline] = r.normalized
+	}
+
+	return normalizedMap, nil
+}
+
 func (s *service) LookupChunkItr(ctx context.Context, timeliens []string, epoch string) (map[string]string, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.LookupChunkItr")
 	defer span.End()
 
+	normalizedMap, err := s.NormalizeTimelineIDs(ctx, timeliens)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
 	normalized := make([]string, 0)
-	normtable := make(map[string]string)
-	for _, timeline := range timeliens {
-		normalizedTimeline, err := s.NormalizeTimelineID(ctx, timeline)
-		if err != nil {
-			slog.WarnContext(
-				ctx,
-				fmt.Sprintf("failed to normalize timeline: %s", timeline),
-				slog.String("module", "timeline"),
-			)
-			continue
-		}
-		normalized = append(normalized, normalizedTimeline)
-		normtable[normalizedTimeline] = timeline
+	recovTable := make(map[string]string)
+	for tl, norm := range normalizedMap {
+		normalized = append(normalized, norm)
+		recovTable[norm] = tl
 	}
 
 	table, err := s.repository.LookupChunkItrs(ctx, normalized, epoch)
@@ -234,7 +274,7 @@ func (s *service) LookupChunkItr(ctx context.Context, timeliens []string, epoch 
 	recovered := make(map[string]string)
 	for k, v := range table {
 		split := strings.Split(v, ":")
-		recovered[normtable[k]] = split[len(split)-1]
+		recovered[recovTable[k]] = split[len(split)-1]
 	}
 
 	return recovered, nil
@@ -244,24 +284,25 @@ func (s *service) LoadChunkBody(ctx context.Context, query map[string]string) (m
 	ctx, span := tracer.Start(ctx, "Timeline.Service.LoadChunkBody")
 	defer span.End()
 
-	normalized := map[string]string{}
-	normtable := map[string]string{}
-
-	for k, v := range query {
-		normalizedTimeline, err := s.NormalizeTimelineID(ctx, k)
-		if err != nil {
-			slog.WarnContext(
-				ctx,
-				fmt.Sprintf("failed to normalize timeline: %s", k),
-				slog.String("module", "timeline"),
-			)
-			continue
-		}
-		normalized[normalizedTimeline] = v
-		normtable[normalizedTimeline] = k
+	timelines := make([]string, 0)
+	for _, v := range query {
+		timelines = append(timelines, v)
 	}
 
-	result, err := s.repository.LoadChunkBodies(ctx, normalized)
+	normalizedMap, err := s.NormalizeTimelineIDs(ctx, timelines)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	normalizedQuery := make(map[string]string)
+	recovTable := make(map[string]string)
+	for tl, norm := range normalizedMap {
+		normalizedQuery[norm] = query[tl]
+		recovTable[norm] = tl
+	}
+
+	result, err := s.repository.LoadChunkBodies(ctx, normalizedQuery)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -269,7 +310,7 @@ func (s *service) LoadChunkBody(ctx context.Context, query map[string]string) (m
 
 	recovered := map[string]core.Chunk{}
 	for k, v := range result {
-		recovered[normtable[k]] = v
+		recovered[recovTable[k]] = v
 	}
 
 	return recovered, nil
@@ -993,7 +1034,7 @@ func (s *service) Realtime(ctx context.Context, request <-chan []string, respons
 	var cancel context.CancelFunc
 	events := make(chan core.Event)
 
-	var mapper map[string]string
+	var recovTable map[string]string
 	var allowed map[string]bool = make(map[string]bool)
 
 	for {
@@ -1004,20 +1045,18 @@ func (s *service) Realtime(ctx context.Context, request <-chan []string, respons
 			}
 
 			normalized := make([]string, 0)
-			mapper = make(map[string]string)
+			recovTable = make(map[string]string)
 			allowed = make(map[string]bool)
-			for _, timeline := range timelines {
-				normalizedTimeline, err := s.NormalizeTimelineID(ctx, timeline)
-				if err != nil {
-					slog.WarnContext(
-						ctx,
-						fmt.Sprintf("failed to normalize timeline: %s", timeline),
-						slog.String("module", "timeline"),
-					)
-					continue
-				}
 
-				split := strings.Split(normalizedTimeline, "@")
+			normalizedMap, err := s.NormalizeTimelineIDs(ctx, timelines)
+			if err != nil {
+				slog.ErrorContext(ctx, "failed to normalize timelines", slog.String("error", err.Error()), slog.String("module", "timeline"))
+				return
+			}
+
+			for tl, norm := range normalizedMap {
+
+				split := strings.Split(norm, "@")
 				domainName := split[len(split)-1]
 
 				if domainName != s.config.FQDN {
@@ -1036,19 +1075,19 @@ func (s *service) Realtime(ctx context.Context, request <-chan []string, respons
 					}
 				}
 
-				normalized = append(normalized, normalizedTimeline)
-				mapper[normalizedTimeline] = timeline
+				normalized = append(normalized, norm)
+				recovTable[norm] = tl
 			}
 
 			var subctx context.Context
 			subctx, cancel = context.WithCancel(ctx)
 			go s.repository.Subscribe(subctx, normalized, events)
 		case event := <-events:
-			if mapper == nil {
-				slog.WarnContext(ctx, "mapper is nil", slog.String("module", "timeline"))
+			if recovTable == nil {
+				slog.ErrorContext(ctx, "recovTable is nil", slog.String("module", "timeline"))
 				continue
 			}
-			event.Timeline = mapper[event.Timeline]
+			event.Timeline = recovTable[event.Timeline]
 			response <- event
 		case <-ctx.Done():
 			if cancel != nil {
@@ -1189,44 +1228,38 @@ func (s *service) UpdateMetrics() {
 }
 
 func (s *service) ListLocalRecentlyRemovedItems(ctx context.Context, timelines []string) (map[string][]string, error) {
-	ctx, span := tracer.Start(ctx, "Timeline.Service.GetRecentlyRemovedItems")
+	ctx, span := tracer.Start(ctx, "Timeline.Service.ListLocalRecentlyRemovedItems")
 	defer span.End()
+
+	normalizeMap, err := s.NormalizeTimelineIDs(ctx, timelines)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
 
 	normalized := make([]string, 0)
 	for _, timeline := range timelines {
-		normalizedTimeline, err := s.NormalizeTimelineID(ctx, timeline)
-		if err != nil {
-			slog.WarnContext(
-				ctx,
-				fmt.Sprintf("failed to normalize timeline: %s", timeline),
-				slog.String("module", "timeline"),
-			)
-			continue
-		}
-		normalized = append(normalized, normalizedTimeline)
+		normalized = append(normalized, normalizeMap[timeline])
 	}
 
 	return s.repository.ListRecentlyRemovedItemsLocal(ctx, normalized)
 }
 
 func (s *service) ListRecentlyRemovedItems(ctx context.Context, timelines []string) (map[string][]string, error) {
-	ctx, span := tracer.Start(ctx, "Timeline.Service.GetRecentlyRemovedItems")
+	ctx, span := tracer.Start(ctx, "Timeline.Service.ListRecentlyRemovedItems")
 	defer span.End()
 
+	normalizedMap, err := s.NormalizeTimelineIDs(ctx, timelines)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
 	normalized := make([]string, 0)
-	normtable := make(map[string]string)
-	for _, timeline := range timelines {
-		normalizedTimeline, err := s.NormalizeTimelineID(ctx, timeline)
-		if err != nil {
-			slog.WarnContext(
-				ctx,
-				fmt.Sprintf("failed to normalize timeline: %s", timeline),
-				slog.String("module", "timeline"),
-			)
-			continue
-		}
-		normalized = append(normalized, normalizedTimeline)
-		normtable[normalizedTimeline] = timeline
+	recovTable := make(map[string]string)
+	for tl, norm := range normalizedMap {
+		normalized = append(normalized, norm)
+		recovTable[norm] = tl
 	}
 
 	retracted, err := s.repository.ListRecentlyRemovedItems(ctx, normalized)
@@ -1237,7 +1270,7 @@ func (s *service) ListRecentlyRemovedItems(ctx context.Context, timelines []stri
 
 	recovered := make(map[string][]string)
 	for k, v := range retracted {
-		recovered[normtable[k]] = v
+		recovered[recovTable[k]] = v
 	}
 
 	return recovered, nil

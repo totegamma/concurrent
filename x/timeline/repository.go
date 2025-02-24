@@ -49,6 +49,7 @@ type Repository interface {
 
 	SetNormalizationCache(ctx context.Context, timelineID string, value string) error
 	GetNormalizationCache(ctx context.Context, timelineID string) (string, error)
+	GetNormalizationCaches(ctx context.Context, timelineIDs []string) (map[string]string, error)
 
 	Query(ctx context.Context, timelineID, schema, owner, author string, until time.Time, limit int) ([]core.TimelineItem, error)
 
@@ -499,6 +500,27 @@ func (r *repository) GetNormalizationCache(ctx context.Context, timelineID strin
 		return "", err
 	}
 	return string(item.Value), nil
+}
+
+func (r *repository) GetNormalizationCaches(ctx context.Context, timelineIDs []string) (map[string]string, error) {
+	keys := make([]string, len(timelineIDs))
+	for i, id := range timelineIDs {
+		keys[i] = normaalizationCachePrefix + id
+	}
+
+	cache, err := r.mc.GetMulti(keys)
+	if err != nil {
+		return nil, err
+	}
+
+	result := make(map[string]string)
+	for _, key := range keys {
+		if cache[key] != nil {
+			result[key] = string(cache[key].Value)
+		}
+	}
+
+	return result, nil
 }
 
 func (r *repository) normalizeLocalDBID(id string) (string, error) {

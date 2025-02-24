@@ -395,6 +395,8 @@ func TestGetRecentItemsWide(t *testing.T) {
 	mockSubscription := mock_core.NewMockSubscriptionService(ctrl)
 	mockPolicy := mock_core.NewMockPolicyService(ctrl)
 
+	mockDomain.EXPECT().GetByFQDN(gomock.Any(), gomock.Any()).Return(core.Domain{}, nil).AnyTimes()
+
 	service := NewService(
 		mockRepo,
 		mockEntity,

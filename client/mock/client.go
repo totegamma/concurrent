@@ -15,6 +15,7 @@ import (
 	reflect "reflect"
 	time "time"
 
+	websocket "github.com/gorilla/websocket"
 	client "github.com/totegamma/concurrent/client"
 	core "github.com/totegamma/concurrent/core"
 	gomock "go.uber.org/mock/gomock"
@@ -56,6 +57,21 @@ func (m *MockClient) Commit(ctx context.Context, domain, body string, response a
 func (mr *MockClientMockRecorder) Commit(ctx, domain, body, response, opts any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Commit", reflect.TypeOf((*MockClient)(nil).Commit), ctx, domain, body, response, opts)
+}
+
+// ConnectWebsocket mocks base method.
+func (m *MockClient) ConnectWebsocket(ctx context.Context, domain, path string) (*websocket.Conn, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ConnectWebsocket", ctx, domain, path)
+	ret0, _ := ret[0].(*websocket.Conn)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ConnectWebsocket indicates an expected call of ConnectWebsocket.
+func (mr *MockClientMockRecorder) ConnectWebsocket(ctx, domain, path any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConnectWebsocket", reflect.TypeOf((*MockClient)(nil).ConnectWebsocket), ctx, domain, path)
 }
 
 // GetAssociation mocks base method.

@@ -550,6 +550,6 @@ func (c *client) ConnectWebsocket(ctx context.Context, domain string, path strin
 	header := http.Header{}
 	header.Set("User-Agent", c.userAgent)
 
-	conn, _, err := dialer.Dial(u.String(), nil)
+	conn, _, err := dialer.Dial(u.String(), header)
 	return conn, err
 }

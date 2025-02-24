@@ -76,6 +76,7 @@ func NewClient() Client {
 
 type Options struct {
 	AuthToken string
+	Passport  string
 }
 
 func (c *client) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -173,13 +174,10 @@ func (c *client) Commit(ctx context.Context, domain, body string, response any, 
 		if opts.AuthToken != "" {
 			req.Header.Set("Authorization", "Bearer "+opts.AuthToken)
 		}
+		if opts.Passport != "" {
+			req.Header.Set(core.RequesterPassportHeader, opts.Passport)
+		}
 	}
-
-	passport, ok := ctx.Value(core.RequesterPassportKey).(string)
-	if ok {
-		req.Header.Set(core.RequesterPassportHeader, passport)
-	}
-	span.SetAttributes(attribute.String("passport", passport))
 
 	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
 
@@ -217,11 +215,9 @@ func httpRequest[T any](ctx context.Context, client *http.Client, method, url, b
 		if opts.AuthToken != "" {
 			req.Header.Set("Authorization", "Bearer "+opts.AuthToken)
 		}
-	}
-
-	passport, ok := ctx.Value(core.RequesterPassportKey).(string)
-	if ok {
-		req.Header.Set(core.RequesterPassportHeader, passport)
+		if opts.Passport != "" {
+			req.Header.Set(core.RequesterPassportHeader, opts.Passport)
+		}
 	}
 
 	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))

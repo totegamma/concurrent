@@ -413,7 +413,8 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 				continue
 			}
 
-			s.client.Commit(ctx, domain, string(packetStr), nil, nil)
+			passport, _ := ctx.Value(core.RequesterPassportKey).(string)
+			s.client.Commit(ctx, domain, string(packetStr), nil, &client.Options{Passport: passport})
 		}
 	}
 
@@ -490,7 +491,8 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 						return association, []string{}, err
 					}
 
-					s.client.Commit(ctx, domain, string(packet), nil, nil)
+					passport, _ := ctx.Value(core.RequesterPassportKey).(string)
+					s.client.Commit(ctx, domain, string(packet), nil, &client.Options{Passport: passport})
 				}
 			}
 		}
@@ -663,7 +665,8 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 					return targetAssociation, []string{}, err
 				}
 
-				s.client.Commit(ctx, domain, string(packet), nil, nil)
+				passport, _ := ctx.Value(core.RequesterPassportKey).(string)
+				s.client.Commit(ctx, domain, string(packet), nil, &client.Options{Passport: passport})
 			}
 		}
 	}

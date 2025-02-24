@@ -495,7 +495,8 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 				continue
 			}
 
-			s.client.Commit(ctx, domain, string(packetStr), nil, nil)
+			passport, _ := ctx.Value(core.RequesterPassportKey).(string)
+			s.client.Commit(ctx, domain, string(packetStr), nil, &client.Options{Passport: passport})
 		}
 	}
 

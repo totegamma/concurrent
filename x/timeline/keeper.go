@@ -145,26 +145,25 @@ func (k *keeper) deleteExcessiveSubs(ctx context.Context) {
 
 	currentSubs := k.GetCurrentSubs(ctx)
 
-	var closeList []string
+	closeList := make([]string, 0)
 
 	for domain, timelines := range remoteSubs {
-		for _, timeline := range timelines {
-			var newSubs []string
+		var newSubs []string
+		for _, timeline := range timelines { // domainのtimelineとcurrentSubsの積を取る
 			for _, currentSub := range currentSubs {
 				if currentSub == timeline {
 					newSubs = append(newSubs, currentSub)
 				}
 			}
-			remoteSubs[domain] = newSubs
+		}
+		remoteSubs[domain] = newSubs
 
-			if len(remoteSubs[domain]) == 0 {
-				closeList = append(closeList, domain)
-			}
+		if len(remoteSubs[domain]) == 0 {
+			closeList = append(closeList, domain)
 		}
 	}
 
 	for _, domain := range closeList {
-
 		// close connection
 		if conn, ok := remoteConns[domain]; ok {
 			conn.Close()

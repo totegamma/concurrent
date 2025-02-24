@@ -76,6 +76,7 @@ func (s *service) GetChunks(ctx context.Context, timelines []string, epoch strin
 
 	normalized := make([]string, 0)
 	normtable := make(map[string]string)
+	var allowed map[string]bool = make(map[string]bool)
 	for _, timeline := range timelines {
 		normalizedTimeline, err := s.NormalizeTimelineID(ctx, timeline)
 		if err != nil {
@@ -86,6 +87,26 @@ func (s *service) GetChunks(ctx context.Context, timelines []string, epoch strin
 			)
 			continue
 		}
+
+		split := strings.Split(normalizedTimeline, "@")
+		domainName := split[len(split)-1]
+
+		if domainName != s.config.FQDN {
+			allow, ok := allowed[domainName]
+			if ok && !allow {
+				continue
+			}
+
+			if !ok {
+				_, err := s.domain.GetByFQDN(ctx, domainName)
+				if err != nil {
+					allowed[domainName] = false
+					continue
+				}
+				allowed[domainName] = true
+			}
+		}
+
 		normalized = append(normalized, normalizedTimeline)
 		normtable[normalizedTimeline] = timeline
 	}

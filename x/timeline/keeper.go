@@ -218,7 +218,7 @@ func (k *keeper) remoteSubRoutine(ctx context.Context, domain string, timelines 
 					c.Close()
 				}
 				delete(remoteConns, domain)
-				slog.Info(
+				slog.Debug(
 					fmt.Sprintf("remote connection closed(reader): %s", domain),
 					slog.String("module", "agent"),
 					slog.String("group", "realtime"),
@@ -238,11 +238,6 @@ func (k *keeper) remoteSubRoutine(ctx context.Context, domain string, timelines 
 				if err != nil {
 
 					if ctx.Err() != nil {
-						slog.Info(
-							fmt.Sprintf("context is done: %s", domain),
-							slog.String("module", "agent"),
-							slog.String("group", "realtime"),
-						)
 						break
 					}
 
@@ -267,7 +262,7 @@ func (k *keeper) remoteSubRoutine(ctx context.Context, domain string, timelines 
 				}
 				pingTicker.Stop()
 				delete(remoteConns, domain)
-				slog.Info(
+				slog.Debug(
 					fmt.Sprintf("remote connection closed(relayer): %s", domain),
 					slog.String("module", "agent"),
 					slog.String("group", "remote ws.publisher"),

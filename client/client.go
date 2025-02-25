@@ -547,5 +547,11 @@ func (c *client) ConnectWebsocket(ctx context.Context, domain string, path strin
 	header.Set("User-Agent", c.userAgent)
 
 	conn, _, err := dialer.Dial(u.String(), header)
-	return conn, err
+	if err != nil {
+		c.lastFailed[domain] = time.Now()
+		span.RecordError(err)
+		return nil, err
+	}
+
+	return conn, nil
 }

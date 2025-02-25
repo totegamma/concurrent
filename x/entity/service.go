@@ -360,22 +360,22 @@ func (s *service) GetByAlias(ctx context.Context, alias string) (core.Entity, er
 
 	ccid, ok := kv["ccid"]
 	if !ok {
-		return core.Entity{}, errors.New("ccid not found")
+		return core.Entity{}, core.NewErrorNotFoundWithMsg("ccid not found")
 	}
 
 	sig, ok := kv["sig"]
 	if !ok {
-		return core.Entity{}, errors.New("sig not found")
+		return core.Entity{}, core.NewErrorNotFoundWithMsg("sig not found")
 	}
 
 	signatureBytes, err := hex.DecodeString(sig)
 	if err != nil {
-		return core.Entity{}, err
+		return core.Entity{}, core.NewErrorNotFoundWithMsg("failed to decode signature: " + err.Error())
 	}
 
 	err = core.VerifySignature([]byte(alias), signatureBytes, ccid)
 	if err != nil {
-		return core.Entity{}, err
+		return core.Entity{}, core.NewErrorNotFoundWithMsg("failed to verify signature: " + err.Error())
 	}
 
 	entity, err = s.Get(ctx, ccid)
@@ -393,7 +393,7 @@ func (s *service) GetByAlias(ctx context.Context, alias string) (core.Entity, er
 	entity, err = s.PullEntityFromRemote(ctx, ccid, kv["hint"])
 	if err != nil {
 		span.RecordError(err)
-		return core.Entity{}, err
+		return core.Entity{}, core.NewErrorNotFoundWithMsg("failed to pull entity: " + err.Error())
 	}
 
 	err = s.repository.SetAlias(ctx, ccid, alias)

@@ -53,7 +53,7 @@ func (h handler) Get(c echo.Context) error {
 	timeline, err := h.service.GetTimeline(ctx, timelineID)
 	if err != nil {
 		if errors.Is(err, core.ErrorNotFound{}) {
-			return c.JSON(http.StatusNotFound, echo.Map{"error": "User not found"})
+			return c.JSON(http.StatusNotFound, echo.Map{"error": "Timeline not found"})
 		}
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}

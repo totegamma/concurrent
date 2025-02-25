@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"net/url"
@@ -132,7 +132,7 @@ func (c *client) UpKeeper() {
 				span = 1 << c.failCount[domain]
 			}
 			if time.Since(lastFailed) > time.Duration(span)*time.Second {
-				log.Printf("Domain %s is offline. Fail count: %d", domain, c.failCount[domain])
+				slog.Info(fmt.Sprintf("Domain %s is offline. Fail count: %d", domain, c.failCount[domain]))
 				// health check
 				_, err := httpRequest[core.Domain](ctx, c.client, "GET", "https://"+domain+"/api/v1/domain", "", &Options{})
 				if err != nil {
@@ -141,12 +141,12 @@ func (c *client) UpKeeper() {
 					}
 					c.failCount[domain]++
 					if c.failCount[domain] > 20 {
-						log.Printf("Domain %s is still offline after 20 retries. Bye bye :(", domain)
+						slog.Info(fmt.Sprintf("Domain %s is still offline after 20 retries. Bye bye :(", domain))
 						delete(c.lastFailed, domain)
 						delete(c.failCount, domain)
 					}
 				} else {
-					log.Printf("Domain %s is back online :3", domain)
+					slog.Info(fmt.Sprintf("Domain %s is back online :3", domain))
 					delete(c.lastFailed, domain)
 					delete(c.failCount, domain)
 				}
@@ -235,8 +235,9 @@ func httpRequest[T any](ctx context.Context, client *http.Client, method, url, b
 	}
 
 	if response.Status != "ok" {
-		log.Printf("%v %v %v", url, resp.Status, string(body))
-		return nil, fmt.Errorf("Request failed(%s): %v", resp.Status, string(body))
+		err = fmt.Errorf("Request failed(%s): %v", resp.Status, string(body))
+		slog.InfoContext(ctx, err.Error())
+		return nil, err
 	}
 
 	return &response.Content, nil

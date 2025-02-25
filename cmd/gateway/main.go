@@ -146,7 +146,7 @@ func main() {
 				return service
 			},
 			"url": func(c echo.Context, err error) string {
-				return "REDACTED"
+				return c.Response().Header().Get("X-RateLimit-Path")
 			},
 		},
 		Skipper: func(c echo.Context) bool {

@@ -470,8 +470,6 @@ func (s *service) RateLimiter(configMap core.RateLimitConfigMap) echo.Middleware
 		}
 	}
 
-	core.JsonPrint("RateLimitConfigMap", configMap)
-
 	for path := range configMap {
 		if path == "DEFAULT" {
 			continue
@@ -510,28 +508,31 @@ func (s *service) RateLimiter(configMap core.RateLimitConfigMap) echo.Middleware
 		}
 	}
 
-	resolvePath := func(c echo.Context) string {
+	resolvePath := func(c echo.Context) (string, string) {
 		req := http.Request{}
 		ctx := routerEcho.NewContext(&req, nil)
 		routerEcho.Router().Find(c.Request().Method, c.Request().URL.Path, ctx)
-		return fmt.Sprintf("%s:%s", c.Request().Method, ctx.Path())
+		return c.Request().Method, ctx.Path()
 	}
 
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
 
 			ctx := c.Request().Context()
-			path := resolvePath(c)
+			method, path := resolvePath(c)
+			group := method + ":" + path
+
+			c.Response().Header().Set("X-RateLimit-Path", path)
 
 			// Skip rate limiting for OPTIONS requests
 			if c.Request().Method == "OPTIONS" {
 				return next(c)
 			}
 
-			config, ok := configMap[path]
+			config, ok := configMap[group]
 			if !ok {
 				config = configMap["DEFAULT"]
-				path = "DEFAULT"
+				group = "DEFAULT"
 			}
 
 			requester, ok := ctx.Value(core.RequesterIdCtxKey).(string)
@@ -539,7 +540,7 @@ func (s *service) RateLimiter(configMap core.RateLimitConfigMap) echo.Middleware
 				requester = c.RealIP()
 			}
 
-			key := "rate_limit:" + requester + ":" + path
+			key := "rate_limit:" + requester + ":" + group
 
 			// Get the current value of the bucket
 			val, err := s.rdb.Get(ctx, key).Result()

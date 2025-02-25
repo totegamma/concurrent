@@ -146,11 +146,13 @@ func (r *repository) LookupChunkItrs(ctx context.Context, normalized []string, e
 		keytable[key] = timeline
 	}
 
+	_, getMultiSpan := tracer.Start(ctx, "Timeline.Repository.LookupChunkItrs.GetMulti")
 	cache, err := r.mc.GetMulti(keys)
 	if err != nil {
 		span.RecordError(err)
 		//return nil, err
 	}
+	getMultiSpan.End()
 
 	var result = map[string]string{}
 	var missed = []string{}
@@ -218,11 +220,13 @@ func (r *repository) LoadChunkBodies(ctx context.Context, query map[string]strin
 		keytable[key] = timeline
 	}
 
+	_, getMultiSpan := tracer.Start(ctx, "Timeline.Repository.LoadChunkBodies.GetMulti")
 	cache, err := r.mc.GetMulti(keys)
 	if err != nil {
 		span.RecordError(err)
 		//return nil, err
 	}
+	getMultiSpan.End()
 
 	result := make(map[string]core.Chunk)
 	var missed = map[string]string{}
@@ -919,10 +923,12 @@ func (r *repository) ListRecentlyRemovedItemsRemote(ctx context.Context, domain 
 		cacheMap[key] = timelineID
 	}
 
+	_, getMultiSpan := tracer.Start(ctx, "Timeline.Repository.ListRecentlyRemovedItemsRemote.GetMulti")
 	cache, err := r.mc.GetMulti(cacheKeys)
 	if err != nil {
 		span.RecordError(err)
 	}
+	getMultiSpan.End()
 
 	var result = map[string][]string{}
 	for _, key := range cacheKeys {

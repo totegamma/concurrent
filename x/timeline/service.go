@@ -349,11 +349,11 @@ func (pq PriorityQueue) Less(i, j int) bool {
 func (pq PriorityQueue) Swap(i, j int) {
 	pq[i], pq[j] = pq[j], pq[i]
 }
-func (pq *PriorityQueue) Push(x interface{}) {
+func (pq *PriorityQueue) Push(x any) {
 	item := x.(*QueueItem)
 	*pq = append(*pq, item)
 }
-func (pq *PriorityQueue) Pop() interface{} {
+func (pq *PriorityQueue) Pop() any {
 	old := *pq
 	n := len(old)
 	item := old[n-1]
@@ -847,7 +847,7 @@ func (s *service) ListTimelineBySchema(ctx context.Context, schema string) ([]co
 	defer span.End()
 
 	timelines, err := s.repository.ListTimelineBySchema(ctx, schema)
-	for i := 0; i < len(timelines); i++ {
+	for i := range len(timelines) {
 		timelines[i].ID = timelines[i].ID + "@" + s.config.FQDN
 	}
 	return timelines, err
@@ -859,7 +859,7 @@ func (s *service) ListTimelineByAuthor(ctx context.Context, author string) ([]co
 	defer span.End()
 
 	timelines, err := s.repository.ListTimelineByAuthor(ctx, author)
-	for i := 0; i < len(timelines); i++ {
+	for i := range len(timelines) {
 		timelines[i].ID = timelines[i].ID + "@" + s.config.FQDN
 	}
 	return timelines, err

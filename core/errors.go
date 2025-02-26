@@ -1,53 +1,103 @@
 package core
 
-type ErrorNotFound struct {
+type ErrorTypeNotFound struct {
+	Type    string
 	Message string
 }
 
-func (e ErrorNotFound) Error() string {
+var ErrorNotFound = ErrorTypeNotFound{Type: "ConcrntErrorNotFound"}
+
+func (e ErrorTypeNotFound) Error() string {
 	if e.Message != "" {
 		return "Not Found: " + e.Message
 	}
 	return "Not Found"
 }
 
-func NewErrorNotFound() ErrorNotFound {
-	return ErrorNotFound{}
+func (e ErrorTypeNotFound) Is(err error) bool {
+	f, ok := err.(ErrorTypeNotFound)
+	if ok {
+		return e.Type == f.Type
+	}
+	return false
 }
 
-func NewErrorNotFoundWithMsg(msg string) ErrorNotFound {
-	return ErrorNotFound{Message: msg}
+func NewErrorNotFound() ErrorTypeNotFound {
+	return ErrorTypeNotFound{Type: "ConcrntErrorNotFound"}
 }
 
-type ErrorAlreadyExists struct {
+func NewErrorNotFoundWithMsg(msg string) ErrorTypeNotFound {
+	return ErrorTypeNotFound{Type: "ConcrntErrorNotFound", Message: msg}
 }
 
-func (e ErrorAlreadyExists) Error() string {
+// ------
+
+type ErrorTypeAlreadyExists struct {
+	Type string
+}
+
+var ErrorAlreadyExists = ErrorTypeAlreadyExists{Type: "ConcrntErrorAlreadyExists"}
+
+func (e ErrorTypeAlreadyExists) Is(err error) bool {
+	f, ok := err.(ErrorTypeAlreadyExists)
+	if ok {
+		return e.Type == f.Type
+	}
+	return false
+}
+
+func (e ErrorTypeAlreadyExists) Error() string {
 	return "Already Exists"
 }
 
-func NewErrorAlreadyExists() ErrorAlreadyExists {
-	return ErrorAlreadyExists{}
+func NewErrorAlreadyExists() ErrorTypeAlreadyExists {
+	return ErrorTypeAlreadyExists{Type: "ConcrntErrorAlreadyExists"}
 }
 
-type ErrorPermissionDenied struct {
+// ------
+
+type ErrorTypePermissionDenied struct {
+	Type string
 }
 
-func (e ErrorPermissionDenied) Error() string {
+var ErrorPermissionDenied = ErrorTypePermissionDenied{Type: "ConcrntErrorPermissionDenied"}
+
+func (e ErrorTypePermissionDenied) Is(err error) bool {
+	f, ok := err.(ErrorTypePermissionDenied)
+	if ok {
+		return e.Type == f.Type
+	}
+	return false
+}
+
+func (e ErrorTypePermissionDenied) Error() string {
 	return "Permission Denied"
 }
 
-func NewErrorPermissionDenied() ErrorPermissionDenied {
-	return ErrorPermissionDenied{}
+func NewErrorPermissionDenied() ErrorTypePermissionDenied {
+	return ErrorTypePermissionDenied{Type: "ConcrntErrorPermissionDenied"}
 }
 
-type ErrorAlreadyDeleted struct {
+// ------
+
+type ErrorTypeAlreadyDeleted struct {
+	Type string
 }
 
-func (e ErrorAlreadyDeleted) Error() string {
+var ErrorAlreadyDeleted = ErrorTypeAlreadyDeleted{Type: "ConcrntErrorAlreadyDeleted"}
+
+func (e ErrorTypeAlreadyDeleted) Is(err error) bool {
+	f, ok := err.(ErrorTypeAlreadyDeleted)
+	if ok {
+		return e.Type == f.Type
+	}
+	return false
+}
+
+func (e ErrorTypeAlreadyDeleted) Error() string {
 	return "Already Deleted"
 }
 
-func NewErrorAlreadyDeleted() ErrorAlreadyDeleted {
-	return ErrorAlreadyDeleted{}
+func NewErrorAlreadyDeleted() ErrorTypeAlreadyDeleted {
+	return ErrorTypeAlreadyDeleted{Type: "ConcrntErrorAlreadyDeleted"}
 }

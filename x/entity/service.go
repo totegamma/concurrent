@@ -347,7 +347,11 @@ func (s *service) GetByAlias(ctx context.Context, alias string) (core.Entity, er
 		return entity, nil
 	}
 
-	txtrecords, _ := net.LookupTXT("_concrnt." + alias)
+	txtrecords, err := net.DefaultResolver.LookupTXT(ctx, "_concrnt."+alias)
+	if err != nil {
+		span.RecordError(err)
+		return core.Entity{}, core.NewErrorNotFoundWithMsg("failed to lookup txt record: " + err.Error())
+	}
 
 	var kv = make(map[string]string)
 

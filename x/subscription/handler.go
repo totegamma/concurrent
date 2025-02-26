@@ -38,7 +38,7 @@ func (h *handler) GetSubscription(c echo.Context) error {
 
 	data, err := h.service.GetSubscription(ctx, id)
 	if err != nil {
-		if errors.Is(err, core.ErrorNotFound{}) {
+		if errors.Is(err, core.ErrorNotFound) {
 			return c.JSON(http.StatusNotFound, echo.Map{"status": "error", "message": "subscription not found"})
 		}
 		span.RecordError(err)

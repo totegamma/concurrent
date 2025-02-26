@@ -66,13 +66,13 @@ func (h *handler) Commit(c echo.Context) error {
 
 	result, err := h.service.Commit(ctx, core.CommitModeExecute, request.Document, request.Signature, request.Option, keys, requesterIP)
 	if err != nil {
-		if errors.Is(err, core.ErrorPermissionDenied{}) {
+		if errors.Is(err, core.ErrorPermissionDenied) {
 			return c.JSON(http.StatusForbidden, echo.Map{"status": "error", "error": err.Error()})
 		}
-		if errors.Is(err, core.ErrorAlreadyExists{}) {
+		if errors.Is(err, core.ErrorAlreadyExists) {
 			return c.JSON(http.StatusOK, echo.Map{"status": "processed", "content": result})
 		}
-		if errors.Is(err, core.ErrorAlreadyDeleted{}) {
+		if errors.Is(err, core.ErrorAlreadyDeleted) {
 			return c.JSON(http.StatusOK, echo.Map{"status": "processed", "content": result})
 		}
 

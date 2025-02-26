@@ -529,7 +529,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 
 	deleteTarget, err := s.repo.Get(ctx, doc.Target)
 	if err != nil {
-		if errors.Is(err, core.ErrorNotFound{}) {
+		if errors.Is(err, core.ErrorNotFound) {
 			return core.Message{}, []string{}, core.NewErrorAlreadyDeleted()
 		}
 		span.RecordError(err)
@@ -563,7 +563,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 
 	finally := s.policy.Summerize([]core.PolicyEvalResult{result}, "message.delete", nil)
 	if !finally {
-		return core.Message{}, []string{}, core.ErrorPermissionDenied{}
+		return core.Message{}, []string{}, core.NewErrorPermissionDenied()
 	}
 
 	err = s.repo.Delete(ctx, doc.Target)

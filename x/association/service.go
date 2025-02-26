@@ -195,7 +195,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 			timelinePolicyResult := policy.AccumulateOr(timelinePolicyResults)
 			timelinePolicyIsDominant, timlinePolicyAllowed := policy.IsDominant(timelinePolicyResult)
 			if timelinePolicyIsDominant && !timlinePolicyAllowed {
-				return association, []string{}, core.ErrorPermissionDenied{}
+				return association, []string{}, core.NewErrorPermissionDenied()
 			}
 
 			var params map[string]any = make(map[string]any)
@@ -221,7 +221,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 
 			result := s.policy.Summerize([]core.PolicyEvalResult{timelinePolicyResult, messagePolicyResult}, "message.association.attach", nil)
 			if !result {
-				return association, []string{}, core.ErrorPermissionDenied{}
+				return association, []string{}, core.NewErrorPermissionDenied()
 			}
 
 		case 'p': // profile
@@ -257,7 +257,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 
 			result := s.policy.Summerize([]core.PolicyEvalResult{policyEvalResult}, "profile.association.attach", nil)
 			if !result {
-				return association, []string{}, core.ErrorPermissionDenied{}
+				return association, []string{}, core.NewErrorPermissionDenied()
 			}
 
 		case 't': // timeline
@@ -293,7 +293,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 
 			result := s.policy.Summerize([]core.PolicyEvalResult{policyEvalResult}, "timeline.association.attach", nil)
 			if !result {
-				return association, []string{}, core.ErrorPermissionDenied{}
+				return association, []string{}, core.NewErrorPermissionDenied()
 			}
 
 		case 's': // subscription
@@ -329,13 +329,13 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 
 			result := s.policy.Summerize([]core.PolicyEvalResult{policyEvalResult}, "subscription.association.attach", nil)
 			if !result {
-				return association, []string{}, core.ErrorPermissionDenied{}
+				return association, []string{}, core.NewErrorPermissionDenied()
 			}
 		}
 
 		association, err = s.repo.Create(ctx, association)
 		if err != nil {
-			if errors.Is(err, core.ErrorAlreadyExists{}) {
+			if errors.Is(err, core.ErrorAlreadyExists) {
 				return association, []string{}, core.NewErrorAlreadyExists()
 			}
 			span.RecordError(err)
@@ -536,7 +536,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 
 	targetAssociation, err := s.repo.Get(ctx, doc.Target)
 	if err != nil {
-		if errors.Is(err, core.ErrorNotFound{}) {
+		if errors.Is(err, core.ErrorNotFound) {
 			return core.Association{}, []string{}, core.NewErrorAlreadyDeleted()
 		}
 
@@ -568,7 +568,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 
 	finally := s.policy.Summerize([]core.PolicyEvalResult{result}, "association.delete", nil)
 	if !finally {
-		return core.Association{}, []string{}, core.ErrorPermissionDenied{}
+		return core.Association{}, []string{}, core.NewErrorPermissionDenied()
 	}
 
 	err = s.repo.Delete(ctx, doc.Target)

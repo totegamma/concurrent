@@ -39,7 +39,7 @@ func (h handler) Get(c echo.Context) error {
 	association, err := h.service.Get(ctx, id)
 	if err != nil {
 		span.RecordError(err)
-		if errors.Is(err, core.ErrorNotFound{}) {
+		if errors.Is(err, core.ErrorNotFound) {
 			return c.JSON(http.StatusNotFound, echo.Map{"error": "association not found"})
 		}
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})

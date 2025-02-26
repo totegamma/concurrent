@@ -94,10 +94,7 @@ func (s *service) UpsertSubscription(ctx context.Context, mode core.CommitMode, 
 
 		var params map[string]any = make(map[string]any)
 		if existance.PolicyParams != nil {
-			if err != nil {
-				span.SetStatus(codes.Error, err.Error())
-				span.RecordError(err)
-			}
+			json.Unmarshal([]byte(*existance.PolicyParams), &params)
 		}
 
 		policyResult, err := s.policy.TestWithPolicyURL(

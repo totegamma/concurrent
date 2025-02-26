@@ -39,10 +39,10 @@ func (h handler) Get(c echo.Context) error {
 	if ok {
 		message, err = h.service.GetWithOwnAssociations(ctx, id, requester)
 		if err != nil {
-			if errors.Is(err, core.ErrorNotFound{}) {
+			if errors.Is(err, core.ErrorNotFound) {
 				return c.JSON(http.StatusNotFound, echo.Map{"error": "Message not found"})
 			}
-			if errors.Is(err, core.ErrorPermissionDenied{}) {
+			if errors.Is(err, core.ErrorPermissionDenied) {
 				return c.JSON(http.StatusForbidden, echo.Map{"error": "Permission denied"})
 			}
 			return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
@@ -50,10 +50,10 @@ func (h handler) Get(c echo.Context) error {
 	} else {
 		message, err = h.service.GetAsGuest(ctx, id)
 		if err != nil {
-			if errors.Is(err, core.ErrorNotFound{}) {
+			if errors.Is(err, core.ErrorNotFound) {
 				return c.JSON(http.StatusNotFound, echo.Map{"error": "Message not found"})
 			}
-			if errors.Is(err, core.ErrorPermissionDenied{}) {
+			if errors.Is(err, core.ErrorPermissionDenied) {
 				return c.JSON(http.StatusForbidden, echo.Map{"error": "Permission denied"})
 			}
 

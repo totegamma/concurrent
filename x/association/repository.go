@@ -156,7 +156,7 @@ func (r *repository) GetOwn(ctx context.Context, author string) ([]core.Associat
 	defer span.End()
 
 	var associations []core.Association
-	err := r.db.WithContext(ctx).Where("author = $1", author).Error
+	err := r.db.WithContext(ctx).Where("author = $1", author).Find(&associations).Error
 	if err != nil {
 		return nil, err
 	}

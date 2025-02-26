@@ -43,7 +43,7 @@ func (h handler) Get(c echo.Context) error {
 
 	profile, err := h.service.Get(ctx, id)
 	if err != nil {
-		if errors.Is(err, core.ErrorNotFound{}) {
+		if errors.Is(err, core.ErrorNotFound) {
 			return c.JSON(http.StatusNotFound, echo.Map{"error": "Profile not found"})
 		}
 		span.RecordError(err)
@@ -66,7 +66,7 @@ func (h handler) GetBySemanticID(c echo.Context) error {
 
 	profile, err := h.service.GetBySemanticID(ctx, semanticID, owner)
 	if err != nil {
-		if errors.Is(err, core.ErrorNotFound{}) {
+		if errors.Is(err, core.ErrorNotFound) {
 			return c.JSON(http.StatusNotFound, echo.Map{"error": "Profile not found"})
 		}
 		span.RecordError(err)

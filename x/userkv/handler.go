@@ -42,7 +42,7 @@ func (h handler) Get(c echo.Context) error {
 	key := c.Param("key")
 	value, err := h.service.Get(ctx, requester, key)
 	if err != nil {
-		if errors.Is(err, core.ErrorNotFound{}) {
+		if errors.Is(err, core.ErrorNotFound) {
 			return c.JSON(http.StatusNotFound, echo.Map{"status": "error", "message": "userkv not found"})
 		}
 		return c.JSON(http.StatusInternalServerError, echo.Map{"status": "error", "message": err.Error()})

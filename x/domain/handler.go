@@ -35,7 +35,7 @@ func (h handler) Get(c echo.Context) error {
 	id := c.Param("id")
 	host, err := h.service.Get(ctx, id)
 	if err != nil {
-		if errors.Is(err, core.ErrorNotFound{}) {
+		if errors.Is(err, core.ErrorNotFound) {
 			return c.JSON(http.StatusNotFound, echo.Map{"error": "Domain not found"})
 		}
 		span.RecordError(err)

@@ -192,12 +192,7 @@ func (k *keeper) remoteSubRoutine(ctx context.Context, domain string, timelines 
 
 		c, err := k.client.ConnectWebsocket(ctx, domain, "/api/v1/timelines/realtime")
 		if err != nil {
-			slog.Error(
-				fmt.Sprintf("fail to dial to %v (%v)", domain, err),
-				slog.String("module", "agent"),
-				slog.String("group", "realtime"),
-			)
-
+			// ここでerrorなのはofflineの場合なので、無視するしかない
 			delete(remoteConns, domain)
 			return
 		}

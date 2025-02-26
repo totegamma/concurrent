@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
 	"net"
 	"net/http"
 	"net/url"
@@ -127,10 +128,8 @@ func (c *client) UpKeeper() {
 			if _, ok := c.failCount[domain]; !ok {
 				c.failCount[domain] = 0
 			}
-			var span int = 600
-			if c.failCount[domain] < 10 {
-				span = 1 << c.failCount[domain]
-			}
+
+			var span = 0.5 * math.Pow(1.5, float64(min(c.failCount[domain], 23))) // max: 10 minutes
 			if time.Since(lastFailed) > time.Duration(span)*time.Second {
 				slog.Info(fmt.Sprintf("Domain %s is offline. Fail count: %d", domain, c.failCount[domain]))
 				// health check
@@ -140,11 +139,6 @@ func (c *client) UpKeeper() {
 						c.lastFailed[domain] = time.Now()
 					}
 					c.failCount[domain]++
-					if c.failCount[domain] > 20 {
-						slog.Info(fmt.Sprintf("Domain %s is still offline after 20 retries. Bye bye :(", domain))
-						delete(c.lastFailed, domain)
-						delete(c.failCount, domain)
-					}
 				} else {
 					slog.Info(fmt.Sprintf("Domain %s is back online :3", domain))
 					delete(c.lastFailed, domain)

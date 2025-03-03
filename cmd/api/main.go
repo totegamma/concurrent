@@ -464,6 +464,13 @@ func main() {
 
 	e.GET("/metrics", echoprometheus.NewHandler())
 
+	e.GET("/cc-info", func(c echo.Context) error {
+		return c.JSON(http.StatusOK, core.CCInfo{
+			Name:    "github.com/totegamma/concurrent/ccapi",
+			Version: version,
+		})
+	})
+
 	timelineKeeper.Start(context.Background())
 	jobReactor.Start(context.Background())
 	notificationReactor.Start(context.Background())

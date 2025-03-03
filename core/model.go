@@ -4,6 +4,11 @@ import (
 	"time"
 )
 
+type CCInfo struct {
+	Name    string `json:"name"`
+	Version string `json:"version"`
+}
+
 // Event is websocket root packet model
 type Event struct {
 	Timeline  string        `json:"timeline"` // stream full id (ex: <streamID>@<domain>)

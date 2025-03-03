@@ -355,11 +355,63 @@ func main() {
 `)
 	})
 
+	getInfo := func(service Service) core.CCInfo {
+
+		url := "http://" + service.Host + ":" + strconv.Itoa(service.Port) + "/cc-info"
+		req, err := http.NewRequest("GET", url, nil)
+		if err != nil {
+			return core.CCInfo{
+				Name:    "unknown",
+				Version: "unknown",
+			}
+		}
+
+		client := &http.Client{}
+		resp, err := client.Do(req)
+		if err != nil {
+			return core.CCInfo{
+				Name:    "unknown",
+				Version: "unknown",
+			}
+		}
+
+		defer resp.Body.Close()
+
+		var info core.CCInfo
+		err = json.NewDecoder(resp.Body).Decode(&info)
+		if err != nil {
+			return core.CCInfo{
+				Name:    "unknown",
+				Version: "unknown",
+			}
+		}
+
+		if info.Name == "" {
+			info.Name = "unknown"
+		}
+
+		if info.Version == "" {
+			info.Version = "unknown"
+		}
+
+		return info
+	}
+
 	e.GET("/services", func(c echo.Context) (err error) {
 		services := make(map[string]ServiceInfo)
+
+		services["net.concrnt.gateway"] = ServiceInfo{
+			Path:    "/",
+			Name:    "github.com/totegamma/concurrent/ccgateway",
+			Version: version,
+		}
+
 		for _, service := range gwConf.Services {
+			info := getInfo(service)
 			services[service.Name] = ServiceInfo{
-				Path: service.Path,
+				Path:    service.Path,
+				Name:    info.Name,
+				Version: info.Version,
 			}
 		}
 		return c.JSON(http.StatusOK, services)

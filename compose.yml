@@ -65,9 +65,7 @@ services:
         loki-url: http://localhost:3100/loki/api/v1/push
 
   ccwebui:
-    build:
-      context: .
-      dockerfile: ./web/Dockerfile
+    image: ghcr.io/concrnt/web-dashboard:latest
     restart: always
     links:
       - loki

@@ -13,7 +13,9 @@ type GatewayConfig struct {
 }
 
 type ServiceInfo struct {
-	Path string `json:"path"`
+	Path    string `json:"path"`
+	Name    string `json:"name"`
+	Version string `json:"version"`
 }
 
 type Service struct {

@@ -355,46 +355,76 @@ func main() {
 `)
 	})
 
+	infoCache := make(map[string]struct {
+		info      core.CCInfo
+		fetchedAt time.Time
+	})
+
 	getInfo := func(service Service) core.CCInfo {
 
-		url := "http://" + service.Host + ":" + strconv.Itoa(service.Port) + "/cc-info"
-		req, err := http.NewRequest("GET", url, nil)
-		if err != nil {
-			return core.CCInfo{
+		cache, ok := infoCache[service.Host]
+
+		fetcher := func() core.CCInfo {
+
+			info := core.CCInfo{
 				Name:    "unknown",
 				Version: "unknown",
 			}
-		}
 
-		client := &http.Client{}
-		resp, err := client.Do(req)
-		if err != nil {
-			return core.CCInfo{
-				Name:    "unknown",
-				Version: "unknown",
+			var resp *http.Response
+			var err error
+			client := &http.Client{}
+
+			url := "http://" + service.Host + ":" + strconv.Itoa(service.Port) + "/cc-info"
+			fmt.Printf("fetching %s\n", url)
+			req, err := http.NewRequest("GET", url, nil)
+			if err != nil {
+				goto CACHE_STEP
 			}
-		}
 
-		defer resp.Body.Close()
-
-		var info core.CCInfo
-		err = json.NewDecoder(resp.Body).Decode(&info)
-		if err != nil {
-			return core.CCInfo{
-				Name:    "unknown",
-				Version: "unknown",
+			resp, err = client.Do(req)
+			if err != nil {
+				goto CACHE_STEP
 			}
+
+			defer resp.Body.Close()
+
+			err = json.NewDecoder(resp.Body).Decode(&info)
+			if err != nil {
+				goto CACHE_STEP
+			}
+
+			if info.Name == "" {
+				info.Name = "unknown"
+			}
+
+			if info.Version == "" {
+				info.Version = "unknown"
+			}
+
+		CACHE_STEP:
+
+			infoCache[service.Host] = struct {
+				info      core.CCInfo
+				fetchedAt time.Time
+			}{info, time.Now()}
+
+			return info
 		}
 
-		if info.Name == "" {
-			info.Name = "unknown"
+		if ok {
+			threadhold := 30 * time.Minute
+			if cache.info.Version == "unknown" {
+				threadhold = 5 * time.Minute
+			}
+			if time.Since(cache.fetchedAt) > threadhold {
+				go fetcher()
+			}
+			fmt.Printf("cache hit %s\n", service.Name)
+			return cache.info
 		}
 
-		if info.Version == "" {
-			info.Version = "unknown"
-		}
-
-		return info
+		return fetcher()
 	}
 
 	e.GET("/services", func(c echo.Context) (err error) {

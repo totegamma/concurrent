@@ -35,7 +35,7 @@ type Repository interface {
 
 	ListTimelineBySchema(ctx context.Context, schema string) ([]core.Timeline, error)
 	ListTimelineByAuthor(ctx context.Context, author string) ([]core.Timeline, error)
-	ListTimelineByAuthorOwned(ctx context.Context, author string) ([]core.Timeline, error)
+	ListTimelineByOwner(ctx context.Context, owner string) ([]core.Timeline, error)
 
 	GetRecentItems(ctx context.Context, timelineID string, until time.Time, limit int) ([]core.TimelineItem, error)
 	GetImmediateItems(ctx context.Context, timelineID string, since time.Time, limit int) ([]core.TimelineItem, error)
@@ -1100,12 +1100,12 @@ func (r *repository) ListTimelineByAuthor(ctx context.Context, author string) ([
 	return timelines, err
 }
 
-func (r *repository) ListTimelineByAuthorOwned(ctx context.Context, author string) ([]core.Timeline, error) {
-	ctx, span := tracer.Start(ctx, "Timeline.Repository.ListTimelineByAuthorOwned")
+func (r *repository) ListTimelineByOwner(ctx context.Context, owner string) ([]core.Timeline, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.ListTimelineByOwner")
 	defer span.End()
 
 	var timelines []core.Timeline
-	err := r.db.WithContext(ctx).Where("Author = ? and domain_owned = false", author).Find(&timelines).Error
+	err := r.db.WithContext(ctx).Where("Owner = ?", owner).Find(&timelines).Error
 
 	for i := range timelines {
 		err := r.postprocess(ctx, &timelines[i])

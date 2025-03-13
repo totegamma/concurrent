@@ -17,7 +17,7 @@ type Reactor interface {
 	Start(ctx context.Context)
 }
 
-// Newreactor creates a new reactor
+// NewReactor creates a new reactor
 func NewReactor(
 	store core.StoreService,
 	job core.JobService,

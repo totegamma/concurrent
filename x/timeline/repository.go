@@ -996,7 +996,7 @@ func (r *repository) GetRecentItems(ctx context.Context, timelineID string, unti
 	return items, err
 }
 
-// GetTimelineImmediate returns a list of timeline items by TimelineID and time range
+// GetImmediateItems returns a list of timeline items by TimelineID and time range
 func (r *repository) GetImmediateItems(ctx context.Context, timelineID string, since time.Time, limit int) ([]core.TimelineItem, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.GetImmediateItems")
 	defer span.End()

@@ -13,7 +13,6 @@ import (
 
 	"github.com/totegamma/concurrent/cdid"
 	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/x/key"
 )
 
 type service struct {
@@ -354,7 +353,7 @@ func (s *service) ValidateDocument(ctx context.Context, document, signature stri
 				return errors.Wrap(err, "[sub] failed to resolve subkey")
 			}
 		} else {
-			ccid, err = key.ValidateKeyResolution(keys)
+			ccid, err = core.ValidateKeyResolution(keys, object.KeyID)
 			if err != nil {
 				span.RecordError(err)
 				return errors.Wrap(err, "[sub] failed to resolve remote subkey")

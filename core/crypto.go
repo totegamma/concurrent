@@ -1,7 +1,10 @@
 package core
 
 import (
+	"encoding/base64"
 	"encoding/hex"
+	"encoding/json"
+	"fmt"
 	"github.com/cosmos/cosmos-sdk/codec/address"
 	"github.com/cosmos/cosmos-sdk/crypto/keys/secp256k1"
 	sdk "github.com/cosmos/cosmos-sdk/types"
@@ -9,6 +12,9 @@ import (
 	"github.com/pkg/errors"
 	"gitlab.com/yawning/secp256k1-voi/secec"
 	"golang.org/x/crypto/sha3"
+	"strconv"
+	"strings"
+	"time"
 )
 
 func GetHash(bytes []byte) []byte {
@@ -125,4 +131,225 @@ func SetupConfig(base ConfigInput) Config {
 		CCID:         ccid,
 		CSID:         csid,
 	}
+}
+
+func ValidateKeyResolution(keys []Key, startKey string) (string, error) {
+
+	var rootKey string
+	var nextKey string
+	for _, key := range keys {
+
+		if (nextKey == "") && (startKey != key.ID) {
+			return "", fmt.Errorf("This key-resolution does not start with %s", startKey)
+		}
+
+		if (nextKey != "") && (nextKey != key.ID) {
+			return "", fmt.Errorf("Key %s is not a child of %s", key.ID, nextKey)
+		}
+
+		signature, err := hex.DecodeString(key.EnactSignature)
+		if err != nil {
+			return "", err
+		}
+		err = VerifySignature([]byte(key.EnactDocument), signature, key.Parent)
+		if err != nil {
+			return "", err
+		}
+
+		var enact EnactDocument
+		err = json.Unmarshal([]byte(key.EnactDocument), &enact)
+		if err != nil {
+			return "", err
+		}
+
+		if IsCCID(key.Parent) {
+			if enact.Signer != key.Parent {
+				return "", fmt.Errorf("enact signer is not matched with the parent")
+			}
+		} else {
+			if enact.KeyID != key.Parent {
+				return "", fmt.Errorf("enact keyID is not matched with the parent")
+			}
+		}
+
+		if enact.Target != key.ID {
+			return "", fmt.Errorf("KeyID in payload is not matched with the keyID")
+		}
+
+		if enact.Parent != key.Parent {
+			return "", fmt.Errorf("Parent in payload is not matched with the parent")
+		}
+
+		if enact.Root != key.Root {
+			return "", fmt.Errorf("Root in payload is not matched with the root")
+		}
+
+		if rootKey == "" {
+			rootKey = key.Root
+		} else {
+			if rootKey != key.Root {
+				return "", fmt.Errorf("Root is not matched with the previous key")
+			}
+		}
+
+		if key.RevokeDocument != nil {
+			return "", fmt.Errorf("Key %s is revoked", key.ID)
+		}
+
+		nextKey = key.Parent
+	}
+
+	return rootKey, nil
+}
+
+type VerifyJWTResult struct {
+	Principal       string
+	Audience        string
+	Subject         string
+	Domain          string
+	DocumentSigner  string
+	AffiliationDate time.Time
+}
+
+// note:
+// Caller MUST check:
+// 1. Audience is matched with the expected value (e.g. callback_url).
+// 2. Subject is matched with the expected value (e.g. CONCRNT_3RD_PARTY_AUTH).
+// 3. Retrive the Domain's csid and verify it matched the DocumentSigner.
+// 4. For each challenge, the verifier MUST store the received affiliation date, 
+//    and any challenge containing an affiliation date older than the stored date MUST be rejected.
+func VerifyJWT(jwtStr string, passportStr string) (*VerifyJWTResult, error) {
+
+	var header JwtHeader
+	var claims JwtClaims
+
+	split := strings.Split(jwtStr, ".")
+	if len(split) != 3 {
+		return nil, fmt.Errorf("invalid jwt format")
+	}
+
+	headerBytes, err := base64.RawURLEncoding.DecodeString(split[0])
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(headerBytes, &header)
+	if err != nil {
+		return nil, err
+	}
+
+	// check jwt type
+	if header.Type != "JWT" || header.Algorithm != "CONCRNT" {
+		return nil, fmt.Errorf("Unsupported JWT type")
+	}
+
+	payloadBytes, err := base64.RawURLEncoding.DecodeString(split[1])
+	if err != nil {
+		return nil, err
+	}
+	err = json.Unmarshal(payloadBytes, &claims)
+	if err != nil {
+		return nil, err
+	}
+
+	if claims.ExpirationTime != "" {
+		exp, err := strconv.ParseInt(claims.ExpirationTime, 10, 64)
+		if err != nil {
+			return nil, err
+		}
+		now := time.Now().Unix()
+		if exp < now {
+			return nil, fmt.Errorf("jwt is already expired")
+		}
+	}
+
+	// check signature
+	signatureBytes, err := base64.RawURLEncoding.DecodeString(split[2])
+	if err != nil {
+		return nil, err
+	}
+
+	principal := claims.Issuer
+
+	key := claims.Issuer
+	if header.KeyID != "" {
+		key = header.KeyID
+	}
+
+	err = VerifySignature([]byte(split[0]+"."+split[1]), signatureBytes, key)
+	if err != nil {
+		return nil, err
+	}
+
+	if IsCCID(key) {
+		return &VerifyJWTResult{
+			Principal: principal,
+			Audience:  claims.Audience,
+			Subject:   claims.Subject,
+		}, nil
+	}
+
+	passportJson, err := base64.URLEncoding.DecodeString(passportStr)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to decode passport")
+	}
+
+	var passport Passport
+	err = json.Unmarshal(passportJson, &passport)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to unmarshal passport")
+	}
+
+	var passportDoc PassportDocument
+	err = json.Unmarshal([]byte(passport.Document), &passportDoc)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to unmarshal passport document")
+	}
+
+	signatureBytes, err = hex.DecodeString(passport.Signature)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to decode signature")
+	}
+
+	err = VerifySignature([]byte(passport.Document), signatureBytes, passportDoc.Signer)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to verify signature")
+	}
+
+	resolved, err := ValidateKeyResolution(passportDoc.Keys, key)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to validate key resolution")
+	}
+
+	if resolved != principal {
+		return nil, errors.New("resolved entity is not matched with the principal")
+	}
+
+	signatureBytes, err = hex.DecodeString(passportDoc.Entity.AffiliationSignature)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to decode affiliation signature")
+	}
+
+	err = VerifySignature([]byte(passportDoc.Entity.AffiliationDocument), signatureBytes, principal)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to verify affiliation signature")
+	}
+
+	var affiliation AffiliationDocument
+	err = json.Unmarshal([]byte(passportDoc.Entity.AffiliationDocument), &affiliation)
+	if err != nil {
+		return nil, errors.Wrap(err, "failed to unmarshal affiliation document")
+	}
+
+	if affiliation.Domain != passportDoc.Domain {
+		return nil, errors.New("domain is not matched with the passport")
+	}
+
+	return &VerifyJWTResult{
+		Principal:       principal,
+		Audience:        claims.Audience,
+		Subject:         claims.Subject,
+		Domain:          passportDoc.Domain,
+		DocumentSigner:  passportDoc.Signer,
+		AffiliationDate: affiliation.SignedAt,
+	}, nil
 }

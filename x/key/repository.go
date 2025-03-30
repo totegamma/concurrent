@@ -58,7 +58,7 @@ func (r *repository) GetRemoteKeyResolution(ctx context.Context, remote string, 
 		return nil, err
 	}
 
-	_, err = ValidateKeyResolution(keys) // TODO: should have a negative cache
+	_, err = core.ValidateKeyResolution(keys, keyID) // TODO: should have a negative cache
 	if err != nil {
 		span.RecordError(err)
 		return nil, err

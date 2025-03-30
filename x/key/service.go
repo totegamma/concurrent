@@ -2,7 +2,6 @@ package key
 
 import (
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 
@@ -106,70 +105,6 @@ func (s *service) Revoke(ctx context.Context, mode core.CommitMode, payload, sig
 	}
 
 	return revoked, nil
-}
-
-func ValidateKeyResolution(keys []core.Key) (string, error) {
-
-	var rootKey string
-	var nextKey string
-	for _, key := range keys {
-		if (nextKey != "") && (nextKey != key.ID) {
-			return "", fmt.Errorf("Key %s is not a child of %s", key.ID, nextKey)
-		}
-
-		signature, err := hex.DecodeString(key.EnactSignature)
-		if err != nil {
-			return "", err
-		}
-		err = core.VerifySignature([]byte(key.EnactDocument), signature, key.Parent)
-		if err != nil {
-			return "", err
-		}
-
-		var enact core.EnactDocument
-		err = json.Unmarshal([]byte(key.EnactDocument), &enact)
-		if err != nil {
-			return "", err
-		}
-
-		if core.IsCCID(key.Parent) {
-			if enact.Signer != key.Parent {
-				return "", fmt.Errorf("enact signer is not matched with the parent")
-			}
-		} else {
-			if enact.KeyID != key.Parent {
-				return "", fmt.Errorf("enact keyID is not matched with the parent")
-			}
-		}
-
-		if enact.Target != key.ID {
-			return "", fmt.Errorf("KeyID in payload is not matched with the keyID")
-		}
-
-		if enact.Parent != key.Parent {
-			return "", fmt.Errorf("Parent in payload is not matched with the parent")
-		}
-
-		if enact.Root != key.Root {
-			return "", fmt.Errorf("Root in payload is not matched with the root")
-		}
-
-		if rootKey == "" {
-			rootKey = key.Root
-		} else {
-			if rootKey != key.Root {
-				return "", fmt.Errorf("Root is not matched with the previous key")
-			}
-		}
-
-		if key.RevokeDocument != nil {
-			return "", fmt.Errorf("Key %s is revoked", key.ID)
-		}
-
-		nextKey = key.Parent
-	}
-
-	return rootKey, nil
 }
 
 func (s *service) ResolveSubkey(ctx context.Context, keyID string) (string, error) {

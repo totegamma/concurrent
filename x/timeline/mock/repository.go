@@ -277,19 +277,19 @@ func (mr *MockRepositoryMockRecorder) ListTimelineByAuthor(ctx, author any) *gom
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTimelineByAuthor", reflect.TypeOf((*MockRepository)(nil).ListTimelineByAuthor), ctx, author)
 }
 
-// ListTimelineByAuthorOwned mocks base method.
-func (m *MockRepository) ListTimelineByAuthorOwned(ctx context.Context, author string) ([]core.Timeline, error) {
+// ListTimelineByOwner mocks base method.
+func (m *MockRepository) ListTimelineByOwner(ctx context.Context, owner string) ([]core.Timeline, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "ListTimelineByAuthorOwned", ctx, author)
+	ret := m.ctrl.Call(m, "ListTimelineByOwner", ctx, owner)
 	ret0, _ := ret[0].([]core.Timeline)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
-// ListTimelineByAuthorOwned indicates an expected call of ListTimelineByAuthorOwned.
-func (mr *MockRepositoryMockRecorder) ListTimelineByAuthorOwned(ctx, author any) *gomock.Call {
+// ListTimelineByOwner indicates an expected call of ListTimelineByOwner.
+func (mr *MockRepositoryMockRecorder) ListTimelineByOwner(ctx, owner any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTimelineByAuthorOwned", reflect.TypeOf((*MockRepository)(nil).ListTimelineByAuthorOwned), ctx, author)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ListTimelineByOwner", reflect.TypeOf((*MockRepository)(nil).ListTimelineByOwner), ctx, owner)
 }
 
 // ListTimelineBySchema mocks base method.

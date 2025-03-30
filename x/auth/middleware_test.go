@@ -32,7 +32,7 @@ const (
 	RemoteDomainPriv = "863183823d2c2a19101140eef0f905c872de1dae6470c9129a1547f3482cb612"
 )
 
-func createJwt(t *testing.T, priv string, claims jwt.Claims) string {
+func createJwt(t *testing.T, priv string, claims core.JwtClaims) string {
 	jwt, err := jwt.Create(claims, priv)
 	if !assert.NoError(t, err) {
 		log.Fatal(err)
@@ -72,7 +72,7 @@ func TestLocalRootSuccess(t *testing.T) {
 
 	c, req, rec, traceID := testutil.CreateHttpRequest()
 
-	jwt := createJwt(t, User1Priv, jwt.Claims{
+	jwt := createJwt(t, User1Priv, core.JwtClaims{
 		Issuer:   User1ID,
 		Subject:  "concrnt",
 		Audience: "local.example.com",
@@ -139,7 +139,7 @@ func TestRemoteRootSuccess(t *testing.T) {
 
 	fmt.Print("traceID: ", traceID, "\n")
 
-	jwt := createJwt(t, User1Priv, jwt.Claims{
+	jwt := createJwt(t, User1Priv, core.JwtClaims{
 		Issuer:   User1ID,
 		Subject:  "concrnt",
 		Audience: "local.example.com",

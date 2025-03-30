@@ -16,7 +16,6 @@ import (
 	"github.com/redis/go-redis/v9"
 	"github.com/totegamma/concurrent/core"
 	"github.com/totegamma/concurrent/x/jwt"
-	"github.com/totegamma/concurrent/x/key"
 	"github.com/xinguang/go-recaptcha"
 	"go.opentelemetry.io/otel/attribute"
 )
@@ -100,19 +99,6 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				goto skipCheckPassport
 			}
 
-			if len(passportDoc.Keys) > 0 {
-				resolved, err := key.ValidateKeyResolution(passportDoc.Keys)
-				if err != nil {
-					span.RecordError(errors.Wrap(err, "failed to validate key resolution"))
-					goto skipCheckPassport
-				}
-
-				if resolved != passportDoc.Entity.ID {
-					span.RecordError(fmt.Errorf("Signer is not matched with the resolved signer. expected: %s, actual: %s", resolved, passportDoc.Entity.ID))
-					goto skipCheckPassport
-				}
-			}
-
 			entity := passportDoc.Entity
 			updated, err := s.entity.Affiliation(ctx, core.CommitModeExecute, entity.AffiliationDocument, entity.AffiliationSignature, "")
 			if err != nil {
@@ -174,11 +160,17 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				ccid = claims.Issuer
 			} else if core.IsCKID(claims.Issuer) {
 				if providedKeyChain, ok := ctx.Value(core.RequesterKeychainKey).([]core.Key); ok {
-					ccid, err = key.ValidateKeyResolution(providedKeyChain)
+					ccid, err = core.ValidateKeyResolution(providedKeyChain, claims.Issuer)
 					if err != nil {
 						span.RecordError(errors.Wrap(err, "failed to validate key resolution"))
 						goto skipCheckAuthorization
 					}
+
+					if ccid != claims.Issuer {
+						span.RecordError(fmt.Errorf("resolved ccid is not matched with the issuer"))
+						goto skipCheckAuthorization
+					}
+
 				} else {
 
 					keys, err := s.key.GetKeyResolution(ctx, claims.Issuer)

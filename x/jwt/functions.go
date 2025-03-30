@@ -12,8 +12,8 @@ import (
 )
 
 // Create creates server signed JWT
-func Create(claims Claims, privatekey string) (string, error) {
-	header := Header{
+func Create(claims core.JwtClaims, privatekey string) (string, error) {
+	header := core.JwtHeader{
 		Type:      "JWT",
 		Algorithm: "CONCRNT",
 	}
@@ -39,10 +39,10 @@ func Create(claims Claims, privatekey string) (string, error) {
 }
 
 // Validate checks is jwt signature valid and not expired
-func Validate(jwt string) (Claims, error) {
+func Validate(jwt string) (core.JwtClaims, error) {
 
-	var header Header
-	var claims Claims
+	var header core.JwtHeader
+	var claims core.JwtClaims
 
 	split := strings.Split(jwt, ".")
 	if len(split) != 3 {

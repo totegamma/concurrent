@@ -213,11 +213,11 @@ type VerifyJWTResult struct {
 
 // note:
 // Caller MUST check:
-// 1. Audience is matched with the expected value (e.g. callback_url).
-// 2. Subject is matched with the expected value (e.g. CONCRNT_3RD_PARTY_AUTH).
-// 3. Retrive the Domain's csid and verify it matched the DocumentSigner.
-// 4. For each challenge, the verifier MUST store the received affiliation date, 
-//    and any challenge containing an affiliation date older than the stored date MUST be rejected.
+//  1. Audience is matched with the expected value (e.g. callback_url).
+//  2. Subject is matched with the expected value (e.g. CONCRNT_3RD_PARTY_AUTH).
+//  3. Retrive the Domain's csid and verify it matched the DocumentSigner.
+//  4. For each challenge, the verifier MUST store the received affiliation date,
+//     and any challenge containing an affiliation date older than the stored date MUST be rejected.
 func VerifyJWT(jwtStr string, passportStr string) (*VerifyJWTResult, error) {
 
 	var header JwtHeader

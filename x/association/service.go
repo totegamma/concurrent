@@ -704,7 +704,7 @@ func (s *service) GetBySchema(ctx context.Context, messageID string, schema stri
 }
 
 // GetCountsBySchemaAndVariant returns the number of associations by schema and variant
-func (s *service) GetCountsBySchemaAndVariant(ctx context.Context, messageID string, schema string) (map[string]int64, error) {
+func (s *service) GetCountsBySchemaAndVariant(ctx context.Context, messageID string, schema string) (*core.OrderedKVMap[int64], error) {
 	ctx, span := tracer.Start(ctx, "Association.Service.GetCountsBySchemaAndVariant")
 	defer span.End()
 

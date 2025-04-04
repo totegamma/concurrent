@@ -5,6 +5,7 @@ import (
 	"gorm.io/gorm"
 	"log/slog"
 	"strconv"
+	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/pkg/errors"
@@ -20,7 +21,7 @@ type Repository interface {
 	GetByTarget(ctx context.Context, targetID string) ([]core.Association, error)
 	GetCountsBySchema(ctx context.Context, messageID string) (map[string]int64, error)
 	GetBySchema(ctx context.Context, messageID string, schema string) ([]core.Association, error)
-	GetCountsBySchemaAndVariant(ctx context.Context, messageID string, schema string) (map[string]int64, error)
+	GetCountsBySchemaAndVariant(ctx context.Context, messageID string, schema string) (*core.OrderedKVMap[int64], error)
 	GetBySchemaAndVariant(ctx context.Context, messageID string, schema string, variant string) ([]core.Association, error)
 	GetOwnByTarget(ctx context.Context, targetID, author string) ([]core.Association, error)
 	Count(ctx context.Context) (int64, error)
@@ -301,13 +302,14 @@ func (r *repository) GetBySchema(ctx context.Context, messageID, schema string) 
 }
 
 // GetCountsBySchemaAndVariant returns the number of associations for a given schema and variant
-func (r *repository) GetCountsBySchemaAndVariant(ctx context.Context, messageID, schema string) (map[string]int64, error) {
+func (r *repository) GetCountsBySchemaAndVariant(ctx context.Context, messageID, schema string) (*core.OrderedKVMap[int64], error) {
 	ctx, span := tracer.Start(ctx, "Association.Repository.GetCountsBySchemaAndVariant")
 	defer span.End()
 
 	var counts []struct {
-		Variant string
-		Count   int64
+		Variant  string
+		Count    int64
+		MinCDate time.Time
 	}
 
 	schemaID, err := r.schema.UrlToID(ctx, schema)
@@ -315,17 +317,25 @@ func (r *repository) GetCountsBySchemaAndVariant(ctx context.Context, messageID,
 		return nil, err
 	}
 
-	err = r.db.WithContext(ctx).Model(&core.Association{}).Select("variant, count(*) as count").Where("target = ? AND schema_id = ?", messageID, schemaID).Group("variant").Scan(&counts).Error
+	err = r.db.WithContext(ctx).Model(&core.Association{}).
+		Select("variant, count(*) as count, MIN(c_date) as min_c_date").
+		Where("target = ? AND schema_id = ?", messageID, schemaID).
+		Group("variant").
+		Scan(&counts).
+		Error
 	if err != nil {
 		return nil, err
 	}
 
-	result := make(map[string]int64)
+	result := make(core.OrderedKVMap[int64])
 	for _, count := range counts {
-		result[count.Variant] = count.Count
+		result[count.Variant] = core.OrderedKV[int64]{
+			Value: count.Count,
+			Order: count.MinCDate.UnixNano(),
+		}
 	}
 
-	return result, nil
+	return &result, nil
 }
 
 // GetBySchemaAndVariant returns the associations for a given schema and variant

@@ -125,9 +125,9 @@ func TestRepository(t *testing.T) {
 	}
 
 	// test GetCountsBySchemaAndVariant
-	results, err = repo.GetCountsBySchemaAndVariant(ctx, messageID, "https://schema.concrnt.world/a/reaction.json")
+	results2, err := repo.GetCountsBySchemaAndVariant(ctx, messageID, "https://schema.concrnt.world/a/reaction.json")
 	if assert.NoError(t, err) {
-		assert.Equal(t, 2, len(results))
+		assert.Equal(t, 2, len(*results2))
 	}
 
 	// test GetBySchemaAndVariant

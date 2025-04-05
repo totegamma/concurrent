@@ -284,10 +284,10 @@ func (mr *MockAssociationServiceMockRecorder) GetCountsBySchema(ctx, messageID a
 }
 
 // GetCountsBySchemaAndVariant mocks base method.
-func (m *MockAssociationService) GetCountsBySchemaAndVariant(ctx context.Context, messageID, schema string) (map[string]int64, error) {
+func (m *MockAssociationService) GetCountsBySchemaAndVariant(ctx context.Context, messageID, schema string) (*core.OrderedKVMap[int64], error) {
 	m.ctrl.T.Helper()
 	ret := m.ctrl.Call(m, "GetCountsBySchemaAndVariant", ctx, messageID, schema)
-	ret0, _ := ret[0].(map[string]int64)
+	ret0, _ := ret[0].(*core.OrderedKVMap[int64])
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }

@@ -715,6 +715,67 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 			Result:   tags.Has(target),
 		}, nil
 
+	case "Cond": // Renamed from "Conditional"
+		if len(expr.Args) != 3 {
+			err := fmt.Errorf("bad argument length for Cond. Expected 3 but got %d\n", len(expr.Args))
+			return core.EvalResult{
+				Operator: "Cond",
+				Error:    err.Error(),
+			}, err
+		}
+
+		// Evaluate condition (arg 0)
+		conditionResult, err := s.eval(expr.Args[0], requestCtx)
+		if err != nil {
+			return core.EvalResult{
+				Operator: "Cond",
+				Args:     []core.EvalResult{conditionResult},
+				Error:    fmt.Sprintf("condition error: %s", err.Error()),
+			}, err
+		}
+
+		conditionBool, ok := conditionResult.Result.(bool)
+		if !ok {
+			err := fmt.Errorf("bad condition type for Cond. Expected bool but got %s\n", reflect.TypeOf(conditionResult.Result))
+			return core.EvalResult{
+				Operator: "Cond",
+				Args:     []core.EvalResult{conditionResult},
+				Error:    err.Error(),
+			}, err
+		}
+
+		// Evaluate the chosen branch
+		var chosenBranchExpr core.Expr
+		var branchIndex int
+		if conditionBool {
+			chosenBranchExpr = expr.Args[1]
+			branchIndex = 1
+		} else {
+			chosenBranchExpr = expr.Args[2]
+			branchIndex = 2
+		}
+
+		branchResult, err := s.eval(chosenBranchExpr, requestCtx)
+		if err != nil {
+			// Include condition result in args for context
+			argsForError := []core.EvalResult{conditionResult, {}, {}} // Placeholders for branches
+			argsForError[branchIndex] = branchResult                   // Put the failing branch result in the correct spot
+			return core.EvalResult{
+				Operator: "Cond",
+				Args:     argsForError,
+				Error:    fmt.Sprintf("branch error: %s", err.Error()),
+			}, err
+		}
+
+		// Return the result of the evaluated branch
+		finalArgs := []core.EvalResult{conditionResult, {}, {}} // Placeholders
+		finalArgs[branchIndex] = branchResult
+		return core.EvalResult{
+			Operator: "Cond",
+			Args:     finalArgs,
+			Result:   branchResult.Result,
+		}, nil
+
 	default:
 		err := fmt.Errorf("unknown operator: %s\n", expr.Operator)
 		return core.EvalResult{

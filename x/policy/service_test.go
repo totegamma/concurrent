@@ -614,6 +614,16 @@ func TestEvalOperators(t *testing.T) {
 
 		// Unknown Operator
 		{name: "Unknown Operator", expr: core.Expr{Operator: "DoesNotExist"}, expectError: true},
+
+		// --- Ternary Cond Operator ---
+		{name: "Cond: condition true", expr: core.Expr{Operator: "Cond", Args: []core.Expr{{Operator: "Const", Constant: true}, {Operator: "Const", Constant: "result_true"}, {Operator: "Const", Constant: "result_false"}}}, expectedVal: "result_true"},
+		{name: "Cond: condition false", expr: core.Expr{Operator: "Cond", Args: []core.Expr{{Operator: "Const", Constant: false}, {Operator: "Const", Constant: "result_true"}, {Operator: "Const", Constant: "result_false"}}}, expectedVal: "result_false"},
+		{name: "Cond: condition error", expr: core.Expr{Operator: "Cond", Args: []core.Expr{{Operator: "LoadParam", Constant: "missing"}, {Operator: "Const", Constant: "result_true"}, {Operator: "Const", Constant: "result_false"}}}, expectError: true},
+		{name: "Cond: condition not bool", expr: core.Expr{Operator: "Cond", Args: []core.Expr{{Operator: "Const", Constant: "not_bool"}, {Operator: "Const", Constant: "result_true"}, {Operator: "Const", Constant: "result_false"}}}, expectError: true},
+		{name: "Cond: true branch error", expr: core.Expr{Operator: "Cond", Args: []core.Expr{{Operator: "Const", Constant: true}, {Operator: "LoadParam", Constant: "missing"}, {Operator: "Const", Constant: "result_false"}}}, expectError: true},
+		{name: "Cond: false branch error", expr: core.Expr{Operator: "Cond", Args: []core.Expr{{Operator: "Const", Constant: false}, {Operator: "Const", Constant: "result_true"}, {Operator: "LoadParam", Constant: "missing"}}}, expectError: true},
+		{name: "Cond: wrong arg count (2)", expr: core.Expr{Operator: "Cond", Args: []core.Expr{{Operator: "Const", Constant: true}, {Operator: "Const", Constant: "result_true"}}}, expectError: true},
+		{name: "Cond: wrong arg count (4)", expr: core.Expr{Operator: "Cond", Args: []core.Expr{{Operator: "Const", Constant: true}, {Operator: "Const", Constant: "result_true"}, {Operator: "Const", Constant: "result_false"}, {Operator: "Const", Constant: "extra"}}}, expectError: true},
 	}
 
 	for _, tc := range testCases {

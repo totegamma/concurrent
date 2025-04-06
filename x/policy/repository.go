@@ -44,12 +44,15 @@ func (r *repository) Get(ctx context.Context, url string) (core.Policy, error) {
 	if err == nil {
 		var policy core.Policy
 		err = json.Unmarshal([]byte(val), &policy)
-		if err != nil {
-			span.SetStatus(codes.Error, err.Error())
-			return core.Policy{}, err
+		if err == nil { // Only set cache if unmarshal succeeds
+			cache = &policy
+		} else {
+			// Log the cache unmarshal error but treat it as a cache miss
+			span.RecordError(fmt.Errorf("failed to unmarshal cached policy for %s: %w", url, err))
+			// cache remains nil, so fetch() will be called
 		}
-		cache = &policy
 	}
+	// If rdb.Get failed OR json.Unmarshal failed, cache is nil here
 
 	fetch := func() (core.Policy, error) {
 		req, err := http.NewRequest("GET", url, nil)

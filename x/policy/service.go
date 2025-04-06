@@ -239,8 +239,8 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 		if r := recover(); r != nil {
 			fmt.Printf("recovered from: %v\n", r)
 			fmt.Printf("while evaluating: %v\n", expr.Operator)
-			debugPrint("expr", expr)
-			debugPrint("requestCtx", requestCtx)
+			core.JsonPrint("expr", expr)
+			core.JsonPrint("requestCtx", requestCtx)
 		}
 	}()
 

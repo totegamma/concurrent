@@ -1,10 +1,7 @@
 package policy
 
 import (
-	"encoding/json"
-	"fmt"
 	"reflect"
-	"regexp"
 	"strings"
 
 	"github.com/totegamma/concurrent/core"
@@ -59,11 +56,6 @@ func AccumulateOr(results []core.PolicyEvalResult) core.PolicyEvalResult {
 	return core.PolicyEvalResultDefault
 }
 
-func debugPrint(comment string, v interface{}) {
-	b, _ := json.MarshalIndent(v, "", "  ")
-	fmt.Println(comment, string(b))
-}
-
 func structToMap(obj any) map[string]any {
 	result := make(map[string]any)
 	v := reflect.ValueOf(obj)
@@ -109,17 +101,4 @@ func resolveDotNotation(obj map[string]any, key string) (any, bool) {
 		}
 	}
 	return nil, false
-}
-
-func isActionMatch(action string, statementAction string) bool {
-	split := strings.Split(statementAction, "*")
-	if len(split) == 0 {
-		return statementAction == action
-	}
-	statementAction = "^" + strings.Join(split, ".*") + "$"
-	match, err := regexp.MatchString(statementAction, action)
-	if err != nil {
-		return false
-	}
-	return match
 }

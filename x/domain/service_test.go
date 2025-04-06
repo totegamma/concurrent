@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"testing"
-	//"time" // Remove unused time import
 
 	"github.com/stretchr/testify/assert"
 	"github.com/totegamma/concurrent/client/mock"
@@ -58,10 +57,8 @@ func TestService_Get(t *testing.T) {
 	fqdn := "test.example.com"
 	ccid := "con1ccid1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	csid := "ccs1csid1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	localCSID := config.CSID
 
 	expectedDomain := core.Domain{ID: fqdn, CCID: ccid, CSID: csid}
-	expectedLocalDomain := core.Domain{ID: config.FQDN, Dimension: config.Dimension, CSID: config.CSID, CCID: config.CCID}
 
 	// Case 1: Get by FQDN
 	t.Run("GetByFQDN_Success", func(t *testing.T) {

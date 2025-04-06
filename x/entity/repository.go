@@ -1,5 +1,7 @@
 package entity
 
+//go:generate go run go.uber.org/mock/mockgen -source=repository.go -destination=mock/repository.go
+
 import (
 	"context"
 	"log/slog"
@@ -83,8 +85,9 @@ func (r *repository) SetTombstone(ctx context.Context, id, document, signature s
 	ctx, span := tracer.Start(ctx, "Entity.Repository.SetTombstone")
 	defer span.End()
 
+	// Use correct column names based on dbschema.go (TombstoneDocument, TombstoneSignature)
 	err := r.db.Model(&core.Entity{}).Where("id = ?", id).Updates(map[string]interface{}{
-		"tombstone_payload":   document,
+		"tombstone_document":  document, // Corrected column name
 		"tombstone_signature": signature,
 	}).Error
 

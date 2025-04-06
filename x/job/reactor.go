@@ -81,8 +81,10 @@ func (a *reactor) dispatchJob(ctx context.Context, job *core.Job, fn func(contex
 			span.RecordError(err)
 			slog.ErrorContext(ctx, "failed to complete job", slog.String("error", err.Error()))
 		}
+		return // Return early after handling error
 	}
 
+	// Only call complete with "completed" status if err was nil
 	_, err = a.job.Complete(ctx, job.ID, "completed", result)
 	if err != nil {
 		span.RecordError(err)

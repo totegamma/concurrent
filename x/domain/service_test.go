@@ -19,7 +19,6 @@ func TestNewService(t *testing.T) {
 
 	repo := mock_domain.NewMockRepository(ctrl)
 	client := mock_client.NewMockClient(ctrl)
-	// Use valid CSID format (ccs prefix) in config for testing local case
 	config := core.Config{FQDN: "local.example.com", Dimension: "testDimension", CSID: "ccs1localcsidaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
 
 	s := NewService(repo, client, config)
@@ -52,19 +51,17 @@ func TestService_Get(t *testing.T) {
 
 	repo := mock_domain.NewMockRepository(ctrl)
 	client := mock_client.NewMockClient(ctrl)
-	// Use valid CSID format (ccs prefix) in config for testing local case
 	config := core.Config{FQDN: "local.example.com", CSID: "ccs1localcsidaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", CCID: "con1localccidaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Dimension: "testDimension"}
 	s := NewService(repo, client, config)
 	ctx := context.Background()
 
 	fqdn := "test.example.com"
-	// Use full 42-char IDs matching repository test setup
 	ccid := "con1ccid1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
-	csid := "ccs1csid1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa" // Use valid CSID format
-	// localCSID := config.CSID // Removed unused variable
+	csid := "ccs1csid1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+	localCSID := config.CSID
 
 	expectedDomain := core.Domain{ID: fqdn, CCID: ccid, CSID: csid}
-	// expectedLocalDomain := core.Domain{ID: config.FQDN, Dimension: config.Dimension, CSID: config.CSID, CCID: config.CCID} // Removed unused variable
+	expectedLocalDomain := core.Domain{ID: config.FQDN, Dimension: config.Dimension, CSID: config.CSID, CCID: config.CCID}
 
 	// Case 1: Get by FQDN
 	t.Run("GetByFQDN_Success", func(t *testing.T) {
@@ -82,7 +79,7 @@ func TestService_Get(t *testing.T) {
 		assert.Equal(t, expectedDomain, result)
 	})
 
-	// Case 3: Get by FQDN (Not Found in Repo, Fetched from Client) - Use GetByFQDN - Renumbered
+	// Case 3: Get by FQDN (Not Found in Repo, Fetched from Client)
 	t.Run("GetByFQDN_Fetch_Success", func(t *testing.T) {
 		repo.EXPECT().GetByFQDN(gomock.Any(), "fetch.example.com").Return(core.Domain{}, core.NewErrorNotFound()).Times(1)
 		client.EXPECT().GetDomain(gomock.Any(), "fetch.example.com", nil).Return(core.Domain{ID: "fetch.example.com", Dimension: config.Dimension}, nil).Times(1)
@@ -92,7 +89,7 @@ func TestService_Get(t *testing.T) {
 		assert.Equal(t, "fetch.example.com", result.ID)
 	})
 
-	// Case 4: Get by FQDN (Not Found in Repo, Fetch Fails) - Use GetByFQDN - Renumbered
+	// Case 4: Get by FQDN (Not Found in Repo, Fetch Fails)
 	t.Run("GetByFQDN_Fetch_FailClient", func(t *testing.T) {
 		repo.EXPECT().GetByFQDN(gomock.Any(), "fetchfail.example.com").Return(core.Domain{}, core.NewErrorNotFound()).Times(1)
 		client.EXPECT().GetDomain(gomock.Any(), "fetchfail.example.com", nil).Return(core.Domain{}, errors.New("client error")).Times(1)
@@ -101,7 +98,7 @@ func TestService_Get(t *testing.T) {
 		assert.Contains(t, err.Error(), "client error")
 	})
 
-	// Case 5: Get by FQDN (Not Found in Repo, Wrong Dimension) - Use GetByFQDN - Renumbered
+	// Case 5: Get by FQDN (Not Found in Repo, Wrong Dimension)
 	t.Run("GetByFQDN_Fetch_WrongDimension", func(t *testing.T) {
 		repo.EXPECT().GetByFQDN(gomock.Any(), "wrongdim.example.com").Return(core.Domain{}, core.NewErrorNotFound()).Times(1)
 		client.EXPECT().GetDomain(gomock.Any(), "wrongdim.example.com", nil).Return(core.Domain{ID: "wrongdim.example.com", Dimension: "wrongDimension"}, nil).Times(1)
@@ -150,6 +147,3 @@ func TestService_ForceFetch(t *testing.T) {
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "repo error")
 }
-
-// Tests for List, Delete, Update, UpdateScrapeTime are omitted for brevity
-// They primarily involve calling the repository method and returning the result/error.

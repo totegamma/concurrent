@@ -168,6 +168,7 @@ func CreateDB() (*gorm.DB, func()) {
 		&core.Subscription{},
 		&core.SubscriptionItem{},
 		&core.SemanticID{},
+		&core.Job{}, // Add Job struct
 	)
 
 	return db, cleanup

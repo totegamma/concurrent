@@ -11,7 +11,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/totegamma/concurrent/core"
 	"github.com/totegamma/concurrent/internal/testutil"
-	"gorm.io/gorm" // Add gorm import back
+	"gorm.io/gorm"
 )
 
 var ctx = context.Background()
@@ -35,7 +35,6 @@ func TestMain(m *testing.M) {
 
 func TestRepository(t *testing.T) {
 
-	// Use full 42-character IDs
 	ccid1 := "con1ccid1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	csid1 := "ccs1csid1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	ccid2 := "con1ccid2bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
@@ -64,8 +63,8 @@ func TestRepository(t *testing.T) {
 
 	domain1Updated := core.Domain{
 		ID:           "test1.example.com",
-		CCID:         ccid1, // Keep CCID same
-		CSID:         csid1new, // Update CSID
+		CCID:         ccid1,
+		CSID:         csid1new,
 		Tag:          "testTag1Updated",
 		Score:        150,
 		IsScoreFixed: true,
@@ -73,11 +72,11 @@ func TestRepository(t *testing.T) {
 	}
 
 	tests := []struct {
-		name        string
-		setup       func()
-		operation   func() (any, error)
-		assertions  func(t *testing.T, result any, err error)
-		cleanup     func()
+		name       string
+		setup      func()
+		operation  func() (any, error)
+		assertions func(t *testing.T, result any, err error)
+		cleanup    func()
 	}{
 		{
 			name: "Upsert Domain 1",
@@ -235,7 +234,6 @@ func TestRepository(t *testing.T) {
 		},
 	}
 
-	// Run tests
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			if tt.setup != nil {

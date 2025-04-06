@@ -22,9 +22,9 @@ func TestRepository(t *testing.T) {
 		user1 := "con1nadqu3d7pht036lpf68z4ftj909p428umuwau8"
 		user2 := "con1xw54ufkh8ts29qk5rxvw0t4q9p6hmpmgzh9tah"
 		ack := core.Ack{
-			From:     user1,
-			To:       user2,
-			Document: `"doc1"`,
+			From:      user1,
+			To:        user2,
+			Document:  `"doc1"`,
 			Signature: "sig1",
 		}
 		createdAck, err := repo.Ack(ctx, &ack)
@@ -48,9 +48,9 @@ func TestRepository(t *testing.T) {
 		user3 := "con1uwssx3d80e5wwl9fg8nnjpqms8rvs8p2lcldlr"
 		// Create another ack for the same 'to' user
 		ack2 := core.Ack{
-			From:     user3,
-			To:       user2,
-			Document: `"doc2"`,
+			From:      user3,
+			To:        user2,
+			Document:  `"doc2"`,
 			Signature: "sig2",
 		}
 		_, err := repo.Ack(ctx, &ack2)

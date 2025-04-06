@@ -103,11 +103,11 @@ func TestRepositoryOperations(t *testing.T) {
 
 	// Test Cases
 	tests := []struct {
-		name        string
-		setup       func()
-		operation   func() error
-		assertions  func(t *testing.T, err error)
-		cleanup     func()
+		name       string
+		setup      func()
+		operation  func() error
+		assertions func(t *testing.T, err error)
+		cleanup    func()
 	}{
 		{
 			name: "Create Like Association",
@@ -163,7 +163,9 @@ func TestRepositoryOperations(t *testing.T) {
 			name: "Get Associations by Target",
 			operation: func() error {
 				assocs, err := repo.GetByTarget(ctx, messageID)
-				if err != nil { return err }
+				if err != nil {
+					return err
+				}
 				assert.Len(t, assocs, 4)
 				return nil
 			},
@@ -175,7 +177,9 @@ func TestRepositoryOperations(t *testing.T) {
 			name: "Get Counts By Schema",
 			operation: func() error {
 				counts, err := repo.GetCountsBySchema(ctx, messageID)
-				if err != nil { return err }
+				if err != nil {
+					return err
+				}
 				assert.Equal(t, int64(1), counts[schemaLike])
 				assert.Equal(t, int64(3), counts[schemaReaction])
 				assert.Len(t, counts, 2)
@@ -189,7 +193,9 @@ func TestRepositoryOperations(t *testing.T) {
 			name: "Get By Schema (Like)",
 			operation: func() error {
 				assocs, err := repo.GetBySchema(ctx, messageID, schemaLike)
-				if err != nil { return err }
+				if err != nil {
+					return err
+				}
 				assert.Len(t, assocs, 1)
 				return nil
 			},
@@ -201,7 +207,9 @@ func TestRepositoryOperations(t *testing.T) {
 			name: "Get By Schema (Reaction)",
 			operation: func() error {
 				assocs, err := repo.GetBySchema(ctx, messageID, schemaReaction)
-				if err != nil { return err }
+				if err != nil {
+					return err
+				}
 				assert.Len(t, assocs, 3)
 				return nil
 			},
@@ -213,7 +221,9 @@ func TestRepositoryOperations(t *testing.T) {
 			name: "Get Counts By Schema and Variant (Reaction)",
 			operation: func() error {
 				counts, err := repo.GetCountsBySchemaAndVariant(ctx, messageID, schemaReaction)
-				if err != nil { return err }
+				if err != nil {
+					return err
+				}
 				assert.Equal(t, int64(1), (*counts)["smile"].Value)
 				assert.Equal(t, int64(2), (*counts)["ultrafastpolar"].Value)
 				assert.Len(t, *counts, 2)
@@ -227,7 +237,9 @@ func TestRepositoryOperations(t *testing.T) {
 			name: "Get By Schema and Variant (Reaction Ultrafastpolar)",
 			operation: func() error {
 				assocs, err := repo.GetBySchemaAndVariant(ctx, messageID, schemaReaction, "ultrafastpolar")
-				if err != nil { return err }
+				if err != nil {
+					return err
+				}
 				assert.Len(t, assocs, 2)
 				return nil
 			},
@@ -239,7 +251,9 @@ func TestRepositoryOperations(t *testing.T) {
 			name: "Get Own By Target",
 			operation: func() error {
 				assocs, err := repo.GetOwnByTarget(ctx, messageID, author1)
-				if err != nil { return err }
+				if err != nil {
+					return err
+				}
 				assert.Len(t, assocs, 3)
 				return nil
 			},

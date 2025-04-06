@@ -127,9 +127,9 @@ func TestHandler_List(t *testing.T) {
 		assert.Equal(t, http.StatusOK, rec.Code)
 		var response map[string]interface{}
 		err := json.Unmarshal(rec.Body.Bytes(), &response)
-	assert.NoError(t, err)
-	assert.Equal(t, "ok", response["status"])
-}
+		assert.NoError(t, err)
+		assert.Equal(t, "ok", response["status"])
+	}
 
 	// Error case
 	rec = httptest.NewRecorder()

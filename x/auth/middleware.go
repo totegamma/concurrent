@@ -139,7 +139,7 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				goto skipCheckAuthorization
 			}
 
-			claims, err := jwt.Validate(token)
+			header, claims, err := jwt.Validate(token)
 			if err != nil {
 				span.RecordError(errors.Wrap(err, "jwt validation failed"))
 				goto skipCheckAuthorization
@@ -155,32 +155,39 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 				goto skipCheckAuthorization
 			}
 
+			keyID := header.KeyID
+			if keyID == "" {
+				keyID = claims.Issuer
+			}
+
 			var ccid string
-			if core.IsCCID(claims.Issuer) {
-				ccid = claims.Issuer
-			} else if core.IsCKID(claims.Issuer) {
-				if providedKeyChain, ok := ctx.Value(core.RequesterKeychainKey).([]core.Key); ok {
-					ccid, err = core.ValidateKeyResolution(providedKeyChain, claims.Issuer)
+			if core.IsCCID(keyID) {
+				ccid = keyID
+			} else if core.IsCKID(keyID) {
+				if providedKeyChain, ok := ctx.Value(core.RequesterKeychainKey).([]core.Key); ok { // remote user
+					ccid, err = core.ValidateKeyResolution(providedKeyChain, keyID)
 					if err != nil {
 						span.RecordError(errors.Wrap(err, "failed to validate key resolution"))
 						goto skipCheckAuthorization
 					}
 
-					if ccid != claims.Issuer {
-						span.RecordError(fmt.Errorf("resolved ccid is not matched with the issuer"))
-						goto skipCheckAuthorization
-					}
+					/*
+						if ccid != claims.Issuer {
+							span.RecordError(fmt.Errorf("resolved ccid is not matched with the issuer"))
+							goto skipCheckAuthorization
+						}
+					*/
 
-				} else {
+				} else { // local user
 
-					keys, err := s.key.GetKeyResolution(ctx, claims.Issuer)
+					keys, err := s.key.GetKeyResolution(ctx, keyID)
 					if err != nil {
 						span.RecordError(errors.Wrap(err, "failed to get key resolution"))
 						goto skipCheckAuthorization
 					}
 					ctx = context.WithValue(ctx, core.RequesterKeychainKey, keys)
 
-					ccid, err = s.key.ResolveSubkey(ctx, claims.Issuer)
+					ccid, err = s.key.ResolveSubkey(ctx, keyID)
 					if err != nil {
 						span.RecordError(errors.Wrap(err, "failed to resolve subkey"))
 						goto skipCheckAuthorization

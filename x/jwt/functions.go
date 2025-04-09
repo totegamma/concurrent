@@ -39,62 +39,67 @@ func Create(claims core.JwtClaims, privatekey string) (string, error) {
 }
 
 // Validate checks is jwt signature valid and not expired
-func Validate(jwt string) (core.JwtClaims, error) {
-
-	var header core.JwtHeader
-	var claims core.JwtClaims
+func Validate(jwt string) (*core.JwtHeader, *core.JwtClaims, error) {
 
 	split := strings.Split(jwt, ".")
 	if len(split) != 3 {
-		return claims, fmt.Errorf("invalid jwt format")
+		return nil, nil, fmt.Errorf("invalid jwt format")
 	}
 
+	var header core.JwtHeader
 	headerBytes, err := base64.RawURLEncoding.DecodeString(split[0])
 	if err != nil {
-		return claims, err
+		return nil, nil, err
 	}
 	err = json.Unmarshal(headerBytes, &header)
 	if err != nil {
-		return claims, err
+		return nil, nil, err
 	}
 
 	// check jwt type
 	if header.Type != "JWT" || header.Algorithm != "CONCRNT" {
-		return claims, fmt.Errorf("Unsupported JWT type")
+		return nil, nil, fmt.Errorf("Unsupported JWT type")
 	}
 
 	payloadBytes, err := base64.RawURLEncoding.DecodeString(split[1])
 	if err != nil {
-		return claims, err
+		return nil, nil, err
 	}
+
+	var claims core.JwtClaims
 	err = json.Unmarshal(payloadBytes, &claims)
 	if err != nil {
-		return claims, err
+		return nil, nil, err
 	}
 
 	// check exp
 	if claims.ExpirationTime != "" {
 		exp, err := strconv.ParseInt(claims.ExpirationTime, 10, 64)
 		if err != nil {
-			return claims, err
+			return nil, nil, err
 		}
 		now := time.Now().Unix()
 		if exp < now {
-			return claims, fmt.Errorf("jwt is already expired")
+			return nil, nil, fmt.Errorf("jwt is already expired")
 		}
 	}
 
 	// check signature
 	signatureBytes, err := base64.RawURLEncoding.DecodeString(split[2])
 	if err != nil {
-		return claims, err
+		return nil, nil, err
 	}
 
-	err = core.VerifySignature([]byte(split[0]+"."+split[1]), signatureBytes, claims.Issuer)
+	keyID := header.KeyID
+	if keyID == "" {
+		keyID = claims.Issuer
+	}
+
+	err = core.VerifySignature([]byte(split[0]+"."+split[1]), signatureBytes, keyID)
 	if err != nil {
-		return claims, err
+		return nil, nil, err
 	}
 
 	// all checks passed
-	return claims, nil
+	return &header, &claims, nil
 }

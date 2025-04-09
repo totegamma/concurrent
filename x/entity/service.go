@@ -163,7 +163,7 @@ func (s *service) Affiliation(ctx context.Context, mode core.CommitMode, documen
 				return core.Entity{}, fmt.Errorf("invitation code is required")
 			}
 
-			claims, err := jwt.Validate(opts.Invitation)
+			_, claims, err := jwt.Validate(opts.Invitation)
 			if err != nil {
 				span.RecordError(err)
 				return core.Entity{}, err

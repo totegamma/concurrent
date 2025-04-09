@@ -23,6 +23,7 @@ func NewRepository(db *gorm.DB) Repo {
 	return &repository{db}
 }
 
+// Subscribe creates or updates a notification subscription in the database.
 func (r *repository) Subscribe(ctx context.Context, notification core.NotificationSubscription) (core.NotificationSubscription, error) {
 	ctx, span := tracer.Start(ctx, "Notification.Repository.Subscribe")
 	defer span.End()
@@ -34,6 +35,7 @@ func (r *repository) Subscribe(ctx context.Context, notification core.Notificati
 	return notification, nil
 }
 
+// GetAllSubscriptions retrieves all notification subscriptions from the database.
 func (r *repository) GetAllSubscriptions(ctx context.Context) ([]core.NotificationSubscription, error) {
 	ctx, span := tracer.Start(ctx, "Notification.Repository.GetAllSubscriptions")
 	defer span.End()
@@ -47,6 +49,7 @@ func (r *repository) GetAllSubscriptions(ctx context.Context) ([]core.Notificati
 	return notifications, nil
 }
 
+// Delete removes a notification subscription by vendor ID and owner.
 func (r *repository) Delete(ctx context.Context, vendorID, owner string) error {
 	ctx, span := tracer.Start(ctx, "Notification.Repository.Delete")
 	defer span.End()
@@ -59,6 +62,7 @@ func (r *repository) Delete(ctx context.Context, vendorID, owner string) error {
 	return nil
 }
 
+// Get retrieves a notification subscription by vendor ID and owner.
 func (r *repository) Get(ctx context.Context, vendorID, owner string) (core.NotificationSubscription, error) {
 	ctx, span := tracer.Start(ctx, "Notification.Repository.Get")
 	defer span.End()

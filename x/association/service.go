@@ -69,6 +69,7 @@ func (s *service) Count(ctx context.Context) (int64, error) {
 	return s.repo.Count(ctx)
 }
 
+// Clean removes all associations owned by the specified ccid.
 func (s *service) Clean(ctx context.Context, ccid string) error {
 	ctx, span := tracer.Start(ctx, "Association.Service.Clean")
 	defer span.End()

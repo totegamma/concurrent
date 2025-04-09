@@ -53,6 +53,7 @@ func (h handler) Get(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": profile})
 }
 
+// GetBySemanticID returns a profile by semantic ID and owner.
 func (h handler) GetBySemanticID(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Profile.Handler.GetBySemanticID")
 	defer span.End()

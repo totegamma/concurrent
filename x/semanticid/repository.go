@@ -24,6 +24,7 @@ func NewRepository(db *gorm.DB) Repository {
 	return &repository{db}
 }
 
+// Upsert creates or updates a semantic ID record.
 func (r *repository) Upsert(ctx context.Context, item core.SemanticID) (core.SemanticID, error) {
 	ctx, span := tracer.Start(ctx, "SemanticID.Repository.Upsert")
 	defer span.End()
@@ -35,6 +36,7 @@ func (r *repository) Upsert(ctx context.Context, item core.SemanticID) (core.Sem
 	return item, nil
 }
 
+// Get retrieves a semantic ID record by its ID and owner.
 func (r *repository) Get(ctx context.Context, id, owner string) (core.SemanticID, error) {
 	ctx, span := tracer.Start(ctx, "SemanticID.Repository.Get")
 	defer span.End()
@@ -51,6 +53,7 @@ func (r *repository) Get(ctx context.Context, id, owner string) (core.SemanticID
 	return item, nil
 }
 
+// Delete removes a semantic ID record by its ID and owner.
 func (r *repository) Delete(ctx context.Context, id, owner string) error {
 	ctx, span := tracer.Start(ctx, "SemanticID.Repository.Delete")
 	defer span.End()
@@ -62,6 +65,7 @@ func (r *repository) Delete(ctx context.Context, id, owner string) error {
 	return nil
 }
 
+// Clean removes all semantic ID records owned by the specified ccid.
 func (r *repository) Clean(ctx context.Context, ccid string) error {
 	ctx, span := tracer.Start(ctx, "SemanticID.Repository.Clean")
 	defer span.End()

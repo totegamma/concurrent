@@ -107,6 +107,8 @@ func (s *service) Revoke(ctx context.Context, mode core.CommitMode, payload, sig
 	return revoked, nil
 }
 
+// ResolveSubkey resolves a subkey (CKID) to its root key (CCID) by traversing the key hierarchy.
+// It also validates that each key in the chain is not revoked.
 func (s *service) ResolveSubkey(ctx context.Context, keyID string) (string, error) {
 	ctx, span := tracer.Start(ctx, "Key.Service.ResolveSubkey")
 	defer span.End()
@@ -131,6 +133,7 @@ func (s *service) ResolveSubkey(ctx context.Context, keyID string) (string, erro
 	return rootKey, nil
 }
 
+// GetRemoteKeyResolution retrieves the key resolution chain for a key ID from a remote domain.
 func (s *service) GetRemoteKeyResolution(ctx context.Context, remote string, keyID string) ([]core.Key, error) {
 	ctx, span := tracer.Start(ctx, "Key.Service.GetRemoteKey")
 	defer span.End()
@@ -138,6 +141,7 @@ func (s *service) GetRemoteKeyResolution(ctx context.Context, remote string, key
 	return s.repository.GetRemoteKeyResolution(ctx, remote, keyID)
 }
 
+// GetKeyResolution retrieves the key resolution chain for a local key ID (CKID) up to its root (CCID).
 func (s *service) GetKeyResolution(ctx context.Context, keyID string) ([]core.Key, error) {
 	ctx, span := tracer.Start(ctx, "Key.Service.GetKeyResolution")
 	defer span.End()
@@ -164,6 +168,7 @@ func (s *service) GetKeyResolution(ctx context.Context, keyID string) ([]core.Ke
 	}
 }
 
+// GetAllKeys retrieves all keys associated with a specific owner (root CCID).
 func (s *service) GetAllKeys(ctx context.Context, owner string) ([]core.Key, error) {
 	ctx, span := tracer.Start(ctx, "Key.Service.GetAllKeys")
 	defer span.End()
@@ -171,6 +176,7 @@ func (s *service) GetAllKeys(ctx context.Context, owner string) ([]core.Key, err
 	return s.repository.GetAll(ctx, owner)
 }
 
+// Clean deletes all keys associated with a specific owner (root CCID).
 func (s *service) Clean(ctx context.Context, ccid string) error {
 	ctx, span := tracer.Start(ctx, "Key.Service.Clean")
 	defer span.End()
@@ -178,6 +184,7 @@ func (s *service) Clean(ctx context.Context, ccid string) error {
 	return s.repository.Clean(ctx, ccid)
 }
 
+// IsKeyValid checks if a key is currently valid (i.e., not revoked).
 func IsKeyValid(ctx context.Context, key core.Key) bool {
 	return key.RevokeDocument == nil
 }

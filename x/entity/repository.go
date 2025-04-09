@@ -112,6 +112,7 @@ func (r *repository) Get(ctx context.Context, key string) (core.Entity, error) {
 	return entity, nil
 }
 
+// GetByAlias returns an entity by alias
 func (r *repository) GetByAlias(ctx context.Context, alias string) (core.Entity, error) {
 	ctx, span := tracer.Start(ctx, "Entity.Repository.GetByAlias")
 	defer span.End()
@@ -129,6 +130,7 @@ func (r *repository) GetByAlias(ctx context.Context, alias string) (core.Entity,
 	return entity, err
 }
 
+// SetAlias sets the alias for an entity
 func (r *repository) SetAlias(ctx context.Context, id, alias string) error {
 	ctx, span := tracer.Start(ctx, "Entity.Repository.SetAlias")
 	defer span.End()
@@ -136,6 +138,7 @@ func (r *repository) SetAlias(ctx context.Context, id, alias string) error {
 	return r.db.WithContext(ctx).Model(&core.Entity{}).Where("id = ?", id).Update("alias", alias).Error
 }
 
+// GetMeta returns the metadata for an entity by its ID (CCID).
 func (r *repository) GetMeta(ctx context.Context, key string) (core.EntityMeta, error) {
 	ctx, span := tracer.Start(ctx, "Entity.Repository.GetMeta")
 	defer span.End()
@@ -145,6 +148,7 @@ func (r *repository) GetMeta(ctx context.Context, key string) (core.EntityMeta, 
 	return meta, err
 }
 
+// UpdateMeta updates the metadata info field for an entity by its ID (CCID).
 func (r *repository) UpdateMeta(ctx context.Context, key, info string) error {
 	ctx, span := tracer.Start(ctx, "Entity.Repository.UpdateMeta")
 	defer span.End()
@@ -152,7 +156,7 @@ func (r *repository) UpdateMeta(ctx context.Context, key, info string) error {
 	return r.db.WithContext(ctx).Model(&core.EntityMeta{}).Where("id = ?", key).Update("info", info).Error
 }
 
-// Create creates new entity
+// Upsert creates a new entity or updates an existing one.
 func (r *repository) Upsert(ctx context.Context, entity core.Entity) (core.Entity, error) {
 	ctx, span := tracer.Start(ctx, "Entity.Repository.Upsert")
 	defer span.End()
@@ -177,6 +181,7 @@ func (r *repository) Upsert(ctx context.Context, entity core.Entity) (core.Entit
 	return entity, nil
 }
 
+// DeleteMeta deletes the metadata for an entity by its ID (CCID).
 func (r *repository) DeleteMeta(ctx context.Context, key string) error {
 	ctx, span := tracer.Start(ctx, "Entity.Repository.DeleteMeta")
 	defer span.End()
@@ -190,6 +195,7 @@ func (r *repository) DeleteMeta(ctx context.Context, key string) error {
 	return nil
 }
 
+// UpsertWithMeta creates or updates an entity along with its metadata in a single transaction.
 func (r *repository) UpsertWithMeta(ctx context.Context, entity core.Entity, meta core.EntityMeta) (core.Entity, core.EntityMeta, error) {
 	ctx, span := tracer.Start(ctx, "Entity.Repository.UpsertWithMeta")
 	defer span.End()
@@ -237,6 +243,7 @@ func (r *repository) Delete(ctx context.Context, id string) error {
 	return err
 }
 
+// UpdateScore updates the score of an entity by its ID.
 func (r *repository) UpdateScore(ctx context.Context, id string, score int) error {
 	ctx, span := tracer.Start(ctx, "Entity.Repository.UpdateScore")
 	defer span.End()
@@ -244,6 +251,7 @@ func (r *repository) UpdateScore(ctx context.Context, id string, score int) erro
 	return r.db.WithContext(ctx).Model(&core.Entity{}).Where("id = ?", id).Update("score", score).Error
 }
 
+// UpdateTag updates the tag string of an entity by its ID.
 func (r *repository) UpdateTag(ctx context.Context, id, tag string) error {
 	ctx, span := tracer.Start(ctx, "Entity.Repository.UpdateTag")
 	defer span.End()

@@ -303,6 +303,7 @@ func (s *service) Unsubscribe(ctx context.Context, mode core.CommitMode, documen
 	return item, err
 }
 
+// Clean removes all subscriptions authored by the specified ccid, excluding domain-owned subscriptions.
 func (s *service) Clean(ctx context.Context, ccid string) error {
 	ctx, span := tracer.Start(ctx, "Subscription.Service.Clean")
 	defer span.End()

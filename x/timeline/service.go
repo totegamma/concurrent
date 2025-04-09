@@ -64,6 +64,8 @@ func (s *service) Count(ctx context.Context) (int64, error) {
 	return s.repository.Count(ctx)
 }
 
+// GetChunks retrieves chunk information for multiple timelines around a specific epoch.
+// It normalizes timeline IDs, looks up chunk iterators, loads chunk bodies, and handles remote timelines.
 func (s *service) GetChunks(ctx context.Context, timelines []string, epoch string) (map[string]core.Chunk, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.GetChunks")
 	defer span.End()
@@ -197,6 +199,8 @@ func (s *service) NormalizeTimelineID(ctx context.Context, timeline string) (str
 	return normalized, nil
 }
 
+// NormalizeTimelineIDs normalizes a list of timeline IDs concurrently.
+// It uses a cache and limits concurrency.
 func (s *service) NormalizeTimelineIDs(ctx context.Context, timelines []string) (map[string]string, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.NormalizeTimelineIDs")
 	defer span.End()
@@ -248,6 +252,8 @@ func (s *service) NormalizeTimelineIDs(ctx context.Context, timelines []string) 
 	return normalizedMap, nil
 }
 
+// LookupChunkItr looks up chunk iterators for multiple timelines at a specific epoch.
+// It normalizes the timeline IDs before querying the repository.
 func (s *service) LookupChunkItr(ctx context.Context, timeliens []string, epoch string) (map[string]string, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.LookupChunkItr")
 	defer span.End()
@@ -280,6 +286,8 @@ func (s *service) LookupChunkItr(ctx context.Context, timeliens []string, epoch 
 	return recovered, nil
 }
 
+// LoadChunkBody loads the body content for multiple chunks specified by a query map (timelineID -> epoch).
+// It normalizes the timeline IDs before querying the repository.
 func (s *service) LoadChunkBody(ctx context.Context, query map[string]string) (map[string]core.Chunk, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.LoadChunkBody")
 	defer span.End()
@@ -316,6 +324,7 @@ func (s *service) LoadChunkBody(ctx context.Context, query map[string]string) (m
 	return recovered, nil
 }
 
+// GetRecentItemsFromSubscription retrieves recent items from timelines specified in a subscription.
 func (s *service) GetRecentItemsFromSubscription(ctx context.Context, subscription string, until time.Time, limit int) ([]core.TimelineItem, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.GetRecentItemsFromSubscription")
 	defer span.End()
@@ -333,6 +342,7 @@ func (s *service) GetRecentItemsFromSubscription(ctx context.Context, subscripti
 	return s.GetRecentItems(ctx, timelines, until, limit)
 }
 
+// QueueItem is used internally by GetRecentItems for the priority queue.
 type QueueItem struct {
 	Timeline string
 	Epoch    string
@@ -340,6 +350,7 @@ type QueueItem struct {
 	Index    int
 }
 
+// PriorityQueue implements heap.Interface for QueueItem.
 type PriorityQueue []*QueueItem
 
 func (pq PriorityQueue) Len() int { return len(pq) }
@@ -361,7 +372,8 @@ func (pq *PriorityQueue) Pop() any {
 	return item
 }
 
-// GetRecentItems returns recent message from timelines
+// GetRecentItems returns recent message from timelines using a chunk-based approach with a priority queue.
+// It fetches chunks around the 'until' time, merges items using a heap, and handles pagination across chunks.
 func (s *service) GetRecentItems(ctx context.Context, timelines []string, until time.Time, limit int) ([]core.TimelineItem, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.GetRecentItems")
 	defer span.End()
@@ -470,6 +482,7 @@ func (s *service) GetRecentItems(ctx context.Context, timelines []string, until 
 	return result, nil
 }
 
+// GetImmediateItemsFromSubscription retrieves immediate items from timelines specified in a subscription.
 func (s *service) GetImmediateItemsFromSubscription(ctx context.Context, subscription string, since time.Time, limit int) ([]core.TimelineItem, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.GetImmediateItemsFromSubscription")
 	defer span.End()
@@ -487,7 +500,7 @@ func (s *service) GetImmediateItemsFromSubscription(ctx context.Context, subscri
 	return s.GetImmediateItems(ctx, timelines, since, limit)
 }
 
-// GetImmediateItems returns immediate message from timelines
+// GetImmediateItems returns immediate message from timelines (Not Implemented)
 func (s *service) GetImmediateItems(ctx context.Context, timelines []string, since time.Time, limit int) ([]core.TimelineItem, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.GetImmediateItems")
 	defer span.End()
@@ -495,7 +508,7 @@ func (s *service) GetImmediateItems(ctx context.Context, timelines []string, sin
 	return nil, fmt.Errorf("not implemented")
 }
 
-// Post posts events to the local timeline.
+// PostItem posts an item to a timeline after performing policy checks.
 func (s *service) PostItem(ctx context.Context, timeline string, item core.TimelineItem, document, signature string) (core.TimelineItem, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.PostItem")
 	defer span.End()
@@ -609,6 +622,7 @@ func (s *service) PostItem(ctx context.Context, timeline string, item core.Timel
 	return created, nil
 }
 
+// RemoveItemsByResourceID removes all timeline items associated with a specific resource ID.
 func (s *service) RemoveItemsByResourceID(ctx context.Context, resourceID string) error {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.RemoveItemByResourceID")
 	defer span.End()
@@ -621,6 +635,7 @@ func (s *service) RemoveItemsByResourceID(ctx context.Context, resourceID string
 	return err
 }
 
+// PublishEvent publishes an event to the specified timeline via the repository.
 func (s *service) PublishEvent(ctx context.Context, event core.Event) error {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.PublishEvent")
 	defer span.End()
@@ -633,6 +648,7 @@ func (s *service) PublishEvent(ctx context.Context, event core.Event) error {
 	return s.repository.PublishEvent(ctx, event)
 }
 
+// Event handles incoming events, typically from remote sources, and publishes them locally.
 func (s *service) Event(ctx context.Context, mode core.CommitMode, document, signature string) (core.Event, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.Event")
 	defer span.End()
@@ -655,7 +671,7 @@ func (s *service) Event(ctx context.Context, mode core.CommitMode, document, sig
 	return event, s.repository.PublishEvent(ctx, event)
 }
 
-// Create updates timeline information
+// UpsertTimeline creates or updates a timeline after validating the document and policy.
 func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, document, signature string) (core.Timeline, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.UpsertTimline")
 	defer span.End()
@@ -808,7 +824,7 @@ func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, docu
 	return saved, nil
 }
 
-// Get returns timeline information by ID
+// GetTimeline returns timeline information by ID, handling normalization and remote fetching if necessary.
 func (s *service) GetTimeline(ctx context.Context, key string) (core.Timeline, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.GetTimeline")
 	defer span.End()
@@ -841,7 +857,7 @@ func (s *service) GetTimeline(ctx context.Context, key string) (core.Timeline, e
 	}
 }
 
-// TimelineListBySchema returns timelineList by schema
+// ListTimelineBySchema returns timelineList by schema
 func (s *service) ListTimelineBySchema(ctx context.Context, schema string) ([]core.Timeline, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.ListTimelineBySchema")
 	defer span.End()
@@ -853,7 +869,7 @@ func (s *service) ListTimelineBySchema(ctx context.Context, schema string) ([]co
 	return timelines, err
 }
 
-// TimelineListByAuthor returns timelineList by author
+// ListTimelineByAuthor returns timelineList by author
 func (s *service) ListTimelineByAuthor(ctx context.Context, author string) ([]core.Timeline, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.ListTimelineByAuthor")
 	defer span.End()
@@ -873,7 +889,7 @@ func (s *service) GetItem(ctx context.Context, timeline string, id string) (core
 	return s.repository.GetItem(ctx, timeline, id)
 }
 
-// Retract removes timeline element by ID
+// Retract removes timeline element by ID after policy check.
 func (s *service) Retract(ctx context.Context, mode core.CommitMode, document, signature string) (core.TimelineItem, []string, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.Retract")
 	defer span.End()
@@ -936,7 +952,7 @@ func (s *service) Retract(ctx context.Context, mode core.CommitMode, document, s
 	return existing, affected, nil
 }
 
-// Delete deletes
+// DeleteTimeline deletes a timeline after policy check.
 func (s *service) DeleteTimeline(ctx context.Context, mode core.CommitMode, document string) (core.Timeline, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.DeleteTimeline")
 	defer span.End()
@@ -994,6 +1010,7 @@ func (s *service) DeleteTimeline(ctx context.Context, mode core.CommitMode, docu
 	return deleteTarget, err
 }
 
+// ListTimelineSubscriptions returns a map of timeline IDs to their subscription counts.
 func (s *service) ListTimelineSubscriptions(ctx context.Context) (map[string]int64, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.ListTimelineSubscriptions")
 	defer span.End()
@@ -1001,6 +1018,7 @@ func (s *service) ListTimelineSubscriptions(ctx context.Context) (map[string]int
 	return s.repository.ListTimelineSubscriptions(ctx)
 }
 
+// GetTimelineAutoDomain retrieves a timeline, automatically handling local vs remote fetching based on the ID format.
 func (s *service) GetTimelineAutoDomain(ctx context.Context, timelineID string) (core.Timeline, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.getTimelineAutoDomain")
 	defer span.End()
@@ -1026,6 +1044,8 @@ func (s *service) GetTimelineAutoDomain(ctx context.Context, timelineID string) 
 	}
 }
 
+// Realtime handles WebSocket connections for real-time timeline updates.
+// It manages subscriptions and forwards events from the repository's PubSub to the client.
 func (s *service) Realtime(ctx context.Context, request <-chan []string, response chan<- core.Event) {
 
 	atomic.AddInt64(&s.socketCounter, 1)
@@ -1098,6 +1118,7 @@ func (s *service) Realtime(ctx context.Context, request <-chan []string, respons
 	}
 }
 
+// GetOwners returns a list of unique owners for the given timeline IDs.
 func (s *service) GetOwners(ctx context.Context, timelines []string) ([]string, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.GetOwners")
 	defer span.End()
@@ -1119,6 +1140,7 @@ func (s *service) GetOwners(ctx context.Context, timelines []string) ([]string, 
 	return owners, nil
 }
 
+// Clean removes all timelines owned by the specified ccid.
 func (s *service) Clean(ctx context.Context, ccid string) error {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.Clean")
 	defer span.End()
@@ -1140,6 +1162,7 @@ func (s *service) Clean(ctx context.Context, ccid string) error {
 	return nil
 }
 
+// Query retrieves timeline items based on various filter criteria.
 func (s *service) Query(ctx context.Context, timelineID, schema, owner, author string, since time.Time, limit int) ([]core.TimelineItem, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.Query")
 	defer span.End()
@@ -1174,6 +1197,7 @@ var (
 	outerConnection                   *prometheus.GaugeVec
 )
 
+// UpdateMetrics updates Prometheus metrics related to timeline service performance and state.
 func (s *service) UpdateMetrics() {
 
 	metrics := s.repository.GetMetrics()
@@ -1227,6 +1251,7 @@ func (s *service) UpdateMetrics() {
 	outerConnection.WithLabelValues("current").Set(float64(metrics["remoteConns"]))
 }
 
+// ListLocalRecentlyRemovedItems retrieves lists of recently removed item IDs for local timelines.
 func (s *service) ListLocalRecentlyRemovedItems(ctx context.Context, timelines []string) (map[string][]string, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.ListLocalRecentlyRemovedItems")
 	defer span.End()
@@ -1245,6 +1270,7 @@ func (s *service) ListLocalRecentlyRemovedItems(ctx context.Context, timelines [
 	return s.repository.ListRecentlyRemovedItemsLocal(ctx, normalized)
 }
 
+// ListRecentlyRemovedItems retrieves lists of recently removed item IDs for multiple timelines.
 func (s *service) ListRecentlyRemovedItems(ctx context.Context, timelines []string) (map[string][]string, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.ListRecentlyRemovedItems")
 	defer span.End()

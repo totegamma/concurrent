@@ -69,6 +69,7 @@ func (r *repository) GetByCCID(ctx context.Context, ccid string) (core.Domain, e
 	return host, nil
 }
 
+// GetByCSID returns a host by CSID
 func (r *repository) GetByCSID(ctx context.Context, csid string) (core.Domain, error) {
 	ctx, span := tracer.Start(ctx, "Domain.Repository.GetByCSID")
 	defer span.End()

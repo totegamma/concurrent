@@ -28,6 +28,8 @@ func (s *service) Upsert(ctx context.Context, host core.Domain) (core.Domain, er
 	return s.repository.Upsert(ctx, host)
 }
 
+// Get returns a domain by ID. It handles FQDN, CCID, and CSID formats.
+// For CSID, it returns the local domain information if the CSID matches the server's CSID.
 func (s *service) Get(ctx context.Context, id string) (core.Domain, error) {
 	ctx, span := tracer.Start(ctx, "Domain.Service.Get")
 	defer span.End()
@@ -78,6 +80,8 @@ func (s *service) GetByFQDN(ctx context.Context, fqdn string) (core.Domain, erro
 	return domain, nil
 }
 
+// ForceFetch fetches domain information directly from the remote domain specified by FQDN,
+// bypassing any cached data in the local repository, and updates the local repository.
 func (s *service) ForceFetch(ctx context.Context, fqdn string) (core.Domain, error) {
 	ctx, span := tracer.Start(ctx, "Domain.Service.ForceFetch")
 	defer span.End()

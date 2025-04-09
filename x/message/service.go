@@ -143,7 +143,7 @@ func (s *service) isMessagePublic(ctx context.Context, message core.Message) (bo
 	return true, nil
 }
 
-// Get returns a message by ID
+// GetAsGuest returns a message by ID, performing policy checks for guest access.
 func (s *service) GetAsGuest(ctx context.Context, id string) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "Message.Service.GetAsGuest")
 	defer span.End()
@@ -167,6 +167,7 @@ func (s *service) GetAsGuest(ctx context.Context, id string) (core.Message, erro
 	return message, nil
 }
 
+// GetAsUser returns a message by ID, performing policy checks for the given requester entity.
 func (s *service) GetAsUser(ctx context.Context, id string, requester core.Entity) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "Message.Service.GetAsUser")
 	defer span.End()
@@ -612,6 +613,7 @@ func (s *service) Delete(ctx context.Context, mode core.CommitMode, document, si
 	return deleteTarget, affected, err
 }
 
+// Clean deletes all messages authored by the specified ccid.
 func (s *service) Clean(ctx context.Context, ccid string) error {
 	ctx, span := tracer.Start(ctx, "Message.Service.Clean")
 	defer span.End()

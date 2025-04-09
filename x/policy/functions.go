@@ -7,6 +7,9 @@ import (
 	"github.com/totegamma/concurrent/core"
 )
 
+// IsDominant checks if a policy evaluation result is dominant (Always or Never).
+// It returns true and the boolean value (true for Always, false for Never) if dominant,
+// otherwise returns false, false.
 func IsDominant(result core.PolicyEvalResult) (bool, bool) {
 	if result == core.PolicyEvalResultAlways {
 		return true, true
@@ -17,6 +20,11 @@ func IsDominant(result core.PolicyEvalResult) (bool, bool) {
 	}
 }
 
+// AccumulateOr combines multiple policy evaluation results using OR logic.
+// Dominant results (Always, Never) take precedence.
+// If conflicting dominant results exist, it defaults.
+// Otherwise, Allow takes precedence over Deny, which takes precedence over Default.
+// Returns Error if any input result is Error.
 func AccumulateOr(results []core.PolicyEvalResult) core.PolicyEvalResult {
 	var hasAlways bool
 	var hasNever bool

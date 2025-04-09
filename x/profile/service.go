@@ -48,6 +48,9 @@ func (s *service) Get(ctx context.Context, id string) (core.Profile, error) {
 	return s.repo.Get(ctx, id)
 }
 
+// GetBySemanticID retrieves a profile using its semantic ID and owner.
+// It first resolves the semantic ID to a profile ID using the semantic ID service,
+// then retrieves the profile using the resolved ID.
 func (s *service) GetBySemanticID(ctx context.Context, semanticID, owner string) (core.Profile, error) {
 	ctx, span := tracer.Start(ctx, "Profile.Service.GetBySemanticID")
 	defer span.End()

@@ -26,6 +26,8 @@ func NewRepository(db *gorm.DB) Repository {
 	}
 }
 
+// Upsert finds a schema by URL or creates it if it doesn't exist.
+// If the schema is not found locally, it attempts to fetch it from the URL.
 func (r *repository) Upsert(ctx context.Context, schema string) (core.Schema, error) {
 	ctx, span := tracer.Start(ctx, "Schema.Repository.Upsert")
 	defer span.End()
@@ -65,6 +67,7 @@ func (r *repository) Upsert(ctx context.Context, schema string) (core.Schema, er
 	return s, nil
 }
 
+// Get retrieves a schema by its internal ID.
 func (r *repository) Get(ctx context.Context, id uint) (core.Schema, error) {
 	ctx, span := tracer.Start(ctx, "Schema.Repository.Get")
 	defer span.End()

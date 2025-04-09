@@ -202,6 +202,7 @@ func (r *repository) GetByAuthorAndSchema(ctx context.Context, owner string, sch
 	return profiles, nil
 }
 
+// GetByAuthor returns profiles by author (owner).
 func (r *repository) GetByAuthor(ctx context.Context, owner string) ([]core.Profile, error) {
 	ctx, span := tracer.Start(ctx, "Profile.Repository.GetByAuthor")
 	defer span.End()
@@ -224,6 +225,7 @@ func (r *repository) GetByAuthor(ctx context.Context, owner string) ([]core.Prof
 	return profiles, nil
 }
 
+// GetBySchema returns profiles by schema URL.
 func (r *repository) GetBySchema(ctx context.Context, schema string) ([]core.Profile, error) {
 	ctx, span := tracer.Start(ctx, "Profile.Repository.GetBySchema")
 	defer span.End()
@@ -251,6 +253,7 @@ func (r *repository) GetBySchema(ctx context.Context, schema string) ([]core.Pro
 	return profiles, nil
 }
 
+// Delete deletes a profile by ID.
 func (r *repository) Delete(ctx context.Context, id string) (core.Profile, error) {
 	ctx, span := tracer.Start(ctx, "Profile.Repository.Delete")
 	defer span.End()
@@ -273,6 +276,7 @@ func (r *repository) Delete(ctx context.Context, id string) (core.Profile, error
 	return profile, nil
 }
 
+// Get returns a profile by ID.
 func (r *repository) Get(ctx context.Context, id string) (core.Profile, error) {
 	ctx, span := tracer.Start(ctx, "Profile.Repository.Get")
 	defer span.End()
@@ -299,6 +303,7 @@ func (r *repository) Get(ctx context.Context, id string) (core.Profile, error) {
 	return profile, nil
 }
 
+// Clean deletes all profiles authored by the specified ccid.
 func (r *repository) Clean(ctx context.Context, ccid string) error {
 	ctx, span := tracer.Start(ctx, "Profile.Repository.Clean")
 	defer span.End()
@@ -312,6 +317,7 @@ func (r *repository) Clean(ctx context.Context, ccid string) error {
 	return nil
 }
 
+// Query returns profiles based on query parameters: author, schema, limit, since, until.
 func (r *repository) Query(ctx context.Context, author, schema string, limit int, since, until time.Time) ([]core.Profile, error) {
 	ctx, span := tracer.Start(ctx, "Profile.Repository.Query")
 	defer span.End()

@@ -44,6 +44,7 @@ func NewService(
 	}
 }
 
+// Clean deletes the metadata associated with the given entity ID (CCID).
 func (s *service) Clean(ctx context.Context, ccid string) error {
 	ctx, span := tracer.Start(ctx, "Entity.Service.Clean")
 	defer span.End()
@@ -91,6 +92,8 @@ func (s *service) Count(ctx context.Context) (int64, error) {
 	return s.repository.Count(ctx)
 }
 
+// Affiliation processes an affiliation document, creating or updating an entity.
+// It handles different registration modes (open, invite) and validates signatures and options.
 func (s *service) Affiliation(ctx context.Context, mode core.CommitMode, document, signature, option string) (core.Entity, error) {
 	ctx, span := tracer.Start(ctx, "Entity.Service.Affiliation")
 	defer span.End()
@@ -280,6 +283,7 @@ func (s *service) Affiliation(ctx context.Context, mode core.CommitMode, documen
 	}
 }
 
+// Tombstone processes a tombstone document, marking an entity as deleted.
 func (s *service) Tombstone(ctx context.Context, mode core.CommitMode, document, signature string) (core.Entity, error) {
 	ctx, span := tracer.Start(ctx, "Entity.Service.Tombstone")
 	defer span.End()
@@ -338,6 +342,9 @@ func (s *service) GetWithHint(ctx context.Context, ccid, hint string) (core.Enti
 	return entity, nil
 }
 
+// GetByAlias returns an entity by its alias (e.g., user.example.com).
+// It first checks the local repository, then attempts DNS TXT record lookup if not found locally.
+// If found via DNS, it verifies the signature and pulls the entity from the remote hint if necessary.
 func (s *service) GetByAlias(ctx context.Context, alias string) (core.Entity, error) {
 	ctx, span := tracer.Start(ctx, "Entity.Service.GetByAlias")
 	defer span.End()
@@ -455,6 +462,7 @@ func (s *service) Delete(ctx context.Context, id string) error {
 	return s.repository.Delete(ctx, id)
 }
 
+// GetMeta returns the metadata for an entity by its ID (CCID).
 func (s *service) GetMeta(ctx context.Context, ccid string) (core.EntityMeta, error) {
 	ctx, span := tracer.Start(ctx, "Entity.Service.GetMeta")
 	defer span.End()
@@ -462,6 +470,7 @@ func (s *service) GetMeta(ctx context.Context, ccid string) (core.EntityMeta, er
 	return s.repository.GetMeta(ctx, ccid)
 }
 
+// UpdateMeta updates the metadata info field for an entity by its ID (CCID).
 func (s *service) UpdateMeta(ctx context.Context, key, info string) error {
 	ctx, span := tracer.Start(ctx, "Entity.Service.UpdateMeta")
 	defer span.End()

@@ -28,6 +28,7 @@ func NewRepository(db *gorm.DB) Repository {
 	return &repository{db}
 }
 
+// List returns a list of jobs owned by the specified author.
 func (r *repository) List(ctx context.Context, authorID string) ([]core.Job, error) {
 	ctx, span := tracer.Start(ctx, "Job.Repository.List")
 	defer span.End()
@@ -41,6 +42,7 @@ func (r *repository) List(ctx context.Context, authorID string) ([]core.Job, err
 	return jobs, nil
 }
 
+// Enqueue adds a new job to the queue.
 func (r *repository) Enqueue(ctx context.Context, author, typ, payload string, scheduled time.Time) (core.Job, error) {
 	ctx, span := tracer.Start(ctx, "Job.Repository.Enqueue")
 	defer span.End()
@@ -60,6 +62,9 @@ func (r *repository) Enqueue(ctx context.Context, author, typ, payload string, s
 	return job, nil
 }
 
+// Dequeue retrieves and marks the next available job as 'running'.
+// It selects the oldest pending job whose scheduled time is in the past.
+// This operation is performed within a transaction.
 func (r *repository) Dequeue(ctx context.Context) (*core.Job, error) {
 	ctx, span := tracer.Start(ctx, "Job.Repository.Dequeue")
 	defer span.End()
@@ -96,6 +101,7 @@ func (r *repository) Dequeue(ctx context.Context) (*core.Job, error) {
 	return &job, nil
 }
 
+// Complete marks a job as completed or failed with a given status and result message.
 func (r *repository) Complete(ctx context.Context, id, status, result string) (core.Job, error) {
 	ctx, span := tracer.Start(ctx, "Job.Repository.Complete")
 	defer span.End()
@@ -116,6 +122,7 @@ func (r *repository) Complete(ctx context.Context, id, status, result string) (c
 	return job, nil
 }
 
+// Cancel marks a job as canceled.
 func (r *repository) Cancel(ctx context.Context, id string) (core.Job, error) {
 	ctx, span := tracer.Start(ctx, "Job.Repository.Cancel")
 	defer span.End()
@@ -135,6 +142,8 @@ func (r *repository) Cancel(ctx context.Context, id string) (core.Job, error) {
 	return job, nil
 }
 
+// Clean finds jobs older than a specified time with a final status (completed, failed, canceled).
+// Note: This function only finds the jobs, it does not delete them.
 func (r *repository) Clean(ctx context.Context, olderThan time.Time) ([]core.Job, error) {
 	ctx, span := tracer.Start(ctx, "Job.Repository.Clean")
 	defer span.End()

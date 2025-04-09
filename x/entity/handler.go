@@ -92,6 +92,7 @@ func (h handler) GetSelf(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": entity})
 }
 
+// GetMeta returns the metadata of the requester's entity.
 func (h handler) GetMeta(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Entity.Handler.GetMeta")
 	defer span.End()
@@ -113,6 +114,7 @@ func (h handler) GetMeta(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": meta})
 }
 
+// UpdateMeta updates the metadata of the requester's entity.
 func (h handler) UpdateMeta(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Entity.Handler.UpdateMeta")
 	defer span.End()

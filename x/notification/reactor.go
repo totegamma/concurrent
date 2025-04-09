@@ -36,6 +36,9 @@ type Worker struct {
 	Routine context.CancelFunc
 }
 
+// Start begins the notification reactor loop.
+// It periodically checks for subscription updates and manages worker goroutines
+// for each active subscription to send web push notifications based on timeline events.
 func (r *reactor) Start(ctx context.Context) {
 
 	ticker10 := time.NewTicker(10 * time.Second)

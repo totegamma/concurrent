@@ -32,6 +32,7 @@ func NewRepository(db *gorm.DB, rdb *redis.Client) Repository {
 	return &repository{db, rdb}
 }
 
+// Log saves a commit log entry and its associated owners to the database within a transaction.
 func (r *repository) Log(ctx context.Context, commit core.CommitLog) (core.CommitLog, error) {
 	ctx, span := tracer.Start(ctx, "Store.Repository.Log")
 	defer span.End()
@@ -145,6 +146,9 @@ func (r *repository) getLatestCommitDateByOwner(ctx context.Context, owner strin
 	return object.SignedAt, nil
 }
 
+// SyncStatus checks the synchronization status of a user's commit log file against the database.
+// It compares the timestamp of the last entry in the file with the latest commit in the database for the owner.
+// It also checks if a sync operation is currently in progress using a Redis lock.
 func (r *repository) SyncStatus(ctx context.Context, owner string) (core.SyncStatus, error) {
 	ctx, span := tracer.Start(ctx, "Store.Repository.SyncStatus")
 	defer span.End()
@@ -190,6 +194,9 @@ func (r *repository) SyncStatus(ctx context.Context, owner string) (core.SyncSta
 	return core.SyncStatus{Owner: owner, Status: "outofsync", LatestOnFile: lastSignedAt, LatestOnDB: latestSignedAt}, nil
 }
 
+// SyncCommitFile synchronizes the commit log file for a given owner with the database.
+// It appends new commits from the database (since the last entry in the file) to the user's log file.
+// It uses a Redis lock to prevent concurrent sync operations for the same user and updates progress in Redis.
 func (r *repository) SyncCommitFile(ctx context.Context, owner string) error {
 	ctx, span := tracer.Start(ctx, "Store.Repository.GetLogsByOwner")
 	defer span.End()

@@ -59,6 +59,7 @@ type channelRequest struct {
 	Channels []string `json:"channels"`
 }
 
+// GetMetrics returns metrics related to the keeper's state, such as the number of remote subscriptions and connections.
 func (k *keeper) GetMetrics() map[string]int64 {
 	metrics := make(map[string]int64)
 	metrics["remoteSubs"] = int64(len(remoteSubs))
@@ -66,12 +67,14 @@ func (k *keeper) GetMetrics() map[string]int64 {
 	return metrics
 }
 
+// Start initiates the keeper's background routines for watching events, updating chunks, and maintaining connections.
 func (k *keeper) Start(ctx context.Context) {
 	go k.watchEventRoutine(ctx)
 	go k.chunkUpdaterRoutine(ctx)
 	go k.connectionkeeperRoutine(ctx)
 }
 
+// GetRemoteSubs returns a slice of all timeline IDs currently subscribed to on remote servers.
 func (k *keeper) GetRemoteSubs() []string {
 	var subs []string
 	for _, timelines := range remoteSubs {
@@ -82,6 +85,7 @@ func (k *keeper) GetRemoteSubs() []string {
 	return subs
 }
 
+// GetCurrentSubs returns a slice of unique timeline IDs currently subscribed to locally via Redis PubSub.
 func (k *keeper) GetCurrentSubs(ctx context.Context) []string {
 
 	query := k.rdb.PubSubChannels(ctx, "*")

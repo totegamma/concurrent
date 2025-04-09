@@ -80,6 +80,7 @@ func (r *repository) GetRemoteKeyResolution(ctx context.Context, remote string, 
 	return keys, nil
 }
 
+// Get retrieves a key by its ID (CKID).
 func (r *repository) Get(ctx context.Context, keyID string) (core.Key, error) {
 	ctx, span := tracer.Start(ctx, "Key.Repository.Get")
 	defer span.End()
@@ -96,6 +97,7 @@ func (r *repository) Get(ctx context.Context, keyID string) (core.Key, error) {
 	return key, nil
 }
 
+// Enact creates a new key record in the database.
 func (r *repository) Enact(ctx context.Context, key core.Key) (core.Key, error) {
 	ctx, span := tracer.Start(ctx, "Key.Repository.Enact")
 	defer span.End()
@@ -111,6 +113,7 @@ func (r *repository) Enact(ctx context.Context, key core.Key) (core.Key, error) 
 	return key, nil
 }
 
+// Revoke marks a key as revoked by setting its revoke document, signature, and valid until time.
 func (r *repository) Revoke(ctx context.Context, keyID string, payload string, signature string, signedAt time.Time) (core.Key, error) {
 	ctx, span := tracer.Start(ctx, "Key.Repository.Revoke")
 	defer span.End()
@@ -135,6 +138,7 @@ func (r *repository) Revoke(ctx context.Context, keyID string, payload string, s
 	return key, nil
 }
 
+// GetAll retrieves all keys associated with a specific owner (root CCID).
 func (r *repository) GetAll(ctx context.Context, owner string) ([]core.Key, error) {
 	ctx, span := tracer.Start(ctx, "Key.Repository.GetAll")
 	defer span.End()
@@ -148,6 +152,7 @@ func (r *repository) GetAll(ctx context.Context, owner string) ([]core.Key, erro
 	return keys, nil
 }
 
+// Clean deletes all keys associated with a specific owner (root CCID).
 func (r *repository) Clean(ctx context.Context, ccid string) error {
 	ctx, span := tracer.Start(ctx, "Key.Repository.Clean")
 	defer span.End()

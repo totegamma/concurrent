@@ -104,6 +104,7 @@ func (r *repository) setCurrentCount() {
 	r.mc.Set(&memcache.Item{Key: "timeline_count", Value: []byte(strconv.FormatInt(count, 10))})
 }
 
+// GetMetrics returns repository-specific metrics, including cache hits/misses and keeper metrics.
 func (r *repository) GetMetrics() map[string]int64 {
 
 	keeperMetrics := r.keeper.GetMetrics()
@@ -134,6 +135,8 @@ const (
 	defaultChunkSize = 32
 )
 
+// LookupChunkItrs finds the latest chunk epoch for multiple timelines up to a given epoch.
+// It checks the cache first and fetches missing data from local or remote sources.
 func (r *repository) LookupChunkItrs(ctx context.Context, normalized []string, epoch string) (map[string]string, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.LookupChunkItr")
 	defer span.End()
@@ -208,6 +211,8 @@ func (r *repository) LookupChunkItrs(ctx context.Context, normalized []string, e
 	return result, nil
 }
 
+// LoadChunkBodies retrieves the content (items) of multiple timeline chunks specified by a query map (timelineID -> epoch).
+// It checks the cache first and fetches missing data from local or remote sources.
 func (r *repository) LoadChunkBodies(ctx context.Context, query map[string]string) (map[string]core.Chunk, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.LoadChunkBodies")
 	defer span.End()
@@ -494,10 +499,12 @@ func (r *repository) loadRemoteBodies(ctx context.Context, remote string, query 
 	return result, nil
 }
 
+// SetNormalizationCache stores the normalized ID for a given timeline ID in the cache.
 func (r *repository) SetNormalizationCache(ctx context.Context, timelineID string, value string) error {
 	return r.mc.Set(&memcache.Item{Key: normalizationCachePrefix + timelineID, Value: []byte(value), Expiration: normalizationCacheTTL})
 }
 
+// GetNormalizationCache retrieves the normalized ID for a given timeline ID from the cache.
 func (r *repository) GetNormalizationCache(ctx context.Context, timelineID string) (string, error) {
 	item, err := r.mc.Get(normalizationCachePrefix + timelineID)
 	if err != nil {
@@ -506,6 +513,7 @@ func (r *repository) GetNormalizationCache(ctx context.Context, timelineID strin
 	return string(item.Value), nil
 }
 
+// GetNormalizationCaches retrieves multiple normalized IDs for a list of timeline IDs from the cache.
 func (r *repository) GetNormalizationCaches(ctx context.Context, timelineIDs []string) (map[string]string, error) {
 	keys := make([]string, len(timelineIDs))
 	for i, id := range timelineIDs {
@@ -632,6 +640,7 @@ func (r *repository) Count(ctx context.Context) (int64, error) {
 	return count, nil
 }
 
+// PublishEvent publishes an event to the specified timeline via Redis PubSub.
 func (r *repository) PublishEvent(ctx context.Context, event core.Event) error {
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.PublishEvent")
 	defer span.End()
@@ -700,7 +709,7 @@ func (r *repository) getTimelineFromRemote(ctx context.Context, host, key string
 	return timeline, err
 }
 
-// GetTimelineFromRemote gets a timeline from remote
+// GetTimelineFromRemote gets a timeline from remote, utilizing cache with background revalidation.
 func (r *repository) GetTimelineFromRemote(ctx context.Context, host string, key string) (core.Timeline, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.GetTimelineFromRemote")
 	defer span.End()
@@ -756,7 +765,7 @@ func (r *repository) GetItem(ctx context.Context, timelineID string, objectID st
 	return item, nil
 }
 
-// CreateItem creates a new timeline item
+// CreateItem creates a new timeline item and updates the cache.
 func (r *repository) CreateItem(ctx context.Context, item core.TimelineItem) (core.TimelineItem, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.CreateItem")
 	defer span.End()
@@ -814,7 +823,7 @@ func (r *repository) CreateItem(ctx context.Context, item core.TimelineItem) (co
 	return item, nil
 }
 
-// DeleteItem deletes a timeline item
+// DeleteItem deletes a timeline item and adds its ID to the recently deleted set in Redis.
 func (r *repository) DeleteItem(ctx context.Context, timelineID string, objectID string) error {
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.DeleteItem")
 	defer span.End()
@@ -830,6 +839,8 @@ func (r *repository) DeleteItem(ctx context.Context, timelineID string, objectID
 	return r.db.WithContext(ctx).Delete(&core.TimelineItem{}, "timeline_id = ? and resource_id = ?", timelineID, objectID).Error
 }
 
+// DeleteItemByResourceID deletes all timeline items across all timelines that reference a specific resource ID.
+// It also adds the resource ID to the deleted set for relevant timelines in Redis.
 func (r *repository) DeleteItemByResourceID(ctx context.Context, resourceID string) error {
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.DeleteItemByResourceID")
 	defer span.End()
@@ -848,6 +859,8 @@ func (r *repository) DeleteItemByResourceID(ctx context.Context, resourceID stri
 	return r.db.WithContext(ctx).Delete(&core.TimelineItem{}, "resource_id = ?", resourceID).Error
 }
 
+// ListRecentlyRemovedItems retrieves lists of recently removed item IDs for multiple timelines,
+// dispatching to local or remote retrieval based on the timeline's domain.
 func (r *repository) ListRecentlyRemovedItems(ctx context.Context, normalized []string) (map[string][]string, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.ListRecentlyRemovedItems")
 	defer span.End()
@@ -888,6 +901,7 @@ func (r *repository) ListRecentlyRemovedItems(ctx context.Context, normalized []
 	return result, nil
 }
 
+// ListRecentlyRemovedItemsLocal retrieves lists of recently removed item IDs for local timelines from Redis.
 func (r *repository) ListRecentlyRemovedItemsLocal(ctx context.Context, timelineIDs []string) (map[string][]string, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.ListRecentlyRemovedItemsLocal")
 	defer span.End()
@@ -910,6 +924,8 @@ func (r *repository) ListRecentlyRemovedItemsLocal(ctx context.Context, timeline
 	return removedItems, nil
 }
 
+// ListRecentlyRemovedItemsRemote retrieves lists of recently removed item IDs for remote timelines.
+// It uses a cache (memcached) and fetches from the remote domain if the cache is stale or missing.
 func (r *repository) ListRecentlyRemovedItemsRemote(ctx context.Context, domain string, timelineIDs []string) (map[string][]string, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.ListRecentlyRemovedItemsRemote")
 	defer span.End()
@@ -1100,6 +1116,7 @@ func (r *repository) ListTimelineByAuthor(ctx context.Context, author string) ([
 	return timelines, err
 }
 
+// ListTimelineByOwner returns a list of timelines owned by the specified owner.
 func (r *repository) ListTimelineByOwner(ctx context.Context, owner string) ([]core.Timeline, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.ListTimelineByOwner")
 	defer span.End()
@@ -1165,6 +1182,7 @@ func (r *repository) ListTimelineSubscriptions(ctx context.Context) (map[string]
 	return result, nil
 }
 
+// Subscribe subscribes to Redis PubSub channels and forwards events to the provided channel.
 func (r *repository) Subscribe(ctx context.Context, channels []string, event chan<- core.Event) error {
 
 	if len(channels) == 0 {
@@ -1205,6 +1223,7 @@ func (r *repository) Subscribe(ctx context.Context, channels []string, event cha
 	}
 }
 
+// Query retrieves timeline items based on various filter criteria.
 func (r *repository) Query(ctx context.Context, timelineID, schema, owner, author string, until time.Time, limit int) ([]core.TimelineItem, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.Query")
 	defer span.End()

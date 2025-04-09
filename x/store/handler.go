@@ -32,6 +32,8 @@ func NewHandler(service core.StoreService) Handler {
 	}
 }
 
+// Commit handles the submission of a new commit (document and signature).
+// It validates the request, checks document size, and calls the service to process the commit.
 func (h *handler) Commit(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Store.Handler.Commit")
 	defer span.End()
@@ -83,6 +85,7 @@ func (h *handler) Commit(c echo.Context) error {
 	return c.JSON(http.StatusCreated, echo.Map{"status": "ok", "content": result})
 }
 
+// Get returns the commit log file for the authenticated requester as an attachment.
 func (h *handler) Get(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Store.Handler.Get")
 	defer span.End()
@@ -97,6 +100,7 @@ func (h *handler) Get(c echo.Context) error {
 
 }
 
+// GetSyncStatus returns the synchronization status for the authenticated requester.
 func (h *handler) GetSyncStatus(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Store.Handler.GetSyncStatus")
 	defer span.End()
@@ -115,6 +119,7 @@ func (h *handler) GetSyncStatus(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": status})
 }
 
+// PerformSync triggers the synchronization process for the authenticated requester's commit file.
 func (h *handler) PerformSync(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Store.Handler.PerformSync")
 	defer span.End()
@@ -133,6 +138,7 @@ func (h *handler) PerformSync(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": status})
 }
 
+// Post handles the restoration of commits from an uploaded log file.
 func (h *handler) Post(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Store.Handler.Post")
 	defer span.End()

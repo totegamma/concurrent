@@ -19,6 +19,7 @@ func NewService(repo Repository) core.JobService {
 	}
 }
 
+// List returns a list of jobs owned by the specified requester.
 func (s *service) List(ctx context.Context, requester string) ([]core.Job, error) {
 	ctx, span := tracer.Start(ctx, "Job.Service.List")
 	defer span.End()
@@ -31,6 +32,7 @@ func (s *service) List(ctx context.Context, requester string) ([]core.Job, error
 	return jobs, nil
 }
 
+// Create enqueues a new job for the specified requester.
 func (s *service) Create(ctx context.Context, requester, typ, payload string, scheduled time.Time) (core.Job, error) {
 	ctx, span := tracer.Start(ctx, "Job.Service.Create")
 	defer span.End()
@@ -51,6 +53,7 @@ func (s *service) Create(ctx context.Context, requester, typ, payload string, sc
 	return job, nil
 }
 
+// Dequeue retrieves the next available job from the queue.
 func (s *service) Dequeue(ctx context.Context) (*core.Job, error) {
 	ctx, span := tracer.Start(ctx, "Job.Service.Dequeue")
 	defer span.End()
@@ -63,6 +66,7 @@ func (s *service) Dequeue(ctx context.Context) (*core.Job, error) {
 	return job, nil
 }
 
+// Complete marks a job as completed or failed with a given status and result.
 func (s *service) Complete(ctx context.Context, id, status, result string) (core.Job, error) {
 	ctx, span := tracer.Start(ctx, "Job.Service.Complete")
 	defer span.End()
@@ -75,6 +79,7 @@ func (s *service) Complete(ctx context.Context, id, status, result string) (core
 	return job, nil
 }
 
+// Cancel marks a job as canceled.
 func (s *service) Cancel(ctx context.Context, id string) (core.Job, error) {
 	ctx, span := tracer.Start(ctx, "Job.Service.Cancel")
 	defer span.End()

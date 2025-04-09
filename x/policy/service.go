@@ -31,6 +31,9 @@ func NewService(repository Repository, globalPolicy core.Policy, config core.Con
 	}
 }
 
+// Summerize combines multiple policy evaluation results into a single boolean outcome (allow/deny).
+// It considers dominant results (Always/Never), then Allow/Deny, and finally falls back to defaults
+// defined in the global policy or provided overrides for the specific action.
 func (s service) Summerize(results []core.PolicyEvalResult, action string, override *map[string]bool) bool {
 	_, span := tracer.Start(context.Background(), "Policy.Service.Summerize")
 	defer span.End()
@@ -71,6 +74,10 @@ func (s service) Summerize(results []core.PolicyEvalResult, action string, overr
 	return result
 }
 
+// AccumulateOr combines multiple policy evaluation results using OR logic, preserving the PolicyEvalResult type.
+// Dominant results (Always, Never) take precedence. If conflicting dominant results exist, it defaults.
+// Otherwise, Allow takes precedence over Deny, which takes precedence over Default.
+// Error results are treated based on the default outcome for the action.
 func (s service) AccumulateOr(results []core.PolicyEvalResult, action string, override *map[string]bool) core.PolicyEvalResult {
 	_, span := tracer.Start(context.Background(), "Policy.Service.AccumulateOr")
 	defer span.End()
@@ -131,6 +138,7 @@ func (s service) AccumulateOr(results []core.PolicyEvalResult, action string, ov
 	return core.PolicyEvalResultDefault
 }
 
+// TestWithGlobalPolicy evaluates an action against the global policy using the provided request context.
 func (s service) TestWithGlobalPolicy(ctx context.Context, context core.RequestContext, action string) (core.PolicyEvalResult, error) {
 	ctx, span := tracer.Start(ctx, "Policy.Service.TestWithGlobalPolicy")
 	defer span.End()
@@ -138,6 +146,8 @@ func (s service) TestWithGlobalPolicy(ctx context.Context, context core.RequestC
 	return s.test(ctx, s.global, context, action)
 }
 
+// TestWithPolicyURL fetches a policy from a URL (using cache) and evaluates it against the given context and action.
+// If fetching fails, it falls back to evaluating against the global policy.
 func (s service) TestWithPolicyURL(ctx context.Context, url string, context core.RequestContext, action string) (core.PolicyEvalResult, error) {
 	ctx, span := tracer.Start(ctx, "Policy.Service.TestWithPolicyURL")
 	defer span.End()
@@ -160,6 +170,10 @@ func (s service) TestWithPolicyURL(ctx context.Context, url string, context core
 	return s.Test(ctx, policy, context, action)
 }
 
+// Test evaluates a specific policy against the given context and action.
+// It first evaluates the global policy. If the global result is dominant (Always/Never), it returns that.
+// Otherwise, it evaluates the provided local policy. If the local result is Default, it returns the global result.
+// Otherwise, it returns the local result.
 func (s service) Test(ctx context.Context, policy core.Policy, context core.RequestContext, action string) (core.PolicyEvalResult, error) {
 	ctx, span := tracer.Start(ctx, "Policy.Service.Test")
 	defer span.End()

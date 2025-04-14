@@ -24,8 +24,8 @@ func NewHandler(service core.AuthService) Handler {
 	return &handler{service}
 }
 
-// Claim is used for get server signed jwt
-// input user signed jwt
+// GetPassport issues a server-signed JWT (passport) to the authenticated requester.
+// It uses the requester's ID and keychain information from the context.
 func (h *handler) GetPassport(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Auth.Handler.GetPassport")
 	defer span.End()

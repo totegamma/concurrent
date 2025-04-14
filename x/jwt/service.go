@@ -1,5 +1,7 @@
 package jwt
 
+//go:generate go run go.uber.org/mock/mockgen -source=service.go -destination=mock/service.go
+
 import (
 	"context"
 	"time"

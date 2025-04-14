@@ -30,6 +30,10 @@ func NewRepository(rdb *redis.Client) Repository {
 	return &repository{rdb}
 }
 
+// Get retrieves a policy document from a URL.
+// It uses Redis for caching and locking to prevent redundant fetches.
+// If the cache is empty or the lock has expired, it fetches the policy from the URL,
+// updates the cache, and sets a short-lived lock.
 func (r *repository) Get(ctx context.Context, url string) (core.Policy, error) {
 	ctx, span := tracer.Start(ctx, "Policy.Repository.Get")
 	defer span.End()
@@ -44,12 +48,15 @@ func (r *repository) Get(ctx context.Context, url string) (core.Policy, error) {
 	if err == nil {
 		var policy core.Policy
 		err = json.Unmarshal([]byte(val), &policy)
-		if err != nil {
-			span.SetStatus(codes.Error, err.Error())
-			return core.Policy{}, err
+		if err == nil { // Only set cache if unmarshal succeeds
+			cache = &policy
+		} else {
+			// Log the cache unmarshal error but treat it as a cache miss
+			span.RecordError(fmt.Errorf("failed to unmarshal cached policy for %s: %w", url, err))
+			// cache remains nil, so fetch() will be called
 		}
-		cache = &policy
 	}
+	// If rdb.Get failed OR json.Unmarshal failed, cache is nil here
 
 	fetch := func() (core.Policy, error) {
 		req, err := http.NewRequest("GET", url, nil)

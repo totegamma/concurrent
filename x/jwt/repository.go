@@ -21,6 +21,7 @@ func NewRepository(rdb *redis.Client) Repository {
 	}
 }
 
+// CheckJTI checks if a JWT ID (JTI) exists in Redis, indicating it has been used/invalidated.
 func (r *repository) CheckJTI(ctx context.Context, jti string) (bool, error) {
 	ctx, span := tracer.Start(ctx, "Jwt.Repository.CheckJTI")
 	defer span.End()
@@ -39,6 +40,7 @@ func (r *repository) CheckJTI(ctx context.Context, jti string) (bool, error) {
 	return true, nil
 }
 
+// InvalidateJTI adds a JWT ID (JTI) to Redis with an expiration time, marking it as used/invalidated.
 func (r *repository) InvalidateJTI(ctx context.Context, jti string, exp time.Time) error {
 	ctx, span := tracer.Start(ctx, "Jwt.Repository.InvalidateJTI")
 	defer span.End()

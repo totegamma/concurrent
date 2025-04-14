@@ -25,6 +25,7 @@ func NewHandler(service core.NotificationService) Handler {
 	return &handler{service: service}
 }
 
+// Subscribe creates or updates a notification subscription.
 func (h *handler) Subscribe(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Notification.Handler.Subscribe")
 	defer span.End()
@@ -45,6 +46,7 @@ func (h *handler) Subscribe(c echo.Context) error {
 	return c.JSON(http.StatusCreated, echo.Map{"content": subscription})
 }
 
+// Delete removes a notification subscription by vendor ID and owner.
 func (h *handler) Delete(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Notification.Handler.Delete")
 	defer span.End()
@@ -61,6 +63,7 @@ func (h *handler) Delete(c echo.Context) error {
 	return c.NoContent(http.StatusNoContent)
 }
 
+// Get retrieves a notification subscription by vendor ID and owner.
 func (h *handler) Get(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Notification.Handler.Get")
 	defer span.End()

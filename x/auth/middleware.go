@@ -30,6 +30,9 @@ const (
 	ISREGISTERED
 )
 
+// IdentifyIdentity is a middleware that identifies the requester based on Authorization header and Passport header.
+// It extracts identity information (CCID, CKID, domain, tags, keychain) and sets it in the context.
+// It also performs basic validation like JWT signature check, domain blocking, and global policy checks.
 func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		ctx, span := tracer.Start(c.Request().Context(), "Auth.Service.IdentifyIdentity")
@@ -295,6 +298,9 @@ func (s *service) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFunc {
 	}
 }
 
+// ReceiveGatewayAuthPropagation is a middleware that receives authentication information propagated from a gateway via HTTP headers.
+// It extracts requester type, ID, tags, domain, keychain, etc., and sets them in the context.
+// This is typically used in internal services that sit behind an authenticating gateway.
 func ReceiveGatewayAuthPropagation(next echo.HandlerFunc) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		ctx, span := tracer.Start(c.Request().Context(), "Auth.Service.ReceiveGatewayAuthPropagation")
@@ -370,6 +376,8 @@ func ReceiveGatewayAuthPropagation(next echo.HandlerFunc) echo.HandlerFunc {
 	}
 }
 
+// Restrict is a middleware factory that returns a middleware to restrict access based on the requester's principal type.
+// It checks the requester type and tags stored in the context against the required principal level (e.g., ISADMIN, ISLOCAL).
 func Restrict(principal Principal) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -426,6 +434,9 @@ func Restrict(principal Principal) echo.MiddlewareFunc {
 	}
 }
 
+// Recaptcha is a middleware factory that returns a middleware to verify reCAPTCHA challenges.
+// It expects the challenge response in the "captcha" header and uses the provided validator.
+// If verification is successful, it sets a flag in the context.
 func Recaptcha(validator *recaptcha.ReCAPTCHA) echo.MiddlewareFunc {
 	return func(next echo.HandlerFunc) echo.HandlerFunc {
 		return func(c echo.Context) error {
@@ -451,6 +462,10 @@ func Recaptcha(validator *recaptcha.ReCAPTCHA) echo.MiddlewareFunc {
 	}
 }
 
+// RateLimiter is a middleware factory that returns a middleware for rate limiting requests based on configuration.
+// It uses a token bucket algorithm implemented with Redis.
+// Configuration defines bucket size and refill rate per route/method or globally.
+// It identifies requesters by CCID if available, otherwise by IP address.
 func (s *service) RateLimiter(configMap core.RateLimitConfigMap) echo.MiddlewareFunc {
 
 	routerEcho := echo.New()

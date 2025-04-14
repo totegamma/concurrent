@@ -181,7 +181,7 @@ func (h handler) ListMine(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": list})
 }
 
-// GetChunks
+// GetChunks returns chunk information for specified timelines around a given time.
 func (h handler) GetChunks(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.GetChunks")
 	defer span.End()
@@ -208,6 +208,7 @@ func (h handler) GetChunks(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": chunks})
 }
 
+// GetChunkItr returns an iterator table for chunks within specified timelines and epoch.
 func (h handler) GetChunkItr(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.GetChunkItr")
 	defer span.End()
@@ -225,6 +226,7 @@ func (h handler) GetChunkItr(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": table})
 }
 
+// GetChunkBody loads the body content for multiple chunks specified by a query map (timelineID: chunkID).
 func (h handler) GetChunkBody(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.GetChunkBody")
 	defer span.End()
@@ -249,6 +251,7 @@ func (h handler) GetChunkBody(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": chunks})
 }
 
+// Query retrieves timeline items based on various filter criteria like timeline ID, schema, owner, author, time range, and limit.
 func (h handler) Query(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.Query")
 	defer span.End()
@@ -294,6 +297,7 @@ func (h handler) Query(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": items})
 }
 
+// Retracted returns a list of recently retracted item IDs for the specified timelines.
 func (h handler) Retracted(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.Retracted")
 	defer span.End()
@@ -325,6 +329,9 @@ type Request struct {
 	Channels []string `json:"channels"`
 }
 
+// Realtime handles WebSocket connections for real-time timeline updates.
+// It upgrades the HTTP connection to WebSocket, manages subscriptions via input channel,
+// and pushes timeline events to the client via the output channel.
 func (h handler) Realtime(c echo.Context) error {
 	ws, err := upgrader.Upgrade(c.Response(), c.Request(), nil)
 	if err != nil {

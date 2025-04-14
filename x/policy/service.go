@@ -31,6 +31,9 @@ func NewService(repository Repository, globalPolicy core.Policy, config core.Con
 	}
 }
 
+// Summerize combines multiple policy evaluation results into a single boolean outcome (allow/deny).
+// It considers dominant results (Always/Never), then Allow/Deny, and finally falls back to defaults
+// defined in the global policy or provided overrides for the specific action.
 func (s service) Summerize(results []core.PolicyEvalResult, action string, override *map[string]bool) bool {
 	_, span := tracer.Start(context.Background(), "Policy.Service.Summerize")
 	defer span.End()
@@ -71,6 +74,10 @@ func (s service) Summerize(results []core.PolicyEvalResult, action string, overr
 	return result
 }
 
+// AccumulateOr combines multiple policy evaluation results using OR logic, preserving the PolicyEvalResult type.
+// Dominant results (Always, Never) take precedence. If conflicting dominant results exist, it defaults.
+// Otherwise, Allow takes precedence over Deny, which takes precedence over Default.
+// Error results are treated based on the default outcome for the action.
 func (s service) AccumulateOr(results []core.PolicyEvalResult, action string, override *map[string]bool) core.PolicyEvalResult {
 	_, span := tracer.Start(context.Background(), "Policy.Service.AccumulateOr")
 	defer span.End()
@@ -131,6 +138,7 @@ func (s service) AccumulateOr(results []core.PolicyEvalResult, action string, ov
 	return core.PolicyEvalResultDefault
 }
 
+// TestWithGlobalPolicy evaluates an action against the global policy using the provided request context.
 func (s service) TestWithGlobalPolicy(ctx context.Context, context core.RequestContext, action string) (core.PolicyEvalResult, error) {
 	ctx, span := tracer.Start(ctx, "Policy.Service.TestWithGlobalPolicy")
 	defer span.End()
@@ -138,6 +146,8 @@ func (s service) TestWithGlobalPolicy(ctx context.Context, context core.RequestC
 	return s.test(ctx, s.global, context, action)
 }
 
+// TestWithPolicyURL fetches a policy from a URL (using cache) and evaluates it against the given context and action.
+// If fetching fails, it falls back to evaluating against the global policy.
 func (s service) TestWithPolicyURL(ctx context.Context, url string, context core.RequestContext, action string) (core.PolicyEvalResult, error) {
 	ctx, span := tracer.Start(ctx, "Policy.Service.TestWithPolicyURL")
 	defer span.End()
@@ -160,6 +170,10 @@ func (s service) TestWithPolicyURL(ctx context.Context, url string, context core
 	return s.Test(ctx, policy, context, action)
 }
 
+// Test evaluates a specific policy against the given context and action.
+// It first evaluates the global policy. If the global result is dominant (Always/Never), it returns that.
+// Otherwise, it evaluates the provided local policy. If the local result is Default, it returns the global result.
+// Otherwise, it returns the local result.
 func (s service) Test(ctx context.Context, policy core.Policy, context core.RequestContext, action string) (core.PolicyEvalResult, error) {
 	ctx, span := tracer.Start(ctx, "Policy.Service.Test")
 	defer span.End()
@@ -239,8 +253,8 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 		if r := recover(); r != nil {
 			fmt.Printf("recovered from: %v\n", r)
 			fmt.Printf("while evaluating: %v\n", expr.Operator)
-			debugPrint("expr", expr)
-			debugPrint("requestCtx", requestCtx)
+			core.JsonPrint("expr", expr)
+			core.JsonPrint("requestCtx", requestCtx)
 		}
 	}()
 
@@ -713,6 +727,67 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 		return core.EvalResult{
 			Operator: "RequesterDomainHasTag",
 			Result:   tags.Has(target),
+		}, nil
+
+	case "Cond": // Renamed from "Conditional"
+		if len(expr.Args) != 3 {
+			err := fmt.Errorf("bad argument length for Cond. Expected 3 but got %d\n", len(expr.Args))
+			return core.EvalResult{
+				Operator: "Cond",
+				Error:    err.Error(),
+			}, err
+		}
+
+		// Evaluate condition (arg 0)
+		conditionResult, err := s.eval(expr.Args[0], requestCtx)
+		if err != nil {
+			return core.EvalResult{
+				Operator: "Cond",
+				Args:     []core.EvalResult{conditionResult},
+				Error:    fmt.Sprintf("condition error: %s", err.Error()),
+			}, err
+		}
+
+		conditionBool, ok := conditionResult.Result.(bool)
+		if !ok {
+			err := fmt.Errorf("bad condition type for Cond. Expected bool but got %s\n", reflect.TypeOf(conditionResult.Result))
+			return core.EvalResult{
+				Operator: "Cond",
+				Args:     []core.EvalResult{conditionResult},
+				Error:    err.Error(),
+			}, err
+		}
+
+		// Evaluate the chosen branch
+		var chosenBranchExpr core.Expr
+		var branchIndex int
+		if conditionBool {
+			chosenBranchExpr = expr.Args[1]
+			branchIndex = 1
+		} else {
+			chosenBranchExpr = expr.Args[2]
+			branchIndex = 2
+		}
+
+		branchResult, err := s.eval(chosenBranchExpr, requestCtx)
+		if err != nil {
+			// Include condition result in args for context
+			argsForError := []core.EvalResult{conditionResult, {}, {}} // Placeholders for branches
+			argsForError[branchIndex] = branchResult                   // Put the failing branch result in the correct spot
+			return core.EvalResult{
+				Operator: "Cond",
+				Args:     argsForError,
+				Error:    fmt.Sprintf("branch error: %s", err.Error()),
+			}, err
+		}
+
+		// Return the result of the evaluated branch
+		finalArgs := []core.EvalResult{conditionResult, {}, {}} // Placeholders
+		finalArgs[branchIndex] = branchResult
+		return core.EvalResult{
+			Operator: "Cond",
+			Args:     finalArgs,
+			Result:   branchResult.Result,
 		}, nil
 
 	default:

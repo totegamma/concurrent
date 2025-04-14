@@ -16,6 +16,7 @@ func NewService(repo Repo) core.NotificationService {
 	}
 }
 
+// Subscribe creates or updates a notification subscription.
 func (s *service) Subscribe(ctx context.Context, subscription core.NotificationSubscription) (core.NotificationSubscription, error) {
 	ctx, span := tracer.Start(ctx, "Notification.Service.Subscribe")
 	defer span.End()
@@ -28,6 +29,7 @@ func (s *service) Subscribe(ctx context.Context, subscription core.NotificationS
 	return subscription, nil
 }
 
+// GetAllSubscriptions retrieves all notification subscriptions.
 func (s *service) GetAllSubscriptions(ctx context.Context) ([]core.NotificationSubscription, error) {
 	ctx, span := tracer.Start(ctx, "Notification.Service.GetAllSubscriptions")
 	defer span.End()
@@ -40,6 +42,7 @@ func (s *service) GetAllSubscriptions(ctx context.Context) ([]core.NotificationS
 	return subscriptions, nil
 }
 
+// Delete removes a notification subscription by vendor ID and owner.
 func (s *service) Delete(ctx context.Context, vendorID, owner string) error {
 	ctx, span := tracer.Start(ctx, "Notification.Service.Delete")
 	defer span.End()
@@ -52,6 +55,7 @@ func (s *service) Delete(ctx context.Context, vendorID, owner string) error {
 	return nil
 }
 
+// Get retrieves a notification subscription by vendor ID and owner.
 func (s *service) Get(ctx context.Context, vendorID, owner string) (core.NotificationSubscription, error) {
 	ctx, span := tracer.Start(ctx, "Notification.Service.Get")
 	defer span.End()

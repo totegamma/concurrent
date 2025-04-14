@@ -28,7 +28,8 @@ func NewReactor(
 	}
 }
 
-// Boot starts reactor
+// Start begins the reactor's job processing loop.
+// It uses a ticker to periodically check for and dispatch jobs.
 func (r *reactor) Start(ctx context.Context) {
 	slog.Info("reactor start!")
 
@@ -81,8 +82,10 @@ func (a *reactor) dispatchJob(ctx context.Context, job *core.Job, fn func(contex
 			span.RecordError(err)
 			slog.ErrorContext(ctx, "failed to complete job", slog.String("error", err.Error()))
 		}
+		return // Return early after handling error
 	}
 
+	// Only call complete with "completed" status if err was nil
 	_, err = a.job.Complete(ctx, job.ID, "completed", result)
 	if err != nil {
 		span.RecordError(err)
@@ -97,6 +100,7 @@ func (a *reactor) jobClean(ctx context.Context, job *core.Job) (string, error) {
 	return "", a.store.CleanUserAllData(ctx, job.Author)
 }
 
+// JobHello is a sample job handler function that returns "hello!".
 func (a *reactor) JobHello(ctx context.Context, job *core.Job) (string, error) {
 	ctx, span := tracer.Start(ctx, "reactor.JobHello")
 	defer span.End()

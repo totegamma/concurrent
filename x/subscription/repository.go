@@ -124,6 +124,7 @@ func (r *repository) CreateSubscription(ctx context.Context, subscription core.S
 	return subscription, nil
 }
 
+// UpdateSubscription updates an existing subscription.
 func (r *repository) UpdateSubscription(ctx context.Context, subscription core.Subscription) (core.Subscription, error) {
 	ctx, span := tracer.Start(ctx, "Subscription.Repository.UpdateSubscription")
 	defer span.End()
@@ -211,7 +212,7 @@ func (r *repository) GetSubscriptionsByAuthor(ctx context.Context, owner string)
 	return subscriptions, err
 }
 
-// GetOwnSubscriptions returns a list of collections by owner
+// GetSubscriptionsByAuthorOwned returns a list of subscriptions authored by the owner, excluding domain-owned subscriptions.
 func (r *repository) GetSubscriptionsByAuthorOwned(ctx context.Context, owner string) ([]core.Subscription, error) {
 	ctx, span := tracer.Start(ctx, "Subscription.Repository.GetSubscriptionsByAuthorOwned")
 	defer span.End()

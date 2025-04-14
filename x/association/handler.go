@@ -47,6 +47,7 @@ func (h handler) Get(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": association})
 }
 
+// GetAttached returns associations attached to a specific message ID.
 func (h handler) GetAttached(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Association.Handler.GetAttached")
 	defer span.End()
@@ -60,6 +61,7 @@ func (h handler) GetAttached(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": associations})
 }
 
+// GetOwnByTarget returns associations created by the requester targeting a specific message ID.
 func (h handler) GetOwnByTarget(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Association.Handler.GetOwnByTarget")
 	defer span.End()
@@ -76,6 +78,9 @@ func (h handler) GetOwnByTarget(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": associations})
 }
 
+// GetCounts returns the counts of associations for a given message ID, optionally filtered by schema.
+// If schema query parameter is provided, it returns counts grouped by variant for that schema.
+// Otherwise, it returns counts grouped by schema.
 func (h handler) GetCounts(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Association.Handler.GetCounts")
 	defer span.End()
@@ -99,6 +104,10 @@ func (h handler) GetCounts(c echo.Context) error {
 	}
 }
 
+// GetFiltered returns associations for a given message ID, filtered by schema and optionally variant.
+// If no schema is provided, returns all associations for the message.
+// If schema is provided but no variant, returns associations matching the schema.
+// If both schema and variant are provided, returns associations matching both.
 func (h handler) GetFiltered(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Association.Handler.GetFiltered")
 	defer span.End()

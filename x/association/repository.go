@@ -1,5 +1,7 @@
 package association
 
+//go:generate go run go.uber.org/mock/mockgen -source=repository.go -destination=mock/repository.go
+
 import (
 	"context"
 	"gorm.io/gorm"
@@ -51,7 +53,7 @@ func (r *repository) setCurrentCount() {
 	r.mc.Set(&memcache.Item{Key: "association_count", Value: []byte(strconv.FormatInt(count, 10))})
 }
 
-// Total returns the total number of associations
+// Count returns the total number of associations, potentially from cache.
 func (r *repository) Count(ctx context.Context) (int64, error) {
 	ctx, span := tracer.Start(ctx, "Association.Repository.Count")
 	defer span.End()
@@ -367,6 +369,7 @@ func (r *repository) GetBySchemaAndVariant(ctx context.Context, messageID, schem
 	return associations, nil
 }
 
+// Clean removes all associations owned by the specified ccid.
 func (r *repository) Clean(ctx context.Context, ccid string) error {
 	ctx, span := tracer.Start(ctx, "Association.Repository.Clean")
 	defer span.End()

@@ -27,6 +27,7 @@ func NewHandler(service core.JobService) Handler {
 	}
 }
 
+// List returns a list of jobs owned by the requester.
 func (h *handler) List(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Job.Handler.List")
 	defer span.End()
@@ -45,6 +46,7 @@ func (h *handler) List(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"content": jobs})
 }
 
+// Create creates a new job owned by the requester.
 func (h *handler) Create(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Job.Handler.Create")
 	defer span.End()
@@ -70,6 +72,7 @@ func (h *handler) Create(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"content": job})
 }
 
+// Cancel cancels a job by its ID.
 func (h *handler) Cancel(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Job.Handler.Cancel")
 	defer span.End()

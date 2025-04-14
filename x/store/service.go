@@ -60,10 +60,14 @@ func NewService(
 	}
 }
 
+// CommitOption defines optional parameters for a commit.
 type CommitOption struct {
 	IsEphemeral bool `json:"isEphemeral,omitempty"`
 }
 
+// Commit processes a signed document based on its type.
+// It validates the signature, determines the appropriate service (message, association, etc.),
+// calls the corresponding service's method (Create, Delete, etc.), and logs the commit if successful and applicable.
 func (s *service) Commit(
 	ctx context.Context,
 	mode core.CommitMode,
@@ -259,6 +263,10 @@ func (s *service) Commit(
 	return result, err
 }
 
+// Restore processes a batch of commits from an archive (log file).
+// It reads the archive line by line, validates each commit, resolves entities and keys,
+// and then calls Commit with LocalOnlyExec mode for each valid entry.
+// It returns a list of results indicating success or failure for each line.
 func (s *service) Restore(ctx context.Context, archive io.Reader, from string, IP string) ([]core.BatchResult, error) {
 	ctx, span := tracer.Start(ctx, "Store.Service.Restore")
 	defer span.End()
@@ -313,6 +321,9 @@ func (s *service) Restore(ctx context.Context, archive io.Reader, from string, I
 	return results, nil
 }
 
+// ValidateDocument verifies the signature of a document.
+// It handles both master key (CCID) and subkey (CKID) signatures.
+// For subkeys, it resolves the key chain and validates the signature against the subkey ID.
 func (s *service) ValidateDocument(ctx context.Context, document, signature string, keys []core.Key) error {
 	ctx, span := tracer.Start(ctx, "Key.Service.ValidateDocument")
 	defer span.End()
@@ -381,6 +392,8 @@ func (s *service) ValidateDocument(ctx context.Context, document, signature stri
 	return nil
 }
 
+// CleanUserAllData removes all data associated with a specific user (CCID) across various services.
+// This includes entity metadata, profiles, messages, associations, timelines, subscriptions, semantic IDs, and keys.
 func (s *service) CleanUserAllData(ctx context.Context, target string) error {
 	ctx, span := tracer.Start(ctx, "Store.Service.CleanUserAllData")
 	defer span.End()
@@ -437,6 +450,8 @@ func (s *service) CleanUserAllData(ctx context.Context, target string) error {
 	return nil
 }
 
+// SyncCommitFile initiates the synchronization process for a user's commit log file in the background.
+// It returns the current sync status, likely indicating "syncing".
 func (s *service) SyncCommitFile(ctx context.Context, owner string) (core.SyncStatus, error) {
 	ctx, span := tracer.Start(ctx, "Store.Service.SyncCommitFile")
 	defer span.End()
@@ -451,6 +466,7 @@ func (s *service) SyncCommitFile(ctx context.Context, owner string) (core.SyncSt
 	return status, nil
 }
 
+// SyncStatus retrieves the current synchronization status for a user's commit log file.
 func (s *service) SyncStatus(ctx context.Context, owner string) (core.SyncStatus, error) {
 	ctx, span := tracer.Start(ctx, "Store.Service.SyncStatus")
 	defer span.End()

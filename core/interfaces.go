@@ -11,6 +11,7 @@ import (
 
 type AckService interface {
 	Ack(ctx context.Context, mode CommitMode, document, signature string) (Ack, error)
+	Get(ctx context.Context, from, to string) (Ack, error)
 	GetAcker(ctx context.Context, key string) ([]Ack, error)
 	GetAcking(ctx context.Context, key string) ([]Ack, error)
 }

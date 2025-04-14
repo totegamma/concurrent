@@ -116,6 +116,19 @@ func (s *service) Ack(ctx context.Context, mode core.CommitMode, document string
 	}
 }
 
+func (s *service) Get(ctx context.Context, from, to string) (core.Ack, error) {
+	ctx, span := tracer.Start(ctx, "Ack.Service.Get")
+	defer span.End()
+
+	ack, err := s.repository.Get(ctx, from, to)
+	if err != nil {
+		span.RecordError(err)
+		return core.Ack{}, err
+	}
+
+	return ack, nil
+}
+
 // GetAcker returns acker
 func (s *service) GetAcker(ctx context.Context, user string) ([]core.Ack, error) {
 	ctx, span := tracer.Start(ctx, "Ack.Service.GetAcker")

@@ -311,6 +311,9 @@ func main() {
 	apiV1.GET("/entity/meta", entityHandler.GetMeta, auth.Restrict(auth.ISREGISTERED))
 	apiV1.PUT("/entity/meta", entityHandler.UpdateMeta, auth.Restrict(auth.ISREGISTERED))
 
+	// ack
+	apiV1.GET("/ack/:from/:to", ackHandler.Get)
+
 	// message
 	apiV1.GET("/message/:id", messageHandler.Get)
 	apiV1.GET("/message/:id/associations", associationHandler.GetFiltered)

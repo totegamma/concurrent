@@ -55,6 +55,21 @@ func (mr *MockRepositoryMockRecorder) Ack(ctx, ack any) *gomock.Call {
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Ack", reflect.TypeOf((*MockRepository)(nil).Ack), ctx, ack)
 }
 
+// Get mocks base method.
+func (m *MockRepository) Get(ctx context.Context, from, to string) (core.Ack, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "Get", ctx, from, to)
+	ret0, _ := ret[0].(core.Ack)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// Get indicates an expected call of Get.
+func (mr *MockRepositoryMockRecorder) Get(ctx, from, to any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Get", reflect.TypeOf((*MockRepository)(nil).Get), ctx, from, to)
+}
+
 // GetAcker mocks base method.
 func (m *MockRepository) GetAcker(ctx context.Context, key string) ([]core.Ack, error) {
 	m.ctrl.T.Helper()

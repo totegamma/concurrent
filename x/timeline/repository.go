@@ -367,7 +367,7 @@ func (r *repository) lookupRemoteItrs(ctx context.Context, domain string, timeli
 		attribute.String("epoch", epoch),
 	)
 
-	result, err := r.client.GetChunkItrs(ctx, domain, timelines, epoch, nil)
+	result, err := r.client.GetChunkItrs(ctx, timelines, epoch, &client.Options{Resolver: domain})
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -461,7 +461,7 @@ func (r *repository) loadRemoteBodies(ctx context.Context, remote string, query 
 	ctx, span := tracer.Start(ctx, "Timeline.Repository.LoadRemoteBody")
 	defer span.End()
 
-	result, err := r.client.GetChunkBodies(ctx, remote, query, nil)
+	result, err := r.client.GetChunkBodies(ctx, query, &client.Options{Resolver: remote})
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -667,7 +667,7 @@ func (r *repository) getTimelineFromRemote(ctx context.Context, host, key string
 	cacheKey := "tl:data:" + key + "@" + host
 	freshKey := "tl:fresh:" + key + "@" + host
 
-	timeline, err := r.client.GetTimeline(ctx, host, key, nil)
+	timeline, err := r.client.GetTimeline(ctx, key, &client.Options{Resolver: host})
 	if err != nil {
 		span.RecordError(err)
 		return core.Timeline{}, err
@@ -983,7 +983,7 @@ func (r *repository) ListRecentlyRemovedItemsRemote(ctx context.Context, domain 
 			targets = append(targets, timelineID)
 		}
 
-		cache, err := r.client.GetRetracted(ctx, domain, targets, nil)
+		cache, err := r.client.GetRetracted(ctx, targets, &client.Options{Resolver: domain})
 		if err != nil {
 			span.RecordError(err)
 			return

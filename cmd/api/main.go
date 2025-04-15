@@ -104,6 +104,12 @@ func main() {
 
 	slog.Info(fmt.Sprintf("Config loaded! I am: %s", conconf.CCID))
 
+	port := ":8000"
+	envport := os.Getenv("CC_API_PORT")
+	if envport != "" {
+		port = ":" + envport
+	}
+
 	if config.Server.EnableTrace {
 		cleanup, err := setupTraceProvider(config.Server.TraceEndpoint, config.Concrnt.FQDN+"/ccapi", version)
 		if err != nil {
@@ -215,7 +221,7 @@ func main() {
 	mc := memcache.New(config.Server.MemcachedAddr)
 	defer mc.Close()
 
-	client := client.NewClient()
+	client := client.NewClient("localhost" + port)
 	client.SetUserAgent("CCAPI", version)
 	timelineKeeper := timeline.NewKeeper(rdb, mc, client, conconf)
 
@@ -478,11 +484,6 @@ func main() {
 	jobReactor.Start(context.Background())
 	notificationReactor.Start(context.Background())
 
-	port := ":8000"
-	envport := os.Getenv("CC_API_PORT")
-	if envport != "" {
-		port = ":" + envport
-	}
 	e.Logger.Fatal(e.Start(port))
 }
 

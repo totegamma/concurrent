@@ -57,7 +57,7 @@ func (s *service) PullEntityFromRemote(ctx context.Context, id, remote string) (
 	ctx, span := tracer.Start(ctx, "Entity.Service.PullEntityFromRemote")
 	defer span.End()
 
-	entity, err := s.client.GetEntity(ctx, remote, id, nil)
+	entity, err := s.client.GetEntity(ctx, id, &client.Options{Resolver: remote})
 	if err != nil {
 		span.RecordError(err)
 		return core.Entity{}, err

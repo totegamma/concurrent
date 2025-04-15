@@ -32,20 +32,22 @@ var tracer = otel.Tracer("client")
 type Client interface {
 	SetUserAgent(software, version string)
 	RegisterHostRemap(host string, remap string, useHttps bool)
+
 	Commit(ctx context.Context, domain, body string, response any, opts *Options) (*http.Response, error)
-	GetEntity(ctx context.Context, domain, address string, opts *Options) (core.Entity, error)
-	GetMessage(ctx context.Context, domain, id string, opts *Options) (core.Message, error)
-	GetAssociation(ctx context.Context, domain, id string, opts *Options) (core.Association, error)
-	GetProfile(ctx context.Context, domain, address string, opts *Options) (core.Profile, error)
-	GetTimeline(ctx context.Context, domain, id string, opts *Options) (core.Timeline, error)
-	GetChunks(ctx context.Context, domain string, timelines []string, queryTime time.Time, opts *Options) (map[string]core.Chunk, error)
-	GetKey(ctx context.Context, domain, id string, opts *Options) ([]core.Key, error)
-	GetDomain(ctx context.Context, domain string, opts *Options) (core.Domain, error)
-	GetChunkItrs(ctx context.Context, domain string, timelines []string, epoch string, opts *Options) (map[string]string, error)
-	GetChunkBodies(ctx context.Context, domain string, query map[string]string, opts *Options) (map[string]core.Chunk, error)
-	GetRetracted(ctx context.Context, domain string, timelines []string, opts *Options) (map[string][]string, error)
-	GetAck(ctx context.Context, domain, from, to string, opts *Options) (core.Ack, error)
 	ConnectWebsocket(ctx context.Context, domain string, path string) (*websocket.Conn, error)
+
+	GetEntity(ctx context.Context, address string, opts *Options) (core.Entity, error)
+	GetMessage(ctx context.Context, id string, opts *Options) (core.Message, error)
+	GetAssociation(ctx context.Context, id string, opts *Options) (core.Association, error)
+	GetProfile(ctx context.Context, address string, opts *Options) (core.Profile, error)
+	GetTimeline(ctx context.Context, id string, opts *Options) (core.Timeline, error)
+	GetChunks(ctx context.Context, timelines []string, queryTime time.Time, opts *Options) (map[string]core.Chunk, error)
+	GetKey(ctx context.Context, id string, opts *Options) ([]core.Key, error)
+	GetDomain(ctx context.Context, domain string, opts *Options) (core.Domain, error)
+	GetChunkItrs(ctx context.Context, timelines []string, epoch string, opts *Options) (map[string]string, error)
+	GetChunkBodies(ctx context.Context, query map[string]string, opts *Options) (map[string]core.Chunk, error)
+	GetRetracted(ctx context.Context, timelines []string, opts *Options) (map[string][]string, error)
+	GetAck(ctx context.Context, from, to string, opts *Options) (core.Ack, error)
 }
 
 type remapRecord struct {
@@ -54,21 +56,23 @@ type remapRecord struct {
 }
 
 type client struct {
-	client     *http.Client
-	lastFailed map[string]time.Time
-	failCount  map[string]int
-	userAgent  string
-	hostRemap  map[string]remapRecord
+	client          *http.Client
+	lastFailed      map[string]time.Time
+	failCount       map[string]int
+	userAgent       string
+	hostRemap       map[string]remapRecord
+	defaultResolver string
 }
 
-func NewClient() Client {
+func NewClient(defaultResolver string) Client {
 	httpClient := http.Client{
 		Timeout: defaultTimeout,
 	}
 	client := &client{
-		client:     &httpClient,
-		lastFailed: make(map[string]time.Time),
-		failCount:  make(map[string]int),
+		client:          &httpClient,
+		lastFailed:      make(map[string]time.Time),
+		failCount:       make(map[string]int),
+		defaultResolver: defaultResolver,
 	}
 	httpClient.Transport = client
 	client.hostRemap = make(map[string]remapRecord)
@@ -77,6 +81,7 @@ func NewClient() Client {
 }
 
 type Options struct {
+	Resolver  string
 	AuthToken string
 	Passport  string
 }
@@ -238,9 +243,44 @@ func httpRequest[T any](ctx context.Context, client *http.Client, method, url, b
 	return &response.Content, nil
 }
 
-func (c *client) GetEntity(ctx context.Context, domain, address string, opts *Options) (core.Entity, error) {
+func (c *client) resolveResolver(ctx context.Context, resolver string) (string, error) {
+	ctx, span := tracer.Start(ctx, "Client.resolveResolver")
+	defer span.End()
+
+	if resolver == "" {
+		return c.defaultResolver, nil
+	}
+
+	if core.IsCCID(resolver) {
+		entity, err := c.GetEntity(ctx, resolver, &Options{})
+		if err != nil {
+			span.RecordError(err)
+			return "", err
+		}
+		return entity.Domain, nil
+	}
+
+	if core.IsCSID(resolver) {
+		domain, err := c.GetDomain(ctx, resolver, &Options{})
+		if err != nil {
+			span.RecordError(err)
+			return "", err
+		}
+		return domain.ID, nil
+	}
+
+	return resolver, nil
+}
+
+func (c *client) GetEntity(ctx context.Context, address string, opts *Options) (core.Entity, error) {
 	ctx, span := tracer.Start(ctx, "Client.GetEntity")
 	defer span.End()
+
+	domain, err := c.resolveResolver(ctx, opts.Resolver)
+	if err != nil {
+		span.RecordError(err)
+		return core.Entity{}, err
+	}
 
 	if !c.IsOnline(domain) {
 		return core.Entity{}, fmt.Errorf("Domain is offline")
@@ -263,9 +303,15 @@ func (c *client) GetEntity(ctx context.Context, domain, address string, opts *Op
 	return *response, nil
 }
 
-func (c *client) GetMessage(ctx context.Context, domain, id string, opts *Options) (core.Message, error) {
+func (c *client) GetMessage(ctx context.Context, id string, opts *Options) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "Client.GetMessage")
 	defer span.End()
+
+	domain, err := c.resolveResolver(ctx, opts.Resolver)
+	if err != nil {
+		span.RecordError(err)
+		return core.Message{}, err
+	}
 
 	if !c.IsOnline(domain) {
 		return core.Message{}, fmt.Errorf("Domain is offline")
@@ -289,9 +335,15 @@ func (c *client) GetMessage(ctx context.Context, domain, id string, opts *Option
 	return *response, nil
 }
 
-func (c *client) GetAssociation(ctx context.Context, domain, id string, opts *Options) (core.Association, error) {
+func (c *client) GetAssociation(ctx context.Context, id string, opts *Options) (core.Association, error) {
 	ctx, span := tracer.Start(ctx, "Client.GetAssociation")
 	defer span.End()
+
+	domain, err := c.resolveResolver(ctx, opts.Resolver)
+	if err != nil {
+		span.RecordError(err)
+		return core.Association{}, err
+	}
 
 	if !c.IsOnline(domain) {
 		return core.Association{}, fmt.Errorf("Domain is offline")
@@ -314,9 +366,15 @@ func (c *client) GetAssociation(ctx context.Context, domain, id string, opts *Op
 	return *response, nil
 }
 
-func (c *client) GetProfile(ctx context.Context, domain, id string, opts *Options) (core.Profile, error) {
+func (c *client) GetProfile(ctx context.Context, id string, opts *Options) (core.Profile, error) {
 	ctx, span := tracer.Start(ctx, "Client.GetProfile")
 	defer span.End()
+
+	domain, err := c.resolveResolver(ctx, opts.Resolver)
+	if err != nil {
+		span.RecordError(err)
+		return core.Profile{}, err
+	}
 
 	if !c.IsOnline(domain) {
 		return core.Profile{}, fmt.Errorf("Domain is offline")
@@ -339,9 +397,15 @@ func (c *client) GetProfile(ctx context.Context, domain, id string, opts *Option
 	return *response, nil
 }
 
-func (c *client) GetTimeline(ctx context.Context, domain, id string, opts *Options) (core.Timeline, error) {
+func (c *client) GetTimeline(ctx context.Context, id string, opts *Options) (core.Timeline, error) {
 	ctx, span := tracer.Start(ctx, "Client.GetTimeline")
 	defer span.End()
+
+	domain, err := c.resolveResolver(ctx, opts.Resolver)
+	if err != nil {
+		span.RecordError(err)
+		return core.Timeline{}, err
+	}
 
 	if !c.IsOnline(domain) {
 		return core.Timeline{}, fmt.Errorf("Domain is offline")
@@ -364,9 +428,15 @@ func (c *client) GetTimeline(ctx context.Context, domain, id string, opts *Optio
 	return *response, nil
 }
 
-func (c *client) GetChunks(ctx context.Context, domain string, timelines []string, queryTime time.Time, opts *Options) (map[string]core.Chunk, error) {
+func (c *client) GetChunks(ctx context.Context, timelines []string, queryTime time.Time, opts *Options) (map[string]core.Chunk, error) {
 	ctx, span := tracer.Start(ctx, "Client.GetChunks")
 	defer span.End()
+
+	domain, err := c.resolveResolver(ctx, opts.Resolver)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
 
 	if !c.IsOnline(domain) {
 		return nil, fmt.Errorf("Domain is offline")
@@ -392,9 +462,15 @@ func (c *client) GetChunks(ctx context.Context, domain string, timelines []strin
 	return *response, nil
 }
 
-func (c *client) GetChunkItrs(ctx context.Context, domain string, timelines []string, epoch string, opts *Options) (map[string]string, error) {
+func (c *client) GetChunkItrs(ctx context.Context, timelines []string, epoch string, opts *Options) (map[string]string, error) {
 	ctx, span := tracer.Start(ctx, "Client.GetChunkItrs")
 	defer span.End()
+
+	domain, err := c.resolveResolver(ctx, opts.Resolver)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
 
 	if !c.IsOnline(domain) {
 		return nil, fmt.Errorf("Domain is offline")
@@ -419,9 +495,15 @@ func (c *client) GetChunkItrs(ctx context.Context, domain string, timelines []st
 	return *response, nil
 }
 
-func (c *client) GetChunkBodies(ctx context.Context, domain string, query map[string]string, opts *Options) (map[string]core.Chunk, error) {
+func (c *client) GetChunkBodies(ctx context.Context, query map[string]string, opts *Options) (map[string]core.Chunk, error) {
 	ctx, span := tracer.Start(ctx, "Client.GetChunkBodies")
 	defer span.End()
+
+	domain, err := c.resolveResolver(ctx, opts.Resolver)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
 
 	if !c.IsOnline(domain) {
 		return nil, fmt.Errorf("Domain is offline")
@@ -449,9 +531,15 @@ func (c *client) GetChunkBodies(ctx context.Context, domain string, query map[st
 	return *response, nil
 }
 
-func (c *client) GetKey(ctx context.Context, domain, id string, opts *Options) ([]core.Key, error) {
+func (c *client) GetKey(ctx context.Context, id string, opts *Options) ([]core.Key, error) {
 	ctx, span := tracer.Start(ctx, "Client.GetKey")
 	defer span.End()
+
+	domain, err := c.resolveResolver(ctx, opts.Resolver)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
 
 	if !c.IsOnline(domain) {
 		return nil, fmt.Errorf("Domain is offline")
@@ -501,9 +589,15 @@ func (c *client) GetDomain(ctx context.Context, domain string, opts *Options) (c
 	return *response, nil
 }
 
-func (c *client) GetRetracted(ctx context.Context, domain string, timelines []string, opts *Options) (map[string][]string, error) {
+func (c *client) GetRetracted(ctx context.Context, timelines []string, opts *Options) (map[string][]string, error) {
 	ctx, span := tracer.Start(ctx, "Client.GetRetracted")
 	defer span.End()
+
+	domain, err := c.resolveResolver(ctx, opts.Resolver)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
 
 	if !c.IsOnline(domain) {
 		return nil, fmt.Errorf("Domain is offline")
@@ -527,9 +621,15 @@ func (c *client) GetRetracted(ctx context.Context, domain string, timelines []st
 	return *response, nil
 }
 
-func (c *client) GetAck(ctx context.Context, domain, from, to string, opts *Options) (core.Ack, error) {
+func (c *client) GetAck(ctx context.Context, from, to string, opts *Options) (core.Ack, error) {
 	ctx, span := tracer.Start(ctx, "Client.GetAck")
 	defer span.End()
+
+	domain, err := c.resolveResolver(ctx, opts.Resolver)
+	if err != nil {
+		span.RecordError(err)
+		return core.Ack{}, err
+	}
 
 	if !c.IsOnline(from) {
 		return core.Ack{}, fmt.Errorf("Domain is offline")

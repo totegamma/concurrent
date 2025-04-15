@@ -74,64 +74,79 @@ func (mr *MockClientMockRecorder) ConnectWebsocket(ctx, domain, path any) *gomoc
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConnectWebsocket", reflect.TypeOf((*MockClient)(nil).ConnectWebsocket), ctx, domain, path)
 }
 
-// GetAssociation mocks base method.
-func (m *MockClient) GetAssociation(ctx context.Context, domain, id string, opts *client.Options) (core.Association, error) {
+// GetAck mocks base method.
+func (m *MockClient) GetAck(ctx context.Context, from, to string, opts *client.Options) (core.Ack, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetAssociation", ctx, domain, id, opts)
+	ret := m.ctrl.Call(m, "GetAck", ctx, from, to, opts)
+	ret0, _ := ret[0].(core.Ack)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetAck indicates an expected call of GetAck.
+func (mr *MockClientMockRecorder) GetAck(ctx, from, to, opts any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAck", reflect.TypeOf((*MockClient)(nil).GetAck), ctx, from, to, opts)
+}
+
+// GetAssociation mocks base method.
+func (m *MockClient) GetAssociation(ctx context.Context, id string, opts *client.Options) (core.Association, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetAssociation", ctx, id, opts)
 	ret0, _ := ret[0].(core.Association)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetAssociation indicates an expected call of GetAssociation.
-func (mr *MockClientMockRecorder) GetAssociation(ctx, domain, id, opts any) *gomock.Call {
+func (mr *MockClientMockRecorder) GetAssociation(ctx, id, opts any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAssociation", reflect.TypeOf((*MockClient)(nil).GetAssociation), ctx, domain, id, opts)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetAssociation", reflect.TypeOf((*MockClient)(nil).GetAssociation), ctx, id, opts)
 }
 
 // GetChunkBodies mocks base method.
-func (m *MockClient) GetChunkBodies(ctx context.Context, domain string, query map[string]string, opts *client.Options) (map[string]core.Chunk, error) {
+func (m *MockClient) GetChunkBodies(ctx context.Context, query map[string]string, opts *client.Options) (map[string]core.Chunk, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetChunkBodies", ctx, domain, query, opts)
+	ret := m.ctrl.Call(m, "GetChunkBodies", ctx, query, opts)
 	ret0, _ := ret[0].(map[string]core.Chunk)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetChunkBodies indicates an expected call of GetChunkBodies.
-func (mr *MockClientMockRecorder) GetChunkBodies(ctx, domain, query, opts any) *gomock.Call {
+func (mr *MockClientMockRecorder) GetChunkBodies(ctx, query, opts any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChunkBodies", reflect.TypeOf((*MockClient)(nil).GetChunkBodies), ctx, domain, query, opts)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChunkBodies", reflect.TypeOf((*MockClient)(nil).GetChunkBodies), ctx, query, opts)
 }
 
 // GetChunkItrs mocks base method.
-func (m *MockClient) GetChunkItrs(ctx context.Context, domain string, timelines []string, epoch string, opts *client.Options) (map[string]string, error) {
+func (m *MockClient) GetChunkItrs(ctx context.Context, timelines []string, epoch string, opts *client.Options) (map[string]string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetChunkItrs", ctx, domain, timelines, epoch, opts)
+	ret := m.ctrl.Call(m, "GetChunkItrs", ctx, timelines, epoch, opts)
 	ret0, _ := ret[0].(map[string]string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetChunkItrs indicates an expected call of GetChunkItrs.
-func (mr *MockClientMockRecorder) GetChunkItrs(ctx, domain, timelines, epoch, opts any) *gomock.Call {
+func (mr *MockClientMockRecorder) GetChunkItrs(ctx, timelines, epoch, opts any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChunkItrs", reflect.TypeOf((*MockClient)(nil).GetChunkItrs), ctx, domain, timelines, epoch, opts)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChunkItrs", reflect.TypeOf((*MockClient)(nil).GetChunkItrs), ctx, timelines, epoch, opts)
 }
 
 // GetChunks mocks base method.
-func (m *MockClient) GetChunks(ctx context.Context, domain string, timelines []string, queryTime time.Time, opts *client.Options) (map[string]core.Chunk, error) {
+func (m *MockClient) GetChunks(ctx context.Context, timelines []string, queryTime time.Time, opts *client.Options) (map[string]core.Chunk, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetChunks", ctx, domain, timelines, queryTime, opts)
+	ret := m.ctrl.Call(m, "GetChunks", ctx, timelines, queryTime, opts)
 	ret0, _ := ret[0].(map[string]core.Chunk)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetChunks indicates an expected call of GetChunks.
-func (mr *MockClientMockRecorder) GetChunks(ctx, domain, timelines, queryTime, opts any) *gomock.Call {
+func (mr *MockClientMockRecorder) GetChunks(ctx, timelines, queryTime, opts any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChunks", reflect.TypeOf((*MockClient)(nil).GetChunks), ctx, domain, timelines, queryTime, opts)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChunks", reflect.TypeOf((*MockClient)(nil).GetChunks), ctx, timelines, queryTime, opts)
 }
 
 // GetDomain mocks base method.
@@ -150,93 +165,93 @@ func (mr *MockClientMockRecorder) GetDomain(ctx, domain, opts any) *gomock.Call 
 }
 
 // GetEntity mocks base method.
-func (m *MockClient) GetEntity(ctx context.Context, domain, address string, opts *client.Options) (core.Entity, error) {
+func (m *MockClient) GetEntity(ctx context.Context, address string, opts *client.Options) (core.Entity, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetEntity", ctx, domain, address, opts)
+	ret := m.ctrl.Call(m, "GetEntity", ctx, address, opts)
 	ret0, _ := ret[0].(core.Entity)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetEntity indicates an expected call of GetEntity.
-func (mr *MockClientMockRecorder) GetEntity(ctx, domain, address, opts any) *gomock.Call {
+func (mr *MockClientMockRecorder) GetEntity(ctx, address, opts any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEntity", reflect.TypeOf((*MockClient)(nil).GetEntity), ctx, domain, address, opts)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetEntity", reflect.TypeOf((*MockClient)(nil).GetEntity), ctx, address, opts)
 }
 
 // GetKey mocks base method.
-func (m *MockClient) GetKey(ctx context.Context, domain, id string, opts *client.Options) ([]core.Key, error) {
+func (m *MockClient) GetKey(ctx context.Context, id string, opts *client.Options) ([]core.Key, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetKey", ctx, domain, id, opts)
+	ret := m.ctrl.Call(m, "GetKey", ctx, id, opts)
 	ret0, _ := ret[0].([]core.Key)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetKey indicates an expected call of GetKey.
-func (mr *MockClientMockRecorder) GetKey(ctx, domain, id, opts any) *gomock.Call {
+func (mr *MockClientMockRecorder) GetKey(ctx, id, opts any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKey", reflect.TypeOf((*MockClient)(nil).GetKey), ctx, domain, id, opts)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetKey", reflect.TypeOf((*MockClient)(nil).GetKey), ctx, id, opts)
 }
 
 // GetMessage mocks base method.
-func (m *MockClient) GetMessage(ctx context.Context, domain, id string, opts *client.Options) (core.Message, error) {
+func (m *MockClient) GetMessage(ctx context.Context, id string, opts *client.Options) (core.Message, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetMessage", ctx, domain, id, opts)
+	ret := m.ctrl.Call(m, "GetMessage", ctx, id, opts)
 	ret0, _ := ret[0].(core.Message)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetMessage indicates an expected call of GetMessage.
-func (mr *MockClientMockRecorder) GetMessage(ctx, domain, id, opts any) *gomock.Call {
+func (mr *MockClientMockRecorder) GetMessage(ctx, id, opts any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMessage", reflect.TypeOf((*MockClient)(nil).GetMessage), ctx, domain, id, opts)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetMessage", reflect.TypeOf((*MockClient)(nil).GetMessage), ctx, id, opts)
 }
 
 // GetProfile mocks base method.
-func (m *MockClient) GetProfile(ctx context.Context, domain, address string, opts *client.Options) (core.Profile, error) {
+func (m *MockClient) GetProfile(ctx context.Context, address string, opts *client.Options) (core.Profile, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetProfile", ctx, domain, address, opts)
+	ret := m.ctrl.Call(m, "GetProfile", ctx, address, opts)
 	ret0, _ := ret[0].(core.Profile)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetProfile indicates an expected call of GetProfile.
-func (mr *MockClientMockRecorder) GetProfile(ctx, domain, address, opts any) *gomock.Call {
+func (mr *MockClientMockRecorder) GetProfile(ctx, address, opts any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetProfile", reflect.TypeOf((*MockClient)(nil).GetProfile), ctx, domain, address, opts)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetProfile", reflect.TypeOf((*MockClient)(nil).GetProfile), ctx, address, opts)
 }
 
 // GetRetracted mocks base method.
-func (m *MockClient) GetRetracted(ctx context.Context, domain string, timelines []string, opts *client.Options) (map[string][]string, error) {
+func (m *MockClient) GetRetracted(ctx context.Context, timelines []string, opts *client.Options) (map[string][]string, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetRetracted", ctx, domain, timelines, opts)
+	ret := m.ctrl.Call(m, "GetRetracted", ctx, timelines, opts)
 	ret0, _ := ret[0].(map[string][]string)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetRetracted indicates an expected call of GetRetracted.
-func (mr *MockClientMockRecorder) GetRetracted(ctx, domain, timelines, opts any) *gomock.Call {
+func (mr *MockClientMockRecorder) GetRetracted(ctx, timelines, opts any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRetracted", reflect.TypeOf((*MockClient)(nil).GetRetracted), ctx, domain, timelines, opts)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetRetracted", reflect.TypeOf((*MockClient)(nil).GetRetracted), ctx, timelines, opts)
 }
 
 // GetTimeline mocks base method.
-func (m *MockClient) GetTimeline(ctx context.Context, domain, id string, opts *client.Options) (core.Timeline, error) {
+func (m *MockClient) GetTimeline(ctx context.Context, id string, opts *client.Options) (core.Timeline, error) {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "GetTimeline", ctx, domain, id, opts)
+	ret := m.ctrl.Call(m, "GetTimeline", ctx, id, opts)
 	ret0, _ := ret[0].(core.Timeline)
 	ret1, _ := ret[1].(error)
 	return ret0, ret1
 }
 
 // GetTimeline indicates an expected call of GetTimeline.
-func (mr *MockClientMockRecorder) GetTimeline(ctx, domain, id, opts any) *gomock.Call {
+func (mr *MockClientMockRecorder) GetTimeline(ctx, id, opts any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTimeline", reflect.TypeOf((*MockClient)(nil).GetTimeline), ctx, domain, id, opts)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetTimeline", reflect.TypeOf((*MockClient)(nil).GetTimeline), ctx, id, opts)
 }
 
 // RegisterHostRemap mocks base method.

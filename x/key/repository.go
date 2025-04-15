@@ -52,7 +52,7 @@ func (r *repository) GetRemoteKeyResolution(ctx context.Context, remote string, 
 		return keys, nil
 	}
 	// get from remote
-	keys, err := r.client.GetKey(ctx, remote, keyID, nil)
+	keys, err := r.client.GetKey(ctx, keyID, &client.Options{Resolver: remote})
 	if err != nil {
 		span.RecordError(err)
 		return nil, err

@@ -82,6 +82,12 @@ func main() {
 	log.Printf("Concrnt %s starting...", version)
 	log.Printf("Config loaded! I am: %s @ %s", conconf.CCID, conconf.FQDN)
 
+	port := ":8080"
+	envport := os.Getenv("CC_GATEWAY_PORT")
+	if envport != "" {
+		port = ":" + envport
+	}
+
 	// Echoの設定
 	e.HidePort = true
 	e.HideBanner = true
@@ -210,7 +216,7 @@ func main() {
 	mc := memcache.New(config.Server.MemcachedAddr)
 	defer mc.Close()
 
-	client := client.NewClient()
+	client := client.NewClient("localhost" + port)
 	client.SetUserAgent("CCGateway", version)
 	globalPolicy := concurrent.GetDefaultGlobalPolicy()
 	policy := concurrent.SetupPolicyService(rdb, globalPolicy, conconf)
@@ -477,11 +483,6 @@ func main() {
 
 	e.GET("/metrics", echoprometheus.NewHandler())
 
-	port := ":8080"
-	envport := os.Getenv("CC_GATEWAY_PORT")
-	if envport != "" {
-		port = ":" + envport
-	}
 	e.Logger.Fatal(e.Start(port))
 }
 

@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/client/mock"
 	"github.com/totegamma/concurrent/core"
 	"github.com/totegamma/concurrent/core/mock"
@@ -136,12 +137,11 @@ func TestLoadChunkBodies(t *testing.T) {
 	mockClient := mock_client.NewMockClient(ctrl)
 	mockClient.EXPECT().GetChunkBodies(
 		gomock.Any(),
-		"remote.example.com",
 		map[string]string{
 			"t00000000000000000000000000@remote.example.com": pivotEpoch,
 			"t11111111111111111111111111@remote.example.com": pivotEpoch,
 		},
-		nil,
+		&client.Options{Resolver: "remote.example.com"},
 	).Return(
 		map[string]core.Chunk{
 			"t00000000000000000000000000@remote.example.com": {
@@ -171,11 +171,10 @@ func TestLoadChunkBodies(t *testing.T) {
 	)
 	mockClient.EXPECT().GetChunkBodies(
 		gomock.Any(),
-		"remote.example.com",
 		map[string]string{
 			"t11111111111111111111111111@remote.example.com": pivotEpoch,
 		},
-		nil,
+		&client.Options{Resolver: "remote.example.com"},
 	).Return(
 		map[string]core.Chunk{
 			"t11111111111111111111111111@remote.example.com": {
@@ -307,13 +306,12 @@ func TestLookupChunkItrs(t *testing.T) {
 	mockClient := mock_client.NewMockClient(ctrl)
 	mockClient.EXPECT().GetChunkItrs(
 		gomock.Any(),
-		"remote.example.com",
 		[]string{
 			"t00000000000000000000000000@remote.example.com",
 			"t11111111111111111111111111@remote.example.com",
 		},
 		pivotEpoch,
-		gomock.Any(),
+		&client.Options{Resolver: "remote.example.com"},
 	).Return(
 		map[string]string{
 			"t00000000000000000000000000@remote.example.com": pivotEpoch,
@@ -464,12 +462,11 @@ func TestLoadRemoteBodies(t *testing.T) {
 	mockClient := mock_client.NewMockClient(ctrl)
 	mockClient.EXPECT().GetChunkBodies(
 		gomock.Any(),
-		"remote.example.com",
 		map[string]string{
 			"t00000000000000000000000000@remote.example.com": pivotEpoch,
 			"t11111111111111111111111111@remote.example.com": pivotEpoch,
 		},
-		nil,
+		&client.Options{Resolver: "remote.example.com"},
 	).Return(
 		map[string]core.Chunk{
 			"t00000000000000000000000000@remote.example.com": {
@@ -582,13 +579,12 @@ func TestLookupRemoteItrs(t *testing.T) {
 	mockClient := mock_client.NewMockClient(ctrl)
 	mockClient.EXPECT().GetChunkItrs(
 		gomock.Any(),
-		"remote.example.com",
 		[]string{
 			"t00000000000000000000000000@remote.example.com",
 			"t11111111111111111111111111@remote.example.com",
 		},
 		pivotEpoch,
-		gomock.Any(),
+		&client.Options{Resolver: "remote.example.com"},
 	).Return(
 		map[string]string{
 			"t00000000000000000000000000@remote.example.com": pivotEpoch,

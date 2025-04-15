@@ -20,7 +20,7 @@ func TestRepository(t *testing.T) {
 	mc, cleanup_mc := testutil.CreateMC()
 	defer cleanup_mc()
 
-	client := client.NewClient()
+	client := client.NewClient("localhost")
 	repo := NewRepository(db, mc, client)
 
 	newkey := core.Key{

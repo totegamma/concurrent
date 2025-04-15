@@ -36,12 +36,14 @@ jobs:
     - name: Go Generate
       run: go generate ./...
 
-    - name: Show all containers
-      run: docker ps -a
-
     - name: Run tests with coverage
       run: go test -coverprofile=coverage.out $(go list ./x/... | grep -v mock)
 
-    - name: Show all containers
-      run: docker ps -a
+    - name: Assert no-containers running
+      run: |
+        if [ "$(docker ps -q)" ]; then
+          echo "There are running containers"
+          docker ps -a
+          exit 1
+        fi
 

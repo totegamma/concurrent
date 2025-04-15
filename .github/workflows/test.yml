@@ -42,3 +42,6 @@ jobs:
     - name: Run tests with coverage
       run: go test -coverprofile=coverage.out $(go list ./x/... | grep -v mock)
 
+    - name: Show all containers
+      run: docker ps -a
+

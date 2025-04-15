@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log"
-	"os"
 	"testing"
 	"time"
 
@@ -27,10 +26,9 @@ func TestMain(m *testing.M) {
 
 	repo = NewRepository(db)
 
-	exitCode := m.Run()
+	m.Run()
 
 	log.Println("Test End")
-	os.Exit(exitCode)
 }
 
 func TestRepository(t *testing.T) {

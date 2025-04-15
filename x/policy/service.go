@@ -12,7 +12,6 @@ import (
 	"go.opentelemetry.io/otel/codes"
 
 	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/internal/testutil"
 )
 
 var tracer = otel.Tracer("policy")
@@ -470,7 +469,6 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 		value, ok := resolveDotNotation(requestCtx.Params, key)
 		if !ok {
 			err := fmt.Errorf("key not found: %s\n", key)
-			testutil.PrintJson(requestCtx)
 			return core.EvalResult{
 				Operator: "LoadParam",
 				Error:    err.Error(),

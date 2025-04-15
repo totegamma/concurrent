@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -40,10 +39,9 @@ func TestMain(m *testing.M) {
 
 	repo = NewRepository(db, mc, mockSchemaService)
 
-	exitCode := m.Run()
+	m.Run()
 
 	log.Println("Test End")
-	os.Exit(exitCode)
 }
 
 func TestEntityRepository(t *testing.T) {

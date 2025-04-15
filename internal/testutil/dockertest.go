@@ -2,11 +2,12 @@ package testutil
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
 	"net/http/httptest"
+	"runtime"
+	"strings"
 	"sync"
 	"time"
 
@@ -44,11 +45,6 @@ func SetupMockTraceProvider() *tracetest.InMemoryExporter {
 	otel.SetTracerProvider(provider)
 
 	return spanChecker
-}
-
-func PrintJson(v interface{}) {
-	b, _ := json.MarshalIndent(v, "", "  ")
-	log.Println(string(b))
 }
 
 func SetupTraceCtx() (context.Context, string) {
@@ -117,6 +113,7 @@ func CreateDB() (*gorm.DB, func()) {
 	pool := getPool()
 
 	runOptions := &dockertest.RunOptions{
+		Name:       getCallerName() + "_postgres_" + getSuffix(),
 		Repository: "postgres",
 		Tag:        "latest",
 		Env: []string{
@@ -179,6 +176,7 @@ func CreateMC() (*memcache.Client, func()) {
 	pool := getPool()
 
 	runOptions := &dockertest.RunOptions{
+		Name:       getCallerName() + "_memcached_" + getSuffix(),
 		Repository: "memcached",
 		Tag:        "1.6.7",
 		Env: []string{
@@ -217,6 +215,7 @@ func CreateRDB() (*redis.Client, func()) {
 	pool := getPool()
 
 	runOptions := &dockertest.RunOptions{
+		Name:       getCallerName() + "_redis_" + getSuffix(),
 		Repository: "redis",
 		Tag:        "latest",
 		Env: []string{
@@ -273,4 +272,26 @@ func getPool() *dockertest.Pool {
 		}
 	}
 	return pool
+}
+
+func getSuffix() string {
+	now := time.Now()
+	return now.Format("0102150405")
+}
+
+func getCallerName() string {
+	pc, file, line, ok := runtime.Caller(2)
+	if !ok {
+		return "unknown"
+	}
+
+	fn := runtime.FuncForPC(pc)
+	if fn != nil {
+		return strings.Replace(
+			fn.Name(),
+			"/", "-", -1,
+		)
+	}
+
+	return fmt.Sprintf("%s-%d", strings.Replace(file, "/", "-", -1), line)
 }

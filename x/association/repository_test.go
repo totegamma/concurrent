@@ -4,7 +4,6 @@ import (
 	"context"
 	"errors"
 	"log"
-	"os"
 	"testing"
 
 	"github.com/bradfitz/gomemcache/memcache"
@@ -36,10 +35,9 @@ func TestMain(m *testing.M) {
 
 	repo = NewRepository(db, mc, schemaService)
 
-	exitCode := m.Run()
+	m.Run()
 
 	log.Println("Test End")
-	os.Exit(exitCode)
 }
 
 // TestRepositoryOperations uses table-driven tests for repository methods

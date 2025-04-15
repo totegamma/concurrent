@@ -36,6 +36,9 @@ jobs:
     - name: Go Generate
       run: go generate ./...
 
+    - name: Show all containers
+      run: docker ps -a
+
     - name: Run tests with coverage
       run: go test -coverprofile=coverage.out $(go list ./x/... | grep -v mock)
 

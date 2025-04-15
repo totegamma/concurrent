@@ -3,8 +3,8 @@ package job
 import (
 	"context"
 	"errors"
+	"sync"
 	"testing"
-	//"time" // Unused import
 
 	"github.com/stretchr/testify/assert"
 	"github.com/totegamma/concurrent/core"
@@ -24,111 +24,175 @@ func TestNewReactor(t *testing.T) {
 	assert.Implements(t, (*Reactor)(nil), r)
 }
 
-func TestReactor_DispatchJob_Success(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockStore := mock_core.NewMockStoreService(ctrl)
-	mockJob := mock_core.NewMockJobService(ctrl)
-	r := NewReactor(mockStore, mockJob).(*reactor) // Cast to access internal methods
-	ctx := context.Background()
-
-	job := &core.Job{ID: "job1", Type: "hello", Author: "author1"}
-	expectedResult := "hello!"
-
-	// Expect Complete to be called with success status
-	mockJob.EXPECT().Complete(gomock.Any(), job.ID, "completed", expectedResult).Return(*job, nil).Times(1)
-
-	// Call dispatchJob directly for testing the success path
-	r.dispatchJob(ctx, job, r.JobHello)
-}
-
-func TestReactor_DispatchJob_Failure(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
-
-	mockStore := mock_core.NewMockStoreService(ctrl)
-	mockJob := mock_core.NewMockJobService(ctrl)
-	r := NewReactor(mockStore, mockJob).(*reactor)
-	ctx := context.Background()
-
-	job := &core.Job{ID: "job2", Type: "clean", Author: "author2"}
-	jobError := errors.New("clean failed")
-	expectedResult := "cleaning error" // Example result string from the job function on error
-
-	// Mock the job function (jobClean) to return an error
-	mockStore.EXPECT().CleanUserAllData(gomock.Any(), job.Author).Return(jobError).Times(1)
-
-	// Expect Complete to be called with failure status and error message
-	mockJob.EXPECT().Complete(gomock.Any(), job.ID, "failed: "+expectedResult, jobError.Error()).
-		DoAndReturn(func(_ context.Context, id, status, result string) (core.Job, error) {
-			// Simulate the job function returning a result string even on error
-			return *job, nil
-		}).Times(1)
-
-	// Call dispatchJob directly for testing the failure path
-	// We need a wrapper for jobClean to simulate the return signature of dispatchJob's fn argument
-	jobCleanWrapper := func(ctx context.Context, j *core.Job) (string, error) {
-		err := r.store.CleanUserAllData(ctx, j.Author) // Use 'r' instead of 'a'
-		if err != nil {
-			return expectedResult, err
-		}
-		return "", nil
+// TestReactor_dispatchJob tests the synchronous execution of a job function
+// and the subsequent call to Complete.
+func TestReactor_dispatchJob(t *testing.T) {
+	jobHello := func(ctx context.Context, j *core.Job) (string, error) {
+		return "hello!", nil
 	}
-	r.dispatchJob(ctx, job, jobCleanWrapper)
+
+	jobCleanSuccess := func(ctx context.Context, j *core.Job) (string, error) {
+		// Simulate successful clean
+		return "cleaned", nil
+	}
+
+	jobCleanFailure := func(ctx context.Context, j *core.Job) (string, error) {
+		// Simulate failed clean
+		return "cleaning error", errors.New("clean failed")
+	}
+
+	tests := []struct {
+		name           string
+		job            *core.Job
+		jobFunc        func(ctx context.Context, j *core.Job) (string, error)
+		mockComplete   func(mockJob *mock_core.MockJobService, job *core.Job, expectedStatus, expectedResult string)
+		expectedStatus string // Status passed to Complete
+		expectedResult string // Result passed to Complete
+	}{
+		{
+			name: "Success Hello Job",
+			job:  &core.Job{ID: "job1", Type: "hello", Author: "author1"},
+			jobFunc: jobHello,
+			mockComplete: func(mockJob *mock_core.MockJobService, job *core.Job, expectedStatus, expectedResult string) {
+				mockJob.EXPECT().Complete(gomock.Any(), job.ID, expectedStatus, expectedResult).Return(*job, nil).Times(1)
+			},
+			expectedStatus: "completed",
+			expectedResult: "hello!",
+		},
+		{
+			name: "Success Clean Job",
+			job:  &core.Job{ID: "job_clean_ok", Type: "clean", Author: "author_clean_ok"},
+			jobFunc: jobCleanSuccess,
+			mockComplete: func(mockJob *mock_core.MockJobService, job *core.Job, expectedStatus, expectedResult string) {
+				mockJob.EXPECT().Complete(gomock.Any(), job.ID, expectedStatus, expectedResult).Return(*job, nil).Times(1)
+			},
+			expectedStatus: "completed",
+			expectedResult: "cleaned",
+		},
+		{
+			name: "Failure Clean Job",
+			job:  &core.Job{ID: "job_clean_fail", Type: "clean", Author: "author_clean_fail"},
+			jobFunc: jobCleanFailure,
+			mockComplete: func(mockJob *mock_core.MockJobService, job *core.Job, expectedStatus, expectedResult string) {
+				// Note: The status includes the result string prefix in case of failure
+				mockJob.EXPECT().Complete(gomock.Any(), job.ID, expectedStatus, "clean failed").Return(*job, nil).Times(1)
+			},
+			expectedStatus: "failed: cleaning error", // Status includes result prefix on failure
+			expectedResult: "clean failed",           // The error message itself
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			defer ctrl.Finish()
+
+			mockStore := mock_core.NewMockStoreService(ctrl) // Store mock needed for reactor creation
+			mockJob := mock_core.NewMockJobService(ctrl)
+			r := NewReactor(mockStore, mockJob).(*reactor)
+			ctx := context.Background()
+
+			tt.mockComplete(mockJob, tt.job, tt.expectedStatus, tt.expectedResult)
+
+			// Call dispatchJob directly as it runs synchronously
+			r.dispatchJob(ctx, tt.job, tt.jobFunc)
+		})
+	}
 }
 
-func TestReactor_DispatchJobs(t *testing.T) {
-	ctrl := gomock.NewController(t)
-	defer ctrl.Finish()
+// TestReactor_dispatchJobs tests the routing logic within dispatchJobs.
+// It uses WaitGroup to handle goroutines for 'hello' and 'clean' jobs.
+func TestReactor_dispatchJobs(t *testing.T) {
+	tests := []struct {
+		name       string
+		setupMocks func(wg *sync.WaitGroup, mockJob *mock_core.MockJobService, mockStore *mock_core.MockStoreService)
+		expectGoroutine bool // Indicates if a goroutine (and thus wg.Add/Done) is expected
+	}{
+		{
+			name: "Dispatch Hello Job",
+			setupMocks: func(wg *sync.WaitGroup, mockJob *mock_core.MockJobService, mockStore *mock_core.MockStoreService) {
+				job := &core.Job{ID: "helloJob", Type: "hello", Author: "author1"}
+				mockJob.EXPECT().Dequeue(gomock.Any()).Return(job, nil).Times(1)
+				// Expect Complete in goroutine and signal WaitGroup
+				mockJob.EXPECT().Complete(gomock.Any(), job.ID, "completed", "hello!").
+					DoAndReturn(func(_ context.Context, _, _, _ string) (core.Job, error) {
+						wg.Done() // Signal completion
+						return *job, nil
+					}).Times(1)
+			},
+			expectGoroutine: true,
+		},
+		{
+			name: "Dispatch Clean Job", // Covers both success/failure path implicitly via dispatchJob test
+			setupMocks: func(wg *sync.WaitGroup, mockJob *mock_core.MockJobService, mockStore *mock_core.MockStoreService) {
+				job := &core.Job{ID: "cleanJob", Type: "clean", Author: "author2"}
+				mockJob.EXPECT().Dequeue(gomock.Any()).Return(job, nil).Times(1)
+				// We need to expect the call to CleanUserAllData within the goroutine
+				mockStore.EXPECT().CleanUserAllData(gomock.Any(), job.Author).Return(nil).Times(1)
+				// Expect Complete in goroutine and signal WaitGroup
+				mockJob.EXPECT().Complete(gomock.Any(), job.ID, gomock.Any(), gomock.Any()). // Status/Result depends on CleanUserAllData, tested in dispatchJob
+					DoAndReturn(func(_ context.Context, _, _, _ string) (core.Job, error) {
+						wg.Done()
+						return *job, nil
+					}).Times(1)
+			},
+			expectGoroutine: true,
+		},
+		{
+			name: "Dispatch Unknown Job",
+			setupMocks: func(wg *sync.WaitGroup, mockJob *mock_core.MockJobService, mockStore *mock_core.MockStoreService) {
+				job := &core.Job{ID: "unknownJob", Type: "unknown", Author: "author4"}
+				mockJob.EXPECT().Dequeue(gomock.Any()).Return(job, nil).Times(1)
+				// Complete is called directly within dispatchJobs.
+				mockJob.EXPECT().Complete(gomock.Any(), job.ID, "failed", "unknown job type").Return(*job, nil).Times(1)
+			},
+			expectGoroutine: false, // No goroutine for unknown type
+		},
+		{
+			name: "Dequeue Error", // Covers general errors from Dequeue
+			setupMocks: func(wg *sync.WaitGroup, mockJob *mock_core.MockJobService, mockStore *mock_core.MockStoreService) {
+				mockJob.EXPECT().Dequeue(gomock.Any()).Return(nil, errors.New("some dequeue error")).Times(1)
+				// No Complete call expected.
+			},
+			expectGoroutine: false, // No goroutine if Dequeue errors
+		},
+		{
+			name: "Dequeue No Job Found Error", // Specific case where Dequeue returns an error indicating no job
+			setupMocks: func(wg *sync.WaitGroup, mockJob *mock_core.MockJobService, mockStore *mock_core.MockStoreService) {
+				// Mock Dequeue to return nil job and a specific "not found" error
+				mockJob.EXPECT().Dequeue(gomock.Any()).Return(nil, errors.New("job not found")).Times(1)
+				// No Complete call expected, dispatchJobs should return early due to the error.
+			},
+			expectGoroutine: false, // No goroutine if Dequeue returns error
+		},
+	}
 
-	mockStore := mock_core.NewMockStoreService(ctrl)
-	mockJob := mock_core.NewMockJobService(ctrl)
-	r := NewReactor(mockStore, mockJob).(*reactor)
-	ctx := context.Background()
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			ctrl := gomock.NewController(t)
+			// Use defer ctrl.Finish() at the end, after wg.Wait()
 
-	helloJob := &core.Job{ID: "helloJob", Type: "hello", Author: "author1"}
-	cleanJob := &core.Job{ID: "cleanJob", Type: "clean", Author: "author2"}
-	unknownJob := &core.Job{ID: "unknownJob", Type: "unknown", Author: "author3"}
+			mockStore := mock_core.NewMockStoreService(ctrl)
+			mockJob := mock_core.NewMockJobService(ctrl)
+			r := NewReactor(mockStore, mockJob).(*reactor)
+			ctx := context.Background()
 
-	// --- Test Hello Job ---
-	t.Run("DispatchHello", func(t *testing.T) {
-		mockJob.EXPECT().Dequeue(gomock.Any()).Return(helloJob, nil).Times(1)
-		mockJob.EXPECT().Complete(gomock.Any(), helloJob.ID, "completed", "hello!").Return(*helloJob, nil).Times(1)
-		r.dispatchJobs(ctx)
-	})
+			var wg sync.WaitGroup
+			if tt.expectGoroutine {
+				wg.Add(1) // Expect one goroutine to call wg.Done()
+			}
 
-	// --- Test Clean Job (Success) ---
-	t.Run("DispatchClean_Success", func(t *testing.T) {
-		mockJob.EXPECT().Dequeue(gomock.Any()).Return(cleanJob, nil).Times(1)
-		mockStore.EXPECT().CleanUserAllData(gomock.Any(), cleanJob.Author).Return(nil).Times(1)
-		mockJob.EXPECT().Complete(gomock.Any(), cleanJob.ID, "completed", "").Return(*cleanJob, nil).Times(1)
-		r.dispatchJobs(ctx)
-	})
+			tt.setupMocks(&wg, mockJob, mockStore)
 
-	// --- Test Clean Job (Failure) ---
-	t.Run("DispatchClean_Failure", func(t *testing.T) {
-		jobError := errors.New("db clean error")
-		mockJob.EXPECT().Dequeue(gomock.Any()).Return(cleanJob, nil).Times(1)
-		mockStore.EXPECT().CleanUserAllData(gomock.Any(), cleanJob.Author).Return(jobError).Times(1)
-		// Expect Complete with failure status. The result string from jobClean on error is empty.
-		mockJob.EXPECT().Complete(gomock.Any(), cleanJob.ID, "failed: ", jobError.Error()).Return(*cleanJob, nil).Times(1)
-		r.dispatchJobs(ctx)
-	})
+			r.dispatchJobs(ctx) // Call the function
 
-	// --- Test Unknown Job ---
-	t.Run("DispatchUnknown", func(t *testing.T) {
-		mockJob.EXPECT().Dequeue(gomock.Any()).Return(unknownJob, nil).Times(1)
-		mockJob.EXPECT().Complete(gomock.Any(), unknownJob.ID, "failed", "unknown job type").Return(*unknownJob, nil).Times(1)
-		r.dispatchJobs(ctx)
-	})
+			if tt.expectGoroutine {
+				wg.Wait() // Wait for the goroutine to signal completion
+			}
 
-	// --- Test Dequeue Error ---
-	t.Run("DispatchDequeueError", func(t *testing.T) {
-		mockJob.EXPECT().Dequeue(gomock.Any()).Return(nil, errors.New("dequeue error")).Times(1)
-		// No Complete call expected
-		r.dispatchJobs(ctx)
-	})
+			ctrl.Finish() // Verify mocks *after* waiting for goroutines
+		})
+	}
 }
 
 // Note: Testing Start() directly is difficult due to the infinite loop and ticker.

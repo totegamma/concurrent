@@ -44,6 +44,7 @@ type Client interface {
 	GetChunkItrs(ctx context.Context, domain string, timelines []string, epoch string, opts *Options) (map[string]string, error)
 	GetChunkBodies(ctx context.Context, domain string, query map[string]string, opts *Options) (map[string]core.Chunk, error)
 	GetRetracted(ctx context.Context, domain string, timelines []string, opts *Options) (map[string][]string, error)
+	GetAck(ctx context.Context, domain, from, to string, opts *Options) (core.Ack, error)
 	ConnectWebsocket(ctx context.Context, domain string, path string) (*websocket.Conn, error)
 }
 
@@ -521,6 +522,31 @@ func (c *client) GetRetracted(ctx context.Context, domain string, timelines []st
 		}
 
 		return nil, err
+	}
+
+	return *response, nil
+}
+
+func (c *client) GetAck(ctx context.Context, domain, from, to string, opts *Options) (core.Ack, error) {
+	ctx, span := tracer.Start(ctx, "Client.GetAck")
+	defer span.End()
+
+	if !c.IsOnline(from) {
+		return core.Ack{}, fmt.Errorf("Domain is offline")
+	}
+
+	url := "https://" + domain + "/api/v1/ack/" + from + "/" + to
+	span.SetAttributes(attribute.String("url", url))
+
+	response, err := httpRequest[core.Ack](ctx, c.client, "GET", url, "", opts)
+	if err != nil {
+		span.RecordError(err)
+
+		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			c.lastFailed[from] = time.Now()
+		}
+
+		return core.Ack{}, err
 	}
 
 	return *response, nil

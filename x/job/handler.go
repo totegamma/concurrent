@@ -43,7 +43,7 @@ func (h *handler) List(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, echo.Map{"content": jobs})
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": jobs})
 }
 
 // Create creates a new job owned by the requester.
@@ -69,7 +69,7 @@ func (h *handler) Create(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, echo.Map{"content": job})
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": job})
 }
 
 // Cancel cancels a job by its ID.
@@ -84,5 +84,5 @@ func (h *handler) Cancel(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, echo.Map{"content": job})
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": job})
 }

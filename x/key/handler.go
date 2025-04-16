@@ -38,7 +38,7 @@ func (h *handler) GetKeyResolution(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, echo.Map{"content": response})
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": response})
 }
 
 // GetKeyMine is used for get all keys of requester
@@ -57,5 +57,5 @@ func (h *handler) GetKeyMine(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, echo.Map{"content": response})
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": response})
 }

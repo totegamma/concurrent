@@ -156,5 +156,5 @@ func (h *handler) Post(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, echo.Map{"content": result})
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": result})
 }

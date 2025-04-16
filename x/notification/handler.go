@@ -43,7 +43,7 @@ func (h *handler) Subscribe(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusCreated, echo.Map{"content": subscription})
+	return c.JSON(http.StatusCreated, echo.Map{"status": "ok", "content": subscription})
 }
 
 // Delete removes a notification subscription by vendor ID and owner.
@@ -77,5 +77,5 @@ func (h *handler) Get(c echo.Context) error {
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, echo.Map{"content": subscription})
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": subscription})
 }

@@ -43,5 +43,5 @@ func (h *handler) GetPassport(c echo.Context) error {
 		return c.JSON(http.StatusUnauthorized, echo.Map{"error": err.Error()})
 	}
 
-	return c.JSON(http.StatusOK, echo.Map{"content": response})
+	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": response})
 }

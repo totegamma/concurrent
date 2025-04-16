@@ -216,7 +216,8 @@ func main() {
 	mc := memcache.New(config.Server.MemcachedAddr)
 	defer mc.Close()
 
-	client := client.NewClient("localhost" + port)
+	client := client.NewClient(conconf.FQDN)
+	client.RegisterHostRemap(conconf.FQDN, "localhost"+port, false)
 	client.SetUserAgent("CCGateway", version)
 	globalPolicy := concurrent.GetDefaultGlobalPolicy()
 	policy := concurrent.SetupPolicyService(rdb, globalPolicy, conconf)

@@ -50,8 +50,8 @@ func TestReactor_dispatchJob(t *testing.T) {
 		expectedResult string // Result passed to Complete
 	}{
 		{
-			name: "Success Hello Job",
-			job:  &core.Job{ID: "job1", Type: "hello", Author: "author1"},
+			name:    "Success Hello Job",
+			job:     &core.Job{ID: "job1", Type: "hello", Author: "author1"},
 			jobFunc: jobHello,
 			mockComplete: func(mockJob *mock_core.MockJobService, job *core.Job, expectedStatus, expectedResult string) {
 				mockJob.EXPECT().Complete(gomock.Any(), job.ID, expectedStatus, expectedResult).Return(*job, nil).Times(1)
@@ -60,8 +60,8 @@ func TestReactor_dispatchJob(t *testing.T) {
 			expectedResult: "hello!",
 		},
 		{
-			name: "Success Clean Job",
-			job:  &core.Job{ID: "job_clean_ok", Type: "clean", Author: "author_clean_ok"},
+			name:    "Success Clean Job",
+			job:     &core.Job{ID: "job_clean_ok", Type: "clean", Author: "author_clean_ok"},
 			jobFunc: jobCleanSuccess,
 			mockComplete: func(mockJob *mock_core.MockJobService, job *core.Job, expectedStatus, expectedResult string) {
 				mockJob.EXPECT().Complete(gomock.Any(), job.ID, expectedStatus, expectedResult).Return(*job, nil).Times(1)
@@ -70,8 +70,8 @@ func TestReactor_dispatchJob(t *testing.T) {
 			expectedResult: "cleaned",
 		},
 		{
-			name: "Failure Clean Job",
-			job:  &core.Job{ID: "job_clean_fail", Type: "clean", Author: "author_clean_fail"},
+			name:    "Failure Clean Job",
+			job:     &core.Job{ID: "job_clean_fail", Type: "clean", Author: "author_clean_fail"},
 			jobFunc: jobCleanFailure,
 			mockComplete: func(mockJob *mock_core.MockJobService, job *core.Job, expectedStatus, expectedResult string) {
 				// Note: The status includes the result string prefix in case of failure
@@ -104,8 +104,8 @@ func TestReactor_dispatchJob(t *testing.T) {
 // It uses WaitGroup to handle goroutines for 'hello' and 'clean' jobs.
 func TestReactor_dispatchJobs(t *testing.T) {
 	tests := []struct {
-		name       string
-		setupMocks func(wg *sync.WaitGroup, mockJob *mock_core.MockJobService, mockStore *mock_core.MockStoreService)
+		name            string
+		setupMocks      func(wg *sync.WaitGroup, mockJob *mock_core.MockJobService, mockStore *mock_core.MockStoreService)
 		expectGoroutine bool // Indicates if a goroutine (and thus wg.Add/Done) is expected
 	}{
 		{
@@ -131,7 +131,7 @@ func TestReactor_dispatchJobs(t *testing.T) {
 				mockStore.EXPECT().CleanUserAllData(gomock.Any(), job.Author).Return(nil).Times(1)
 				// Expect Complete in goroutine and signal WaitGroup
 				mockJob.EXPECT().Complete(gomock.Any(), job.ID, gomock.Any(), gomock.Any()). // Status/Result depends on CleanUserAllData, tested in dispatchJob
-					DoAndReturn(func(_ context.Context, _, _, _ string) (core.Job, error) {
+														DoAndReturn(func(_ context.Context, _, _, _ string) (core.Job, error) {
 						wg.Done()
 						return *job, nil
 					}).Times(1)

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
+	"github.com/patrickmn/go-cache"
 	"github.com/totegamma/concurrent/core"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -57,6 +58,7 @@ type remapRecord struct {
 
 type client struct {
 	client          *http.Client
+	cache           *cache.Cache
 	lastFailed      map[string]time.Time
 	failCount       map[string]int
 	userAgent       string
@@ -70,6 +72,7 @@ func NewClient(defaultResolver string) Client {
 	}
 	client := &client{
 		client:          &httpClient,
+		cache:           cache.New(1*time.Hour, 3*time.Hour),
 		lastFailed:      make(map[string]time.Time),
 		failCount:       make(map[string]int),
 		defaultResolver: defaultResolver,
@@ -84,6 +87,7 @@ type Options struct {
 	Resolver  string
 	AuthToken string
 	Passport  string
+	Cache     string
 }
 
 func (c *client) RoundTrip(req *http.Request) (*http.Response, error) {
@@ -252,7 +256,7 @@ func (c *client) resolveResolver(ctx context.Context, resolver string) (string, 
 	}
 
 	if core.IsCCID(resolver) {
-		entity, err := c.GetEntity(ctx, resolver, &Options{})
+		entity, err := c.GetEntity(ctx, resolver, &Options{Resolver: c.defaultResolver, Cache: "try-cache"})
 		if err != nil {
 			span.RecordError(err)
 			return "", err
@@ -261,7 +265,7 @@ func (c *client) resolveResolver(ctx context.Context, resolver string) (string, 
 	}
 
 	if core.IsCSID(resolver) {
-		domain, err := c.GetDomain(ctx, resolver, &Options{})
+		domain, err := c.LookupCSID(ctx, resolver, &Options{Resolver: c.defaultResolver, Cache: "try-cache"})
 		if err != nil {
 			span.RecordError(err)
 			return "", err
@@ -276,7 +280,19 @@ func (c *client) GetEntity(ctx context.Context, address string, opts *Options) (
 	ctx, span := tracer.Start(ctx, "Client.GetEntity")
 	defer span.End()
 
-	domain, err := c.resolveResolver(ctx, opts.Resolver)
+	resolver := address
+	if opts != nil {
+		if opts.Resolver != "" {
+			resolver = opts.Resolver
+		}
+		if opts.Cache == "try-cache" {
+			if val, found := c.cache.Get(address); found {
+				return val.(core.Entity), nil
+			}
+		}
+	}
+
+	domain, err := c.resolveResolver(ctx, resolver)
 	if err != nil {
 		span.RecordError(err)
 		return core.Entity{}, err
@@ -300,12 +316,22 @@ func (c *client) GetEntity(ctx context.Context, address string, opts *Options) (
 		return core.Entity{}, err
 	}
 
+	go func() {
+		c.cache.Set(address, *response, cache.DefaultExpiration)
+	}()
+
 	return *response, nil
 }
 
 func (c *client) GetMessage(ctx context.Context, id string, opts *Options) (core.Message, error) {
 	ctx, span := tracer.Start(ctx, "Client.GetMessage")
 	defer span.End()
+
+	if opts != nil && opts.Cache == "try-cache" {
+		if val, found := c.cache.Get(id); found {
+			return val.(core.Message), nil
+		}
+	}
 
 	domain, err := c.resolveResolver(ctx, opts.Resolver)
 	if err != nil {
@@ -332,12 +358,22 @@ func (c *client) GetMessage(ctx context.Context, id string, opts *Options) (core
 		return core.Message{}, err
 	}
 
+	go func() {
+		c.cache.Set(id, *response, cache.DefaultExpiration)
+	}()
+
 	return *response, nil
 }
 
 func (c *client) GetAssociation(ctx context.Context, id string, opts *Options) (core.Association, error) {
 	ctx, span := tracer.Start(ctx, "Client.GetAssociation")
 	defer span.End()
+
+	if opts != nil && opts.Cache == "try-cache" {
+		if val, found := c.cache.Get(id); found {
+			return val.(core.Association), nil
+		}
+	}
 
 	domain, err := c.resolveResolver(ctx, opts.Resolver)
 	if err != nil {
@@ -363,12 +399,22 @@ func (c *client) GetAssociation(ctx context.Context, id string, opts *Options) (
 		return core.Association{}, err
 	}
 
+	go func() {
+		c.cache.Set(id, *response, cache.DefaultExpiration)
+	}()
+
 	return *response, nil
 }
 
 func (c *client) GetProfile(ctx context.Context, id string, opts *Options) (core.Profile, error) {
 	ctx, span := tracer.Start(ctx, "Client.GetProfile")
 	defer span.End()
+
+	if opts != nil && opts.Cache == "try-cache" {
+		if val, found := c.cache.Get(id); found {
+			return val.(core.Profile), nil
+		}
+	}
 
 	domain, err := c.resolveResolver(ctx, opts.Resolver)
 	if err != nil {
@@ -394,12 +440,22 @@ func (c *client) GetProfile(ctx context.Context, id string, opts *Options) (core
 		return core.Profile{}, err
 	}
 
+	go func() {
+		c.cache.Set(id, *response, cache.DefaultExpiration)
+	}()
+
 	return *response, nil
 }
 
 func (c *client) GetTimeline(ctx context.Context, id string, opts *Options) (core.Timeline, error) {
 	ctx, span := tracer.Start(ctx, "Client.GetTimeline")
 	defer span.End()
+
+	if opts != nil && opts.Cache == "try-cache" {
+		if val, found := c.cache.Get(id); found {
+			return val.(core.Timeline), nil
+		}
+	}
 
 	domain, err := c.resolveResolver(ctx, opts.Resolver)
 	if err != nil {
@@ -424,6 +480,10 @@ func (c *client) GetTimeline(ctx context.Context, id string, opts *Options) (cor
 
 		return core.Timeline{}, err
 	}
+
+	go func() {
+		c.cache.Set(id, *response, cache.DefaultExpiration)
+	}()
 
 	return *response, nil
 }
@@ -535,6 +595,12 @@ func (c *client) GetKey(ctx context.Context, id string, opts *Options) ([]core.K
 	ctx, span := tracer.Start(ctx, "Client.GetKey")
 	defer span.End()
 
+	if opts != nil && opts.Cache == "try-cache" {
+		if val, found := c.cache.Get(id); found {
+			return val.([]core.Key), nil
+		}
+	}
+
 	domain, err := c.resolveResolver(ctx, opts.Resolver)
 	if err != nil {
 		span.RecordError(err)
@@ -559,12 +625,56 @@ func (c *client) GetKey(ctx context.Context, id string, opts *Options) ([]core.K
 		return nil, err
 	}
 
+	go func() {
+		c.cache.Set(id, *response, cache.DefaultExpiration)
+	}()
+
+	return *response, nil
+}
+
+func (c *client) LookupCSID(ctx context.Context, csid string, opts *Options) (core.Domain, error) {
+	ctx, span := tracer.Start(ctx, "Client.LookupCSID")
+	defer span.End()
+
+	if opts != nil && opts.Cache == "try-cache" {
+		if val, found := c.cache.Get(csid); found {
+			return val.(core.Domain), nil
+		}
+	}
+
+	url := "https://" + c.defaultResolver + "/api/v1/domain/" + csid
+	span.SetAttributes(attribute.String("url", url))
+	response, err := httpRequest[core.Domain](ctx, c.client, "GET", url, "", opts)
+	if err != nil {
+		span.RecordError(err)
+		return core.Domain{}, err
+	}
+
+	go func() {
+		c.cache.Set(csid, *response, cache.DefaultExpiration)
+	}()
+
 	return *response, nil
 }
 
 func (c *client) GetDomain(ctx context.Context, domain string, opts *Options) (core.Domain, error) {
 	ctx, span := tracer.Start(ctx, "Client.GetDomain")
 	defer span.End()
+
+	if opts != nil && opts.Cache == "try-cache" {
+		if val, found := c.cache.Get(domain); found {
+			return val.(core.Domain), nil
+		}
+	}
+
+	if core.IsCSID(domain) {
+		d, err := c.LookupCSID(ctx, domain, &Options{Cache: "try-cache"})
+		if err != nil {
+			span.RecordError(err)
+			return core.Domain{}, err
+		}
+		domain = d.ID
+	}
 
 	if !c.IsOnline(domain) {
 		return core.Domain{}, fmt.Errorf("Domain is offline")
@@ -585,6 +695,10 @@ func (c *client) GetDomain(ctx context.Context, domain string, opts *Options) (c
 
 		return core.Domain{}, err
 	}
+
+	go func() {
+		c.cache.Set(domain, *response, cache.DefaultExpiration)
+	}()
 
 	return *response, nil
 }
@@ -625,7 +739,20 @@ func (c *client) GetAck(ctx context.Context, from, to string, opts *Options) (co
 	ctx, span := tracer.Start(ctx, "Client.GetAck")
 	defer span.End()
 
-	domain, err := c.resolveResolver(ctx, opts.Resolver)
+	cacheKey := "ack:" + from + ":" + to
+	resolver := from
+	if opts != nil {
+		if opts.Resolver != "" {
+			resolver = opts.Resolver
+		}
+		if opts.Cache == "try-cache" {
+			if val, found := c.cache.Get(cacheKey); found {
+				return val.(core.Ack), nil
+			}
+		}
+	}
+
+	domain, err := c.resolveResolver(ctx, resolver)
 	if err != nil {
 		span.RecordError(err)
 		return core.Ack{}, err
@@ -648,6 +775,10 @@ func (c *client) GetAck(ctx context.Context, from, to string, opts *Options) (co
 
 		return core.Ack{}, err
 	}
+
+	go func() {
+		c.cache.Set(cacheKey, *response, cache.DefaultExpiration)
+	}()
 
 	return *response, nil
 }

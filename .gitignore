@@ -5,3 +5,4 @@ _etc
 *.exe
 *.log
 .idea/
+/cmd/test

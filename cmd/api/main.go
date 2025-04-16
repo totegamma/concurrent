@@ -221,7 +221,8 @@ func main() {
 	mc := memcache.New(config.Server.MemcachedAddr)
 	defer mc.Close()
 
-	client := client.NewClient("localhost" + port)
+	client := client.NewClient(conconf.FQDN)
+	client.RegisterHostRemap(conconf.FQDN, "localhost"+port, false)
 	client.SetUserAgent("CCAPI", version)
 	timelineKeeper := timeline.NewKeeper(rdb, mc, client, conconf)
 

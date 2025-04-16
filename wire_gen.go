@@ -35,9 +35,9 @@ import (
 
 // Injectors from wire.go:
 
-func SetupPolicyService(rdb *redis.Client, globalPolicy core.Policy, config core.Config) core.PolicyService {
+func SetupPolicyService(rdb *redis.Client, client2 client.Client, globalPolicy core.Policy, config core.Config) core.PolicyService {
 	repository := policy.NewRepository(rdb)
-	policyService := policy.NewService(repository, globalPolicy, config)
+	policyService := policy.NewService(repository, client2, globalPolicy, config)
 	return policyService
 }
 

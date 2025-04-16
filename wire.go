@@ -82,7 +82,7 @@ var notificationServiceProvider = wire.NewSet(
 
 // -----------
 
-func SetupPolicyService(rdb *redis.Client, globalPolicy core.Policy, config core.Config) core.PolicyService {
+func SetupPolicyService(rdb *redis.Client, client client.Client, globalPolicy core.Policy, config core.Config) core.PolicyService {
 	wire.Build(policyServiceProvider)
 	return nil
 }

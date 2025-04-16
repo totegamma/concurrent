@@ -228,7 +228,7 @@ func main() {
 
 	globalPolicy := concurrent.GetDefaultGlobalPolicy()
 
-	policy := concurrent.SetupPolicyService(rdb, globalPolicy, conconf)
+	policy := concurrent.SetupPolicyService(rdb, client, globalPolicy, conconf)
 
 	domainService := concurrent.SetupDomainService(db, client, conconf)
 	domainHandler := domain.NewHandler(domainService)

@@ -6,7 +6,9 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
+	"go.uber.org/mock/gomock"
 
+	"github.com/totegamma/concurrent/client/mock"
 	"github.com/totegamma/concurrent/core"
 	"github.com/totegamma/concurrent/internal/testutil"
 )
@@ -84,8 +86,12 @@ func TestMain(m *testing.M) {
 
 	repository := NewRepository(nil)
 
+	ctrl := gomock.NewController(nil)
+	client := mock_client.NewMockClient(ctrl)
+
 	s = NewService(
 		repository,
+		client,
 		globalPolicy,
 		core.Config{
 			FQDN: "local.example.com",
@@ -152,10 +158,12 @@ func TestGlobalBlock(t *testing.T) {
 func TestServiceSummerize(t *testing.T) {
 	assert := assert.New(t)
 
+	client := mock_client.NewMockClient(gomock.NewController(t))
+
 	// Setup with some global defaults
 	var globalPolicy core.Policy
 	json.Unmarshal([]byte(`{"defaults": {"read": true, "write": false}}`), &globalPolicy)
-	testService := NewService(nil, globalPolicy, core.Config{}).(*service)
+	testService := NewService(nil, client, globalPolicy, core.Config{}).(*service)
 
 	// No results, default true
 	assert.True(testService.Summerize([]core.PolicyEvalResult{}, "read", nil))
@@ -196,10 +204,12 @@ func TestServiceSummerize(t *testing.T) {
 func TestServiceAccumulateOr(t *testing.T) {
 	assert := assert.New(t)
 
+	client := mock_client.NewMockClient(gomock.NewController(t))
+
 	// Setup with some global defaults
 	var globalPolicy core.Policy
 	json.Unmarshal([]byte(`{"defaults": {"read": true, "write": false}}`), &globalPolicy)
-	testService := NewService(nil, globalPolicy, core.Config{}).(*service)
+	testService := NewService(nil, client, globalPolicy, core.Config{}).(*service)
 
 	// Basic cases
 	assert.Equal(core.PolicyEvalResultAllow, testService.AccumulateOr([]core.PolicyEvalResult{core.PolicyEvalResultAllow}, "any", nil))

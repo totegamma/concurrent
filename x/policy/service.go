@@ -11,6 +11,7 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
+	cc "github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/core"
 )
 
@@ -18,13 +19,15 @@ var tracer = otel.Tracer("policy")
 
 type service struct {
 	repository Repository
+	client     cc.Client
 	global     core.Policy
 	config     core.Config
 }
 
-func NewService(repository Repository, globalPolicy core.Policy, config core.Config) core.PolicyService {
+func NewService(repository Repository, client cc.Client, globalPolicy core.Policy, config core.Config) core.PolicyService {
 	return &service{
 		repository,
+		client,
 		globalPolicy,
 		config,
 	}

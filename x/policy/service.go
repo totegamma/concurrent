@@ -6,7 +6,9 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
+	"time"
 
+	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -728,6 +730,78 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 		return core.EvalResult{
 			Operator: "RequesterDomainHasTag",
 			Result:   tags.Has(target),
+		}, nil
+
+	case "Acks":
+		if len(expr.Args) != 2 {
+			err := fmt.Errorf("bad argument length for Acks. Expected 2 but got %d\n", len(expr.Args))
+			return core.EvalResult{
+				Operator: "Acks",
+				Error:    err.Error(),
+			}, err
+		}
+
+		arg0_raw, err := s.eval(expr.Args[0], requestCtx)
+		if err != nil {
+			return core.EvalResult{
+				Operator: "Acks",
+				Args:     []core.EvalResult{arg0_raw},
+				Error:    err.Error(),
+			}, err
+		}
+		arg0, ok := arg0_raw.Result.(string)
+		if !ok {
+			err := fmt.Errorf("bad argument type for Acks. Expected string but got %s\n", reflect.TypeOf(arg0_raw.Result))
+			return core.EvalResult{
+				Operator: "Acks",
+				Args:     []core.EvalResult{arg0_raw},
+				Error:    err.Error(),
+			}, err
+		}
+
+		arg1_raw, err := s.eval(expr.Args[1], requestCtx)
+		if err != nil {
+			return core.EvalResult{
+				Operator: "Acks",
+				Args:     []core.EvalResult{arg0_raw, arg1_raw},
+				Error:    err.Error(),
+			}, err
+		}
+		arg1, ok := arg1_raw.Result.(string)
+
+		if !ok {
+			err := fmt.Errorf("bad argument type for Acks. Expected string but got %s\n", reflect.TypeOf(arg1_raw.Result))
+			return core.EvalResult{
+				Operator: "Acks",
+				Args:     []core.EvalResult{arg0_raw, arg1_raw},
+				Error:    err.Error(),
+			}, err
+		}
+
+		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+
+		ack, err := s.client.GetAck(ctx, arg0, arg1, &cc.Options{Cache: "try-cache"})
+		if err != nil {
+			if errors.Is(err, core.ErrorNotFound) {
+				return core.EvalResult{
+					Operator: "Acks",
+					Args:     []core.EvalResult{arg0_raw, arg1_raw},
+					Result:   false,
+				}, nil
+			}
+
+			return core.EvalResult{
+				Operator: "Acks",
+				Args:     []core.EvalResult{arg0_raw, arg1_raw},
+				Error:    err.Error(),
+			}, err
+		}
+
+		return core.EvalResult{
+			Operator: "Acks",
+			Args:     []core.EvalResult{arg0_raw, arg1_raw},
+			Result:   ack.Valid,
 		}, nil
 
 	case "Cond": // Renamed from "Conditional"

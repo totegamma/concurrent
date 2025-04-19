@@ -383,7 +383,6 @@ func main() {
 			client := &http.Client{}
 
 			url := "http://" + service.Host + ":" + strconv.Itoa(service.Port) + "/cc-info"
-			fmt.Printf("fetching %s\n", url)
 			req, err := http.NewRequest("GET", url, nil)
 			if err != nil {
 				goto CACHE_STEP
@@ -427,7 +426,6 @@ func main() {
 			if time.Since(cache.fetchedAt) > threadhold {
 				go fetcher()
 			}
-			fmt.Printf("cache hit %s\n", service.Name)
 			return cache.info
 		}
 

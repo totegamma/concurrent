@@ -90,7 +90,7 @@ func TestReactor_dispatchJob(t *testing.T) {
 			mockStore := mock_core.NewMockStoreService(ctrl) // Store mock needed for reactor creation
 			mockJob := mock_core.NewMockJobService(ctrl)
 			r := NewReactor(mockStore, mockJob).(*reactor)
-			ctx := context.Background()
+			ctx := t.Context()
 
 			tt.mockComplete(mockJob, tt.job, tt.expectedStatus, tt.expectedResult)
 
@@ -175,7 +175,7 @@ func TestReactor_dispatchJobs(t *testing.T) {
 			mockStore := mock_core.NewMockStoreService(ctrl)
 			mockJob := mock_core.NewMockJobService(ctrl)
 			r := NewReactor(mockStore, mockJob).(*reactor)
-			ctx := context.Background()
+			ctx := t.Context()
 
 			var wg sync.WaitGroup
 			if tt.expectGoroutine {

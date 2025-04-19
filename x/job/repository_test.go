@@ -1,7 +1,6 @@
 package job
 
 import (
-	"context"
 	"log"
 	"testing"
 	"time"
@@ -12,7 +11,6 @@ import (
 	"gorm.io/gorm"
 )
 
-var ctx = context.Background()
 var repo Repository
 var db *gorm.DB
 
@@ -31,6 +29,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestJobRepository(t *testing.T) {
+	ctx := t.Context()
 	author1 := "con1author1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	author2 := "con1author2bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
 

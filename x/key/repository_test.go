@@ -1,7 +1,6 @@
 package key
 
 import (
-	"context"
 	"github.com/stretchr/testify/assert"
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/core"
@@ -12,7 +11,7 @@ import (
 
 func TestRepository(t *testing.T) {
 
-	var ctx = context.Background()
+	var ctx = t.Context()
 
 	db, cleanup_db := testutil.CreateDB()
 	defer cleanup_db()

@@ -642,7 +642,7 @@ func TestEvalOperators(t *testing.T) {
 			t.Parallel() // Restore parallel execution
 			// Use assert from outer scope
 			// t.Log("Running test case:", tc.name) // Remove logging
-			evalResult, err := serviceImpl.eval(tc.expr, tc.requestCtx)
+			evalResult, err := serviceImpl.eval(t.Context(), tc.expr, tc.requestCtx)
 
 			if tc.expectError {
 				assert.Error(err)

@@ -1,7 +1,6 @@
 package association
 
 import (
-	"context"
 	"errors"
 	"log"
 	"testing"
@@ -14,7 +13,6 @@ import (
 	"gorm.io/gorm"
 )
 
-var ctx = context.Background()
 var repo Repository
 var db *gorm.DB
 var mc *memcache.Client
@@ -42,6 +40,7 @@ func TestMain(m *testing.M) {
 
 // TestRepositoryOperations uses table-driven tests for repository methods
 func TestRepositoryOperations(t *testing.T) {
+	ctx := t.Context()
 	author1 := "con1n42l2lektua69gvza8xhksq3t2we8nnlkmzct4"
 	author2 := "con1sh4vuw03nn20hn94tuk7h7u3ne5n20avfl5sjm"
 	schemaLike := "https://schema.concrnt.world/a/like.json"

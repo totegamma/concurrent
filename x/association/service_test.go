@@ -90,7 +90,7 @@ func TestService_Create(t *testing.T) {
 	dummyPrivateKey := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	config := core.Config{FQDN: "local.example.com", CCID: "localCCID", CSID: "localCSID", PrivateKey: dummyPrivateKey}
 	s := NewService(repo, client, entity, domain, profile, timeline, subscription, message, key, policy, config)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	signerID := "con1nadqu3d7pht036lpf68z4ftj909p428umuwau8"
 	ownerID := "con1xw54ufkh8ts29qk5rxvw0t4q9p6hmpmgzh9tah"
@@ -219,7 +219,7 @@ func TestService_Delete(t *testing.T) {
 	dummyPrivateKey := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	config := core.Config{FQDN: "local.example.com", CCID: "localCCID", CSID: "localCSID", PrivateKey: dummyPrivateKey}
 	s := NewService(repo, client, entity, domain, profile, timeline, subscription, message, key, policy, config)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	signerID := "con1signer"
 	targetAssocID := "a" + "targetAssocID12345678901"

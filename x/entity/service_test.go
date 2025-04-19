@@ -61,6 +61,7 @@ func TestNewService(t *testing.T) {
 func TestService_Affiliation(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
+	ctx := t.Context()
 
 	repo := mock_entity.NewMockRepository(ctrl)
 	client := mock_client.NewMockClient(ctrl)
@@ -69,7 +70,6 @@ func TestService_Affiliation(t *testing.T) {
 	jwt := mock_jwt.NewMockService(ctrl)
 	config := core.Config{FQDN: "local.example.com", Registration: "open"}
 	s := NewService(repo, client, config, key, policy, jwt)
-	ctx := context.Background()
 
 	signerID := "con1signer"
 	domain := config.FQDN
@@ -178,6 +178,7 @@ func TestService_Affiliation(t *testing.T) {
 func TestService_Tombstone(t *testing.T) {
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
+	ctx := t.Context()
 
 	repo := mock_entity.NewMockRepository(ctrl)
 	client := mock_client.NewMockClient(ctrl)
@@ -186,7 +187,6 @@ func TestService_Tombstone(t *testing.T) {
 	jwt := mock_jwt.NewMockService(ctrl)
 	config := core.Config{}
 	s := NewService(repo, client, config, key, policy, jwt)
-	ctx := context.Background()
 
 	signerID := "con1signer"
 	sig := "testSig"

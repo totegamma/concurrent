@@ -1,6 +1,6 @@
 module github.com/totegamma/concurrent
 
-go 1.22.4
+go 1.24.2
 
 require (
 	github.com/SherClockHolmes/webpush-go v1.3.0

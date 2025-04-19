@@ -1,7 +1,6 @@
 package job
 
 import (
-	"context"
 	"errors"
 	"testing"
 	"time"
@@ -28,7 +27,7 @@ func TestService_List(t *testing.T) {
 
 	repo := mock_job.NewMockRepository(ctrl)
 	s := NewService(repo)
-	ctx := context.Background()
+	ctx := t.Context()
 	requester := "testRequester"
 	expectedJobs := []core.Job{{ID: "job1"}, {ID: "job2"}}
 
@@ -45,7 +44,7 @@ func TestService_Create(t *testing.T) {
 
 	repo := mock_job.NewMockRepository(ctrl)
 	s := NewService(repo)
-	ctx := context.Background()
+	ctx := t.Context()
 	requester := "testRequester"
 	jobType := "testType"
 	payload := `{"data":"test"}`
@@ -65,7 +64,7 @@ func TestService_Dequeue(t *testing.T) {
 
 	repo := mock_job.NewMockRepository(ctrl)
 	s := NewService(repo)
-	ctx := context.Background()
+	ctx := t.Context()
 	expectedJob := &core.Job{ID: "dequeuedJob", Status: "running"}
 
 	repo.EXPECT().Dequeue(gomock.Any()).Return(expectedJob, nil).Times(1)
@@ -81,7 +80,7 @@ func TestService_Complete(t *testing.T) {
 
 	repo := mock_job.NewMockRepository(ctrl)
 	s := NewService(repo)
-	ctx := context.Background()
+	ctx := t.Context()
 	jobID := "jobToComplete"
 	status := "completed"
 	resultStr := `{"output":"done"}`
@@ -100,7 +99,7 @@ func TestService_Cancel(t *testing.T) {
 
 	repo := mock_job.NewMockRepository(ctrl)
 	s := NewService(repo)
-	ctx := context.Background()
+	ctx := t.Context()
 	jobID := "jobToCancel"
 	expectedJob := core.Job{ID: jobID, Status: "canceled"}
 
@@ -118,7 +117,7 @@ func TestService_Errors(t *testing.T) {
 
 	repo := mock_job.NewMockRepository(ctrl)
 	s := NewService(repo)
-	ctx := context.Background()
+	ctx := t.Context()
 	testError := errors.New("repo error")
 
 	t.Run("ListError", func(t *testing.T) {

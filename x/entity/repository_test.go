@@ -1,7 +1,6 @@
 package entity
 
 import (
-	"context"
 	"errors"
 	"log"
 	"strings"
@@ -17,7 +16,6 @@ import (
 	"gorm.io/gorm"
 )
 
-var ctx = context.Background()
 var repo Repository
 var db *gorm.DB
 var mc *memcache.Client
@@ -45,6 +43,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestEntityRepository(t *testing.T) {
+	ctx := t.Context()
 
 	entity1ID := "con1entity1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	entity2ID := "con1entity2bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"

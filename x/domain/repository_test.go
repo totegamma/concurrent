@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"context"
 	"errors"
 	"log"
 	"testing"
@@ -13,7 +12,6 @@ import (
 	"gorm.io/gorm"
 )
 
-var ctx = context.Background()
 var repo Repository
 var db *gorm.DB
 
@@ -32,6 +30,7 @@ func TestMain(m *testing.M) {
 }
 
 func TestRepository(t *testing.T) {
+	ctx := t.Context()
 
 	ccid1 := "con1ccid1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	csid1 := "ccs1csid1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"

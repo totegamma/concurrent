@@ -1,7 +1,6 @@
 package auth
 
 import (
-	"context"
 	"encoding/base64"
 	"encoding/json"
 	"errors"
@@ -33,6 +32,8 @@ func TestNewService(t *testing.T) {
 }
 
 func TestService_IssuePassport(t *testing.T) {
+	ctx := t.Context()
+
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
 
@@ -47,7 +48,6 @@ func TestService_IssuePassport(t *testing.T) {
 	dummyPrivateKey := "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
 	config := core.Config{FQDN: "local.example.com", CCID: "localCCID", CSID: "localCSID", PrivateKey: dummyPrivateKey}
 	s := NewService(rdb, config, entity, domain, key, policy)
-	ctx := context.Background()
 
 	requesterID := "con1requester"
 	requesterEntity := core.Entity{ID: requesterID, Domain: config.FQDN} // Local entity

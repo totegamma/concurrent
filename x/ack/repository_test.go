@@ -1,8 +1,6 @@
 package ack
 
 import (
-	"context"
-	//"strings" // No longer needed
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -11,11 +9,12 @@ import (
 )
 
 func TestRepository(t *testing.T) {
+	ctx := t.Context()
+
 	db, cleanup := testutil.CreateDB()
 	defer cleanup()
 
 	repo := NewRepository(db)
-	ctx := context.Background()
 
 	// Test Ack
 	t.Run("Ack", func(t *testing.T) {

@@ -1,7 +1,6 @@
 package timeline
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"testing"
@@ -17,9 +16,9 @@ import (
 	"go.uber.org/mock/gomock"
 )
 
-var ctx = context.Background()
-
 func TestCreateItem(t *testing.T) {
+	ctx := t.Context()
+
 	var cleanup_db func()
 	db, cleanup_db := testutil.CreateDB()
 	defer cleanup_db()
@@ -112,6 +111,8 @@ func TestCreateItem(t *testing.T) {
 }
 
 func TestLoadChunkBodies(t *testing.T) {
+	ctx := t.Context()
+
 	var cleanup_db func()
 	db, cleanup_db := testutil.CreateDB()
 	defer cleanup_db()
@@ -218,7 +219,7 @@ func TestLoadChunkBodies(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Itemを追加
-	for i := 0; i < 40; i++ {
+	for i := range 40 {
 		resourceID := fmt.Sprintf("m%026d", i)
 		_, err = repo.CreateItem(ctx, core.TimelineItem{
 			ResourceID: resourceID,
@@ -281,6 +282,8 @@ func TestLoadChunkBodies(t *testing.T) {
 }
 
 func TestLookupChunkItrs(t *testing.T) {
+	ctx := t.Context()
+
 	var cleanup_db func()
 	db, cleanup_db := testutil.CreateDB()
 	defer cleanup_db()
@@ -437,6 +440,8 @@ func TestLookupChunkItrs(t *testing.T) {
 }
 
 func TestLoadRemoteBodies(t *testing.T) {
+	ctx := t.Context()
+
 	var cleanup_db func()
 	db, cleanup_db := testutil.CreateDB()
 	defer cleanup_db()
@@ -554,6 +559,8 @@ func TestLoadRemoteBodies(t *testing.T) {
 }
 
 func TestLookupRemoteItrs(t *testing.T) {
+	ctx := t.Context()
+
 	var cleanup_db func()
 	db, cleanup_db := testutil.CreateDB()
 	defer cleanup_db()
@@ -645,6 +652,8 @@ func TestLookupRemoteItrs(t *testing.T) {
 }
 
 func TestLookupLocalItrs(t *testing.T) {
+	ctx := t.Context()
+
 	var cleanup_db func()
 	db, cleanup_db := testutil.CreateDB()
 	defer cleanup_db()
@@ -749,6 +758,8 @@ func TestLookupLocalItrs(t *testing.T) {
 }
 
 func TestLoadLocalBody(t *testing.T) {
+	ctx := t.Context()
+
 	var cleanup_db func()
 	db, cleanup_db := testutil.CreateDB()
 	defer cleanup_db()
@@ -799,7 +810,7 @@ func TestLoadLocalBody(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Itemを追加
-	for i := 0; i < 40; i++ {
+	for i := range 40 {
 		resourceID := fmt.Sprintf("m%026d", i)
 		_, err = repo.CreateItem(ctx, core.TimelineItem{
 			ResourceID: resourceID,
@@ -848,7 +859,7 @@ func TestLoadLocalBody(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Itemを追加
-	for i := 0; i < 40; i++ {
+	for i := range 40 {
 		resourceID := fmt.Sprintf("m%026d", i)
 		_, err = repo.CreateItem(ctx, core.TimelineItem{
 			ResourceID: resourceID,

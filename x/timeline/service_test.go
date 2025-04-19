@@ -1,7 +1,6 @@
 package timeline
 
 import (
-	"context"
 	"fmt"
 	"strconv"
 	"testing"
@@ -95,7 +94,7 @@ func TestGetRecentItemsSimple(t *testing.T) {
 		},
 	)
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	items, err := service.GetRecentItems(ctx, []string{"t00000000000000000000000000"}, pivotTime, 16)
 	assert.NoError(t, err)
@@ -182,7 +181,7 @@ func TestGetRecentItemsLoadMore(t *testing.T) {
 		},
 	)
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	items, err := service.GetRecentItems(ctx, []string{"t00000000000000000000000000"}, pivotTime, 16)
 	assert.NoError(t, err)
@@ -414,7 +413,7 @@ func TestGetRecentItemsWide(t *testing.T) {
 		},
 	)
 
-	ctx := context.Background()
+	ctx := t.Context()
 
 	items, err := service.GetRecentItems(
 		ctx,

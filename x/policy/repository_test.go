@@ -1,7 +1,6 @@
 package policy
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -12,13 +11,12 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/totegamma/concurrent/core"
 	"github.com/totegamma/concurrent/internal/testutil"
-	// Removed unused redis import
 )
 
 func TestRepositoryGet(t *testing.T) {
 	t.Parallel()
 	assert := assert.New(t)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	// Setup Redis using dockertest
 	db, cleanup := testutil.CreateRDB()

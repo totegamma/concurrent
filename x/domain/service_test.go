@@ -1,7 +1,6 @@
 package domain
 
 import (
-	"context"
 	"errors"
 	"testing"
 
@@ -33,7 +32,7 @@ func TestService_Upsert(t *testing.T) {
 	client := mock_client.NewMockClient(ctrl)
 	config := core.Config{}
 	s := NewService(repo, client, config)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	domainToUpsert := core.Domain{ID: "upsert.example.com"}
 
@@ -52,7 +51,7 @@ func TestService_Get(t *testing.T) {
 	client := mock_client.NewMockClient(ctrl)
 	config := core.Config{FQDN: "local.example.com", CSID: "ccs1localcsidaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", CCID: "con1localccidaaaaaaaaaaaaaaaaaaaaaaaaaaaaa", Dimension: "testDimension"}
 	s := NewService(repo, client, config)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	fqdn := "test.example.com"
 	ccid := "con1ccid1aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
@@ -113,7 +112,7 @@ func TestService_ForceFetch(t *testing.T) {
 	client := mock_client.NewMockClient(ctrl)
 	config := core.Config{Dimension: "testDimension"}
 	s := NewService(repo, client, config)
-	ctx := context.Background()
+	ctx := t.Context()
 
 	fqdn := "forcefetch.example.com"
 	fetchedDomain := core.Domain{ID: fqdn, Dimension: config.Dimension, CCID: "fetchedCCID"}

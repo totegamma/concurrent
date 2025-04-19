@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -84,13 +85,26 @@ func main() {
 	e := echo.New()
 	e.HidePort = true
 	e.HideBanner = true
-	config := Config{}
-	configPath := os.Getenv("CONCRNT_CONFIG")
-	if configPath == "" {
-		configPath = "/etc/concrnt/config/config.yaml"
+
+	configPaths := []string{}
+	configPath := os.Getenv("CONCRNT_CONFIG") // for backward compatibility
+	if configPath != "" {
+		configPaths = append(configPaths, configPath)
 	}
 
-	err := config.Load(configPath)
+	additional_configs := os.Getenv("CONCRNT_CONFIGS")
+	if additional_configs != "" {
+		for v := range strings.SplitSeq(additional_configs, ":") {
+			configPaths = append(configPaths, v)
+		}
+	}
+
+	if len(configPaths) == 0 {
+		configPaths = []string{"/etc/concrnt/config/config.yaml"}
+	}
+
+	config := Config{}
+	err := config.Load(configPaths)
 	if err != nil {
 		slog.Error("Failed to load config: ", slog.String("error", err.Error()))
 	}

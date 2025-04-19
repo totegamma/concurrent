@@ -453,7 +453,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 					timelineItem.CDate = doc.SignedAt
 				}
 
-				posted, err := s.timeline.PostItem(ctx, timeline, timelineItem, sendDocument, sendSignature)
+				posted, err := s.timeline.PostItem(ctx, timeline, timelineItem, document, sendSignature)
 				if err != nil {
 					span.RecordError(errors.Wrap(err, "failed to post item"))
 					continue

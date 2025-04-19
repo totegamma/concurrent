@@ -15,6 +15,7 @@ type Config struct {
 
 type Server struct {
 	Dsn             string `yaml:"dsn"`
+	GatewayAddr     string `yaml:"gatewayAddr"`
 	RedisAddr       string `yaml:"redisAddr"`
 	RedisDB         int    `yaml:"redisDB"`
 	MemcachedAddr   string `yaml:"memcachedAddr"`

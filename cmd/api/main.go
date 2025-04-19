@@ -222,7 +222,7 @@ func main() {
 	defer mc.Close()
 
 	client := client.NewClient(conconf.FQDN)
-	client.RegisterHostRemap(conconf.FQDN, "localhost"+port, false)
+	client.RegisterHostRemap(conconf.FQDN, config.Server.GatewayAddr, false)
 	client.SetUserAgent("CCAPI", version)
 	timelineKeeper := timeline.NewKeeper(rdb, mc, client, conconf)
 

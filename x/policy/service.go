@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"reflect"
 	"slices"
-	"time"
 
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel"
@@ -221,7 +220,7 @@ func (s service) test(ctx context.Context, policy core.Policy, context core.Requ
 		return core.PolicyEvalResultDefault, nil
 	}
 
-	result, err := s.eval(statement.Condition, context)
+	result, err := s.eval(ctx, statement.Condition, context)
 	resultJson, _ := json.MarshalIndent(result, "", "  ")
 	span.SetAttributes(attribute.String("result", string(resultJson)))
 	if err != nil {
@@ -251,10 +250,13 @@ func (s service) test(ctx context.Context, policy core.Policy, context core.Requ
 	}
 }
 
-func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.EvalResult, error) {
+func (s service) eval(ctx context.Context, expr core.Expr, requestCtx core.RequestContext) (core.EvalResult, error) {
 
 	defer func() {
 		if r := recover(); r != nil {
+			_, span := tracer.Start(ctx, "Policy.Service.eval.recover")
+			span.SetStatus(codes.Error, fmt.Sprintf("%v", r))
+			fmt.Printf("Panic occured. traceID: %s\n", span.SpanContext().TraceID().String())
 			fmt.Printf("recovered from: %v\n", r)
 			fmt.Printf("while evaluating: %v\n", expr.Operator)
 			core.JsonPrint("expr", expr)
@@ -266,7 +268,7 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 	case "And":
 		args := make([]core.EvalResult, 0)
 		for _, arg := range expr.Args {
-			eval, err := s.eval(arg, requestCtx)
+			eval, err := s.eval(ctx, arg, requestCtx)
 			if err != nil {
 				return core.EvalResult{
 					Operator: "And",
@@ -303,7 +305,7 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 	case "Or":
 		args := make([]core.EvalResult, 0)
 		for _, arg := range expr.Args {
-			eval, err := s.eval(arg, requestCtx)
+			eval, err := s.eval(ctx, arg, requestCtx)
 			if err != nil {
 				return core.EvalResult{
 					Operator: "Or",
@@ -344,7 +346,7 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 			}, err
 		}
 
-		arg0_raw, err := s.eval(expr.Args[0], requestCtx)
+		arg0_raw, err := s.eval(ctx, expr.Args[0], requestCtx)
 		if err != nil {
 			return core.EvalResult{
 				Operator: "Not",
@@ -378,7 +380,7 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 			}, err
 		}
 
-		arg0_raw, err := s.eval(expr.Args[0], requestCtx)
+		arg0_raw, err := s.eval(ctx, expr.Args[0], requestCtx)
 		if err != nil {
 			return core.EvalResult{
 				Operator: "Eq",
@@ -387,7 +389,7 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 			}, err
 		}
 
-		arg1_raw, err := s.eval(expr.Args[1], requestCtx)
+		arg1_raw, err := s.eval(ctx, expr.Args[1], requestCtx)
 		if err != nil {
 			return core.EvalResult{
 				Operator: "Eq",
@@ -417,7 +419,7 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 			}, err
 		}
 
-		arg0_raw, err := s.eval(expr.Args[0], requestCtx)
+		arg0_raw, err := s.eval(ctx, expr.Args[0], requestCtx)
 		if err != nil {
 			return core.EvalResult{
 				Operator: "Contains",
@@ -436,7 +438,7 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 			}, err
 		}
 
-		arg1_raw, err := s.eval(expr.Args[1], requestCtx)
+		arg1_raw, err := s.eval(ctx, expr.Args[1], requestCtx)
 		if err != nil {
 			return core.EvalResult{
 				Operator: "Contains",
@@ -581,7 +583,7 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 			}, err
 		}
 
-		arg0_raw, err := s.eval(expr.Args[0], requestCtx)
+		arg0_raw, err := s.eval(ctx, expr.Args[0], requestCtx)
 		if err != nil {
 			return core.EvalResult{
 				Operator: "IsCCID",
@@ -615,7 +617,7 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 			}, err
 		}
 
-		arg0_raw, err := s.eval(expr.Args[0], requestCtx)
+		arg0_raw, err := s.eval(ctx, expr.Args[0], requestCtx)
 		if err != nil {
 			return core.EvalResult{
 				Operator: "IsCSID",
@@ -649,7 +651,7 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 			}, err
 		}
 
-		arg0_raw, err := s.eval(expr.Args[0], requestCtx)
+		arg0_raw, err := s.eval(ctx, expr.Args[0], requestCtx)
 		if err != nil {
 			return core.EvalResult{
 				Operator: "IsCKID",
@@ -741,7 +743,7 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 			}, err
 		}
 
-		arg0_raw, err := s.eval(expr.Args[0], requestCtx)
+		arg0_raw, err := s.eval(ctx, expr.Args[0], requestCtx)
 		if err != nil {
 			return core.EvalResult{
 				Operator: "Acks",
@@ -759,7 +761,7 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 			}, err
 		}
 
-		arg1_raw, err := s.eval(expr.Args[1], requestCtx)
+		arg1_raw, err := s.eval(ctx, expr.Args[1], requestCtx)
 		if err != nil {
 			return core.EvalResult{
 				Operator: "Acks",
@@ -777,9 +779,6 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 				Error:    err.Error(),
 			}, err
 		}
-
-		ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
 
 		ack, err := s.client.GetAck(ctx, arg0, arg1, &cc.Options{Cache: "try-cache"})
 		if err != nil {
@@ -814,7 +813,7 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 		}
 
 		// Evaluate condition (arg 0)
-		conditionResult, err := s.eval(expr.Args[0], requestCtx)
+		conditionResult, err := s.eval(ctx, expr.Args[0], requestCtx)
 		if err != nil {
 			return core.EvalResult{
 				Operator: "Cond",
@@ -844,7 +843,7 @@ func (s service) eval(expr core.Expr, requestCtx core.RequestContext) (core.Eval
 			branchIndex = 2
 		}
 
-		branchResult, err := s.eval(chosenBranchExpr, requestCtx)
+		branchResult, err := s.eval(ctx, chosenBranchExpr, requestCtx)
 		if err != nil {
 			// Include condition result in args for context
 			argsForError := []core.EvalResult{conditionResult, {}, {}} // Placeholders for branches

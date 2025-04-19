@@ -209,6 +209,11 @@ func (c *client) Commit(ctx context.Context, domain, body string, response any, 
 }
 
 func httpRequest[T any](ctx context.Context, client *http.Client, method, url, body string, opts *Options) (*T, error) {
+	ctx, span := tracer.Start(ctx, "Client.httpRequest")
+	defer span.End()
+
+	span.SetAttributes(attribute.String("url", url))
+
 	req, err := http.NewRequest(method, url, bytes.NewBuffer([]byte(body)))
 	if err != nil {
 		return nil, err
@@ -239,8 +244,12 @@ func httpRequest[T any](ctx context.Context, client *http.Client, method, url, b
 	}
 
 	if response.Status != "ok" {
-		err = fmt.Errorf("Request failed(%s): %v", resp.Status, string(body))
-		slog.InfoContext(ctx, err.Error())
+		if resp.StatusCode == http.StatusNotFound {
+			err = core.NewErrorNotFound()
+		} else {
+			err = fmt.Errorf("Request failed(%s): %v", resp.Status, string(body))
+			slog.InfoContext(ctx, err.Error())
+		}
 		return nil, err
 	}
 

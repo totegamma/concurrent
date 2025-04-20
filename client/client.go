@@ -26,6 +26,7 @@ import (
 
 const (
 	defaultTimeout = 3 * time.Second
+	maxFailCount   = 23 // max 10 minutes
 )
 
 var tracer = otel.Tracer("client")
@@ -139,7 +140,7 @@ func (c *client) UpKeeper() {
 				c.failCount[domain] = 0
 			}
 
-			var span = 0.5 * math.Pow(1.5, float64(min(c.failCount[domain], 23))) // max: 10 minutes
+			var span = 0.5 * math.Pow(1.5, float64(c.failCount[domain])) // max: 10 minutes
 			if time.Since(lastFailed) > time.Duration(span)*time.Second {
 				slog.Info(fmt.Sprintf("Domain %s is offline. Fail count: %d", domain, c.failCount[domain]))
 				// health check
@@ -148,7 +149,7 @@ func (c *client) UpKeeper() {
 					if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
 						c.lastFailed[domain] = time.Now()
 					}
-					c.failCount[domain]++
+					c.failCount[domain] = min(c.failCount[domain]+1, maxFailCount)
 				} else {
 					slog.Info(fmt.Sprintf("Domain %s is back online :3", domain))
 					delete(c.lastFailed, domain)

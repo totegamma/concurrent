@@ -23,7 +23,7 @@ import (
 	"github.com/totegamma/concurrent"
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/internal/otelhelper"
+	"github.com/totegamma/concurrent/util"
 	"github.com/totegamma/concurrent/x/ack"
 	"github.com/totegamma/concurrent/x/association"
 	"github.com/totegamma/concurrent/x/auth"
@@ -103,8 +103,7 @@ func main() {
 		configPaths = []string{"/etc/concrnt/config/config.yaml"}
 	}
 
-	config := Config{}
-	err := config.Load(configPaths)
+	config, err := util.LoadMultipleYamlFiles[Config](configPaths)
 	if err != nil {
 		slog.Error("Failed to load config: ", slog.String("error", err.Error()))
 	}
@@ -120,7 +119,7 @@ func main() {
 	}
 
 	if config.Server.EnableTrace {
-		cleanup, err := otelhelper.SetupTraceProvider(config.Server.TraceEndpoint, config.Concrnt.FQDN+"/ccapi", version)
+		cleanup, err := util.SetupTraceProvider(config.Server.TraceEndpoint, config.Concrnt.FQDN+"/ccapi", version)
 		if err != nil {
 			panic(err)
 		}

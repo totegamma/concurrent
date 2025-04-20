@@ -14,6 +14,7 @@ import (
 
 	cc "github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/core"
+	"github.com/totegamma/concurrent/util"
 )
 
 var tracer = otel.Tracer("policy")
@@ -259,8 +260,8 @@ func (s service) eval(ctx context.Context, expr core.Expr, requestCtx core.Reque
 			fmt.Printf("Panic occured. traceID: %s\n", span.SpanContext().TraceID().String())
 			fmt.Printf("recovered from: %v\n", r)
 			fmt.Printf("while evaluating: %v\n", expr.Operator)
-			core.JsonPrint("expr", expr)
-			core.JsonPrint("requestCtx", requestCtx)
+			util.JsonPrint("expr", expr)
+			util.JsonPrint("requestCtx", requestCtx)
 		}
 	}()
 

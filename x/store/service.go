@@ -13,6 +13,7 @@ import (
 
 	"github.com/totegamma/concurrent/cdid"
 	"github.com/totegamma/concurrent/core"
+	"github.com/totegamma/concurrent/util"
 )
 
 type service struct {
@@ -179,7 +180,7 @@ func (s *service) Commit(
 			return nil, err
 		}
 		if len(doc.Target) == 0 {
-			core.JsonPrint("PROGRAM ERROR", doc)
+			util.JsonPrint("PROGRAM ERROR", doc)
 			return nil, fmt.Errorf("target is empty")
 		}
 		typ := doc.Target[0]

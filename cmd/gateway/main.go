@@ -25,7 +25,7 @@ import (
 	"github.com/totegamma/concurrent"
 	"github.com/totegamma/concurrent/client"
 	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/internal/otelhelper"
+	"github.com/totegamma/concurrent/util"
 	"github.com/totegamma/concurrent/x/auth"
 
 	"github.com/bradfitz/gomemcache/memcache"
@@ -70,8 +70,7 @@ func main() {
 		configPaths = []string{"/etc/concrnt/config/config.yaml"}
 	}
 
-	config := Config{}
-	err := config.Load(configPaths)
+	config, err := util.LoadMultipleYamlFiles[Config](configPaths)
 	if err != nil {
 		e.Logger.Fatal(err)
 	}
@@ -104,7 +103,7 @@ func main() {
 	e.Use(middleware.Recover())
 
 	if config.Server.EnableTrace {
-		cleanup, err := otelhelper.SetupTraceProvider(config.Server.TraceEndpoint, config.Concrnt.FQDN+"/ccgateway", version)
+		cleanup, err := util.SetupTraceProvider(config.Server.TraceEndpoint, config.Concrnt.FQDN+"/ccgateway", version)
 		if err != nil {
 			panic(err)
 		}

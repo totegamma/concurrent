@@ -1,10 +1,7 @@
 package main
 
 import (
-	"github.com/go-yaml/yaml"
 	"github.com/totegamma/concurrent/core"
-	"log"
-	"os"
 )
 
 type Config struct {
@@ -49,39 +46,4 @@ type Profile struct {
 	BuildInfo    BuildInfo `yaml:"buildInfo" json:"buildInfo"`
 	SiteKey      string    `yaml:"captchaSiteKey" json:"captchaSiteKey"`
 	VapidKey     string    `yaml:"vapidKey" json:"vapidKey"`
-}
-
-func (c *Config) Load(paths []string) error {
-
-	if len(paths) == 0 {
-		log.Fatal("no configuration file provided")
-		return nil
-	}
-
-	for _, path := range paths {
-		f, err := os.Open(path)
-		if err != nil {
-			log.Fatal("failed to open configuration file:", err)
-			return err
-		}
-		defer f.Close()
-
-		var tmpConfig Config
-
-		err = yaml.NewDecoder(f).Decode(&tmpConfig)
-		if err != nil {
-			log.Fatal("failed to load configuration file:", err)
-			return err
-		}
-
-		// Merge the loaded config into the existing config
-		err = core.DeepMerge(c, &tmpConfig)
-		if err != nil {
-			log.Fatal("failed to merge configuration file:", err)
-			return err
-		}
-
-	}
-
-	return nil
 }

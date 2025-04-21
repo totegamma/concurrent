@@ -9,7 +9,6 @@ import (
 	"io"
 	"log/slog"
 	"math"
-	"net"
 	"net/http"
 	"net/url"
 	"reflect"
@@ -18,6 +17,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/patrickmn/go-cache"
+	"github.com/pkg/errors"
 	"github.com/totegamma/concurrent/core"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
@@ -140,16 +140,14 @@ func (c *client) UpKeeper() {
 				c.failCount[domain] = 0
 			}
 
-			var span = 0.5 * math.Pow(1.5, float64(c.failCount[domain])) // max: 10 minutes
+			var span = 0.5 * math.Pow(1.5, float64(min(c.failCount[domain], maxFailCount)))
 			if time.Since(lastFailed) > time.Duration(span)*time.Second {
-				slog.Info(fmt.Sprintf("Domain %s is offline. Fail count: %d", domain, c.failCount[domain]))
 				// health check
 				_, err := httpRequest[core.Domain](ctx, c.client, "GET", "https://"+domain+"/api/v1/domain", "", &Options{})
-				if err != nil {
-					if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-						c.lastFailed[domain] = time.Now()
-					}
-					c.failCount[domain] = min(c.failCount[domain]+1, maxFailCount)
+				if err != nil && !errors.Is(err, core.ErrorNotFound) && !errors.Is(err, core.ErrorPermissionDenied) {
+					slog.Info(fmt.Sprintf("Domain %s is offline. Fail count: %d", domain, c.failCount[domain]))
+					c.lastFailed[domain] = time.Now()
+					c.failCount[domain]++
 				} else {
 					slog.Info(fmt.Sprintf("Domain %s is back online :3", domain))
 					delete(c.lastFailed, domain)
@@ -190,7 +188,7 @@ func (c *client) Commit(ctx context.Context, domain, body string, response any, 
 	if err != nil {
 		span.RecordError(err)
 
-		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+		if !errors.Is(err, core.ErrorNotFound) && !errors.Is(err, core.ErrorPermissionDenied) {
 			c.lastFailed[domain] = time.Now()
 		}
 
@@ -247,6 +245,8 @@ func httpRequest[T any](ctx context.Context, client *http.Client, method, url, b
 	if response.Status != "ok" {
 		if resp.StatusCode == http.StatusNotFound {
 			err = core.NewErrorNotFound()
+		} else if resp.StatusCode == http.StatusForbidden {
+			err = core.NewErrorPermissionDenied()
 		} else {
 			err = fmt.Errorf("Request failed(%s): %v", resp.Status, string(body))
 			slog.InfoContext(ctx, err.Error())
@@ -319,7 +319,7 @@ func (c *client) GetEntity(ctx context.Context, address string, opts *Options) (
 	if err != nil {
 		span.RecordError(err)
 
-		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+		if !errors.Is(err, core.ErrorNotFound) && !errors.Is(err, core.ErrorPermissionDenied) {
 			c.lastFailed[domain] = time.Now()
 		}
 
@@ -361,7 +361,7 @@ func (c *client) GetMessage(ctx context.Context, id string, opts *Options) (core
 	if err != nil {
 		span.RecordError(err)
 
-		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+		if !errors.Is(err, core.ErrorNotFound) && !errors.Is(err, core.ErrorPermissionDenied) {
 			c.lastFailed[domain] = time.Now()
 		}
 
@@ -402,7 +402,7 @@ func (c *client) GetAssociation(ctx context.Context, id string, opts *Options) (
 	if err != nil {
 		span.RecordError(err)
 
-		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+		if !errors.Is(err, core.ErrorNotFound) && !errors.Is(err, core.ErrorPermissionDenied) {
 			c.lastFailed[domain] = time.Now()
 		}
 
@@ -443,7 +443,7 @@ func (c *client) GetProfile(ctx context.Context, id string, opts *Options) (core
 	if err != nil {
 		span.RecordError(err)
 
-		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+		if !errors.Is(err, core.ErrorNotFound) && !errors.Is(err, core.ErrorPermissionDenied) {
 			c.lastFailed[domain] = time.Now()
 		}
 
@@ -484,7 +484,7 @@ func (c *client) GetTimeline(ctx context.Context, id string, opts *Options) (cor
 	if err != nil {
 		span.RecordError(err)
 
-		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+		if !errors.Is(err, core.ErrorNotFound) && !errors.Is(err, core.ErrorPermissionDenied) {
 			c.lastFailed[domain] = time.Now()
 		}
 
@@ -522,7 +522,7 @@ func (c *client) GetChunks(ctx context.Context, timelines []string, queryTime ti
 	if err != nil {
 		span.RecordError(err)
 
-		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+		if !errors.Is(err, core.ErrorNotFound) && !errors.Is(err, core.ErrorPermissionDenied) {
 			c.lastFailed[domain] = time.Now()
 		}
 
@@ -555,7 +555,7 @@ func (c *client) GetChunkItrs(ctx context.Context, timelines []string, epoch str
 	if err != nil {
 		span.RecordError(err)
 
-		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+		if !errors.Is(err, core.ErrorNotFound) && !errors.Is(err, core.ErrorPermissionDenied) {
 			c.lastFailed[domain] = time.Now()
 		}
 
@@ -591,7 +591,7 @@ func (c *client) GetChunkBodies(ctx context.Context, query map[string]string, op
 	if err != nil {
 		span.RecordError(err)
 
-		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+		if !errors.Is(err, core.ErrorNotFound) && !errors.Is(err, core.ErrorPermissionDenied) {
 			c.lastFailed[domain] = time.Now()
 		}
 
@@ -628,7 +628,7 @@ func (c *client) GetKey(ctx context.Context, id string, opts *Options) ([]core.K
 	if err != nil {
 		span.RecordError(err)
 
-		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+		if !errors.Is(err, core.ErrorNotFound) && !errors.Is(err, core.ErrorPermissionDenied) {
 			c.lastFailed[domain] = time.Now()
 		}
 
@@ -697,9 +697,7 @@ func (c *client) GetDomain(ctx context.Context, domain string, opts *Options) (c
 	if err != nil {
 		span.RecordError(err)
 
-		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-			c.lastFailed[domain] = time.Now()
-		} else if _, ok := err.(*json.SyntaxError); ok {
+		if !errors.Is(err, core.ErrorNotFound) && !errors.Is(err, core.ErrorPermissionDenied) {
 			c.lastFailed[domain] = time.Now()
 		}
 
@@ -735,7 +733,7 @@ func (c *client) GetRetracted(ctx context.Context, timelines []string, opts *Opt
 	if err != nil {
 		span.RecordError(err)
 
-		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+		if !errors.Is(err, core.ErrorNotFound) && !errors.Is(err, core.ErrorPermissionDenied) {
 			c.lastFailed[domain] = time.Now()
 		}
 
@@ -779,7 +777,7 @@ func (c *client) GetAck(ctx context.Context, from, to string, opts *Options) (co
 	if err != nil {
 		span.RecordError(err)
 
-		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+		if !errors.Is(err, core.ErrorNotFound) && !errors.Is(err, core.ErrorPermissionDenied) {
 			c.lastFailed[from] = time.Now()
 		}
 

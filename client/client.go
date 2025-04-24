@@ -188,6 +188,7 @@ func (c *client) Commit(ctx context.Context, domain, body string, response any, 
 		span.RecordError(err)
 
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			slog.Warn("Mark domain "+domain+" as offline while committing", "error", err)
 			c.lastFailed[domain] = time.Now()
 		}
 
@@ -319,6 +320,7 @@ func (c *client) GetEntity(ctx context.Context, address string, opts *Options) (
 		span.RecordError(err)
 
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+			slog.Warn("Mark domain "+domain+" as offline while getting entity", "error", err)
 			c.lastFailed[domain] = time.Now()
 		}
 
@@ -361,7 +363,7 @@ func (c *client) GetMessage(ctx context.Context, id string, opts *Options) (core
 		span.RecordError(err)
 
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-			slog.Warn("Failed to get message", "error", err)
+			slog.Warn("Mark domain "+domain+" as offline while getting message", "error", err)
 			c.lastFailed[domain] = time.Now()
 		}
 
@@ -403,7 +405,7 @@ func (c *client) GetAssociation(ctx context.Context, id string, opts *Options) (
 		span.RecordError(err)
 
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-			slog.Warn("Failed to get association", "error", err)
+			slog.Warn("Mark domain "+domain+" as offline while getting association", "error", err)
 			c.lastFailed[domain] = time.Now()
 		}
 
@@ -445,7 +447,7 @@ func (c *client) GetProfile(ctx context.Context, id string, opts *Options) (core
 		span.RecordError(err)
 
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-			slog.Warn("Failed to get profile", "error", err)
+			slog.Warn("Mark domain "+domain+" as offline while getting profile", "error", err)
 			c.lastFailed[domain] = time.Now()
 		}
 
@@ -487,7 +489,7 @@ func (c *client) GetTimeline(ctx context.Context, id string, opts *Options) (cor
 		span.RecordError(err)
 
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-			slog.Warn("Failed to get timeline", "error", err)
+			slog.Warn("Mark domain "+domain+" as offline while getting timeline", "error", err)
 			c.lastFailed[domain] = time.Now()
 		}
 
@@ -526,7 +528,7 @@ func (c *client) GetChunks(ctx context.Context, timelines []string, queryTime ti
 		span.RecordError(err)
 
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-			slog.Warn("Failed to get chunks", "error", err)
+			slog.Warn("Mark domain "+domain+" as offline while getting chunks", "error", err)
 			c.lastFailed[domain] = time.Now()
 		}
 
@@ -560,7 +562,7 @@ func (c *client) GetChunkItrs(ctx context.Context, timelines []string, epoch str
 		span.RecordError(err)
 
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-			slog.Warn("Failed to get chunk iterators", "error", err)
+			slog.Warn("Mark domain "+domain+" as offline while getting chunk itrs", "error", err)
 			c.lastFailed[domain] = time.Now()
 		}
 
@@ -597,7 +599,7 @@ func (c *client) GetChunkBodies(ctx context.Context, query map[string]string, op
 		span.RecordError(err)
 
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-			slog.Warn("Failed to get chunk bodies", "error", err)
+			slog.Warn("Mark domain "+domain+" as offline while getting chunk bodies", "error", err)
 			c.lastFailed[domain] = time.Now()
 		}
 
@@ -635,7 +637,7 @@ func (c *client) GetKey(ctx context.Context, id string, opts *Options) ([]core.K
 		span.RecordError(err)
 
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-			slog.Warn("Failed to get key", "error", err)
+			slog.Warn("Mark domain "+domain+" as offline while getting key", "error", err)
 			c.lastFailed[domain] = time.Now()
 		}
 
@@ -705,7 +707,7 @@ func (c *client) GetDomain(ctx context.Context, domain string, opts *Options) (c
 		span.RecordError(err)
 
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-			slog.Warn("Failed to get domain", "error", err)
+			slog.Warn("Mark domain "+domain+" as offline while getting domain", "error", err)
 			c.lastFailed[domain] = time.Now()
 		}
 
@@ -742,7 +744,7 @@ func (c *client) GetRetracted(ctx context.Context, timelines []string, opts *Opt
 		span.RecordError(err)
 
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-			slog.Warn("Failed to get retracted messages", "error", err)
+			slog.Warn("Mark domain "+domain+" as offline while getting retracted", "error", err)
 			c.lastFailed[domain] = time.Now()
 		}
 
@@ -787,7 +789,7 @@ func (c *client) GetAck(ctx context.Context, from, to string, opts *Options) (co
 		span.RecordError(err)
 
 		if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
-			slog.Warn("Failed to get ack", "error", err)
+			slog.Warn("Mark domain "+domain+" as offline while getting ack", "error", err)
 			c.lastFailed[from] = time.Now()
 		}
 
@@ -818,6 +820,7 @@ func (c *client) ConnectWebsocket(ctx context.Context, domain string, path strin
 
 	conn, _, err := dialer.Dial(u.String(), header)
 	if err != nil {
+		slog.Warn("Failed to connect to websocket. Mark domain "+domain+" as offline", "error", err)
 		c.lastFailed[domain] = time.Now()
 		span.RecordError(err)
 		return nil, err

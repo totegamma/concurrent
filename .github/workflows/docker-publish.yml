@@ -21,10 +21,10 @@ jobs:
         include:
           - target: ccgateway
             file: ./cmd/gateway/Dockerfile
-            image: ghcr.io/totegamma/ccgateway
+            image: ghcr.io/concrnt/ccgateway
           - target: ccapi
             file: ./cmd/api/Dockerfile
-            image: ghcr.io/totegamma/ccapi
+            image: ghcr.io/concrnt/ccapi
 
     runs-on: ${{ matrix.arch }}
 
@@ -96,9 +96,9 @@ jobs:
       matrix:
         include:
           - target: ccgateway
-            image: ghcr.io/totegamma/ccgateway
+            image: ghcr.io/concrnt/ccgateway
           - target: ccapi
-            image: ghcr.io/totegamma/ccapi
+            image: ghcr.io/concrnt/ccapi
 
     permissions:
       contents: read

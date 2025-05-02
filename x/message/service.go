@@ -11,10 +11,10 @@ import (
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/codes"
 
-	"github.com/totegamma/concurrent/cdid"
-	"github.com/totegamma/concurrent/client"
-	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/x/policy"
+	"github.com/concrnt/concrnt/cdid"
+	"github.com/concrnt/concrnt/client"
+	"github.com/concrnt/concrnt/core"
+	"github.com/concrnt/concrnt/x/policy"
 )
 
 type service struct {

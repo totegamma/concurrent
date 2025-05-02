@@ -10,9 +10,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/concrnt/concrnt/core"
 	"github.com/gorilla/websocket"
 	"github.com/labstack/echo/v4"
-	"github.com/totegamma/concurrent/core"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 )

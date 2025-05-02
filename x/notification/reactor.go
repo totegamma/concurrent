@@ -10,7 +10,7 @@ import (
 
 	"github.com/SherClockHolmes/webpush-go"
 
-	"github.com/totegamma/concurrent/core"
+	"github.com/concrnt/concrnt/core"
 )
 
 type reactor struct {

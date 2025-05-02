@@ -20,24 +20,24 @@ import (
 	"github.com/labstack/echo/v4/middleware"
 	"github.com/prometheus/client_golang/prometheus"
 
-	"github.com/totegamma/concurrent"
-	"github.com/totegamma/concurrent/client"
-	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/util"
-	"github.com/totegamma/concurrent/x/ack"
-	"github.com/totegamma/concurrent/x/association"
-	"github.com/totegamma/concurrent/x/auth"
-	"github.com/totegamma/concurrent/x/domain"
-	"github.com/totegamma/concurrent/x/entity"
-	"github.com/totegamma/concurrent/x/job"
-	"github.com/totegamma/concurrent/x/key"
-	"github.com/totegamma/concurrent/x/message"
-	"github.com/totegamma/concurrent/x/notification"
-	"github.com/totegamma/concurrent/x/profile"
-	"github.com/totegamma/concurrent/x/store"
-	"github.com/totegamma/concurrent/x/subscription"
-	"github.com/totegamma/concurrent/x/timeline"
-	"github.com/totegamma/concurrent/x/userkv"
+	"github.com/concrnt/concrnt"
+	"github.com/concrnt/concrnt/client"
+	"github.com/concrnt/concrnt/core"
+	"github.com/concrnt/concrnt/util"
+	"github.com/concrnt/concrnt/x/ack"
+	"github.com/concrnt/concrnt/x/association"
+	"github.com/concrnt/concrnt/x/auth"
+	"github.com/concrnt/concrnt/x/domain"
+	"github.com/concrnt/concrnt/x/entity"
+	"github.com/concrnt/concrnt/x/job"
+	"github.com/concrnt/concrnt/x/key"
+	"github.com/concrnt/concrnt/x/message"
+	"github.com/concrnt/concrnt/x/notification"
+	"github.com/concrnt/concrnt/x/profile"
+	"github.com/concrnt/concrnt/x/store"
+	"github.com/concrnt/concrnt/x/subscription"
+	"github.com/concrnt/concrnt/x/timeline"
+	"github.com/concrnt/concrnt/x/userkv"
 
 	"github.com/SherClockHolmes/webpush-go"
 	"github.com/bradfitz/gomemcache/memcache"
@@ -484,7 +484,7 @@ func main() {
 
 	e.GET("/cc-info", func(c echo.Context) error {
 		return c.JSON(http.StatusOK, core.CCInfo{
-			Name:    "github.com/totegamma/concurrent/ccapi",
+			Name:    "github.com/concrnt/concrnt/ccapi",
 			Version: version,
 		})
 	})

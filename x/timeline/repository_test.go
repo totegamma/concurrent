@@ -6,13 +6,13 @@ import (
 	"testing"
 	"time"
 
+	"github.com/concrnt/concrnt/client"
+	"github.com/concrnt/concrnt/client/mock"
+	"github.com/concrnt/concrnt/core"
+	"github.com/concrnt/concrnt/core/mock"
+	"github.com/concrnt/concrnt/internal/testutil"
+	"github.com/concrnt/concrnt/x/timeline/mock"
 	"github.com/stretchr/testify/assert"
-	"github.com/totegamma/concurrent/client"
-	"github.com/totegamma/concurrent/client/mock"
-	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/core/mock"
-	"github.com/totegamma/concurrent/internal/testutil"
-	"github.com/totegamma/concurrent/x/timeline/mock"
 	"go.uber.org/mock/gomock"
 )
 

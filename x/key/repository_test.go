@@ -1,10 +1,10 @@
 package key
 
 import (
+	"github.com/concrnt/concrnt/client"
+	"github.com/concrnt/concrnt/core"
+	"github.com/concrnt/concrnt/internal/testutil"
 	"github.com/stretchr/testify/assert"
-	"github.com/totegamma/concurrent/client"
-	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/internal/testutil"
 	"testing"
 	"time"
 )

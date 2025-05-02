@@ -6,8 +6,8 @@ import (
 	"errors"
 	"time"
 
-	"github.com/totegamma/concurrent/cdid"
-	"github.com/totegamma/concurrent/core"
+	"github.com/concrnt/concrnt/cdid"
+	"github.com/concrnt/concrnt/core"
 	"go.opentelemetry.io/otel/codes"
 )
 

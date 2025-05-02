@@ -5,11 +5,11 @@ import (
 	"strconv"
 	"testing"
 
+	"github.com/concrnt/concrnt/core"
+	"github.com/concrnt/concrnt/core/mock"
+	"github.com/concrnt/concrnt/x/timeline/mock"
 	"github.com/pkg/errors"
 	"github.com/stretchr/testify/assert"
-	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/core/mock"
-	"github.com/totegamma/concurrent/x/timeline/mock"
 	"go.uber.org/mock/gomock"
 )
 

@@ -11,9 +11,9 @@ import (
 
 	"github.com/pkg/errors"
 
-	"github.com/totegamma/concurrent/cdid"
-	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/util"
+	"github.com/concrnt/concrnt/cdid"
+	"github.com/concrnt/concrnt/core"
+	"github.com/concrnt/concrnt/util"
 )
 
 type service struct {

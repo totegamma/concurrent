@@ -4,10 +4,10 @@ import (
 	"errors"
 	"testing"
 
+	"github.com/concrnt/concrnt/client/mock"
+	"github.com/concrnt/concrnt/core"
+	"github.com/concrnt/concrnt/x/domain/mock"
 	"github.com/stretchr/testify/assert"
-	"github.com/totegamma/concurrent/client/mock"
-	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/x/domain/mock"
 	"go.uber.org/mock/gomock"
 )
 

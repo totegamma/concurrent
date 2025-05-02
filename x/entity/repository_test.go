@@ -8,10 +8,10 @@ import (
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/concrnt/concrnt/core"
+	mock_core "github.com/concrnt/concrnt/core/mock"
+	"github.com/concrnt/concrnt/internal/testutil"
 	"github.com/stretchr/testify/assert"
-	"github.com/totegamma/concurrent/core"
-	mock_core "github.com/totegamma/concurrent/core/mock"
-	"github.com/totegamma/concurrent/internal/testutil"
 	"go.uber.org/mock/gomock"
 	"gorm.io/gorm"
 )

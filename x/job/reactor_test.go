@@ -6,9 +6,9 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/concrnt/concrnt/core"
+	mock_core "github.com/concrnt/concrnt/core/mock"
 	"github.com/stretchr/testify/assert"
-	"github.com/totegamma/concurrent/core"
-	mock_core "github.com/totegamma/concurrent/core/mock"
 	"go.uber.org/mock/gomock"
 )
 

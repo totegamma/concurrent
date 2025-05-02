@@ -3,7 +3,7 @@ package schema
 import (
 	"context"
 	"encoding/json"
-	"github.com/totegamma/concurrent/core"
+	"github.com/concrnt/concrnt/core"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
 	"net/http"

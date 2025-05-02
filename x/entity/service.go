@@ -11,9 +11,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/totegamma/concurrent/client"
-	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/x/jwt"
+	"github.com/concrnt/concrnt/client"
+	"github.com/concrnt/concrnt/core"
+	"github.com/concrnt/concrnt/x/jwt"
 )
 
 type service struct {

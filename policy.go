@@ -3,7 +3,7 @@ package concurrent
 import (
 	"encoding/json"
 
-	"github.com/totegamma/concurrent/core"
+	"github.com/concrnt/concrnt/core"
 )
 
 var globalPolicyJson = `

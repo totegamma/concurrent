@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/bradfitz/gomemcache/memcache"
-	"github.com/totegamma/concurrent/core"
+	"github.com/concrnt/concrnt/core"
 )
 
 // Repository is the interface for host repository

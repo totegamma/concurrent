@@ -7,12 +7,12 @@ import (
 	"testing"
 	"time"
 
+	"github.com/concrnt/concrnt/client/mock"
+	"github.com/concrnt/concrnt/core"
+	mock_core "github.com/concrnt/concrnt/core/mock"
+	"github.com/concrnt/concrnt/x/entity/mock"
+	mock_jwt "github.com/concrnt/concrnt/x/jwt/mock"
 	"github.com/stretchr/testify/assert"
-	"github.com/totegamma/concurrent/client/mock"
-	"github.com/totegamma/concurrent/core"
-	mock_core "github.com/totegamma/concurrent/core/mock"
-	"github.com/totegamma/concurrent/x/entity/mock"
-	mock_jwt "github.com/totegamma/concurrent/x/jwt/mock"
 	"go.uber.org/mock/gomock"
 )
 

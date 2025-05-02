@@ -2,8 +2,8 @@
 package auth
 
 import (
+	"github.com/concrnt/concrnt/core"
 	"github.com/labstack/echo/v4"
-	"github.com/totegamma/concurrent/core"
 	"go.opentelemetry.io/otel"
 	"net/http"
 )

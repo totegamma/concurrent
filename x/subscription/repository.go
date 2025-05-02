@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 
-	"github.com/totegamma/concurrent/core"
+	"github.com/concrnt/concrnt/core"
 	"gorm.io/gorm"
 )
 

@@ -1,4 +1,4 @@
-module github.com/totegamma/concurrent
+module github.com/concrnt/concrnt
 
 go 1.24.2
 

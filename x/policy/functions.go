@@ -4,7 +4,7 @@ import (
 	"reflect"
 	"strings"
 
-	"github.com/totegamma/concurrent/core"
+	"github.com/concrnt/concrnt/core"
 )
 
 // IsDominant checks if a policy evaluation result is dominant (Always or Never).

@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/concrnt/concrnt/core"
+	"github.com/concrnt/concrnt/internal/testutil"
 	"github.com/stretchr/testify/assert"
-	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/internal/testutil"
 	"gorm.io/gorm"
 )
 

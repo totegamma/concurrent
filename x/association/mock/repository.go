@@ -13,7 +13,7 @@ import (
 	context "context"
 	reflect "reflect"
 
-	core "github.com/totegamma/concurrent/core"
+	core "github.com/concrnt/concrnt/core"
 	gomock "go.uber.org/mock/gomock"
 )
 

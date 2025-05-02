@@ -5,9 +5,9 @@ import (
 	"testing"
 	"time"
 
+	"github.com/concrnt/concrnt/core"
+	"github.com/concrnt/concrnt/x/job/mock"
 	"github.com/stretchr/testify/assert"
-	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/x/job/mock"
 	"go.uber.org/mock/gomock"
 )
 

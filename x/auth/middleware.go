@@ -12,10 +12,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/concrnt/concrnt/core"
+	"github.com/concrnt/concrnt/x/jwt"
 	"github.com/labstack/echo/v4"
 	"github.com/redis/go-redis/v9"
-	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/x/jwt"
 	"github.com/xinguang/go-recaptcha"
 	"go.opentelemetry.io/otel/attribute"
 )

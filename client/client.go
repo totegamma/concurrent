@@ -16,9 +16,9 @@ import (
 	"strings"
 	"time"
 
+	"github.com/concrnt/concrnt/core"
 	"github.com/gorilla/websocket"
 	"github.com/patrickmn/go-cache"
-	"github.com/totegamma/concurrent/core"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"

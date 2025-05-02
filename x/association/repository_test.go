@@ -6,10 +6,10 @@ import (
 	"testing"
 
 	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/concrnt/concrnt/core"
+	"github.com/concrnt/concrnt/internal/testutil"
+	"github.com/concrnt/concrnt/x/schema"
 	"github.com/stretchr/testify/assert"
-	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/internal/testutil"
-	"github.com/totegamma/concurrent/x/schema"
 	"gorm.io/gorm"
 )
 

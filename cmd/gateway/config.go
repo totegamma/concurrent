@@ -1,7 +1,7 @@
 package main
 
 import (
-	"github.com/totegamma/concurrent/core"
+	"github.com/concrnt/concrnt/core"
 )
 
 // Config is Concurrent base configuration

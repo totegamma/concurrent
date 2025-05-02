@@ -2,7 +2,7 @@ package semanticid
 
 import (
 	"context"
-	"github.com/totegamma/concurrent/core"
+	"github.com/concrnt/concrnt/core"
 	"go.opentelemetry.io/otel"
 	"gorm.io/gorm"
 )

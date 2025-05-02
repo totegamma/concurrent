@@ -22,11 +22,11 @@ import (
 	"github.com/labstack/echo/v4"
 	"github.com/labstack/echo/v4/middleware"
 
-	"github.com/totegamma/concurrent"
-	"github.com/totegamma/concurrent/client"
-	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/util"
-	"github.com/totegamma/concurrent/x/auth"
+	"github.com/concrnt/concrnt"
+	"github.com/concrnt/concrnt/client"
+	"github.com/concrnt/concrnt/core"
+	"github.com/concrnt/concrnt/util"
+	"github.com/concrnt/concrnt/x/auth"
 
 	"github.com/bradfitz/gomemcache/memcache"
 
@@ -445,7 +445,7 @@ func main() {
 
 		services["net.concrnt.gateway"] = ServiceInfo{
 			Path:    "/",
-			Name:    "github.com/totegamma/concurrent/ccgateway",
+			Name:    "github.com/concrnt/concrnt/ccgateway",
 			Version: version,
 		}
 

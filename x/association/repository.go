@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/concrnt/concrnt/core"
 	"github.com/pkg/errors"
-	"github.com/totegamma/concurrent/core"
 )
 
 // Repository is the interface for association repository

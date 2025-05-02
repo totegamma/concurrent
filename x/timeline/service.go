@@ -18,8 +18,8 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 
-	"github.com/totegamma/concurrent/cdid"
-	"github.com/totegamma/concurrent/core"
+	"github.com/concrnt/concrnt/cdid"
+	"github.com/concrnt/concrnt/core"
 )
 
 type service struct {

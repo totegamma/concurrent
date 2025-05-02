@@ -8,9 +8,9 @@ import (
 	"go.opentelemetry.io/otel/sdk/trace/tracetest"
 	"go.uber.org/mock/gomock"
 
-	"github.com/totegamma/concurrent/client/mock"
-	"github.com/totegamma/concurrent/core"
-	"github.com/totegamma/concurrent/internal/testutil"
+	"github.com/concrnt/concrnt/client/mock"
+	"github.com/concrnt/concrnt/core"
+	"github.com/concrnt/concrnt/internal/testutil"
 )
 
 var s core.PolicyService

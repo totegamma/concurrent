@@ -3,8 +3,8 @@ package policy
 import (
 	"testing"
 
+	"github.com/concrnt/concrnt/core"
 	"github.com/stretchr/testify/assert"
-	"github.com/totegamma/concurrent/core"
 )
 
 func TestIsDominant(t *testing.T) {

@@ -15,9 +15,9 @@ import (
 	reflect "reflect"
 	time "time"
 
+	core "github.com/concrnt/concrnt/core"
 	websocket "github.com/gorilla/websocket"
 	echo "github.com/labstack/echo/v4"
-	core "github.com/totegamma/concurrent/core"
 	gomock "go.uber.org/mock/gomock"
 )
 

@@ -57,7 +57,8 @@ func NewErrorAlreadyExists() ErrorTypeAlreadyExists {
 // ------
 
 type ErrorTypePermissionDenied struct {
-	Type string
+	Type    string
+	Message string
 }
 
 var ErrorPermissionDenied = ErrorTypePermissionDenied{Type: "ConcrntErrorPermissionDenied"}
@@ -71,11 +72,18 @@ func (e ErrorTypePermissionDenied) Is(err error) bool {
 }
 
 func (e ErrorTypePermissionDenied) Error() string {
+	if e.Message != "" {
+		return "Permission Denied: " + e.Message
+	}
 	return "Permission Denied"
 }
 
 func NewErrorPermissionDenied() ErrorTypePermissionDenied {
 	return ErrorTypePermissionDenied{Type: "ConcrntErrorPermissionDenied"}
+}
+
+func NewErrorPermissionDeniedWithMsg(msg string) ErrorTypePermissionDenied {
+	return ErrorTypePermissionDenied{Type: "ConcrntErrorPermissionDenied", Message: msg}
 }
 
 // ------

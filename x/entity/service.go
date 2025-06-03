@@ -163,16 +163,16 @@ func (s *service) Affiliation(ctx context.Context, mode core.CommitMode, documen
 			return entity, nil
 		case "invite":
 			if opts.Invitation == "" {
-				return core.Entity{}, fmt.Errorf("invitation code is required")
+				return core.Entity{}, core.NewErrorPermissionDeniedWithMsg("invitation code is required")
 			}
 
-			_, claims, err := jwt.Validate(opts.Invitation)
+			header, claims, err := jwt.Validate(opts.Invitation)
 			if err != nil {
 				span.RecordError(err)
 				return core.Entity{}, err
 			}
 			if claims.Subject != "CONCRNT_INVITE" {
-				return core.Entity{}, fmt.Errorf("invalid invitation code")
+				return core.Entity{}, core.NewErrorPermissionDeniedWithMsg("invalid invitation code(subject)")
 			}
 
 			ok, err := s.jwtService.CheckJTI(ctx, claims.JWTID)
@@ -181,21 +181,24 @@ func (s *service) Affiliation(ctx context.Context, mode core.CommitMode, documen
 				return core.Entity{}, err
 			}
 			if ok {
-				return core.Entity{}, fmt.Errorf("token is already used")
+				return core.Entity{}, core.NewErrorPermissionDeniedWithMsg("token is already used")
 			}
 
 			inviterID := claims.Issuer
-			if core.IsCKID(inviterID) {
-				inviterID, err = s.key.ResolveSubkey(ctx, inviterID)
+			if core.IsCKID(header.KeyID) {
+				resolved, err := s.key.ResolveSubkey(ctx, inviterID)
 				if err != nil {
 					span.RecordError(err)
 					return core.Entity{}, err
+				}
+				if resolved != inviterID {
+					return core.Entity{}, core.NewErrorPermissionDeniedWithMsg("token is signed by invalid subkey")
 				}
 			}
 
 			if core.IsCSID(inviterID) {
 				if inviterID != s.config.CSID {
-					return core.Entity{}, fmt.Errorf("inviter is not allowed to invite")
+					return core.Entity{}, core.NewErrorPermissionDeniedWithMsg("inviter(other domain) is not allowed to invite")
 				}
 			} else {
 				inviter, err := s.repository.Get(ctx, inviterID)
@@ -215,7 +218,7 @@ func (s *service) Affiliation(ctx context.Context, mode core.CommitMode, documen
 				}
 
 				if policyResult == core.PolicyEvalResultNever || policyResult == core.PolicyEvalResultDeny {
-					return core.Entity{}, fmt.Errorf("inviter is not allowed to invite")
+					return core.Entity{}, core.NewErrorPermissionDeniedWithMsg("inviter is not allowed to invite")
 				}
 			}
 

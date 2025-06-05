@@ -56,7 +56,7 @@ Concrntのとっているアーキテクチャ戦略は、Twitterのように無
 
 # マニア向け情報
 ## 自鯖の建て方やプロトコル仕様等
-詳細なドキュメントサイトはこちら: [concrnt square](https://square.concrnt.net/operator/)
+詳細なドキュメントサイトはこちら: [concrnt square](https://square.concrnt.net/getting-started/hosting/)
 
 ## Contributing
 PRを作成する場合は基本的に先にissueを作成し、その可否のコンセンサスを取ることをお勧めします。(concurrentは現在heavilyに開発されており、その方針上入れられない変更であることがあります。)

@@ -143,7 +143,7 @@ func (c *client) UpKeeper() {
 			if time.Since(lastFailed) > time.Duration(span)*time.Second {
 				// health check
 				_, err := httpRequest[core.Domain](ctx, c.client, "GET", "https://"+domain+"/api/v1/domain", "", &Options{})
-				if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+				if err != nil {
 					slog.Info(fmt.Sprintf("Domain %s is offline. Fail count: %d", domain, c.failCount[domain]))
 					c.lastFailed[domain] = time.Now()
 					c.failCount[domain]++

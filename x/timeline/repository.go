@@ -9,6 +9,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
@@ -186,26 +187,52 @@ func (r *repository) LookupChunkItrs(ctx context.Context, normalized []string, e
 		}
 	}
 
+	type resultStruct struct {
+		key   string
+		value string
+	}
+
+	const maxConcurrency = 10
+	sem := make(chan struct{}, maxConcurrency)
+	reschan := make(chan resultStruct, len(missed))
+	var wg sync.WaitGroup
+
 	for domain, timelines := range domainMap {
-		if domain == r.config.FQDN {
-			res, err := r.lookupLocalItrs(ctx, timelines, epoch)
-			if err != nil {
-				span.RecordError(err)
-				continue
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(domain string, timelines []string) {
+			defer func() {
+				<-sem
+				wg.Done()
+			}()
+
+			if domain == r.config.FQDN {
+				res, err := r.lookupLocalItrs(ctx, timelines, epoch)
+				if err != nil {
+					span.RecordError(err)
+					return
+				}
+				for k, v := range res {
+					reschan <- resultStruct{key: k, value: v}
+				}
+			} else {
+				res, err := r.lookupRemoteItrs(ctx, domain, timelines, epoch)
+				if err != nil {
+					span.RecordError(err)
+					return
+				}
+				for k, v := range res {
+					reschan <- resultStruct{key: k, value: v}
+				}
 			}
-			for k, v := range res {
-				result[k] = v
-			}
-		} else {
-			res, err := r.lookupRemoteItrs(ctx, domain, timelines, epoch)
-			if err != nil {
-				span.RecordError(err)
-				continue
-			}
-			for k, v := range res {
-				result[k] = v
-			}
-		}
+		}(domain, timelines)
+	}
+
+	wg.Wait()
+	close(reschan)
+
+	for res := range reschan {
+		result[res.key] = res.value
 	}
 
 	return result, nil
@@ -272,26 +299,51 @@ func (r *repository) LoadChunkBodies(ctx context.Context, query map[string]strin
 		}
 	}
 
+	type resultStruct struct {
+		key   string
+		value core.Chunk
+	}
+
+	const maxConcurrency = 10
+	sem := make(chan struct{}, maxConcurrency)
+	reschan := make(chan resultStruct, len(missed))
+	var wg sync.WaitGroup
+
 	for domain, q := range domainMap {
-		if domain == r.config.FQDN {
-			for timeline, epoch := range q {
-				res, err := r.loadLocalBody(ctx, timeline, epoch)
+		wg.Add(1)
+		sem <- struct{}{}
+		go func(domain string, q map[string]string) {
+			defer func() {
+				<-sem
+				wg.Done()
+			}()
+			if domain == r.config.FQDN {
+				for timeline, epoch := range q {
+					res, err := r.loadLocalBody(ctx, timeline, epoch)
+					if err != nil {
+						span.RecordError(err)
+						continue
+					}
+					reschan <- resultStruct{key: timeline, value: res}
+				}
+			} else {
+				res, err := r.loadRemoteBodies(ctx, domain, q)
 				if err != nil {
 					span.RecordError(err)
-					continue
+					return
 				}
-				result[timeline] = res
+				for k, v := range res {
+					reschan <- resultStruct{key: k, value: v}
+				}
 			}
-		} else {
-			res, err := r.loadRemoteBodies(ctx, domain, q)
-			if err != nil {
-				span.RecordError(err)
-				continue
-			}
-			for k, v := range res {
-				result[k] = v
-			}
-		}
+		}(domain, q)
+	}
+
+	wg.Wait()
+	close(reschan)
+
+	for res := range reschan {
+		result[res.key] = res.value
 	}
 
 	return result, nil

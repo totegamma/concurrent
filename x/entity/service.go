@@ -114,6 +114,11 @@ func (s *service) Affiliation(ctx context.Context, mode core.CommitMode, documen
 			return core.Entity{}, errors.Wrap(err, "Failed to unmarshal existence affiliation document")
 		}
 
+		if existenceAffiliation.SignedAt.Equal(doc.SignedAt) {
+			// No update needed
+			return existence, nil
+		}
+
 		if existenceAffiliation.SignedAt.After(doc.SignedAt) {
 			span.RecordError(errors.New("existence affiliation document is newer"))
 			return existence, nil

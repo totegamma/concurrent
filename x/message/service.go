@@ -400,6 +400,18 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 			return message, []string{}, err
 		}
 
+	} else {
+		created = core.Message{
+			ID:             id,
+			Author:         doc.Signer,
+			Schema:         doc.Schema,
+			Policy:         doc.Policy,
+			PolicyParams:   policyparams,
+			PolicyDefaults: policydefaults,
+			Document:       document,
+			Signature:      signature,
+			Timelines:      doc.Timelines,
+		}
 	}
 
 	destinations := make(map[string][]string)

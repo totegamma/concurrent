@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"slices"
 	"strings"
+	"time"
 
 	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel/codes"
@@ -410,6 +411,7 @@ func (s *service) Create(ctx context.Context, mode core.CommitMode, document str
 			PolicyDefaults: policydefaults,
 			Document:       document,
 			Signature:      signature,
+			CDate:          time.Now(),
 			Timelines:      doc.Timelines,
 		}
 	}

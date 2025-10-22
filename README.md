@@ -1,5 +1,12 @@
 ![wordmark](https://worldfile.cc/CC2d97694D850Df2089F48E639B4795dD95D2DCE2E/f696009d-f1f0-44f8-83fe-6387946f1b86)
 ### Concrnt: Makes social media accounts your internet identities.
+<p align="center">
+  
+[![Test](https://github.com/concrnt/concrnt/actions/workflows/test.yml/badge.svg)](https://github.com/concrnt/concrnt/actions/workflows/test.yml)
+[![GoReport](https://img.shields.io/badge/go%20report-A+-brightgreen.svg?style=flat)](https://goreportcard.com/report/github.com/concrnt/concrnt)
+<img height="20px" src="https://security-api.gmo.jp/static/img/oss_badge_ol-CyzWkcK8.svg"></img>
+
+</p>
 
 [日本語](README-ja.md)
 
@@ -48,4 +55,5 @@ look at detailed documentation: [concrnt square](https://square.concrnt.net/gett
 
 ## Contributing
 When creating a PR, we generally recommend creating an issue first and reaching a consensus on whether or not to proceed. (Concrnt is currently being heavily developed, and there may be changes that cannot be made due to its policy.)
+
 

@@ -50,6 +50,11 @@ Furthermore, Concrnt embraces the concept of "protecting one's identity by onese
 In this sense, centralized social networks, where one relies on others for protection while trying to stay in the good graces of the administration to avoid being frozen, might be more reassuring for the average person.
 
 # For geeks
+## Protocol Specification
+For developers and those interested in the technical details, see our comprehensive protocol documentation:
+- [Protocol Overview](protocol/OVERVIEW.md) - Quick reference guide
+- [Protocol Specification](protocol/SPECIFICATION.md) - Complete technical specification
+
 ## How to launch own server
 look at detailed documentation: [concrnt square](https://square.concrnt.net/getting-started/hosting/)
 

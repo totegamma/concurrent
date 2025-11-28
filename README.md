@@ -4,7 +4,6 @@
   
 [![Test](https://github.com/concrnt/concrnt/actions/workflows/test.yml/badge.svg)](https://github.com/concrnt/concrnt/actions/workflows/test.yml)
 [![GoReport](https://img.shields.io/badge/go%20report-A+-brightgreen.svg?style=flat)](https://goreportcard.com/report/github.com/concrnt/concrnt)
-<img height="20px" src="https://security-api.gmo.jp/static/img/oss_badge_ol-CyzWkcK8.svg"></img>
 
 </p>
 

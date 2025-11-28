@@ -460,6 +460,18 @@ func main() {
 		return c.JSON(http.StatusOK, services)
 	}, cors)
 
+	e.GET(".well-known/concrnt", func(c echo.Context) (err error) {
+		wellknown := core.WellKnownConcrnt{
+			Version: "2.0",
+			CSID:    conconf.CSID,
+			Endpoints: map[string]string{
+				"net.concrnt.core.entity":   "/api/v1/entity/${ccid}",
+				"net.concrnt.core.resource": "/api/v1/resource/${ccid}/${resource}",
+			},
+		}
+		return c.JSON(http.StatusOK, wellknown)
+	})
+
 	e.GET("/tos", func(c echo.Context) (err error) {
 		return c.File("/etc/concrnt/static/tos.txt")
 	}, cors)

@@ -9,6 +9,12 @@ type CCInfo struct {
 	Version string `json:"version"`
 }
 
+type WellKnownConcrnt struct {
+	Version   string            `json:"version"`
+	CSID      string            `json:"csid"`
+	Endpoints map[string]string `json:"endpoints"`
+}
+
 // Event is websocket root packet model
 type Event struct {
 	Timeline  string        `json:"timeline"` // stream full id (ex: <streamID>@<domain>)

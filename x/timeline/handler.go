@@ -32,6 +32,9 @@ type Handler interface {
 
 	GetChunkItr(c echo.Context) error
 	GetChunkBody(c echo.Context) error
+	GetTimelineChunkItr(c echo.Context) error
+	GetTimelineChunkBody(c echo.Context) error
+
 	Retracted(c echo.Context) error
 }
 
@@ -241,6 +244,21 @@ func (h handler) GetChunkItr(c echo.Context) error {
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": table})
 }
 
+func (h handler) GetTimelineChunkItr(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.GetTimelineChunkItr")
+	defer span.End()
+
+	timelineID := c.Param("id")
+	epoch := c.Param("epoch")
+	table, err := h.service.LookupChunkItr(ctx, []string{timelineID}, epoch)
+	if err != nil {
+		span.RecordError(err)
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	}
+
+	return c.String(http.StatusOK, table[timelineID])
+}
+
 // GetChunkBody loads the body content for multiple chunks specified by a query map (timelineID: chunkID).
 func (h handler) GetChunkBody(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.GetChunkBody")
@@ -264,6 +282,22 @@ func (h handler) GetChunkBody(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": chunks})
+}
+
+func (h handler) GetTimelineChunkBody(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.GetTimelineChunkBody")
+	defer span.End()
+	timelineID := c.Param("id")
+	chunkID := c.Param("chunk")
+	query := map[string]string{
+		timelineID: chunkID,
+	}
+	chunks, err := h.service.LoadChunkBody(ctx, query)
+	if err != nil {
+		span.RecordError(err)
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, chunks[timelineID])
 }
 
 // Query retrieves timeline items based on various filter criteria like timeline ID, schema, owner, author, time range, and limit.

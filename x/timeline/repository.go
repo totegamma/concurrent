@@ -34,6 +34,8 @@ type Repository interface {
 	DeleteItem(ctx context.Context, timelineID string, objectID string) error
 	DeleteItemByResourceID(ctx context.Context, resourceID string) error
 
+	GetFirstItem(ctx context.Context, timelineID string) (core.TimelineItem, error)
+
 	ListTimelineBySchema(ctx context.Context, schema string) ([]core.Timeline, error)
 	ListTimelineByAuthor(ctx context.Context, author string) ([]core.Timeline, error)
 	ListTimelineByOwner(ctx context.Context, owner string) ([]core.Timeline, error)
@@ -135,6 +137,29 @@ const (
 
 	defaultChunkSize = 32
 )
+
+func (r *repository) GetFirstItem(ctx context.Context, timelineID string) (core.TimelineItem, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Repository.GetFirstItem")
+	defer span.End()
+	timelineID, err := r.normalizeLocalDBID(timelineID)
+	if err != nil {
+		return core.TimelineItem{}, err
+	}
+	var item core.TimelineItem
+	err = r.db.WithContext(ctx).
+		Where("timeline_id = ?", timelineID).
+		Order("c_date asc").
+		Limit(1).
+		First(&item).Error
+	if err != nil {
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return core.TimelineItem{}, core.NewErrorNotFound()
+		}
+		span.RecordError(err)
+		return core.TimelineItem{}, err
+	}
+	return item, nil
+}
 
 // LookupChunkItrs finds the latest chunk epoch for multiple timelines up to a given epoch.
 // It checks the cache first and fetches missing data from local or remote sources.

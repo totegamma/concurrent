@@ -824,6 +824,36 @@ func (s *service) UpsertTimeline(ctx context.Context, mode core.CommitMode, docu
 	return saved, nil
 }
 
+func (s *service) GetChunkedTimeline(ctx context.Context, id string) (core.ChunkedTimeline, error) {
+	ctx, span := tracer.Start(ctx, "Timeline.Service.GetChunkedTimeline")
+	defer span.End()
+
+	timeline, err := s.repository.GetTimeline(ctx, id)
+	if err != nil {
+		span.RecordError(err)
+		return core.ChunkedTimeline{}, err
+	}
+
+	firstItem, err := s.repository.GetFirstItem(ctx, id)
+	if err != nil {
+		span.RecordError(err)
+		return core.ChunkedTimeline{}, err
+	}
+
+	ct := core.ChunkedTimeline{
+		Version:    "1.0",
+		ChunkSize:  300,
+		FirstChunk: (firstItem.CDate.Unix() / 300) * 300,
+		Descending: &core.TimelineEndpoint{
+			Iterator: "/api/v1/timeline/" + id + "/chunk/{chunk}/itr",
+			Body:     "/api/v1/timeline/" + id + "/chunk/{chunk}/body",
+		},
+		Metadata: timeline,
+	}
+
+	return ct, nil
+}
+
 // GetTimeline returns timeline information by ID, handling normalization and remote fetching if necessary.
 func (s *service) GetTimeline(ctx context.Context, key string) (core.Timeline, error) {
 	ctx, span := tracer.Start(ctx, "Timeline.Service.GetTimeline")

@@ -181,6 +181,7 @@ type TimelineService interface {
 	ListTimelineByAuthor(ctx context.Context, author string) ([]Timeline, error)
 
 	GetChunks(ctx context.Context, timelines []string, epoch string) (map[string]Chunk, error)
+	GetChunkedTimeline(ctx context.Context, id string) (ChunkedTimeline, error)
 
 	ListTimelineSubscriptions(ctx context.Context) (map[string]int64, error)
 	Count(ctx context.Context) (int64, error)

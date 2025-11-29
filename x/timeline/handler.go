@@ -50,6 +50,21 @@ func (h handler) Get(c echo.Context) error {
 	defer span.End()
 
 	timelineID := c.Param("id")
+
+	acceptHeader := c.Request().Header.Get("Accept")
+	span.SetAttributes(attribute.String("accept", acceptHeader))
+
+	if strings.Contains(acceptHeader, "application/chunked-timeline+json") {
+		timeline, err := h.service.GetChunkedTimeline(ctx, timelineID)
+		if err != nil {
+			if errors.Is(err, core.ErrorNotFound) {
+				return c.JSON(http.StatusNotFound, echo.Map{"error": "Timeline not found"})
+			}
+			return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+		}
+		return c.JSON(http.StatusOK, echo.Map{"status": "ok", "content": timeline})
+	}
+
 	timeline, err := h.service.GetTimeline(ctx, timelineID)
 	if err != nil {
 		if errors.Is(err, core.ErrorNotFound) {

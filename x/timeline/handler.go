@@ -288,16 +288,30 @@ func (h handler) GetTimelineChunkBody(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.GetTimelineChunkBody")
 	defer span.End()
 	timelineID := c.Param("id")
-	chunkID := c.Param("chunk")
+	epoch := c.Param("epoch")
 	query := map[string]string{
-		timelineID: chunkID,
+		timelineID: epoch,
 	}
-	chunks, err := h.service.LoadChunkBody(ctx, query)
+	result, err := h.service.LoadChunkBody(ctx, query)
 	if err != nil {
 		span.RecordError(err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
-	return c.JSON(http.StatusOK, chunks[timelineID])
+
+	chunk, ok := result[timelineID]
+	if !ok {
+		return c.JSON(http.StatusNotFound, echo.Map{"error": "Chunk not found"})
+	}
+
+	items := make([]core.ChunkBodyNode, len(chunk.Items))
+	for i, item := range chunk.Items {
+		items[i] = core.ChunkBodyNode{
+			Timestamp: item.CDate,
+			Href:      "cc://" + item.Owner + "/" + item.ResourceID,
+		}
+	}
+
+	return c.JSON(http.StatusOK, items)
 }
 
 // Query retrieves timeline items based on various filter criteria like timeline ID, schema, owner, author, time range, and limit.

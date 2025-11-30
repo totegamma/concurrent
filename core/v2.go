@@ -1,5 +1,9 @@
 package core
 
+import (
+	"time"
+)
+
 type TimelineEndpoint struct {
 	Iterator string `json:"iterator"`
 	Body     string `json:"body"`
@@ -13,4 +17,9 @@ type ChunkedTimeline struct {
 	Ascending  *TimelineEndpoint `json:"ascending,omitempty"`
 	Descending *TimelineEndpoint `json:"descending,omitempty"`
 	Metadata   any               `json:"metadata"`
+}
+
+type ChunkBodyNode struct {
+	Timestamp time.Time `json:"timestamp"`
+	Href      string    `json:"href"`
 }

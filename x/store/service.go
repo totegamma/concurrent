@@ -474,3 +474,24 @@ func (s *service) SyncStatus(ctx context.Context, owner string) (core.SyncStatus
 
 	return s.repo.SyncStatus(ctx, owner)
 }
+
+func (s *service) GetResource(ctx context.Context, owner string, resourceId string) (any, error) {
+	ctx, span := tracer.Start(ctx, "Store.Service.GetResource")
+	defer span.End()
+
+	typePrefix := resourceId[:1]
+	switch typePrefix {
+	case "m":
+		return s.message.GetAsGuest(ctx, resourceId)
+	case "a":
+		return s.association.Get(ctx, resourceId)
+	case "p":
+		return s.profile.Get(ctx, owner)
+	case "t":
+		return s.timeline.GetTimeline(ctx, resourceId)
+	case "s":
+		return s.subscription.GetSubscription(ctx, resourceId)
+	default:
+		return nil, fmt.Errorf("unknown resource type: %s", typePrefix)
+	}
+}

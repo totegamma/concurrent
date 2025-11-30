@@ -140,6 +140,7 @@ type StoreService interface {
 	CleanUserAllData(ctx context.Context, target string) error
 	SyncCommitFile(ctx context.Context, owner string) (SyncStatus, error)
 	SyncStatus(ctx context.Context, owner string) (SyncStatus, error)
+	GetResource(ctx context.Context, owner string, resourceId string) (any, error)
 }
 
 type SubscriptionService interface {

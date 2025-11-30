@@ -20,6 +20,7 @@ type Handler interface {
 	Post(c echo.Context) error
 	GetSyncStatus(c echo.Context) error
 	PerformSync(c echo.Context) error
+	GetResource(c echo.Context) error
 }
 
 type handler struct {
@@ -83,6 +84,20 @@ func (h *handler) Commit(c echo.Context) error {
 	}
 
 	return c.JSON(http.StatusCreated, echo.Map{"status": "ok", "content": result})
+}
+
+func (h *handler) GetResource(c echo.Context) error {
+	ctx, span := tracer.Start(c.Request().Context(), "Store.Handler.GetResource")
+	defer span.End()
+
+	owner := c.Param("ccid")
+	resourceId := c.Param("id")
+	resource, err := h.service.GetResource(ctx, owner, resourceId)
+	if err != nil {
+		span.RecordError(err)
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	}
+	return c.JSON(http.StatusOK, resource)
 }
 
 // Get returns the commit log file for the authenticated requester as an attachment.

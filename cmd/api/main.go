@@ -292,6 +292,7 @@ func main() {
 	apiV1 := e.Group("", auth.ReceiveGatewayAuthPropagation)
 	// store
 	apiV1.POST("/commit", storeHandler.Commit)
+	apiV1.GET("/resource/:ccid/:id", storeHandler.GetResource)
 
 	// domain
 	apiV1.GET("/domain", func(c echo.Context) error {

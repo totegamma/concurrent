@@ -57,7 +57,7 @@ func (h handler) Get(c echo.Context) error {
 	acceptHeader := c.Request().Header.Get("Accept")
 	span.SetAttributes(attribute.String("accept", acceptHeader))
 
-	if strings.Contains(acceptHeader, "application/chunked-timeline+json") {
+	if strings.Contains(acceptHeader, "application/chunkline+json") {
 		timeline, err := h.service.GetChunkedTimeline(ctx, timelineID)
 		if err != nil {
 			if errors.Is(err, core.ErrorNotFound) {

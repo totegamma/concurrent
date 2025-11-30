@@ -360,8 +360,8 @@ func main() {
 	// chunk
 	apiV1.GET("/chunks/itr", timelineHandler.GetChunkItr)
 	apiV1.GET("/chunks/body", timelineHandler.GetChunkBody)
-	apiV1.GET("/timeline/:id/chunk/:epoch/itr", timelineHandler.GetTimelineChunkItr)
-	apiV1.GET("/timeline/:id/chunk/:epoch/body", timelineHandler.GetTimelineChunkBody)
+	apiV1.GET("/timeline/:id/chunk/:chunkId/itr", timelineHandler.GetTimelineChunkItr)
+	apiV1.GET("/timeline/:id/chunk/:chunkId/body", timelineHandler.GetTimelineChunkBody)
 
 	// userkv
 	apiV1.GET("/kv/:key", userkvHandler.Get, auth.Restrict(auth.ISREGISTERED))

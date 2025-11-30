@@ -249,14 +249,33 @@ func (h handler) GetTimelineChunkItr(c echo.Context) error {
 	defer span.End()
 
 	timelineID := c.Param("id")
-	epoch := c.Param("epoch")
+	chunkId := c.Param("chunkId")
+	chunkIdInt, err := strconv.ParseInt(chunkId, 10, 64)
+	if err != nil {
+		span.RecordError(err)
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
+	}
+	epochInt := chunkIdInt * 300
+	epoch := strconv.FormatInt(epochInt, 10)
+
 	table, err := h.service.LookupChunkItr(ctx, []string{timelineID}, epoch)
 	if err != nil {
 		span.RecordError(err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
 	}
 
-	return c.String(http.StatusOK, table[timelineID])
+	resultEpoch, ok := table[timelineID]
+	if !ok {
+		return c.JSON(http.StatusNotFound, echo.Map{"error": "Chunk not found"})
+	}
+	resultEpochInt, err := strconv.ParseInt(resultEpoch, 10, 64)
+	if err != nil {
+		span.RecordError(err)
+		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})
+	}
+
+	resultChunkId := resultEpochInt / 300
+	return c.String(http.StatusOK, strconv.FormatInt(resultChunkId, 10))
 }
 
 // GetChunkBody loads the body content for multiple chunks specified by a query map (timelineID: chunkID).
@@ -288,7 +307,15 @@ func (h handler) GetTimelineChunkBody(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Timeline.Handler.GetTimelineChunkBody")
 	defer span.End()
 	timelineID := c.Param("id")
-	epoch := c.Param("epoch")
+	chunkId := c.Param("chunkId")
+	chunkIdInt, err := strconv.ParseInt(chunkId, 10, 64)
+	if err != nil {
+		span.RecordError(err)
+		return c.JSON(http.StatusBadRequest, echo.Map{"error": "Invalid request"})
+	}
+	epochInt := chunkIdInt * 300
+	epoch := strconv.FormatInt(epochInt, 10)
+
 	query := map[string]string{
 		timelineID: epoch,
 	}

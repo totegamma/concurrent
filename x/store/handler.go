@@ -92,7 +92,10 @@ func (h *handler) GetResource(c echo.Context) error {
 
 	owner := c.Param("ccid")
 	resourceId := c.Param("id")
-	resource, err := h.service.GetResource(ctx, owner, resourceId)
+	acceptHeader := c.Request().Header.Get("Accept")
+	span.SetAttributes(attribute.String("accept", acceptHeader))
+
+	resource, err := h.service.GetResource(ctx, owner, resourceId, acceptHeader)
 	if err != nil {
 		span.RecordError(err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})

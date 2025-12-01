@@ -475,7 +475,7 @@ func (s *service) SyncStatus(ctx context.Context, owner string) (core.SyncStatus
 	return s.repo.SyncStatus(ctx, owner)
 }
 
-func (s *service) GetResource(ctx context.Context, owner string, resourceId string) (any, error) {
+func (s *service) GetResource(ctx context.Context, owner string, resourceId string, accept string) (any, error) {
 	ctx, span := tracer.Start(ctx, "Store.Service.GetResource")
 	defer span.End()
 
@@ -488,7 +488,12 @@ func (s *service) GetResource(ctx context.Context, owner string, resourceId stri
 	case "p":
 		return s.profile.Get(ctx, owner)
 	case "t":
-		return s.timeline.GetTimeline(ctx, resourceId)
+		if strings.Contains(accept, "application/chunkline+json") {
+			return s.timeline.GetChunkedTimeline(ctx, resourceId)
+		} else {
+			return s.timeline.GetTimeline(ctx, resourceId)
+		}
+
 	case "s":
 		return s.subscription.GetSubscription(ctx, resourceId)
 	default:

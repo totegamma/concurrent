@@ -11,7 +11,9 @@ type CCInfo struct {
 
 type WellKnownConcrnt struct {
 	Version   string            `json:"version"`
+	Domain    string            `json:"domain"`
 	CSID      string            `json:"csid"`
+	Layer     string            `json:"layer"`
 	Endpoints map[string]string `json:"endpoints"`
 }
 

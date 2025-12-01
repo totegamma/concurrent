@@ -463,10 +463,12 @@ func main() {
 	e.GET(".well-known/concrnt", func(c echo.Context) (err error) {
 		wellknown := core.WellKnownConcrnt{
 			Version: "2.0",
+			Domain:  conconf.FQDN,
 			CSID:    conconf.CSID,
+			Layer:   conconf.Dimension,
 			Endpoints: map[string]string{
-				"net.concrnt.core.entity":   "/api/v1/entity/${ccid}",
-				"net.concrnt.core.resource": "/api/v1/resource/${ccid}/${resource}",
+				"net.concrnt.core.entity":   "/api/v1/entity/{ccid}",
+				"net.concrnt.core.resource": "/api/v1/resource/{ccid}/{key}",
 			},
 		}
 		return c.JSON(http.StatusOK, wellknown)

@@ -416,6 +416,7 @@ func (h handler) Realtime(c echo.Context) error {
 			slog.String("error", err.Error()),
 			slog.String("module", "socket"),
 		)
+		return err
 	}
 	defer func() {
 		ws.Close()

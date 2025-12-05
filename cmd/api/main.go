@@ -293,6 +293,7 @@ func main() {
 	// store
 	apiV1.POST("/commit", storeHandler.Commit)
 	apiV1.GET("/resource/:ccid", storeHandler.GetResource)
+	apiV1.GET("/resource/:ccid/", storeHandler.GetResource)
 	apiV1.GET("/resource/:ccid/:id", storeHandler.GetResource)
 
 	// domain

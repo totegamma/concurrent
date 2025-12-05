@@ -1577,6 +1577,21 @@ func (mr *MockStoreServiceMockRecorder) Commit(ctx, mode, document, signature, o
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Commit", reflect.TypeOf((*MockStoreService)(nil).Commit), ctx, mode, document, signature, option, keys, IP)
 }
 
+// GetResource mocks base method.
+func (m *MockStoreService) GetResource(ctx context.Context, owner, resourceId, acceptHeader string) (any, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetResource", ctx, owner, resourceId, acceptHeader)
+	ret0, _ := ret[0].(any)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetResource indicates an expected call of GetResource.
+func (mr *MockStoreServiceMockRecorder) GetResource(ctx, owner, resourceId, acceptHeader any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetResource", reflect.TypeOf((*MockStoreService)(nil).GetResource), ctx, owner, resourceId, acceptHeader)
+}
+
 // Restore mocks base method.
 func (m *MockStoreService) Restore(ctx context.Context, archive io.Reader, from, IP string) ([]core.BatchResult, error) {
 	m.ctrl.T.Helper()
@@ -1843,6 +1858,21 @@ func (m *MockTimelineService) Event(ctx context.Context, mode core.CommitMode, d
 func (mr *MockTimelineServiceMockRecorder) Event(ctx, mode, document, signature any) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Event", reflect.TypeOf((*MockTimelineService)(nil).Event), ctx, mode, document, signature)
+}
+
+// GetChunkedTimeline mocks base method.
+func (m *MockTimelineService) GetChunkedTimeline(ctx context.Context, id string) (core.ChunkedTimeline, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetChunkedTimeline", ctx, id)
+	ret0, _ := ret[0].(core.ChunkedTimeline)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetChunkedTimeline indicates an expected call of GetChunkedTimeline.
+func (mr *MockTimelineServiceMockRecorder) GetChunkedTimeline(ctx, id any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetChunkedTimeline", reflect.TypeOf((*MockTimelineService)(nil).GetChunkedTimeline), ctx, id)
 }
 
 // GetChunks mocks base method.

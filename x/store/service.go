@@ -27,6 +27,7 @@ type service struct {
 	ack            core.AckService
 	subscription   core.SubscriptionService
 	semanticID     core.SemanticIDService
+	domain         core.DomainService
 	config         core.Config
 	repositoryPath string
 }
@@ -42,6 +43,7 @@ func NewService(
 	ack core.AckService,
 	subscription core.SubscriptionService,
 	semanticID core.SemanticIDService,
+	domain core.DomainService,
 	config core.Config,
 	repositoryPath string,
 ) core.StoreService {
@@ -56,6 +58,7 @@ func NewService(
 		ack:            ack,
 		subscription:   subscription,
 		semanticID:     semanticID,
+		domain:         domain,
 		config:         config,
 		repositoryPath: repositoryPath,
 	}
@@ -479,24 +482,31 @@ func (s *service) GetResource(ctx context.Context, owner string, resourceId stri
 	ctx, span := tracer.Start(ctx, "Store.Service.GetResource")
 	defer span.End()
 
-	typePrefix := resourceId[:1]
-	switch typePrefix {
-	case "m":
-		return s.message.GetAsGuest(ctx, resourceId)
-	case "a":
-		return s.association.Get(ctx, resourceId)
-	case "p":
-		return s.profile.Get(ctx, owner)
-	case "t":
-		if strings.Contains(accept, "application/chunkline+json") {
-			return s.timeline.GetChunkedTimeline(ctx, resourceId)
-		} else {
-			return s.timeline.GetTimeline(ctx, resourceId)
+	if resourceId == "" {
+		if core.IsCCID(owner) {
+			return s.entity.Get(ctx, owner)
 		}
+		return s.domain.Get(ctx, owner)
+	} else {
+		typePrefix := resourceId[:1]
+		switch typePrefix {
+		case "m":
+			return s.message.GetAsGuest(ctx, resourceId)
+		case "a":
+			return s.association.Get(ctx, resourceId)
+		case "p":
+			return s.profile.Get(ctx, owner)
+		case "t":
+			if strings.Contains(accept, "application/chunkline+json") {
+				return s.timeline.GetChunkedTimeline(ctx, resourceId)
+			} else {
+				return s.timeline.GetTimeline(ctx, resourceId)
+			}
 
-	case "s":
-		return s.subscription.GetSubscription(ctx, resourceId)
-	default:
-		return nil, fmt.Errorf("unknown resource type: %s", typePrefix)
+		case "s":
+			return s.subscription.GetSubscription(ctx, resourceId)
+		default:
+			return nil, fmt.Errorf("unknown resource type: %s", typePrefix)
+		}
 	}
 }

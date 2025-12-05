@@ -158,7 +158,8 @@ func SetupStoreService(db *gorm.DB, rdb *redis.Client, mc *memcache.Client, keep
 	ackService := SetupAckService(db, rdb, mc, client2, policy2, config)
 	subscriptionService := SetupSubscriptionService(db, rdb, mc, client2, policy2, config)
 	semanticIDService := SetupSemanticidService(db)
-	storeService := store.NewService(repository, keyService, entityService, messageService, associationService, profileService, timelineService, ackService, subscriptionService, semanticIDService, config, repositoryPath)
+	domainService := SetupDomainService(db, client2, config)
+	storeService := store.NewService(repository, keyService, entityService, messageService, associationService, profileService, timelineService, ackService, subscriptionService, semanticIDService, domainService, config, repositoryPath)
 	return storeService
 }
 

@@ -113,6 +113,21 @@ func (mr *MockRepositoryMockRecorder) DeleteTimeline(ctx, key any) *gomock.Call 
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteTimeline", reflect.TypeOf((*MockRepository)(nil).DeleteTimeline), ctx, key)
 }
 
+// GetFirstItem mocks base method.
+func (m *MockRepository) GetFirstItem(ctx context.Context, timelineID string) (core.TimelineItem, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "GetFirstItem", ctx, timelineID)
+	ret0, _ := ret[0].(core.TimelineItem)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// GetFirstItem indicates an expected call of GetFirstItem.
+func (mr *MockRepositoryMockRecorder) GetFirstItem(ctx, timelineID any) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetFirstItem", reflect.TypeOf((*MockRepository)(nil).GetFirstItem), ctx, timelineID)
+}
+
 // GetImmediateItems mocks base method.
 func (m *MockRepository) GetImmediateItems(ctx context.Context, timelineID string, since time.Time, limit int) ([]core.TimelineItem, error) {
 	m.ctrl.T.Helper()

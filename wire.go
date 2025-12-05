@@ -72,6 +72,7 @@ var storeServiceProvider = wire.NewSet(
 	SetupAckService,
 	SetupSubscriptionService,
 	SetupSemanticidService,
+	SetupDomainService,
 )
 
 // other

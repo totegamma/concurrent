@@ -472,7 +472,7 @@ func main() {
 			},
 		}
 		return c.JSON(http.StatusOK, wellknown)
-	})
+	}, cors)
 
 	e.GET("/tos", func(c echo.Context) (err error) {
 		return c.File("/etc/concrnt/static/tos.txt")

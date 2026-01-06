@@ -466,9 +466,16 @@ func main() {
 			Domain:  conconf.FQDN,
 			CSID:    conconf.CSID,
 			Layer:   conconf.Dimension,
-			Endpoints: map[string]string{
-				"net.concrnt.core.entity":   "/api/v1/entity/{ccid}",
-				"net.concrnt.core.resource": "/api/v1/resource/{ccid}/{key}",
+			Endpoints: map[string]core.ConcrntEndpoint{
+				"net.concrnt.core.resource": {
+					Template: "/api/v1/resource/{ccid}/{key}",
+				},
+			},
+			SoftwareInfo: core.SoftwareInfo{
+				Version:      version,
+				BuildMachine: buildMachine,
+				BuildTime:    buildTime,
+				GoVersion:    goVersion,
 			},
 		}
 		return c.JSON(http.StatusOK, wellknown)

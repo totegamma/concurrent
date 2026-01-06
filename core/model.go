@@ -9,12 +9,26 @@ type CCInfo struct {
 	Version string `json:"version"`
 }
 
+type ConcrntEndpoint struct {
+	Template string    `json:"template"`
+	Method   string    `json:"method"`
+	Query    *[]string `json:"query,omitempty"`
+}
+
+type SoftwareInfo struct {
+	Version      string `json:"version"`
+	BuildMachine string `json:"buildMachine"`
+	BuildTime    string `json:"buildTime"`
+	GoVersion    string `json:"goVersion"`
+}
+
 type WellKnownConcrnt struct {
-	Version   string            `json:"version"`
-	Domain    string            `json:"domain"`
-	CSID      string            `json:"csid"`
-	Layer     string            `json:"layer"`
-	Endpoints map[string]string `json:"endpoints"`
+	Version      string                     `json:"version"`
+	Domain       string                     `json:"domain"`
+	CSID         string                     `json:"csid"`
+	Layer        string                     `json:"layer"`
+	Endpoints    map[string]ConcrntEndpoint `json:"endpoints"`
+	SoftwareInfo SoftwareInfo               `json:"softwareInfo"`
 }
 
 // Event is websocket root packet model

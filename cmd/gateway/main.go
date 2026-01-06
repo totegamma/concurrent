@@ -468,7 +468,7 @@ func main() {
 			Layer:   conconf.Dimension,
 			Endpoints: map[string]core.ConcrntEndpoint{
 				"net.concrnt.resource": {
-					Template: "/api/v1/resource/{ccid}/{key}",
+					Template: "/api/v1/resource/{owner}/{key}",
 				},
 			},
 			SoftwareInfo: core.SoftwareInfo{

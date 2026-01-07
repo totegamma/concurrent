@@ -90,12 +90,16 @@ func (h *handler) GetResource(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Store.Handler.GetResource")
 	defer span.End()
 
-	owner := c.Param("ccid")
-	resourceId := c.Param("id")
+	owner := c.Param("owner")
+	key := c.Param("key")
 	acceptHeader := c.Request().Header.Get("Accept")
 	span.SetAttributes(attribute.String("accept", acceptHeader))
 
-	resource, err := h.service.GetResource(ctx, owner, resourceId, acceptHeader)
+	if key == "concrnt.world/main/profile" {
+		key = "world.concrnt.p"
+	}
+
+	resource, err := h.service.GetResource(ctx, owner, key, acceptHeader)
 	if err != nil {
 		span.RecordError(err)
 		return c.JSON(http.StatusInternalServerError, echo.Map{"error": err.Error()})

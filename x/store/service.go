@@ -478,35 +478,68 @@ func (s *service) SyncStatus(ctx context.Context, owner string) (core.SyncStatus
 	return s.repo.SyncStatus(ctx, owner)
 }
 
-func (s *service) GetResource(ctx context.Context, owner string, resourceId string, accept string) (any, error) {
+func (s *service) GetResource(ctx context.Context, owner string, key string, accept string) (any, error) {
 	ctx, span := tracer.Start(ctx, "Store.Service.GetResource")
 	defer span.End()
 
-	if resourceId == "" {
+	if key == "" {
 		if core.IsCCID(owner) {
 			return s.entity.Get(ctx, owner)
 		}
 		return s.domain.Get(ctx, owner)
-	} else {
-		typePrefix := resourceId[:1]
+	} else if IsSeemsCDID(key) {
+		typePrefix := key[:1]
 		switch typePrefix {
 		case "m":
-			return s.message.GetAsGuest(ctx, resourceId)
+			return s.message.GetAsGuest(ctx, key)
 		case "a":
-			return s.association.Get(ctx, resourceId)
+			return s.association.Get(ctx, key)
 		case "p":
 			return s.profile.Get(ctx, owner)
 		case "t":
 			if strings.Contains(accept, "application/chunkline+json") {
-				return s.timeline.GetChunkedTimeline(ctx, resourceId)
+				return s.timeline.GetChunkedTimeline(ctx, key)
 			} else {
-				return s.timeline.GetTimeline(ctx, resourceId)
+				return s.timeline.GetTimeline(ctx, key)
 			}
 
 		case "s":
-			return s.subscription.GetSubscription(ctx, resourceId)
+			return s.subscription.GetSubscription(ctx, key)
 		default:
 			return nil, fmt.Errorf("unknown resource type: %s", typePrefix)
 		}
+	} else {
+		p, err := s.profile.GetBySemanticID(ctx, key, owner)
+		if err == nil {
+			return p, nil
+		}
+		t, err := s.timeline.GetTimeline(ctx, key)
+		if err == nil {
+			return t, nil
+		}
+		return nil, fmt.Errorf("resource not found for key: %s", key)
 	}
+}
+
+func IsCDIDChar(c byte) bool {
+	// 0-9 a-z but no i, l, o, u
+	return ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z')) && c != 'i' && c != 'l' && c != 'o' && c != 'u'
+}
+
+func IsSeemsCDID(str string) bool {
+	if len(str) == 27 {
+		str = str[1:]
+	}
+
+	if len(str) != 26 {
+		return false
+	}
+
+	for i := range 26 {
+		if !IsCDIDChar(str[i]) {
+			return false
+		}
+	}
+
+	return true
 }

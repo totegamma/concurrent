@@ -21,6 +21,29 @@ type DocumentBase[T any] struct {
 	SignedAt       time.Time `json:"signedAt"`
 }
 
+type DocumentBaseV2[T any] struct {
+	// CIP-1
+	Key   string `json:"key,omitempty"`
+	Value T      `json:"value"`
+
+	Author string  `json:"author"`
+	Owner  *string `json:"owner,omitempty"`
+
+	Schema string `json:"schema,omitempty"`
+
+	CreatedAt time.Time `json:"createdAt"`
+
+	// CIP-5
+	MemberOf *[]string `json:"memberOf,omitempty"`
+
+	// CIP-6
+	Associate          *string `json:"associate,omitempty"`
+	AssociationVariant *string `json:"associationVariant,omitempty"`
+
+	// CIP-8
+	Policies *[]Policy `json:"policies,omitempty"`
+}
+
 // entity
 type AffiliationDocument struct { // type: affiliation
 	Domain string `json:"domain"`

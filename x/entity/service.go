@@ -107,13 +107,14 @@ func (s *service) Affiliation(ctx context.Context, mode core.CommitMode, documen
 
 	if doc.Domain == "" {
 		// try to parse as v2
-		var docV2 core.DocumentBase[core.AffiliationDocumentBodyV2]
+		var docV2 core.DocumentBaseV2[core.AffiliationDocumentBodyV2]
 		err = json.Unmarshal([]byte(document), &docV2)
 		if err != nil {
 			span.RecordError(err)
 			return core.Entity{}, errors.Wrap(err, "Failed to unmarshal document as v2")
 		}
-		doc.Domain = docV2.Body.Domain
+		doc.Domain = docV2.Value.Domain
+		doc.SignedAt = docV2.CreatedAt
 	}
 
 	existence, exists := s.repository.Get(ctx, doc.Signer)

@@ -113,6 +113,7 @@ func (s *service) Affiliation(ctx context.Context, mode core.CommitMode, documen
 			span.RecordError(err)
 			return core.Entity{}, errors.Wrap(err, "Failed to unmarshal document as v2")
 		}
+		doc.Signer = docV2.Author
 		doc.Domain = docV2.Value.Domain
 		doc.SignedAt = docV2.CreatedAt
 	}

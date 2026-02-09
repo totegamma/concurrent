@@ -105,6 +105,17 @@ func (s *service) Affiliation(ctx context.Context, mode core.CommitMode, documen
 		return core.Entity{}, errors.Wrap(err, "Failed to unmarshal document")
 	}
 
+	if doc.Domain == "" {
+		// try to parse as v2
+		var docV2 core.DocumentBase[core.AffiliationDocumentBodyV2]
+		err = json.Unmarshal([]byte(document), &docV2)
+		if err != nil {
+			span.RecordError(err)
+			return core.Entity{}, errors.Wrap(err, "Failed to unmarshal document as v2")
+		}
+		doc.Domain = docV2.Body.Domain
+	}
+
 	existence, exists := s.repository.Get(ctx, doc.Signer)
 	if exists == nil {
 		var existenceAffiliation core.AffiliationDocument

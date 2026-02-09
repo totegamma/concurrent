@@ -27,6 +27,10 @@ type AffiliationDocument struct { // type: affiliation
 	DocumentBase[any]
 }
 
+type AffiliationDocumentBodyV2 struct { // type: affiliation
+	Domain string `json:"domain"`
+}
+
 type TombstoneDocument struct { // type: tombstone
 	Reason string `json:"reason"`
 	DocumentBase[any]

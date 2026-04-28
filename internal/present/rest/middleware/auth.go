@@ -11,14 +11,14 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 
-	"github.com/totegamma/concrnt-playground"
-	"github.com/totegamma/concrnt-playground/client"
-	"github.com/totegamma/concrnt-playground/impl/interop"
-	"github.com/totegamma/concrnt-playground/internal/domain"
-	"github.com/totegamma/concrnt-playground/internal/infra/repository"
-	"github.com/totegamma/concrnt-playground/internal/usecase"
-	"github.com/totegamma/concrnt-playground/jwt"
-	"github.com/totegamma/concrnt-playground/schemas"
+	"github.com/concrnt/concrnt"
+	"github.com/concrnt/concrnt/client"
+	"github.com/concrnt/concrnt/impl/interop"
+	"github.com/concrnt/concrnt/internal/domain"
+	"github.com/concrnt/concrnt/internal/infra/repository"
+	"github.com/concrnt/concrnt/internal/usecase"
+	"github.com/concrnt/concrnt/jwt"
+	"github.com/concrnt/concrnt/schemas"
 )
 
 var tracer = otel.Tracer("auth")

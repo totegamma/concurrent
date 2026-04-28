@@ -6,7 +6,7 @@ import (
 
 	"github.com/labstack/echo/v4"
 
-	"github.com/totegamma/concrnt-playground/impl/tags"
+	"github.com/concrnt/concrnt/impl/tags"
 )
 
 func ReceiveGatewayAuthPropagation(next echo.HandlerFunc) echo.HandlerFunc {

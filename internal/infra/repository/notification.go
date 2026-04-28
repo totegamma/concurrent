@@ -7,8 +7,8 @@ import (
 	"github.com/lib/pq"
 	"gorm.io/gorm"
 
-	"github.com/totegamma/concrnt-playground/internal/domain"
-	"github.com/totegamma/concrnt-playground/internal/infra/database/models"
+	"github.com/concrnt/concrnt/internal/domain"
+	"github.com/concrnt/concrnt/internal/infra/database/models"
 )
 
 type NotificationRepository struct {

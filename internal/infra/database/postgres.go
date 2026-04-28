@@ -13,7 +13,7 @@ import (
 	"gorm.io/gorm/logger"
 	"gorm.io/plugin/opentelemetry/tracing"
 
-	"github.com/totegamma/concrnt-playground/internal/infra/database/models"
+	"github.com/concrnt/concrnt/internal/infra/database/models"
 )
 
 func NewPostgres(dsn string) (*gorm.DB, error) {

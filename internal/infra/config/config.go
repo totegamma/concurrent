@@ -5,9 +5,9 @@ import (
 
 	"github.com/go-yaml/yaml"
 
-	"github.com/totegamma/concrnt-playground"
-	"github.com/totegamma/concrnt-playground/impl/interop"
-	"github.com/totegamma/concrnt-playground/internal/domain"
+	"github.com/concrnt/concrnt"
+	"github.com/concrnt/concrnt/impl/interop"
+	"github.com/concrnt/concrnt/internal/domain"
 )
 
 type Config struct {

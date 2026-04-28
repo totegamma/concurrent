@@ -13,15 +13,15 @@ import (
 	"github.com/patrickmn/go-cache"
 	"github.com/pkg/errors"
 
-	"github.com/totegamma/concrnt-playground"
-	"github.com/totegamma/concrnt-playground/cdid"
-	"github.com/totegamma/concrnt-playground/client"
-	"github.com/totegamma/concrnt-playground/impl/interop"
-	"github.com/totegamma/concrnt-playground/internal/domain"
-	"github.com/totegamma/concrnt-playground/internal/service"
-	"github.com/totegamma/concrnt-playground/internal/utils"
-	"github.com/totegamma/concrnt-playground/policy"
-	"github.com/totegamma/concrnt-playground/schemas"
+	"github.com/concrnt/concrnt"
+	"github.com/concrnt/concrnt/cdid"
+	"github.com/concrnt/concrnt/client"
+	"github.com/concrnt/concrnt/impl/interop"
+	"github.com/concrnt/concrnt/internal/domain"
+	"github.com/concrnt/concrnt/internal/service"
+	"github.com/concrnt/concrnt/internal/utils"
+	"github.com/concrnt/concrnt/policy"
+	"github.com/concrnt/concrnt/schemas"
 )
 
 // RecordRepository defines storage operations for records/commits.

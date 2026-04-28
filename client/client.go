@@ -18,8 +18,8 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/patrickmn/go-cache"
-	"github.com/totegamma/concrnt-playground"
-	"github.com/totegamma/concrnt-playground/schemas"
+	"github.com/concrnt/concrnt"
+	"github.com/concrnt/concrnt/schemas"
 )
 
 var tracer = otel.Tracer("client")

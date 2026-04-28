@@ -3,9 +3,9 @@ package usecase
 import (
 	"context"
 
-	"github.com/totegamma/concrnt-playground"
-	"github.com/totegamma/concrnt-playground/internal/domain"
-	"github.com/totegamma/concrnt-playground/internal/service"
+	"github.com/concrnt/concrnt"
+	"github.com/concrnt/concrnt/internal/domain"
+	"github.com/concrnt/concrnt/internal/service"
 )
 
 // ServerRepository defines persistence/lookup for remote servers.

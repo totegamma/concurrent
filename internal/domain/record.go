@@ -1,6 +1,6 @@
 package domain
 
-import "github.com/totegamma/concrnt-playground/chunkline"
+import "github.com/concrnt/concrnt/chunkline"
 
 // Record represents a domain-level record content.
 type Record struct {

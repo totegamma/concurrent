@@ -9,7 +9,7 @@ import (
 
 	"github.com/redis/go-redis/v9"
 
-	"github.com/totegamma/concrnt-playground"
+	"github.com/concrnt/concrnt"
 )
 
 type SignalService struct {

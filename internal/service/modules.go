@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/totegamma/concrnt-playground/impl/interop"
+	"github.com/concrnt/concrnt/impl/interop"
 )
 
 type ModuleManager struct {

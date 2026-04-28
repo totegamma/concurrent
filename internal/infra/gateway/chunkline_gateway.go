@@ -14,8 +14,8 @@ import (
 
 	"github.com/patrickmn/go-cache"
 
-	"github.com/totegamma/concrnt-playground/chunkline"
-	"github.com/totegamma/concrnt-playground/client"
+	"github.com/concrnt/concrnt/chunkline"
+	"github.com/concrnt/concrnt/client"
 )
 
 type ChunklineGateway struct {

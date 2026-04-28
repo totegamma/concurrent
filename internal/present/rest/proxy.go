@@ -15,9 +15,9 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/propagation"
 
-	"github.com/totegamma/concrnt-playground/impl/interop"
-	"github.com/totegamma/concrnt-playground/impl/tags"
-	"github.com/totegamma/concrnt-playground/internal/domain"
+	"github.com/concrnt/concrnt/impl/interop"
+	"github.com/concrnt/concrnt/impl/tags"
+	"github.com/concrnt/concrnt/internal/domain"
 )
 
 type Proxy struct {

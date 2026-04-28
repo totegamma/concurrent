@@ -1,4 +1,3 @@
-//go:generate go run go.uber.org/mock/mockgen -source=interfaces.go -destination=mock/services.go
 package core
 
 import (

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/totegamma/concrnt-playground/chunkline"
+	"github.com/concrnt/concrnt/chunkline"
 )
 
 type ChunklineUsecase struct {

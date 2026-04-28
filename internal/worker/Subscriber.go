@@ -10,10 +10,10 @@ import (
 	"time"
 
 	"github.com/gorilla/websocket"
-	"github.com/totegamma/concrnt-playground"
-	"github.com/totegamma/concrnt-playground/client"
-	"github.com/totegamma/concrnt-playground/internal/domain"
-	"github.com/totegamma/concrnt-playground/internal/service"
+	"github.com/concrnt/concrnt"
+	"github.com/concrnt/concrnt/client"
+	"github.com/concrnt/concrnt/internal/domain"
+	"github.com/concrnt/concrnt/internal/service"
 )
 
 var (

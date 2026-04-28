@@ -1,4 +1,3 @@
-//go:generate go run go.uber.org/mock/mockgen -source=client.go -destination=mock/client.go
 package client
 
 import (
@@ -16,7 +15,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/concrnt/concrnt/core"
+	"github.com/concrnt/concrnt/legacy/core"
 	"github.com/gorilla/websocket"
 	"github.com/patrickmn/go-cache"
 	"go.opentelemetry.io/otel"

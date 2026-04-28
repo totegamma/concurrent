@@ -17,13 +17,13 @@ import (
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 
-	"github.com/totegamma/concrnt-playground"
-	"github.com/totegamma/concrnt-playground/impl/interop"
-	"github.com/totegamma/concrnt-playground/internal/domain"
-	"github.com/totegamma/concrnt-playground/internal/present/rest/presenter"
-	"github.com/totegamma/concrnt-playground/internal/service"
-	"github.com/totegamma/concrnt-playground/internal/usecase"
-	"github.com/totegamma/concrnt-playground/schemas"
+	"github.com/concrnt/concrnt"
+	"github.com/concrnt/concrnt/impl/interop"
+	"github.com/concrnt/concrnt/internal/domain"
+	"github.com/concrnt/concrnt/internal/present/rest/presenter"
+	"github.com/concrnt/concrnt/internal/service"
+	"github.com/concrnt/concrnt/internal/usecase"
+	"github.com/concrnt/concrnt/schemas"
 )
 
 type Handler struct {

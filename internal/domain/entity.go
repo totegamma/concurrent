@@ -1,8 +1,8 @@
 package domain
 
 import (
-	"github.com/totegamma/concrnt-playground"
-	"github.com/totegamma/concrnt-playground/impl/tags"
+	"github.com/concrnt/concrnt"
+	"github.com/concrnt/concrnt/impl/tags"
 )
 
 // Entity represents the core user/server identity without persistence concerns.

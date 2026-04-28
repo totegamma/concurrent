@@ -2,7 +2,7 @@ package service
 
 import (
 	"context"
-	"github.com/totegamma/concrnt-playground"
+	"github.com/concrnt/concrnt"
 )
 
 type AbuseRepository interface {

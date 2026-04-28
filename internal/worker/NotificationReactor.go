@@ -10,10 +10,10 @@ import (
 
 	"github.com/SherClockHolmes/webpush-go"
 
-	"github.com/totegamma/concrnt-playground"
-	"github.com/totegamma/concrnt-playground/internal/domain"
-	"github.com/totegamma/concrnt-playground/internal/service"
-	"github.com/totegamma/concrnt-playground/internal/usecase"
+	"github.com/concrnt/concrnt"
+	"github.com/concrnt/concrnt/internal/domain"
+	"github.com/concrnt/concrnt/internal/service"
+	"github.com/concrnt/concrnt/internal/usecase"
 )
 
 type NotificationReactor struct {

@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 
-	"github.com/totegamma/concrnt-playground/policy"
+	"github.com/concrnt/concrnt/policy"
 )
 
 var globalPolicyJson = `

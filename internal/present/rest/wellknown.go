@@ -4,8 +4,8 @@ import (
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 
-	"github.com/totegamma/concrnt-playground/internal/present/rest/presenter"
-	"github.com/totegamma/concrnt-playground/internal/usecase"
+	"github.com/concrnt/concrnt/internal/present/rest/presenter"
+	"github.com/concrnt/concrnt/internal/usecase"
 )
 
 type WellKnownHandler struct {

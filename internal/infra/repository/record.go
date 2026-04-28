@@ -12,11 +12,11 @@ import (
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
-	"github.com/totegamma/concrnt-playground"
-	"github.com/totegamma/concrnt-playground/internal/domain"
-	"github.com/totegamma/concrnt-playground/internal/infra/database/models"
-	"github.com/totegamma/concrnt-playground/internal/utils"
-	"github.com/totegamma/concrnt-playground/schemas"
+	"github.com/concrnt/concrnt"
+	"github.com/concrnt/concrnt/internal/domain"
+	"github.com/concrnt/concrnt/internal/infra/database/models"
+	"github.com/concrnt/concrnt/internal/utils"
+	"github.com/concrnt/concrnt/schemas"
 )
 
 type RecordRepository struct {

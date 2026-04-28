@@ -7,8 +7,8 @@ import (
 
 	"gorm.io/gorm"
 
-	"github.com/totegamma/concrnt-playground/chunkline"
-	"github.com/totegamma/concrnt-playground/internal/infra/database/models"
+	"github.com/concrnt/concrnt/chunkline"
+	"github.com/concrnt/concrnt/internal/infra/database/models"
 )
 
 const (

@@ -6,7 +6,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/totegamma/concrnt-playground/cdid"
+	"github.com/concrnt/concrnt/cdid"
 	"github.com/yosida95/uritemplate/v3"
 )
 

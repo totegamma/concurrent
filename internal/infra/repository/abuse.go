@@ -4,8 +4,8 @@ import (
 	"context"
 	"gorm.io/gorm"
 
-	"github.com/totegamma/concrnt-playground"
-	"github.com/totegamma/concrnt-playground/internal/infra/database/models"
+	"github.com/concrnt/concrnt"
+	"github.com/concrnt/concrnt/internal/infra/database/models"
 )
 
 type AbuseRepository struct {

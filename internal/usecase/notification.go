@@ -3,7 +3,7 @@ package usecase
 import (
 	"context"
 
-	"github.com/totegamma/concrnt-playground/internal/domain"
+	"github.com/concrnt/concrnt/internal/domain"
 )
 
 type NotificationRepository interface {

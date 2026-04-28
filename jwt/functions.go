@@ -8,7 +8,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/totegamma/concrnt-playground"
+	"github.com/concrnt/concrnt"
 )
 
 // Create creates server signed JWT

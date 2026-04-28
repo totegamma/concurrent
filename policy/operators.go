@@ -5,7 +5,7 @@ import (
 	"reflect"
 	"slices"
 
-	"github.com/totegamma/concrnt-playground"
+	"github.com/concrnt/concrnt"
 )
 
 type Operator func(ctx RequestContext, args []any) (EvalResult, error)

@@ -1,8 +1,0 @@
-concurrent
-_composeData
-_etc
-
-*.exe
-*.log
-.idea/
-/cmd/test

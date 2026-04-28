@@ -1,0 +1,118 @@
+services:
+  # main components
+  concrnt:
+    build:
+      context: .
+      dockerfile: ./cmd/concrnt/Dockerfile
+    restart: always
+    links:
+      - db
+      - redis
+      - memcached
+    depends_on:
+      db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      memcached:
+        condition: service_healthy
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./_etc:/etc/concrnt/:ro
+    networks:
+      - external
+      - internal
+    extra_hosts:
+      - "host.docker.internal:172.29.253.172"
+
+  web:
+    restart: always
+    image: ghcr.io/concrnt/concrnt-web:main
+    ports:
+      - "80:80"
+    networks:
+      - internal
+
+  db:
+    restart: always
+    image: postgres:18
+    healthcheck:
+      test: "pg_isready -U postgres"
+      interval: 5s
+      retries: 20
+    volumes:
+      - postgres-data:/var/lib/postgresql
+    ports:
+      - "5432:5432"
+    environment:
+      - "POSTGRES_PASSWORD=postgres"
+      - "POSTGRES_DB=postgres"
+    networks:
+      - internal
+
+  redis:
+    restart: always
+    image: redis:8.4
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: "redis-cli ping"
+      interval: 5s
+      retries: 20
+    ports:
+      - "6379:6379"
+    networks:
+      - internal
+      - external
+
+  memcached:
+    image: memcached:1.6-alpine
+    healthcheck:
+      test: "echo 'version' | nc localhost 11211 | grep VERSION"
+      interval: 5s
+      retries: 20
+    ports:
+      - "11211:11211"
+    networks:
+      - internal
+
+  grafana:
+    image: grafana/grafana:latest
+    volumes:
+      - ./_dev/grafana-datasources.yaml:/etc/grafana/provisioning/datasources/datasources.yaml
+      - ./_dev/grafana-dashboards.yaml:/etc/grafana/provisioning/dashboards/dashboards.yaml
+      - ./_dev/dashboards:/etc/grafana/dashboards
+    environment:
+      - GF_AUTH_ANONYMOUS_ENABLED=true
+      - GF_AUTH_ANONYMOUS_ORG_ROLE=Admin
+      - GF_AUTH_DISABLE_LOGIN_FORM=true
+    ports:
+      - "3000:3000"
+    networks:
+      - external
+      - internal
+
+  tempo:
+    image: grafana/tempo:latest
+    user: root
+    ports:
+      - "4318:4318"
+    command: [ "-config.file=/etc/tempo.yaml" ]
+    volumes:
+      - ./_dev/tempo.yaml:/etc/tempo.yaml
+      - tempo-data:/var/lib/tempo
+    networks:
+      - internal
+      - external
+
+volumes:
+  postgres-data:
+  redis-data:
+  tempo-data:
+
+networks:
+  external:
+  internal:
+    internal: true
+ 

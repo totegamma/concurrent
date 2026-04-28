@@ -1,0 +1,106 @@
+package repository
+
+import (
+	"context"
+	"errors"
+
+	"github.com/lib/pq"
+	"gorm.io/gorm"
+
+	"github.com/totegamma/concrnt-playground/internal/domain"
+	"github.com/totegamma/concrnt-playground/internal/infra/database/models"
+)
+
+type NotificationRepository struct {
+	db *gorm.DB
+}
+
+func NewNotificationRepository(db *gorm.DB) *NotificationRepository {
+	return &NotificationRepository{db: db}
+}
+
+func modelToDomainNotification(m models.Subscription) domain.NotificationSubscription {
+	return domain.NotificationSubscription{
+		VendorID:     m.VendorID,
+		Owner:        m.Owner,
+		Schemas:      []string(m.Schemas),
+		Prefixes:     []string(m.Prefixes),
+		Subscription: m.Subscription,
+		CDate:        m.CDate,
+		MDate:        m.MDate,
+	}
+}
+
+func domainToModelNotification(d domain.NotificationSubscription) models.Subscription {
+	return models.Subscription{
+		VendorID:     d.VendorID,
+		Owner:        d.Owner,
+		Schemas:      pq.StringArray(d.Schemas),
+		Prefixes:     pq.StringArray(d.Prefixes),
+		Subscription: d.Subscription,
+		CDate:        d.CDate,
+		MDate:        d.MDate,
+	}
+}
+
+func (r *NotificationRepository) Subscribe(ctx context.Context, subscription domain.NotificationSubscription) (domain.NotificationSubscription, error) {
+	ctx, span := tracer.Start(ctx, "Repository.Notification.Subscribe")
+	defer span.End()
+
+	model := domainToModelNotification(subscription)
+	if err := r.db.WithContext(ctx).Save(&model).Error; err != nil {
+		span.RecordError(err)
+		return domain.NotificationSubscription{}, err
+	}
+
+	return modelToDomainNotification(model), nil
+}
+
+func (r *NotificationRepository) List(ctx context.Context) ([]domain.NotificationSubscription, error) {
+	ctx, span := tracer.Start(ctx, "Repository.Notification.List")
+	defer span.End()
+
+	var models []models.Subscription
+	if err := r.db.WithContext(ctx).Find(&models).Error; err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	result := make([]domain.NotificationSubscription, 0, len(models))
+	for _, model := range models {
+		result = append(result, modelToDomainNotification(model))
+	}
+	return result, nil
+}
+
+func (r *NotificationRepository) Get(ctx context.Context, vendorID, owner string) (domain.NotificationSubscription, error) {
+	ctx, span := tracer.Start(ctx, "Repository.Notification.Get")
+	defer span.End()
+
+	var model models.Subscription
+	err := r.db.WithContext(ctx).
+		Where("vendor_id = ? AND owner = ?", vendorID, owner).
+		Take(&model).Error
+	if err != nil {
+		span.RecordError(err)
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return domain.NotificationSubscription{}, domain.NotFoundError{Resource: "notification subscription"}
+		}
+		return domain.NotificationSubscription{}, err
+	}
+
+	return modelToDomainNotification(model), nil
+}
+
+func (r *NotificationRepository) Delete(ctx context.Context, vendorID, owner string) error {
+	ctx, span := tracer.Start(ctx, "Repository.Notification.Delete")
+	defer span.End()
+
+	if err := r.db.WithContext(ctx).
+		Where("vendor_id = ? AND owner = ?", vendorID, owner).
+		Delete(&models.Subscription{}).Error; err != nil {
+		span.RecordError(err)
+		return err
+	}
+	return nil
+}

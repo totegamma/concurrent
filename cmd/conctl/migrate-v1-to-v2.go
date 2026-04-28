@@ -5,7 +5,9 @@ import (
 	"fmt"
 	"net/http"
 	"slices"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"gorm.io/driver/postgres"
@@ -13,32 +15,50 @@ import (
 
 	"github.com/concrnt/concrnt"
 	cdidv2 "github.com/concrnt/concrnt/cdid"
+	"github.com/concrnt/concrnt/internal/infra/database/models"
 	cdidv1 "github.com/concrnt/concrnt/legacy/cdid"
 	"github.com/concrnt/concrnt/legacy/core"
 	"github.com/concrnt/concrnt/schemas"
 )
 
 var (
-	dsn        string
-	fromServer string
-	fromCSID   string
-	destServer string
-	ignoreIDs  []string
+	fromDsn   string
+	fromFQDN  string
+	fromCSID  string
+	destDsn   string
+	destFQDN  string
+	ignoreIDs []string = []string{}
 )
 
-const communitySchemaURL = "https://schema.concrnt.world/t/community.json"
-const homeTimelineSchemaURL = "https://schema.concrnt.world/t/user.json"
+type MigrationInfo struct {
+	Name   string `json:"name" gorm:"type:text;primaryKey"`
+	Seeker string `json:"seeker" gorm:"type:text"`
+}
+
+func LoadMigrationInfo(db *gorm.DB, name string) (*MigrationInfo, error) {
+	var info MigrationInfo
+	result := db.First(&info, "name = ?", name)
+	if result.Error != nil {
+		return nil, result.Error
+	}
+	return &info, nil
+}
+
+func SaveMigrationInfo(db *gorm.DB, info *MigrationInfo) error {
+	result := db.Save(info)
+	return result.Error
+}
 
 var actionMap = map[string]string{
 	"timeline.message.read": "net.concrnt.core.resolve",
 }
 
 func convertDomain(domain string) string {
-	if domain == fromServer {
-		return destServer
+	if domain == fromFQDN {
+		return destFQDN
 	}
 	if domain == fromCSID {
-		return destServer
+		return destFQDN
 	}
 	return domain
 }
@@ -150,10 +170,51 @@ func convertPolicy(policyURL string, policyParamsStr string, policyDefaultsStr s
 	}
 }
 
-func transferEntities(db *gorm.DB) {
+func transferMetas(fromDB, toDB *gorm.DB) {
+
+	var v1metas []core.EntityMeta
+	fromDB.
+		Find(&v1metas)
+	fmt.Println("total metas: ", len(v1metas))
+
+	var v2metas []models.EntityMeta
+	for _, v1meta := range v1metas {
+		v2meta := models.EntityMeta{
+			ID:      v1meta.ID,
+			Inviter: v1meta.Inviter,
+			Info:    v1meta.Info,
+		}
+		v2metas = append(v2metas, v2meta)
+	}
+
+	toDB.Save(&v2metas)
+
+}
+
+func transferEntities(db *gorm.DB, dest_db *gorm.DB) {
+
+	var seeker time.Time
+	info, err := LoadMigrationInfo(dest_db, "entities")
+	if err != nil {
+		fmt.Println("no existing migration info found, starting fresh")
+	} else {
+		fmt.Println("existing migration info found, seeker: ", info.Seeker)
+		t, err := time.Parse(time.RFC3339, info.Seeker)
+		if err != nil {
+			panic("failed to parse seeker time: " + err.Error())
+		} else {
+			seeker = t
+		}
+	}
 
 	var entities []core.Entity
-	db.Where("domain not in ?", ignoreIDs).Find(&entities)
+	q := db.Where("domain not in ?", ignoreIDs)
+
+	if !seeker.IsZero() {
+		q = q.Where("c_date >= ?", seeker)
+	}
+
+	q.Find(&entities)
 
 	fmt.Println("total entities: ", len(entities))
 
@@ -196,20 +257,43 @@ func transferEntities(db *gorm.DB) {
 		batch += string(line) + "\n"
 	}
 
-	resp, err := http.Post(fmt.Sprintf("https://%s/repository", destServer), "text/plain", strings.NewReader(batch))
+	resp, err := http.Post(fmt.Sprintf("https://%s/repository", destFQDN), "text/plain", strings.NewReader(batch))
 	if err != nil {
 		fmt.Println("failed to post document: ", err)
 		return
 	}
 	resp.Body.Close()
 
+	err = SaveMigrationInfo(dest_db, &MigrationInfo{
+		Name:   "entities",
+		Seeker: time.Now().Format(time.RFC3339),
+	})
+	if err != nil {
+		panic("failed to save migration info: " + err.Error())
+	} else {
+		fmt.Println("migration info saved with seeker: ", time.Now().Format(time.RFC3339))
+	}
+
 	// print post result
 	fmt.Println("traceID: ", resp.Header.Get("trace-id"))
 }
 
-func transferRecords(db *gorm.DB) {
+func transferRecords(db *gorm.DB, dest_db *gorm.DB) {
 
 	lastKey := uint(0)
+	info, err := LoadMigrationInfo(dest_db, "records")
+	if err != nil {
+		fmt.Println("no existing migration info found, starting fresh")
+	} else {
+		fmt.Println("existing migration info found, seeker: ", info.Seeker)
+		t, err := strconv.ParseUint(info.Seeker, 10, 64)
+		if err != nil {
+			panic("failed to parse seeker key: " + err.Error())
+		} else {
+			lastKey = uint(t)
+		}
+	}
+
 	pageSize := 512
 
 	keyTable := make(map[string]string) // v0id -> v2key
@@ -371,7 +455,7 @@ func transferRecords(db *gorm.DB) {
 						owner = v1tl.Signer
 					}
 					if v1tl.DomainOwned {
-						owner = destServer
+						owner = destFQDN
 					}
 
 					id := "t" + cdidBase
@@ -545,7 +629,7 @@ func transferRecords(db *gorm.DB) {
 			batch += string(line) + "\n"
 		}
 
-		resp, err := http.Post(fmt.Sprintf("https://%s/repository", destServer), "text/plain", strings.NewReader(batch))
+		resp, err := http.Post(fmt.Sprintf("https://%s/repository", destFQDN), "text/plain", strings.NewReader(batch))
 		if err != nil {
 			fmt.Println("failed to post document: ", err)
 			continue
@@ -557,39 +641,57 @@ func transferRecords(db *gorm.DB) {
 
 		fmt.Println("indexed until -> ", lastKey)
 
+		err = SaveMigrationInfo(dest_db, &MigrationInfo{
+			Name:   "records",
+			Seeker: strconv.FormatUint(uint64(lastKey), 10),
+		})
+		if err != nil {
+			panic("failed to save migration info: " + err.Error())
+		} else {
+			fmt.Println("migration info saved with seeker: ", lastKey)
+		}
+
 		if len(commits) < pageSize { // no more commits
 			break
 		}
-
-		// time.Sleep(1 * time.Second)
 	}
 }
 
 var migrateV1toV2Cmd = &cobra.Command{
-	Use:   "vapid",
-	Short: "Generate a new VAPID key pair",
+	Use:   "v1-to-v2",
+	Short: "Migrate data from a v1 server to a v2 server",
 	Run: func(cmd *cobra.Command, args []string) {
 
-		db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})
+		fromDB, err := gorm.Open(postgres.Open(fromDsn), &gorm.Config{})
 		if err != nil {
 			panic("failed to connect database")
 		}
 
-		transferEntities(db)
-		transferRecords(db)
+		destDB, err := gorm.Open(postgres.Open(destDsn), &gorm.Config{})
+		if err != nil {
+			panic("failed to connect destination database")
+		}
+
+		destDB.AutoMigrate(&MigrationInfo{})
+
+		transferMetas(fromDB, destDB)
+		transferEntities(fromDB, destDB)
+		transferRecords(fromDB, destDB)
 	},
 }
 
 func init() {
 	migrateCmd.AddCommand(migrateV1toV2Cmd)
-	migrateV1toV2Cmd.Flags().StringVar(&dsn, "dsn", dsn, "PostgreSQL DSN for the v1 database")
+	migrateV1toV2Cmd.Flags().StringVar(&fromDsn, "from-dsn", fromDsn, "PostgreSQL DSN of the v1 server to migrate from")
+	migrateV1toV2Cmd.Flags().StringVar(&destDsn, "dest-dsn", destDsn, "PostgreSQL DSN of the v2 server to migrate to")
 	migrateV1toV2Cmd.Flags().StringSliceVar(&ignoreIDs, "ignore-ccids", ignoreIDs, "List of entity IDs to ignore during migration")
-	migrateV1toV2Cmd.Flags().StringVar(&fromServer, "from-fqdn", fromServer, "Domain of the v1 server to migrate from")
+	migrateV1toV2Cmd.Flags().StringVar(&fromFQDN, "from-fqdn", fromFQDN, "Domain of the v1 server to migrate from")
 	migrateV1toV2Cmd.Flags().StringVar(&fromCSID, "from-csid", fromCSID, "CSID of the v1 server to migrate from")
-	migrateV1toV2Cmd.Flags().StringVar(&destServer, "dest-fqdn", destServer, "Domain of the v2 server to migrate to")
+	migrateV1toV2Cmd.Flags().StringVar(&destFQDN, "dest-fqdn", destFQDN, "Domain of the v2 server to migrate to")
 
-	migrateV1toV2Cmd.MarkFlagRequired("dsn")
-	migrateV1toV2Cmd.MarkFlagRequired("from-server")
+	migrateV1toV2Cmd.MarkFlagRequired("from-dsn")
+	migrateV1toV2Cmd.MarkFlagRequired("dest-dsn")
+	migrateV1toV2Cmd.MarkFlagRequired("from-fqdn")
 	migrateV1toV2Cmd.MarkFlagRequired("from-csid")
-	migrateV1toV2Cmd.MarkFlagRequired("dest-server")
+	migrateV1toV2Cmd.MarkFlagRequired("dest-fqdn")
 }

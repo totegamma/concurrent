@@ -9,11 +9,11 @@ import (
 	"slices"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/client"
 	"github.com/concrnt/concrnt/internal/domain"
 	"github.com/concrnt/concrnt/internal/service"
+	"github.com/gorilla/websocket"
 )
 
 var (

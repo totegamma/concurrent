@@ -16,10 +16,10 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
 
-	"github.com/gorilla/websocket"
-	"github.com/patrickmn/go-cache"
 	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/schemas"
+	"github.com/gorilla/websocket"
+	"github.com/patrickmn/go-cache"
 )
 
 var tracer = otel.Tracer("client")

@@ -41,66 +41,80 @@ func (p *Proxy) RegisterRoutes(e *echo.Echo) {
 
 	for _, service := range p.services {
 
-		targetUrl, err := url.Parse("http://" + service.Host + ":" + strconv.Itoa(service.Port))
-		if err != nil {
-			panic(err)
-		}
-		proxy := httputil.NewSingleHostReverseProxy(targetUrl)
+		paths := append(service.Paths, service.Path)
 
-		proxy.Director = func(req *http.Request) {
-			req.URL.Scheme = targetUrl.Scheme
-			req.URL.Host = targetUrl.Host
-			if service.PreservePath {
-				req.URL.Path = path.Join(targetUrl.Path, req.URL.Path)
-			} else {
-				req.URL.Path = path.Join(targetUrl.Path, strings.TrimPrefix(req.URL.Path, service.Path))
+		for _, sp := range paths {
+
+			targetUrl, err := url.Parse("http://" + service.Host + ":" + strconv.Itoa(service.Port))
+			if err != nil {
+				panic(err)
 			}
+			proxy := httputil.NewSingleHostReverseProxy(targetUrl)
 
-			otel.GetTextMapPropagator().Inject(req.Context(), propagation.HeaderCarrier(req.Header))
-		}
+			proxy.Director = func(req *http.Request) {
+				req.URL.Scheme = targetUrl.Scheme
+				req.URL.Host = targetUrl.Host
+				if service.PreservePath {
 
-		proxy.Transport = otelhttp.NewTransport(http.DefaultTransport)
+					left := targetUrl.Path
+					if !strings.HasSuffix(left, "/") {
+						left += "/"
+					}
 
-		middlewares := []echo.MiddlewareFunc{
-			// authService.RateLimiter(service.RateLimitConf),
-		}
-		if service.InjectCors {
-			middlewares = append(middlewares, cors)
-		}
+					right := strings.TrimPrefix(req.URL.Path, "/")
 
-		if !service.NoAuth {
-			middlewares = append(middlewares, p.authMiddleware)
-		}
+					req.URL.Path = left + right
 
-		handler := func(c echo.Context) error {
-			ctx := c.Request().Context()
-			c.Response().Header().Set("cc-service", service.Name)
-
-			requester, ok := ctx.Value(interop.RequesterCtxKey).(domain.Entity)
-			if ok {
-				serialized, err := json.Marshal(requester)
-				if err != nil {
-					return err
+				} else {
+					req.URL.Path = path.Join(targetUrl.Path, strings.TrimPrefix(req.URL.Path, sp))
 				}
-				c.Request().Header.Set(interop.RequesterHeader, string(serialized))
+
+				otel.GetTextMapPropagator().Inject(req.Context(), propagation.HeaderCarrier(req.Header))
 			}
 
-			tag, ok := ctx.Value(interop.RequesterTagCtxKey).(tags.Tags)
-			if ok {
-				tagStr := tag.ToString()
-				c.Request().Header.Set(interop.RequesterTagHeader, tagStr)
+			proxy.Transport = otelhttp.NewTransport(http.DefaultTransport)
+
+			middlewares := []echo.MiddlewareFunc{
+				// authService.RateLimiter(service.RateLimitConf),
+			}
+			if service.InjectCors {
+				middlewares = append(middlewares, cors)
 			}
 
-			proxy.ServeHTTP(c.Response(), c.Request())
-			return nil
-		}
+			if !service.NoAuth {
+				middlewares = append(middlewares, p.authMiddleware)
+			}
 
-		if service.Path == "/" {
-			e.Any("/", handler, middlewares...)
-			e.Any("/*", handler, middlewares...)
-		} else {
-			e.Any(service.Path, handler, middlewares...)
-			e.Any(service.Path+"/*", handler, middlewares...)
+			handler := func(c echo.Context) error {
+				ctx := c.Request().Context()
+				c.Response().Header().Set("cc-service", service.Name)
+
+				requester, ok := ctx.Value(interop.RequesterCtxKey).(domain.Entity)
+				if ok {
+					serialized, err := json.Marshal(requester)
+					if err != nil {
+						return err
+					}
+					c.Request().Header.Set(interop.RequesterHeader, string(serialized))
+				}
+
+				tag, ok := ctx.Value(interop.RequesterTagCtxKey).(tags.Tags)
+				if ok {
+					tagStr := tag.ToString()
+					c.Request().Header.Set(interop.RequesterTagHeader, tagStr)
+				}
+
+				proxy.ServeHTTP(c.Response(), c.Request())
+				return nil
+			}
+
+			if sp == "/" {
+				e.Any("/", handler, middlewares...)
+				e.Any("/*", handler, middlewares...)
+			} else {
+				e.Any(sp, handler, middlewares...)
+				e.Any(sp+"/*", handler, middlewares...)
+			}
 		}
 	}
 }

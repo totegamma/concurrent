@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -110,7 +111,7 @@ func Load(path string) (Config, error) {
 			}
 
 			entryPath := filepath.Join(path, file.Name())
-			fmt.Printf("Loading config from file: %s\n", entryPath)
+			slog.Debug("Loading config from file", "path", entryPath)
 
 			f, err := os.Open(entryPath)
 			if err != nil {
@@ -135,7 +136,7 @@ func Load(path string) (Config, error) {
 			return Config{}, err
 		}
 
-		fmt.Printf("Loading config from file: %s\n", path)
+		slog.Debug("Loading config from file", "path", path)
 
 		err = yaml.NewDecoder(file).Decode(&config)
 		if err != nil {

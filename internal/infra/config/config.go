@@ -1,7 +1,10 @@
 package config
 
 import (
+	"fmt"
 	"os"
+	"path/filepath"
+	"reflect"
 
 	"github.com/go-yaml/yaml"
 
@@ -42,17 +45,104 @@ type Server struct {
 	VapidPrivateKey string `yaml:"vapidPrivateKey"`
 }
 
+func DeepMerge(dst, src any) error {
+	dstPtr := reflect.ValueOf(dst)
+	srcPtr := reflect.ValueOf(src)
+
+	if dstPtr.Kind() != reflect.Pointer || srcPtr.Kind() != reflect.Pointer {
+		return fmt.Errorf("both arguments must be pointers")
+	}
+
+	dstElem := dstPtr.Elem()
+	srcElem := srcPtr.Elem()
+	if dstElem.Kind() != reflect.Struct || srcElem.Kind() != reflect.Struct {
+		return fmt.Errorf("both arguments must be pointers to structs")
+	}
+
+	dstType := dstElem.Type()
+	for i := range dstElem.NumField() {
+		dstField := dstElem.Field(i)
+		srcField := srcElem.Field(i)
+		structField := dstType.Field(i)
+
+		if !dstField.CanSet() {
+			continue
+		}
+
+		if isZeroValue(srcField) {
+			continue
+		}
+
+		switch dstField.Kind() {
+		case reflect.Struct:
+			if err := DeepMerge(dstField.Addr().Interface(), srcField.Addr().Interface()); err != nil {
+				return fmt.Errorf("error merging field %s: %w", structField.Name, err)
+			}
+		default:
+			dstField.Set(srcField)
+		}
+	}
+
+	return nil
+}
+
+func isZeroValue(v reflect.Value) bool {
+	return reflect.DeepEqual(v.Interface(), reflect.Zero(v.Type()).Interface())
+}
+
 func Load(path string) (Config, error) {
 
-	file, err := os.Open(path)
+	info, err := os.Stat(path)
 	if err != nil {
 		return Config{}, err
 	}
 
 	var config Config
-	err = yaml.NewDecoder(file).Decode(&config)
-	if err != nil {
-		return Config{}, err
+	if info.IsDir() {
+		files, err := os.ReadDir(path)
+		if err != nil {
+			return Config{}, err
+		}
+
+		for _, file := range files {
+			if file.IsDir() {
+				continue
+			}
+
+			entryPath := filepath.Join(path, file.Name())
+			fmt.Printf("Loading config from file: %s\n", entryPath)
+
+			f, err := os.Open(entryPath)
+			if err != nil {
+				return Config{}, err
+			}
+			defer f.Close()
+
+			var tmp Config
+			err = yaml.NewDecoder(f).Decode(&tmp)
+			if err != nil {
+				return Config{}, err
+			}
+
+			err = DeepMerge(&config, &tmp)
+			if err != nil {
+				return Config{}, err
+			}
+		}
+	} else {
+		file, err := os.Open(path)
+		if err != nil {
+			return Config{}, err
+		}
+
+		fmt.Printf("Loading config from file: %s\n", path)
+
+		err = yaml.NewDecoder(file).Decode(&config)
+		if err != nil {
+			return Config{}, err
+		}
+
+		return config, nil
 	}
 
 	return config, nil

@@ -63,7 +63,12 @@ func main() {
 
 	fmt.Fprint(os.Stderr, concrnt.Banner)
 
-	conf, err := config.Load("/etc/concrnt/config/config.yaml")
+	configPath := os.Getenv("CONCRNT_CONFIG")
+	if configPath == "" {
+		configPath = "/etc/concrnt/config"
+	}
+
+	conf, err := config.Load(configPath)
 	if err != nil {
 		panic("failed to load config: " + err.Error())
 	}
@@ -71,7 +76,7 @@ func main() {
 	globalConfig := conf.GlobalConfig()
 
 	log.Printf("Concrnt %s starting...", version)
-	log.Printf("Config loaded! I am: %s @ %s on %s", globalConfig.CCID, globalConfig.FQDN, globalConfig.Layer)
+	log.Printf("Config loaded! I am: %s@%s on %s", globalConfig.CSID, globalConfig.FQDN, globalConfig.Layer)
 
 	e := echo.New()
 	e.HideBanner = true

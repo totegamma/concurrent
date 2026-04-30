@@ -3,7 +3,7 @@ package service
 import (
 	"context"
 	"encoding/json"
-	"fmt"
+	"log/slog"
 	"sync"
 	"sync/atomic"
 
@@ -114,7 +114,7 @@ func (s *SignalService) subscribe(ctx context.Context, patterns []string, event 
 			var item concrnt.Event
 			err := json.Unmarshal([]byte(msg.Payload), &item)
 			if err != nil {
-				fmt.Println("failed to unmarshal event:", err)
+				slog.Error("failed to unmarshal event", slog.String("error", err.Error()))
 				continue
 			}
 			event <- item

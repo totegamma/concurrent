@@ -74,7 +74,7 @@ func (s *AuthMiddleware) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFun
 			}
 
 			if claims.Issuer == s.config.CSID { // login as service account
-				
+
 				err = jwt.Validate(token, s.config.CSID)
 				if err != nil {
 					span.RecordError(errors.Wrap(err, "jwt signature validation failed"))
@@ -89,7 +89,6 @@ func (s *AuthMiddleware) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFun
 				c.SetRequest(c.Request().WithContext(ctx))
 				return next(c)
 			}
-
 
 			if claims.Audience != s.config.FQDN && claims.Audience != s.config.CSID {
 				err := fmt.Errorf("jwt audience mismatch: expected %s, got %s", s.config.FQDN, claims.Audience)

@@ -1,7 +1,7 @@
 package presenter
 
 import (
-	"fmt"
+	"log/slog"
 	"net/http"
 
 	"github.com/labstack/echo/v4"
@@ -17,31 +17,31 @@ func OK(c echo.Context, payload any) error {
 }
 
 func BadRequest(c echo.Context, err error) error {
-	fmt.Println("Bad request:", err)
+	slog.Warn("bad request", slog.String("error", err.Error()))
 	return c.JSON(http.StatusBadRequest, errorResponse{Error: err.Error()})
 }
 
 func BadRequestMessage(c echo.Context, msg string) error {
-	fmt.Println("Bad request:", msg)
+	slog.Warn("bad request", slog.String("error", msg))
 	return c.JSON(http.StatusBadRequest, errorResponse{Error: msg})
 }
 
 func NotFound(c echo.Context, msg string) error {
-	fmt.Println("Not found:", msg)
+	slog.Info("not found", slog.String("error", msg))
 	return c.JSON(http.StatusNotFound, errorResponse{Error: msg})
 }
 
 func InternalError(c echo.Context, err error) error {
-	fmt.Println("Internal error:", err)
+	slog.Error("internal error", slog.String("error", err.Error()))
 	return c.JSON(http.StatusInternalServerError, errorResponse{Error: err.Error()})
 }
 
 func Forbidden(c echo.Context, msg string) error {
-	fmt.Println("Forbidden:", msg)
+	slog.Warn("forbidden", slog.String("error", msg))
 	return c.JSON(http.StatusForbidden, errorResponse{Error: msg})
 }
 
 func Redirect(c echo.Context, location string) error {
-	fmt.Println("Redirecting to:", location)
+	slog.Info("redirecting", slog.String("location", location))
 	return c.Redirect(http.StatusFound, location)
 }

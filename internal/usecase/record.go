@@ -248,7 +248,7 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 	default:
 		if requester == nil {
 			err := errors.New("requester entity not found for record or associate operation")
-			fmt.Printf("Error: %v\n", err)
+			slog.Error("requester entity not found for record or associate operation", slog.String("error", err.Error()))
 			span.RecordError(err)
 			return nil, err
 		}
@@ -338,7 +338,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, requester domain.Enti
 			for _, dest := range destinations {
 				host, err := uc.client.ResolveResourceHost(ctx, dest)
 				if err != nil {
-					fmt.Printf("Error resolving resource host for signal: %v\n", err)
+					slog.Error("failed to resolve resource host for signal", slog.String("destination", dest), slog.String("error", err.Error()))
 					span.RecordError(err)
 					continue
 				}
@@ -349,7 +349,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, requester domain.Enti
 						URI:  targetURI,
 					})
 					if err != nil {
-						fmt.Printf("Error publishing signal for delete: %v\n", err)
+						slog.Error("failed to publish delete signal", slog.String("destination", dest), slog.String("target_uri", targetURI), slog.String("error", err.Error()))
 						span.RecordError(err)
 						return nil, err
 					}
@@ -363,7 +363,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, requester domain.Enti
 					}
 					err = uc.client.Commit(ctx, host, sd)
 					if err != nil {
-						fmt.Printf("Error committing delete document to remote: %v\n", err)
+						slog.Error("failed to commit delete document to remote", slog.String("host", host), slog.String("target_uri", targetURI), slog.String("error", err.Error()))
 						span.RecordError(err)
 						return nil, err
 					}
@@ -374,7 +374,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, requester domain.Enti
 				associatedURI := *targetDoc.Associate
 				associatedSD, err := uc.repo.GetSignedDocument(ctx, associatedURI)
 				if err != nil {
-					fmt.Printf("Error fetching associated document for signal: %v\n", err)
+					slog.Error("failed to fetch associated document for signal", slog.String("associated_uri", associatedURI), slog.String("error", err.Error()))
 					span.RecordError(err)
 					return nil, err
 				}
@@ -382,7 +382,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, requester domain.Enti
 				var associatedDoc concrnt.Document[any]
 				err = json.Unmarshal([]byte(associatedSD.Document), &associatedDoc)
 				if err != nil {
-					fmt.Printf("Error unmarshaling associated document for signal: %v\n", err)
+					slog.Error("failed to unmarshal associated document for signal", slog.String("associated_uri", associatedURI), slog.String("error", err.Error()))
 					span.RecordError(err)
 					return nil, err
 				}
@@ -395,7 +395,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, requester domain.Enti
 				for _, dest := range destinations {
 					host, err := uc.client.ResolveResourceHost(ctx, dest)
 					if err != nil {
-						fmt.Printf("Error resolving resource host for unassociation signal: %v\n", err)
+						slog.Error("failed to resolve resource host for unassociation signal", slog.String("destination", dest), slog.String("associated_uri", associatedURI), slog.String("error", err.Error()))
 						span.RecordError(err)
 						continue
 					}
@@ -406,7 +406,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, requester domain.Enti
 							URI:  *targetDoc.Associate,
 						})
 						if err != nil {
-							fmt.Printf("Error publishing signal for unassociation: %v\n", err)
+							slog.Error("failed to publish unassociation signal", slog.String("destination", dest), slog.String("associated_uri", associatedURI), slog.String("error", err.Error()))
 							span.RecordError(err)
 							return nil, err
 						}
@@ -421,7 +421,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, requester domain.Enti
 						}
 						err = uc.client.Commit(ctx, host, sd)
 						if err != nil {
-							fmt.Printf("Error committing unassociation document to remote: %v\n", err)
+							slog.Error("failed to commit unassociation document to remote", slog.String("host", host), slog.String("associated_uri", associatedURI), slog.String("error", err.Error()))
 							span.RecordError(err)
 							return nil, err
 						}
@@ -455,7 +455,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, requester domain.Enti
 		for _, dest := range destinations {
 			host, err := uc.client.ResolveResourceHost(ctx, dest)
 			if err != nil {
-				fmt.Printf("Error resolving resource host for signal: %v\n", err)
+				slog.Error("failed to resolve resource host for signal", slog.String("destination", dest), slog.String("target_uri", targetURI), slog.String("error", err.Error()))
 				span.RecordError(err)
 				continue
 			}
@@ -466,7 +466,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, requester domain.Enti
 					URI:  targetURI,
 				})
 				if err != nil {
-					fmt.Printf("Error publishing signal for delete: %v\n", err)
+					slog.Error("failed to publish delete signal", slog.String("destination", dest), slog.String("target_uri", targetURI), slog.String("error", err.Error()))
 					span.RecordError(err)
 					return nil, err
 				}
@@ -477,7 +477,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, requester domain.Enti
 			associatedURI := *document.Associate
 			associatedSD, ok := sd.References[associatedURI]
 			if !ok {
-				fmt.Printf("Associated document not found in references for remote delete: %v\n", associatedURI)
+				slog.Error("associated document not found in references for remote delete", slog.String("associated_uri", associatedURI))
 				span.RecordError(errors.New("associated document not found in references for remote delete"))
 				return nil, err
 			}
@@ -485,7 +485,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, requester domain.Enti
 			var associatedDoc concrnt.Document[any]
 			err = json.Unmarshal([]byte(associatedSD.Document), &associatedDoc)
 			if err != nil {
-				fmt.Printf("Error unmarshaling associated document for signal: %v\n", err)
+				slog.Error("failed to unmarshal associated document for signal", slog.String("associated_uri", associatedURI), slog.String("error", err.Error()))
 				span.RecordError(err)
 				return nil, err
 			}
@@ -499,7 +499,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, requester domain.Enti
 			for _, dest := range destinations {
 				host, err := uc.client.ResolveResourceHost(ctx, dest)
 				if err != nil {
-					fmt.Printf("Error resolving resource host for unassociation signal: %v\n", err)
+					slog.Error("failed to resolve resource host for unassociation signal", slog.String("destination", dest), slog.String("associated_uri", associatedURI), slog.String("error", err.Error()))
 					span.RecordError(err)
 					continue
 				}
@@ -510,7 +510,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, requester domain.Enti
 						URI:  associatedURI,
 					})
 					if err != nil {
-						fmt.Printf("Error publishing signal for unassociation: %v\n", err)
+						slog.Error("failed to publish unassociation signal", slog.String("destination", dest), slog.String("associated_uri", associatedURI), slog.String("error", err.Error()))
 						span.RecordError(err)
 						return nil, err
 					}
@@ -543,7 +543,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, ip string, requester 
 		References: map[string]concrnt.SignedDocument{resultURI: sd},
 	})
 	if err != nil {
-		fmt.Printf("Error publishing signal: %v\n", err)
+		slog.Error("failed to publish record created signal", slog.String("result_uri", resultURI), slog.String("error", err.Error()))
 		span.RecordError(err)
 		return nil, err
 	}
@@ -559,21 +559,21 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, ip string, requester 
 
 			host, err := uc.client.ResolveResourceHost(ctx, destURI)
 			if err != nil {
-				fmt.Printf("Error resolving resource host for distribution: %v\n", err)
+				slog.Error("failed to resolve resource host for distribution", slog.String("destination", destURI), slog.String("error", err.Error()))
 				span.RecordError(err)
 				continue
 			}
 
 			dest, err := concrnt.ParseCCURI(destURI)
 			if err != nil {
-				fmt.Printf("Error parsing memberOf URI: %v\n", err)
+				slog.Error("failed to parse distribution uri", slog.String("destination", destURI), slog.String("error", err.Error()))
 				span.RecordError(err)
 				continue
 			}
 
 			key, err := url.JoinPath(destURI, documentID)
 			if err != nil {
-				fmt.Printf("Error joining path for distribution: %v\n", err)
+				slog.Error("failed to join path for distribution", slog.String("destination", destURI), slog.String("document_id", documentID), slog.String("error", err.Error()))
 				span.RecordError(err)
 				continue
 			}
@@ -607,7 +607,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, ip string, requester 
 			if host == uc.config.FQDN { // local
 				_, err = uc.Commit(ctx, ip, distSD, mode)
 				if err != nil {
-					fmt.Printf("Error committing local memberOf item: %v\n", err)
+					slog.Error("failed to commit local distribution reference", slog.String("destination", destURI), slog.String("document_id", documentID), slog.String("error", err.Error()))
 					span.RecordError(err)
 					continue
 				}
@@ -617,7 +617,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, ip string, requester 
 				}
 				err = uc.client.Commit(ctx, dest.Owner, distSD)
 				if err != nil {
-					fmt.Printf("Error committing remote memberOf item: %v\n", err)
+					slog.Error("failed to commit remote distribution reference", slog.String("destination_owner", dest.Owner), slog.String("destination", destURI), slog.String("document_id", documentID), slog.String("error", err.Error()))
 					span.RecordError(err)
 					continue
 				}
@@ -673,21 +673,21 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, ip string, reque
 
 			host, err := uc.client.ResolveResourceHost(ctx, destURI)
 			if err != nil {
-				fmt.Printf("Error resolving resource host for distribution: %v\n", err)
+				slog.Error("failed to resolve resource host for distribution", slog.String("destination", destURI), slog.String("error", err.Error()))
 				span.RecordError(err)
 				continue
 			}
 
 			dest, err := concrnt.ParseCCURI(destURI)
 			if err != nil {
-				fmt.Printf("Error parsing memberOf URI: %v\n", err)
+				slog.Error("failed to parse distribution uri", slog.String("destination", destURI), slog.String("error", err.Error()))
 				span.RecordError(err)
 				continue
 			}
 
 			key, err := url.JoinPath(destURI, documentID)
 			if err != nil {
-				fmt.Printf("Error joining path for distribution: %v\n", err)
+				slog.Error("failed to join path for distribution", slog.String("destination", destURI), slog.String("document_id", documentID), slog.String("error", err.Error()))
 				span.RecordError(err)
 				continue
 			}
@@ -721,7 +721,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, ip string, reque
 			if host == uc.config.FQDN { // local
 				_, err = uc.Commit(ctx, ip, distSD, mode)
 				if err != nil {
-					fmt.Printf("Error committing local memberOf item: %v\n", err)
+					slog.Error("failed to commit local distribution reference", slog.String("destination", destURI), slog.String("document_id", documentID), slog.String("error", err.Error()))
 					span.RecordError(err)
 					continue
 				}
@@ -731,7 +731,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, ip string, reque
 				}
 				err = uc.client.Commit(ctx, dest.Owner, distSD)
 				if err != nil {
-					fmt.Printf("Error committing memberOf item: %v\n", err)
+					slog.Error("failed to commit remote distribution reference", slog.String("destination_owner", dest.Owner), slog.String("destination", destURI), slog.String("document_id", documentID), slog.String("error", err.Error()))
 					span.RecordError(err)
 					continue
 				}

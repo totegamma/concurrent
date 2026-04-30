@@ -2,7 +2,6 @@ package utils
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 
 	"go.opentelemetry.io/otel"
@@ -48,7 +47,7 @@ func SetupTraceProvider(endpoint string, serviceName string, serviceVersion stri
 		ctx, cancel := context.WithCancel(context.Background())
 		defer cancel()
 		if err := tracerProvider.Shutdown(ctx); err != nil {
-			slog.Error(fmt.Sprintf("Failed to shutdown tracer provider: %v", err))
+			slog.Error("failed to shutdown tracer provider", slog.String("error", err.Error()))
 		}
 	}
 	return cleanup, nil

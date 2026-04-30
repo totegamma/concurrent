@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"regexp"
 	"strings"
 
@@ -96,7 +97,13 @@ func EvaluatePolicy(ctx context.Context, policy Policy, req RequestContext, acti
 				span.RecordError(err)
 				continue
 			}
-			fmt.Println("matching key", key, "against statement key", stmt.Key, "regex", regexKey, "matched", matched)
+			slog.Debug(
+				"evaluating policy key match",
+				slog.String("key", key),
+				slog.String("statement_key", stmt.Key),
+				slog.String("regex", regexKey),
+				slog.Bool("matched", matched),
+			)
 			if !matched {
 				continue
 			}

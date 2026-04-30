@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"fmt"
-	"log"
 	"log/slog"
 	"os"
 
@@ -75,8 +74,13 @@ func main() {
 
 	globalConfig := conf.GlobalConfig()
 
-	log.Printf("Concrnt %s starting...", version)
-	log.Printf("Config loaded! I am: %s@%s on %s", globalConfig.CSID, globalConfig.FQDN, globalConfig.Layer)
+	slog.Info("concrnt starting", slog.String("version", version))
+	slog.Info(
+		"config loaded",
+		slog.String("csid", globalConfig.CSID),
+		slog.String("fqdn", globalConfig.FQDN),
+		slog.String("layer", globalConfig.Layer),
+	)
 
 	e := echo.New()
 	e.HideBanner = true

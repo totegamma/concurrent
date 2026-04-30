@@ -3,6 +3,7 @@ package concrnt
 import (
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"strings"
 
@@ -13,10 +14,10 @@ import (
 func JsonPrint(tag string, v any) {
 	b, err := json.MarshalIndent(v, "", "  ")
 	if err != nil {
-		fmt.Printf("%s: error marshaling: %v\n", tag, err)
+		slog.Error("failed to marshal json for debug print", slog.String("tag", tag), slog.String("error", err.Error()))
 		return
 	}
-	fmt.Printf("%s: %s\n", tag, string(b))
+	slog.Debug("json debug payload", slog.String("tag", tag), slog.String("payload", string(b)))
 }
 
 type CCURI struct {

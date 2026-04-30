@@ -22,7 +22,7 @@ jobs:
         include:
           - target: concrnt
             file: ./cmd/concrnt/Dockerfile
-            image: ghcr.io/totegamma/concrnt
+            image: ghcr.io/concrnt/concrnt
 
     runs-on: ${{ matrix.arch }}
 
@@ -95,7 +95,7 @@ jobs:
         include:
           - target: concrnt
             file: ./cmd/concrnt/Dockerfile
-            image: ghcr.io/totegamma/concrnt
+            image: ghcr.io/concrnt/concrnt
 
     permissions:
       contents: read

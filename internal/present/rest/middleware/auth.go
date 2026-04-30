@@ -73,7 +73,25 @@ func (s *AuthMiddleware) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFun
 				goto skipCheckAuthorization
 			}
 
-			if claims.Audience != s.config.FQDN {
+			if claims.Issuer == s.config.CSID { // login as service account
+				
+				err = jwt.Validate(token, s.config.CSID)
+				if err != nil {
+					span.RecordError(errors.Wrap(err, "jwt signature validation failed"))
+					goto skipCheckAuthorization
+				}
+
+				ctx = context.WithValue(ctx, interop.RequesterCtxKey, s.config.CSID)
+				span.SetAttributes(attribute.String("RequesterId", s.config.CSID))
+				ctx = context.WithValue(ctx, interop.ServiceAccountTypeCtxKey, claims.Subject)
+				span.SetAttributes(attribute.String("ServiceAccountType", claims.Subject))
+
+				c.SetRequest(c.Request().WithContext(ctx))
+				return next(c)
+			}
+
+
+			if claims.Audience != s.config.FQDN && claims.Audience != s.config.CSID {
 				err := fmt.Errorf("jwt audience mismatch: expected %s, got %s", s.config.FQDN, claims.Audience)
 				span.RecordError(err)
 				goto skipCheckAuthorization

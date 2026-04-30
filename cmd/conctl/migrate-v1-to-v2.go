@@ -16,6 +16,7 @@ import (
 	"github.com/concrnt/concrnt"
 	cdidv2 "github.com/concrnt/concrnt/cdid"
 	"github.com/concrnt/concrnt/internal/infra/database/models"
+	"github.com/concrnt/concrnt/jwt"
 	cdidv1 "github.com/concrnt/concrnt/legacy/cdid"
 	"github.com/concrnt/concrnt/legacy/core"
 	"github.com/concrnt/concrnt/schemas"
@@ -28,6 +29,7 @@ var (
 	destDsn   string
 	destFQDN  string
 	ignoreIDs []string = []string{}
+	token     string
 )
 
 type MigrationInfo struct {
@@ -94,6 +96,62 @@ func convertTimeline(timeline string) string {
 
 		}
 	}
+}
+
+func commit(body string) error {
+
+	request, err := http.NewRequest("POST", fmt.Sprintf("https://%s/repository", destFQDN), strings.NewReader(body))
+	if err != nil {
+		fmt.Println("failed to create request: ", err)
+		return err
+	}
+
+	request.Header.Set("Content-Type", "text/plain")
+
+	var tmpToken string
+	if token != "" {
+		_, claims, err := jwt.Parse(token)
+		if err != nil {
+			fmt.Println("failed to parse token: ", err)
+			return err
+		}
+
+		if claims.ExpirationTime != "" {
+			expUnix, err := strconv.ParseInt(claims.ExpirationTime, 10, 64)
+			if err != nil {
+				fmt.Println("failed to parse token expiration time: ", err)
+				return err
+			}
+			expTime := time.Unix(expUnix, 0)
+			if time.Until(expTime) < 1*time.Minute {
+				token = generateToken("system", 1*time.Hour)
+				fmt.Println("token is expiring soon, generated new token")
+				tmpToken = token
+			} else {
+				tmpToken = token
+			}
+		} else {
+			tmpToken = token
+		}
+	} else {
+		token = generateToken("system", 1*time.Hour)
+		fmt.Println("no token provided, generating new token")
+		tmpToken = token
+	}
+
+	request.Header.Set("Authorization", "Bearer "+tmpToken)
+
+	client := &http.Client{}
+	resp, err := client.Do(request)
+	if err != nil {
+		fmt.Println("failed to post document: ", err)
+		return err
+	}
+	resp.Body.Close()
+
+	fmt.Println("traceID: ", resp.Header.Get("trace-id"))
+
+	return nil
 }
 
 func convertTimelines(timelines []string) []string {
@@ -257,12 +315,11 @@ func transferEntities(db *gorm.DB, dest_db *gorm.DB) {
 		batch += string(line) + "\n"
 	}
 
-	resp, err := http.Post(fmt.Sprintf("https://%s/repository", destFQDN), "text/plain", strings.NewReader(batch))
+	err = commit(batch)
 	if err != nil {
-		fmt.Println("failed to post document: ", err)
+		fmt.Println("failed to commit batch: ", err)
 		return
 	}
-	resp.Body.Close()
 
 	err = SaveMigrationInfo(dest_db, &MigrationInfo{
 		Name:   "entities",
@@ -273,9 +330,6 @@ func transferEntities(db *gorm.DB, dest_db *gorm.DB) {
 	} else {
 		fmt.Println("migration info saved with seeker: ", time.Now().Format(time.RFC3339))
 	}
-
-	// print post result
-	fmt.Println("traceID: ", resp.Header.Get("trace-id"))
 }
 
 func transferRecords(db *gorm.DB, dest_db *gorm.DB) {
@@ -629,15 +683,11 @@ func transferRecords(db *gorm.DB, dest_db *gorm.DB) {
 			batch += string(line) + "\n"
 		}
 
-		resp, err := http.Post(fmt.Sprintf("https://%s/repository", destFQDN), "text/plain", strings.NewReader(batch))
+		err = commit(batch)
 		if err != nil {
-			fmt.Println("failed to post document: ", err)
-			continue
+			fmt.Println("failed to commit batch: ", err)
+			return
 		}
-		resp.Body.Close()
-
-		// print post result
-		fmt.Println("traceID: ", resp.Header.Get("trace-id"))
 
 		fmt.Println("indexed until -> ", lastKey)
 
@@ -688,6 +738,7 @@ func init() {
 	migrateV1toV2Cmd.Flags().StringVar(&fromFQDN, "from-fqdn", fromFQDN, "Domain of the v1 server to migrate from")
 	migrateV1toV2Cmd.Flags().StringVar(&fromCSID, "from-csid", fromCSID, "CSID of the v1 server to migrate from")
 	migrateV1toV2Cmd.Flags().StringVar(&destFQDN, "dest-fqdn", destFQDN, "Domain of the v2 server to migrate to")
+	migrateV1toV2Cmd.Flags().StringVar(&token, "token", token, "Authentication token for the v2 server")
 
 	migrateV1toV2Cmd.MarkFlagRequired("from-dsn")
 	migrateV1toV2Cmd.MarkFlagRequired("dest-dsn")

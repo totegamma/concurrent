@@ -11,40 +11,59 @@ import (
 	"github.com/spf13/cobra"
 )
 
+func generateToken(subject string, validFor time.Duration) string {
+	configPath := os.Getenv("CONCRNT_CONFIG")
+	if configPath == "" {
+		configPath = "/etc/concrnt/config"
+	}
+
+	conf, err := config.Load(configPath)
+	if err != nil {
+		panic("failed to load config: " + err.Error())
+	}
+
+	globalConfig := conf.GlobalConfig()
+
+	claims := jwt.Claims{
+		Issuer:         globalConfig.CSID,
+		Subject:        subject,
+		Audience:       globalConfig.CSID,
+		ExpirationTime: strconv.FormatInt(time.Now().Add(validFor).Unix(), 10),
+		IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
+	}
+
+	token, err := jwt.Create(claims, conf.NodeInfo.PrivateKey)
+	if err != nil {
+		panic("failed to create JWT: " + err.Error())
+	}
+
+	return token
+}
+
 var generateJwtCmd = &cobra.Command{
 	Use:   "jwt",
 	Short: "Generate a Serve-signed JWT",
 	Run: func(cmd *cobra.Command, args []string) {
 
-		configPath := os.Getenv("CONCRNT_CONFIG")
-		if configPath == "" {
-			configPath = "/etc/concrnt/config"
-		}
-
-		conf, err := config.Load(configPath)
+		subject, err := cmd.Flags().GetString("subject")
 		if err != nil {
-			panic("failed to load config: " + err.Error())
+			panic("failed to get subject flag: " + err.Error())
 		}
 
-		globalConfig := conf.GlobalConfig()
-
-		claims := jwt.Claims{
-			Issuer:         globalConfig.CSID,
-			Subject:        "system",
-			Audience:       globalConfig.CSID,
-			ExpirationTime: strconv.FormatInt(time.Now().Add(24*time.Hour).Unix(), 10), // Token valid for 24 hours
-			IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
-		}
-
-		token, err := jwt.Create(claims, conf.NodeInfo.PrivateKey)
+		validForStr, _ := cmd.Flags().GetString("valid-for")
+		validFor, err := time.ParseDuration(validForStr)
 		if err != nil {
-			panic("failed to create JWT: " + err.Error())
+			panic("invalid duration format for valid-for: " + err.Error())
 		}
 
+		token := generateToken(subject, validFor)
 		fmt.Println(token)
 	},
 }
 
 func init() {
 	generateCmd.AddCommand(generateJwtCmd)
+
+	generateJwtCmd.Flags().StringP("subject", "s", "system", "Subject (sub) claim for the JWT")
+	generateJwtCmd.Flags().StringP("valid-for", "v", "5m", "Duration for which the JWT is valid (e.g., 24h, 30m)")
 }

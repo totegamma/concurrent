@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"net/url"
 	"slices"
 	"strings"
@@ -163,8 +164,10 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 			return nil, err
 		}
 	case concrnt.ProofTypeNone:
-		if !uc.config.Debug {
-			err := errors.New("none proof type is only allowed in debug mode")
+		serviceAccountType, ok := ctx.Value(interop.ServiceAccountTypeCtxKey).(string)
+		if !ok || serviceAccountType != "system" {
+			err := errors.New("none proof type is only allowed for system service accounts")
+			slog.Error("Unauthorized commit with none proof", "error", err.Error())
 			span.RecordError(err)
 			return nil, err
 		}

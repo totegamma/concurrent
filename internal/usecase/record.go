@@ -532,14 +532,32 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, ip string, requester 
 		return nil, err
 	}
 
+	action := "record:create"
+	policySelf := parsed
+
+	existingSD, err := uc.repo.GetSignedDocument(ctx, parsed.Key)
+	if err == nil {
+		var existingDoc concrnt.Document[any]
+		err = json.Unmarshal([]byte(existingSD.Document), &existingDoc)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+		action = "record:update"
+		policySelf = existingDoc
+	} else if !errors.Is(err, domain.ErrNotFound) {
+		span.RecordError(err)
+		return nil, err
+	}
+
 	err = uc.policy.Eval(
 		ctx,
 		policy.RequestContext{
 			Requester: requester,
-			Self:      parsed,
+			Self:      policySelf,
 		},
 		stack,
-		policyCreateAction(parsed),
+		action,
 		parsed.Key,
 	)
 	if err != nil {

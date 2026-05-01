@@ -182,7 +182,7 @@ func hasSubprofileTimelien(timelines []string) (string, bool) {
 	return "", false
 }
 
-func convertPolicy(policyURL string, policyParamsStr string, policyDefaultsStr string, timelines []string) *concrnt.Policy {
+func convertPolicy(policyURL string, policyParamsStr string, policyDefaultsStr string) *concrnt.Policy {
 
 	entries := &[]concrnt.PolicyEntry{}
 	if policyURL != "" {
@@ -223,8 +223,7 @@ func convertPolicy(policyURL string, policyParamsStr string, policyDefaultsStr s
 	}
 
 	return &concrnt.Policy{
-		Entries:        *entries,
-		VirtualParents: &timelines,
+		Entries: *entries,
 	}
 }
 
@@ -412,7 +411,7 @@ func transferRecords(db *gorm.DB, dest_db *gorm.DB) {
 
 					distributes := convertTimelines(v1msg.Timelines)
 
-					pol := convertPolicy(v1msg.Policy, v1msg.PolicyParams, v1msg.PolicyDefaults, distributes)
+					pol := convertPolicy(v1msg.Policy, v1msg.PolicyParams, v1msg.PolicyDefaults)
 
 					v2doc = &concrnt.Document[any]{
 						Key:         key,
@@ -474,7 +473,7 @@ func transferRecords(db *gorm.DB, dest_db *gorm.DB) {
 					}
 
 					distributes := convertTimelines(v1ass.Timelines)
-					pol := convertPolicy(v1ass.Policy, v1ass.PolicyParams, v1ass.PolicyDefaults, distributes)
+					pol := convertPolicy(v1ass.Policy, v1ass.PolicyParams, v1ass.PolicyDefaults)
 
 					var variant *string
 					if v1ass.Variant != "" {
@@ -530,7 +529,7 @@ func transferRecords(db *gorm.DB, dest_db *gorm.DB) {
 					key := convertTimeline(tlid)
 					//fmt.Println("converted timeline key: ", key)
 
-					pol := convertPolicy(v1tl.Policy, v1tl.PolicyParams, v1tl.PolicyDefaults, []string{})
+					pol := convertPolicy(v1tl.Policy, v1tl.PolicyParams, v1tl.PolicyDefaults)
 
 					v2doc = &concrnt.Document[any]{
 						Key:       key,

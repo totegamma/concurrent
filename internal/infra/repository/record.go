@@ -8,6 +8,7 @@ import (
 	"net/url"
 	"time"
 
+	"github.com/lib/pq"
 	"github.com/zeebo/xxh3"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
@@ -526,14 +527,15 @@ func (r *RecordRepository) GetHierarchicalRecordPolicies(ctx context.Context, ur
 	}
 
 	type tuple struct {
-		Uri    string  `gorm:"column:uri"`
-		Policy *string `gorm:"column:policy"`
+		Uri           string         `gorm:"column:uri"`
+		Policy        *string        `gorm:"column:policy"`
+		Distributions pq.StringArray `gorm:"column:distributions;type:text[]"`
 	}
 
 	var entries []tuple
 	err = r.db.WithContext(ctx).
 		Model(&models.Record{}).
-		Select("rk.uri AS uri, records.policies AS policy").
+		Select("rk.uri AS uri, records.policies AS policy, records.distributions AS distributions").
 		Joins("JOIN record_keys rk ON rk.record_id = records.document_id").
 		Where("rk.uri IN ?", hierarchy).
 		Find(&entries).Error
@@ -542,27 +544,33 @@ func (r *RecordRepository) GetHierarchicalRecordPolicies(ctx context.Context, ur
 		return nil, err
 	}
 
-	policyMap := make(map[string]*string)
+	tupleMap := make(map[string]tuple)
 	for _, res := range entries {
-		policyMap[res.Uri] = res.Policy
+		if res.Policy != nil {
+			tupleMap[res.Uri] = res
+		}
 	}
 
 	policies := []concrnt.Policy{}
 	for i := len(hierarchy) - 1; i >= 0; i-- {
 		uri := hierarchy[i]
-		if policyStr, ok := policyMap[uri]; ok {
-			if policyStr != nil {
-				var policyDoc concrnt.Policy
-				err := json.Unmarshal([]byte(*policyStr), &policyDoc)
-				if err != nil {
-					span.RecordError(err)
-					return nil, err
-				}
-
-				policyDoc.Source = uri
-
-				policies = append(policies, policyDoc)
+		if t, ok := tupleMap[uri]; ok {
+			var policyDoc concrnt.Policy
+			err := json.Unmarshal([]byte(*t.Policy), &policyDoc)
+			if err != nil {
+				span.RecordError(err)
+				return nil, err
 			}
+
+			policyDoc.Source = uri
+			// convert pq.StringArray to []string
+			virtualParents := []string{}
+			for _, dist := range t.Distributions {
+				virtualParents = append(virtualParents, dist)
+			}
+			policyDoc.VirtualParents = &virtualParents
+
+			policies = append(policies, policyDoc)
 		}
 	}
 

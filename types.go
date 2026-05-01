@@ -37,7 +37,7 @@ type PolicyEntry struct {
 
 type Policy struct {
 	Entries        []PolicyEntry `json:"entries"`
-	VirtualParents *[]string     `json:"virtualParents,omitempty"`
+	VirtualParents *[]string     `json:"-,omitempty"`
 
 	Source string `json:"source,omitempty"` // internal use
 }

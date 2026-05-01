@@ -17,7 +17,7 @@ func JsonPrint(tag string, v any) {
 		slog.Error("failed to marshal json for debug print", slog.String("tag", tag), slog.String("error", err.Error()))
 		return
 	}
-	slog.Debug("json debug payload", slog.String("tag", tag), slog.String("payload", string(b)))
+	fmt.Printf("=== %s ===\n%s\n", tag, string(b))
 }
 
 type CCURI struct {

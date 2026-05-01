@@ -7,8 +7,6 @@ import (
 )
 
 /* Global Policy
-
-
 # Record (record:)
 ## create
 - デフォルトNG
@@ -42,20 +40,45 @@ import (
 - デフォルトNG
 - 親が自分のnamespaceであればALLOW
 - 自分が作成したassociationであればALLOW
-
----
-
-登録ユーザーかどうかの判定:
-	globalsにこのサーバーのfqdnが入っているので、それがrequesterのfqdnと一致するかどうかで判定する。
-
-
 */
 
 var globalPolicyJson = `
 {
+	"defaults": {
+		"record:create": "ng",
+		"record:read": "ok",
+		"record:update": "ng",
+		"record:delete": "ng",
+		"association:create": "ok",
+		"association:read": "ok",
+		"association:delete": "ng"
+	},
 	"statements": [
 		{
-			"action": "record:delete",
+			"action": "record:create",
+			"key": "*",
+			"emit": "deny",
+			"condition": {
+				"op": "Not",
+				"args": [
+					{
+						"op": "Eq",
+						"args": [
+							{
+								"op": "Load",
+								"const": "requester.domain"
+							},
+							{
+								"op": "Load",
+								"const": "globals.fqdn"
+							}
+						]
+					}
+				]
+			}
+		},
+		{
+			"action": "record:create",
 			"key": "*",
 			"emit": "allow",
 			"condition": {
@@ -66,8 +89,54 @@ var globalPolicyJson = `
 						"const": "requester.ccid"
 					},
 					{
-						"op": "Load",
-						"const": "self.author"
+						"op": "CCUriOwner",
+						"args": [
+							{
+								"op": "Load",
+								"const": "self.key"
+							}
+						]
+					}
+				]
+			}
+		},
+		{
+			"action": "record:create",
+			"key": "*",
+			"emit": "ok",
+			"condition": {
+				"op": "And",
+				"args": [
+					{
+						"op": "Eq",
+						"args": [
+							{
+								"op": "Load",
+								"const": "requester.domain"
+							},
+							{
+								"op": "Load",
+								"const": "globals.fqdn"
+							}
+						]
+					},
+					{
+						"op": "Eq",
+						"args": [
+							{
+								"op": "CCUriOwner",
+								"args": [
+									{
+										"op": "Load",
+										"const": "self.key"
+									}
+								]
+							},
+							{
+								"op": "Load",
+								"const": "globals.fqdn"
+							}
+						]
 					}
 				]
 			}
@@ -75,14 +144,28 @@ var globalPolicyJson = `
 		{
 			"action": "record:read",
 			"key": "*",
-			"emit": "ok",
+			"emit": "allow",
 			"condition": {
-				"op": "Const",
-				"const": true
+				"op": "Eq",
+				"args": [
+					{
+						"op": "Load",
+						"const": "requester.ccid"
+					},
+					{
+						"op": "CCUriOwner",
+						"args": [
+							{
+								"op": "Load",
+								"const": "self.key"
+							}
+						]
+					}
+				]
 			}
 		},
 		{
-			"action": "record:read",
+			"action": "record:update",
 			"key": "*",
 			"emit": "allow",
 			"condition": {
@@ -114,6 +197,88 @@ var globalPolicyJson = `
 									{
 										"op": "Load",
 										"const": "self.key"
+									}
+								]
+							}
+						]
+					}
+				]
+			}
+		},
+		{
+			"action": "record:delete",
+			"key": "*",
+			"emit": "allow",
+			"condition": {
+				"op": "Or",
+				"args": [
+					{
+						"op": "Eq",
+						"args": [
+							{
+								"op": "Load",
+								"const": "requester.ccid"
+							},
+							{
+								"op": "Load",
+								"const": "self.author"
+							}
+						]
+					},
+					{
+						"op": "Eq",
+						"args": [
+							{
+								"op": "Load",
+								"const": "requester.ccid"
+							},
+							{
+								"op": "CCUriOwner",
+								"args": [
+									{
+										"op": "Load",
+										"const": "self.key"
+									}
+								]
+							}
+						]
+					}
+				]
+			}
+		},
+		{
+			"action": "association:delete",
+			"key": "*",
+			"emit": "allow",
+			"condition": {
+				"op": "Or",
+				"args": [
+					{
+						"op": "Eq",
+						"args": [
+							{
+								"op": "Load",
+								"const": "requester.ccid"
+							},
+							{
+								"op": "Load",
+								"const": "self.author"
+							}
+						]
+					},
+					{
+						"op": "Eq",
+						"args": [
+							{
+								"op": "Load",
+								"const": "requester.ccid"
+							},
+							{
+								"op": "CCUriOwner",
+								"args": [
+									{
+										"op": "Load",
+										"const": "self.associate"
 									}
 								]
 							}

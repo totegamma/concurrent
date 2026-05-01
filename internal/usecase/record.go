@@ -315,7 +315,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, requester domain.Enti
 				Self:      targetDoc,
 			},
 			stack,
-			"net.concrnt.core.commit.delete",
+			policyDeleteAction(targetDoc),
 			targetURI,
 		)
 		if err != nil {
@@ -526,6 +526,27 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, ip string, requester 
 	ctx, span := tracer.Start(ctx, "Usecase.Record.CreateRecord")
 	defer span.End()
 
+	stack, err := uc.repo.GetHierarchicalRecordPolicies(ctx, parsed.Key)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	err = uc.policy.Eval(
+		ctx,
+		policy.RequestContext{
+			Requester: requester,
+			Self:      parsed,
+		},
+		stack,
+		policyCreateAction(parsed),
+		parsed.Key,
+	)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
 	hash := concrnt.GetHash([]byte(sd.Document))
 	hash10 := [10]byte{}
 	copy(hash10[:], hash[:10])
@@ -631,6 +652,27 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, ip string, requester 
 func (uc *RecordUsecase) createAssociation(ctx context.Context, ip string, requester domain.Entity, parsed concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*concrnt.SignedDocument, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.CreateAssociation")
 	defer span.End()
+
+	stack, err := uc.repo.GetHierarchicalRecordPolicies(ctx, *parsed.Associate)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	err = uc.policy.Eval(
+		ctx,
+		policy.RequestContext{
+			Requester: requester,
+			Self:      parsed,
+		},
+		stack,
+		policyCreateAction(parsed),
+		*parsed.Associate,
+	)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
 
 	hash := concrnt.GetHash([]byte(sd.Document))
 	hash10 := [10]byte{}
@@ -953,7 +995,7 @@ func (uc *RecordUsecase) GetSigned(ctx context.Context, uri string) (*concrnt.Si
 			Self:      doc,
 		},
 		stack,
-		"net.concrnt.core.resolve",
+		policyReadAction(doc),
 		uri,
 	)
 
@@ -962,6 +1004,27 @@ func (uc *RecordUsecase) GetSigned(ctx context.Context, uri string) (*concrnt.Si
 	}
 
 	return sd, nil
+}
+
+func policyCreateAction(doc concrnt.Document[any]) string {
+	if doc.Associate != nil {
+		return "association:create"
+	}
+	return "record:create"
+}
+
+func policyReadAction(doc concrnt.Document[any]) string {
+	if doc.Associate != nil {
+		return "association:read"
+	}
+	return "record:read"
+}
+
+func policyDeleteAction(doc concrnt.Document[any]) string {
+	if doc.Associate != nil {
+		return "association:delete"
+	}
+	return "record:delete"
 }
 
 func (uc *RecordUsecase) GetAcknowledgeRecords(ctx context.Context, from, to, context string) ([]concrnt.SignedDocument, error) {

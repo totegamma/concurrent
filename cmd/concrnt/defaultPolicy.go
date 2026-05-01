@@ -6,11 +6,54 @@ import (
 	"github.com/concrnt/concrnt/policy"
 )
 
+/* Global Policy
+
+
+# Record (record:)
+## create
+- デフォルトNG
+- 自分のnamespaceであればALLOW
+- namespaceが登録ユーザーでなければDENY
+- サーバーnamespaceについて
+  - このサーバーの登録者であればOK
+
+## read
+- デフォルトOK
+- 自分のnamespaceであればALLOW
+
+## update
+- デフォルトNG
+- 自分のnamespaceであればALLOW
+- 自分が作成したリソースであればALLOW
+
+## delete
+- デフォルトNG
+- 自分のnamespaceであればALLOW
+- 自分が作成したリソースであればALLOW
+
+# Association (association:)
+## create
+- デフォルトOK
+
+## read
+- デフォルトOK
+
+## delete
+- デフォルトNG
+- 親が自分のnamespaceであればALLOW
+- 自分が作成したassociationであればALLOW
+
+---
+
+登録ユーザーはシステムタグ _registered を持つ
+
+*/
+
 var globalPolicyJson = `
 {
 	"statements": [
 		{
-			"action": "net.concrnt.core.commit.delete",
+			"action": "record:delete",
 			"key": "*",
 			"emit": "allow",
 			"condition": {
@@ -28,7 +71,7 @@ var globalPolicyJson = `
 			}
 		},
 		{
-			"action": "net.concrnt.core.resolve",
+			"action": "record:read",
 			"key": "*",
 			"emit": "ok",
 			"condition": {
@@ -37,7 +80,7 @@ var globalPolicyJson = `
 			}
 		},
 		{
-			"action": "net.concrnt.core.resolve",
+			"action": "record:read",
 			"key": "*",
 			"emit": "allow",
 			"condition": {

@@ -21,6 +21,7 @@ type EntityRepository interface {
 	GetSD(ctx context.Context, ccid string, hint *string) (*concrnt.SignedDocument, error)
 	GetDocument(ctx context.Context, ccid string, hint *string) (*concrnt.Document[schemas.Entity], error)
 	GetByAlias(ctx context.Context, alias string) (*domain.Entity, error)
+	GetMeta(ctx context.Context, ccid string) (*domain.EntityMeta, error)
 }
 
 type EntityUsecase struct {

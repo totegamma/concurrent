@@ -312,7 +312,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, requester domain.Enti
 			ctx,
 			policy.RequestContext{
 				Requester: requester,
-				This:      targetDoc,
+				Self:      targetDoc,
 			},
 			stack,
 			"net.concrnt.core.commit.delete",
@@ -950,7 +950,7 @@ func (uc *RecordUsecase) GetSigned(ctx context.Context, uri string) (*concrnt.Si
 		ctx,
 		policy.RequestContext{
 			Requester: requester,
-			This:      doc,
+			Self:      doc,
 		},
 		stack,
 		"net.concrnt.core.resolve",

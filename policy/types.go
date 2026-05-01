@@ -61,8 +61,9 @@ type RequestContext struct {
 	Requester       any            `json:"requester"`
 	RequesterDomain any            `json:"requester_domain"`
 	Parent          any            `json:"parent"`
-	This            any            `json:"this"`
+	Self            any            `json:"self"`
 	Params          map[string]any `json:"params"`
+	Globals         any            `json:"globals"`
 }
 
 type PolicyDocument struct {

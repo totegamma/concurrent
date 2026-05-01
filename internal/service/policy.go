@@ -18,17 +18,27 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-type PolicyService struct {
-	global policy.Policy
-	client *client.Client
-	cache  *cache.Cache
+type GlobalParameters struct {
+	FQDN string `json:"fqdn"`
 }
 
-func NewPolicyService(global policy.Policy, client *client.Client) *PolicyService {
+type PolicyService struct {
+	globalPolicy     policy.Policy
+	globalParameters GlobalParameters
+	client           *client.Client
+	cache            *cache.Cache
+}
+
+func NewPolicyService(
+	globalPolicy policy.Policy,
+	globalParameters GlobalParameters,
+	client *client.Client,
+) *PolicyService {
 	return &PolicyService{
-		global: global,
-		client: client,
-		cache:  cache.New(10*time.Minute, 15*time.Minute),
+		globalPolicy:     globalPolicy,
+		globalParameters: globalParameters,
+		client:           client,
+		cache:            cache.New(10*time.Minute, 15*time.Minute),
 	}
 }
 
@@ -190,7 +200,7 @@ func (s *PolicyService) Eval(ctx context.Context, req policy.RequestContext, sta
 	var policyStack policy.PolicyStack
 	policyStack = append(policyStack, []policy.EvaluationSet{
 		{
-			Policy: s.global,
+			Policy: s.globalPolicy,
 		},
 	})
 
@@ -202,7 +212,16 @@ func (s *PolicyService) Eval(ctx context.Context, req policy.RequestContext, sta
 
 	policyStack = append(policyStack, additionalStack...)
 
-	conclusion, error := policy.EvaluateStack(ctx, req, policyStack, action, key)
+	requestContext := policy.RequestContext{
+		Requester:       req.Requester,
+		RequesterDomain: req.RequesterDomain,
+		Parent:          req.Parent,
+		Self:            req.Self,
+		Params:          req.Params,
+		Globals:         s.globalParameters,
+	}
+
+	conclusion, error := policy.EvaluateStack(ctx, requestContext, policyStack, action, key)
 	if error != nil {
 		return error
 	}

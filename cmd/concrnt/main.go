@@ -156,7 +156,13 @@ func main() {
 	moduleManager := service.NewModuleManager(rest.Endpoints, conf.Services)
 
 	signal := service.NewSignalService(redis)
-	policy := service.NewPolicyService(GetGlobalPolicy(), cl)
+	policy := service.NewPolicyService(
+		GetGlobalPolicy(),
+		service.GlobalParameters{
+			FQDN: globalConfig.FQDN,
+		},
+		cl,
+	)
 
 	serverRepo := repository.NewServerRepository(&globalConfig, db, cl)
 	serverUC := usecase.NewServerUsecase(serverRepo, &globalConfig, softwareInfo, moduleManager)

@@ -45,7 +45,9 @@ import (
 
 ---
 
-登録ユーザーはシステムタグ _registered を持つ
+登録ユーザーかどうかの判定:
+	globalsにこのサーバーのfqdnが入っているので、それがrequesterのfqdnと一致するかどうかで判定する。
+
 
 */
 
@@ -65,7 +67,7 @@ var globalPolicyJson = `
 					},
 					{
 						"op": "Load",
-						"const": "this.author"
+						"const": "self.author"
 					}
 				]
 			}
@@ -95,7 +97,7 @@ var globalPolicyJson = `
 							},
 							{
 								"op": "Load",
-								"const": "this.author"
+								"const": "self.author"
 							}
 						]
 					},
@@ -111,7 +113,7 @@ var globalPolicyJson = `
 								"args": [
 									{
 										"op": "Load",
-										"const": "this.key"
+										"const": "self.key"
 									}
 								]
 							}

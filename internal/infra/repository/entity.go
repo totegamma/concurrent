@@ -311,3 +311,20 @@ func (r *EntityRepository) GetDocument(ctx context.Context, ccid string, hint *s
 	return remoteEntity, nil
 
 }
+
+func (r *EntityRepository) GetMeta(ctx context.Context, ccid string) (*domain.EntityMeta, error) {
+	ctx, span := tracer.Start(ctx, "EntityRepository.GetMeta")
+	defer span.End()
+
+	var meta models.EntityMeta
+	err := r.db.Where("id = ?", ccid).Take(&meta).Error
+	if err != nil {
+		return nil, domain.NotFoundError{Resource: ccid}
+	}
+
+	return &domain.EntityMeta{
+		ID:      meta.ID,
+		Inviter: meta.Inviter,
+		Info:    meta.Info,
+	}, nil
+}

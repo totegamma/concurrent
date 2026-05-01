@@ -102,6 +102,7 @@ func Load(path string) (Config, error) {
 	if info.IsDir() {
 		files, err := os.ReadDir(path)
 		if err != nil {
+			slog.Error("Failed to read config directory", "path", path, "error", err)
 			return Config{}, err
 		}
 
@@ -115,19 +116,22 @@ func Load(path string) (Config, error) {
 
 			f, err := os.Open(entryPath)
 			if err != nil {
-				return Config{}, err
+				slog.Warn("Failed to open config file, skipping", "path", entryPath, "error", err)
+				continue
 			}
 			defer f.Close()
 
 			var tmp Config
 			err = yaml.NewDecoder(f).Decode(&tmp)
 			if err != nil {
-				return Config{}, err
+				slog.Warn("Failed to decode config file, skipping", "path", entryPath, "error", err)
+				continue
 			}
 
 			err = DeepMerge(&config, &tmp)
 			if err != nil {
-				return Config{}, err
+				slog.Warn("Failed to merge config file, skipping", "path", entryPath, "error", err)
+				continue
 			}
 		}
 	} else {

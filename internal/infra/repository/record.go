@@ -88,20 +88,23 @@ func (r *RecordRepository) CreateRecord(ctx context.Context, ip string, document
 		record.Redirect = &refDoc.Value.Href
 
 		refSD, ok := sd.References[refDoc.Value.Href]
-		if !ok {
-			err := fmt.Errorf("reference document not found for href: %s", refDoc.Value.Href)
-			span.RecordError(err)
-			return "", err
+		if ok {
+			var targetDoc concrnt.Document[any]
+			err = json.Unmarshal([]byte(refSD.Document), &targetDoc)
+			if err != nil {
+				span.RecordError(err)
+				return "", err
+			}
+			record.Schema = targetDoc.Schema
+			record.CreatedAt = targetDoc.CreatedAt
+		} else {
+			if refDoc.Value.Schema != nil {
+				record.Schema = refDoc.Schema
+			}
+			if refDoc.Value.CreatedAt != nil {
+				record.CreatedAt = *refDoc.Value.CreatedAt
+			}
 		}
-
-		var targetDoc concrnt.Document[any]
-		err = json.Unmarshal([]byte(refSD.Document), &targetDoc)
-		if err != nil {
-			span.RecordError(err)
-			return "", err
-		}
-		record.Schema = targetDoc.Schema
-		record.CreatedAt = targetDoc.CreatedAt
 	}
 
 	proof, err := json.Marshal(sd.Proof)

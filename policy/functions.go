@@ -12,24 +12,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-func SummerizeConclusion(conclusions []Conclusion, defaultAllow bool) bool {
-	result := UNSET
-	for _, c := range conclusions {
-		switch c {
-		case ALLOW:
-			return true
-		case DENY:
-			return false
-		default:
-			result = result.Or(c)
-		}
-	}
-	if result == UNSET {
-		return defaultAllow
-	}
-	return result == ALLOW
-}
-
 func EvaluateStack(ctx context.Context, req RequestContext, stack PolicyStack, action string, key string) (Conclusion, error) {
 	ctx, span := tracer.Start(ctx, "Policy.EvaluateStack")
 	defer span.End()
@@ -75,7 +57,7 @@ func EvaluateStack(ctx context.Context, req RequestContext, stack PolicyStack, a
 		case ALLOW:
 			return ALLOW, nil
 		default:
-			conclusion = conclusion.Or(layerConclusion)
+			conclusion = layerConclusion
 		}
 
 	}

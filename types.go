@@ -36,10 +36,11 @@ type PolicyEntry struct {
 }
 
 type Policy struct {
-	Entries        []PolicyEntry `json:"entries"`
-	VirtualParents *[]string     `json:"-,omitempty"`
+	Entries []PolicyEntry `json:"entries"`
 
-	Source string `json:"source,omitempty"` // internal use
+	// internal use only
+	VirtualParents *[]string `json:"-"`
+	Source         string    `json:"-"`
 }
 
 type Document[T any] struct {

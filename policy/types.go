@@ -73,9 +73,8 @@ type PolicyDocument struct {
 }
 
 type EvaluationSet struct {
-	Policy   Policy             `json:"policy"`
-	Params   *map[string]any    `json:"params"`
-	Defaults *map[string]string `json:"defaults"`
+	Policy Policy          `json:"policy"`
+	Params *map[string]any `json:"params"`
 
 	Errored bool `json:"errored"`
 }

@@ -163,8 +163,7 @@ func (s *PolicyService) resolvePolicyStack(ctx context.Context, stack []concrnt.
 					span.RecordError(err)
 					// mark this layer has errored policy
 					policyLayer = append(policyLayer, policy.EvaluationSet{
-						Errored:  true,
-						Defaults: p.Defaults,
+						Errored: true,
 					})
 					continue
 				}
@@ -181,9 +180,8 @@ func (s *PolicyService) resolvePolicyStack(ctx context.Context, stack []concrnt.
 				}
 
 				policyLayer = append(policyLayer, policy.EvaluationSet{
-					Policy:   pol,
-					Params:   p.Params,
-					Defaults: p.Defaults,
+					Policy: pol,
+					Params: p.Params,
 				})
 			}
 		}

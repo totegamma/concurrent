@@ -992,10 +992,29 @@ func (uc *RecordUsecase) GetSigned(ctx context.Context, uri string) (*concrnt.Si
 		return nil, err
 	}
 
-	var doc concrnt.Document[any]
-	err = json.Unmarshal([]byte(sd.Document), &doc)
+	err = uc.checkReadAccess(ctx, uri, *sd)
 	if err != nil {
 		return nil, err
+	}
+
+	return sd, nil
+}
+
+func (uc *RecordUsecase) checkReadAccess(ctx context.Context, uri string, sd concrnt.SignedDocument) error {
+	ctx, span := tracer.Start(ctx, "Usecase.Record.CheckReadAccess")
+	defer span.End()
+
+	if uri == "" {
+		err := errors.New("uri is required for read access evaluation")
+		span.RecordError(err)
+		return err
+	}
+
+	var doc concrnt.Document[any]
+	err := json.Unmarshal([]byte(sd.Document), &doc)
+	if err != nil {
+		span.RecordError(err)
+		return err
 	}
 
 	stack, err := uc.repo.GetHierarchicalRecordPolicies(ctx, uri)
@@ -1016,12 +1035,12 @@ func (uc *RecordUsecase) GetSigned(ctx context.Context, uri string) (*concrnt.Si
 		policyReadAction(doc),
 		uri,
 	)
-
 	if err != nil {
-		return nil, err
+		span.RecordError(err)
+		return err
 	}
 
-	return sd, nil
+	return nil
 }
 
 func policyCreateAction(doc concrnt.Document[any]) string {
@@ -1072,20 +1091,45 @@ func (uc *RecordUsecase) Query(
 	limit int,
 	order string,
 ) ([]concrnt.SignedDocument, error) {
+	var (
+		results []concrnt.SignedDocument
+		err     error
+	)
 
 	if prefix != "" && parent != "" {
 		return nil, errors.New("prefix and parent cannot be specified at the same time")
 	}
 
 	if prefix != "" {
-		return uc.repo.QueryByPrefix(ctx, prefix, schema, since, until, limit, order)
+		results, err = uc.repo.QueryByPrefix(ctx, prefix, schema, since, until, limit, order)
+	} else if parent != "" {
+		results, err = uc.repo.QueryByParent(ctx, parent, schema, since, until, limit, order)
+	} else {
+		return nil, errors.New("either prefix or parent must be specified")
 	}
 
-	if parent != "" {
-		return uc.repo.QueryByParent(ctx, parent, schema, since, until, limit, order)
+	if err != nil {
+		return nil, err
 	}
 
-	return nil, errors.New("either prefix or parent must be specified")
+	filtered := make([]concrnt.SignedDocument, 0, len(results))
+	for _, sd := range results {
+		if sd.CCKV == nil {
+			return nil, errors.New("queried record has no cckv")
+		}
+
+		err := uc.checkReadAccess(ctx, *sd.CCKV, sd)
+		if err != nil {
+			if errors.Is(err, domain.ErrPermissionDenied) {
+				continue
+			}
+			return nil, err
+		}
+
+		filtered = append(filtered, sd)
+	}
+
+	return filtered, nil
 }
 
 func (uc *RecordUsecase) DumpCommitLogs(ctx context.Context) (string, error) {

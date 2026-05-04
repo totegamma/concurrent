@@ -25,17 +25,18 @@ func EvaluateStack(ctx context.Context, req RequestContext, stack PolicyStack, a
 		layerConclusion := UNSET
 		for _, evalSet := range layer {
 
+			dflt := UNSET
 			result := UNSET
 			if evalSet.Policy.Defaults != nil {
 				defaults := evalSet.Policy.Defaults
-				dflt, ok := defaults[action]
+				d, ok := defaults[action]
 				if ok {
-					result = Conclusion(dflt)
+					dflt = Conclusion(d)
 				}
 			}
 
 			if evalSet.Errored {
-				layerConclusion = layerConclusion.Or(result)
+				layerConclusion = layerConclusion.Or(dflt)
 				continue
 			}
 
@@ -48,6 +49,10 @@ func EvaluateStack(ctx context.Context, req RequestContext, stack PolicyStack, a
 			if err != nil {
 				span.RecordError(err)
 				return UNSET, err
+			}
+
+			if result == UNSET {
+				result = dflt
 			}
 
 			layerConclusion = layerConclusion.Or(result)

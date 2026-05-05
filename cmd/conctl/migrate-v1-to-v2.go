@@ -22,6 +22,8 @@ import (
 	"github.com/concrnt/concrnt/schemas"
 )
 
+var WritePublicPolicyURL = "https://policy.concrnt.world/t/write-public.json"
+
 var (
 	fromDsn   string
 	fromFQDN  string
@@ -530,6 +532,12 @@ func transferRecords(db *gorm.DB, dest_db *gorm.DB) {
 					//fmt.Println("converted timeline key: ", key)
 
 					pol := convertPolicy(v1tl.Policy, v1tl.PolicyParams, v1tl.PolicyDefaults)
+
+					if strings.Contains(key, "communities") {
+						pol.Entries = append(pol.Entries, concrnt.PolicyEntry{
+							URL: &WritePublicPolicyURL,
+						})
+					}
 
 					v2doc = &concrnt.Document[any]{
 						Key:       key,

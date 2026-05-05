@@ -257,7 +257,9 @@ func (r *EntityRepository) GetSD(ctx context.Context, ccid string, hint *string)
 	}
 
 	var sd concrnt.SignedDocument
-	err = r.client.GetResource(ctx, "cckv://"+ccid, "application/json", nil, &sd)
+	err = r.client.GetResource(ctx, "cckv://"+ccid, "application/json", &client.Options{
+		Resolver: *hint,
+	}, &sd)
 	if err != nil {
 		return nil, err
 	}
@@ -296,7 +298,9 @@ func (r *EntityRepository) GetDocument(ctx context.Context, ccid string, hint *s
 	}
 
 	var sd concrnt.SignedDocument
-	err = r.client.GetResource(ctx, "cckv://"+ccid, "application/json", nil, &sd)
+	err = r.client.GetResource(ctx, "cckv://"+ccid, "application/json", &client.Options{
+		Resolver: *hint,
+	}, &sd)
 	if err != nil {
 		return nil, err
 	}

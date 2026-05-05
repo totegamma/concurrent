@@ -31,11 +31,11 @@ func NewPostgres(dsn string) (*gorm.DB, error) {
 	sqlDB, err := otelsql.Open("pgx", dsn,
 		otelsql.WithAttributes(semconv.DBSystemPostgreSQL),
 		otelsql.WithSpanOptions(otelsql.SpanOptions{
-			OmitConnResetSession: false,
-			OmitConnPrepare:      false,
-			OmitConnQuery:        false,
-			OmitRows:             false,
-			OmitConnectorConnect: false,
+			OmitConnResetSession: true,
+			OmitConnPrepare:      true,
+			OmitConnQuery:        true,
+			OmitRows:             true,
+			OmitConnectorConnect: true,
 		}),
 	)
 	if err != nil {

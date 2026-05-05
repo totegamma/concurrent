@@ -44,7 +44,7 @@ func TestGlobalPolicyViaPolicyService(t *testing.T) {
 		expectAllowed bool
 	}{
 		{
-			// "## create - 自分のnamespaceであればALLOW"
+			// ローカル登録ユーザーは、自分のnamespaceへの新規投稿をグローバルポリシーだけで許可される。
 			name:          "record create allows own namespace",
 			action:        "record:create",
 			requester:     localRequester,
@@ -68,7 +68,7 @@ func TestGlobalPolicyViaPolicyService(t *testing.T) {
 			},
 		},
 		{
-			// "## create - namespaceが登録ユーザーでなければDENY"
+			// 外部ユーザー自身のnamespaceは、このサーバーの登録ユーザーnamespaceではないのでデフォルトNGになる。
 			name:          "record create denies remote requester even in own namespace",
 			action:        "record:create",
 			requester:     remoteRequester,
@@ -276,6 +276,103 @@ func TestGlobalPolicyViaPolicyService(t *testing.T) {
 			require.ErrorAs(t, err, &permErr)
 		})
 	}
+}
+
+func TestGlobalPolicyAllowsRemoteCreateWhenDescendantPolicyAllows(t *testing.T) {
+	t.Parallel()
+
+	remoteRequester := domain.Entity{
+		ID:     "con1remote",
+		Domain: "remote.example",
+	}
+	self := concrnt.Document[any]{
+		Key:    "cckv://con1localrequester/open/post-1",
+		Author: remoteRequester.ID,
+	}
+
+	// 外部ユーザーはグローバルポリシーでは確定拒否されず、
+	// 登録ユーザー配下の下位ポリシーがrecord:createを明示許可すれば投稿できる。
+	conclusion, err := policy.EvaluateStack(
+		context.Background(),
+		policy.RequestContext{
+			Requester: remoteRequester,
+			Self:      self,
+			Globals:   service.GlobalParameters{FQDN: "local.example"},
+		},
+		policy.PolicyStack{
+			{
+				{Policy: GetGlobalPolicy()},
+			},
+			{
+				{
+					Policy: policy.Policy{
+						Statements: []policy.Statement{
+							{
+								Action:    "record:create",
+								Key:       "cckv://con1localrequester/open/*",
+								Emit:      policy.ALLOW,
+								Condition: policy.Expr{Operator: "Const", Const: true},
+							},
+						},
+					},
+				},
+			},
+		},
+		"record:create",
+		self.Key,
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, policy.ALLOW, conclusion)
+}
+
+func TestGlobalPolicyDeniesRemoteCreateWithoutDescendantPolicyAllow(t *testing.T) {
+	t.Parallel()
+
+	remoteRequester := domain.Entity{
+		ID:     "con1remote",
+		Domain: "remote.example",
+	}
+	self := concrnt.Document[any]{
+		Key:    "cckv://con1localrequester/open/post-1",
+		Author: remoteRequester.ID,
+	}
+
+	// 下位レイヤーが存在しても、record:createへの許可が明示されていなければ
+	// グローバルポリシーのデフォルトNGが残り、外部ユーザーの投稿は拒否される。
+	conclusion, err := policy.EvaluateStack(
+		context.Background(),
+		policy.RequestContext{
+			Requester: remoteRequester,
+			Self:      self,
+			Globals:   service.GlobalParameters{FQDN: "local.example"},
+		},
+		policy.PolicyStack{
+			{
+				{Policy: GetGlobalPolicy()},
+			},
+			{
+				{
+					Policy: policy.Policy{
+						Statements: []policy.Statement{
+							{
+								// record:readの許可はrecord:createには効かないことを確認する。
+								Action:    "record:read",
+								Key:       "cckv://con1localrequester/open/*",
+								Emit:      policy.ALLOW,
+								Condition: policy.Expr{Operator: "Const", Const: true},
+							},
+						},
+					},
+				},
+			},
+		},
+		"record:create",
+		self.Key,
+	)
+
+	require.NoError(t, err)
+	require.Equal(t, policy.NG, conclusion)
 }
 
 func ptr[T any](v T) *T {

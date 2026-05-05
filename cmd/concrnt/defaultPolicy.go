@@ -10,8 +10,8 @@ import (
 # Record (record:)
 ## create
 - デフォルトNG
-- 自分のnamespaceであればALLOW
-- namespaceが登録ユーザーでなければDENY
+- このサーバーの登録者による新規投稿のkeyのnamespaceが、投稿者自身のものであればALLOW
+- それ以外は、下位階層のポリシーで許可されなければNG
 - サーバーnamespaceについて
   - このサーバーの登録者であればOK
 
@@ -57,9 +57,9 @@ var globalPolicyJson = `
 		{
 			"action": "record:create",
 			"key": "*",
-			"emit": "deny",
+			"emit": "allow",
 			"condition": {
-				"op": "Not",
+				"op": "And",
 				"args": [
 					{
 						"op": "Eq",
@@ -73,27 +73,22 @@ var globalPolicyJson = `
 								"const": "globals.fqdn"
 							}
 						]
-					}
-				]
-			}
-		},
-		{
-			"action": "record:create",
-			"key": "*",
-			"emit": "allow",
-			"condition": {
-				"op": "Eq",
-				"args": [
-					{
-						"op": "Load",
-						"const": "requester.ccid"
 					},
 					{
-						"op": "CCUriOwner",
+						"op": "Eq",
 						"args": [
 							{
 								"op": "Load",
-								"const": "self.key"
+								"const": "requester.ccid"
+							},
+							{
+								"op": "CCUriOwner",
+								"args": [
+									{
+										"op": "Load",
+										"const": "self.key"
+									}
+								]
 							}
 						]
 					}

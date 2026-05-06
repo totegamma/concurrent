@@ -23,6 +23,9 @@ import (
 )
 
 var WritePublicPolicyURL = "https://policy.concrnt.world/t/write-public.json"
+var keyTable = make(map[string]string) // v0id -> v2key
+
+var entityCache = make(map[string]core.Entity)
 
 var (
 	fromDsn   string
@@ -32,6 +35,8 @@ var (
 	destFQDN  string
 	ignoreIDs []string = []string{}
 	token     string
+
+	oneShotID string
 )
 
 type MigrationInfo struct {
@@ -250,6 +255,22 @@ func transferMetas(fromDB, toDB *gorm.DB) {
 
 }
 
+func getEntity(db *gorm.DB, id string) (core.Entity, error) {
+	if entity, ok := entityCache[id]; ok {
+		return entity, nil
+	}
+
+	var entity core.Entity
+	result := db.Where("id = ?", id).First(&entity)
+	if result.Error != nil {
+		return core.Entity{}, result.Error
+	}
+
+	entityCache[id] = entity
+
+	return entity, nil
+}
+
 func transferEntities(db *gorm.DB, dest_db *gorm.DB) {
 
 	var seeker time.Time
@@ -333,6 +354,475 @@ func transferEntities(db *gorm.DB, dest_db *gorm.DB) {
 	}
 }
 
+func convertRecord(
+	db *gorm.DB,
+	commit core.CommitLog) (string, error) {
+	var v1doc core.DocumentBase[any]
+	err := json.Unmarshal([]byte(commit.Document), &v1doc)
+	if err != nil {
+		fmt.Println("failed to unmarshal document base: ", err)
+		return "", err
+	}
+
+	if slices.Contains(ignoreIDs, v1doc.Signer) {
+		return "", nil
+	}
+
+	hash := core.GetHash([]byte(commit.Document))
+	hash10 := [10]byte{}
+	copy(hash10[:], hash[:10])
+	signedAt := v1doc.SignedAt
+	cdidBase := cdidv1.New(hash10, signedAt).String()
+
+	//if v2doc.Author 
+	v1Author, err := getEntity(db, v1doc.Signer)
+	if err != nil {
+		fmt.Printf("failed to get author entity for commit id %d: %s\n", commit.ID, err)
+		return "", err
+	}
+
+
+	var v2doc *concrnt.Document[any]
+
+	var v0id string
+
+	switch v1doc.Type {
+	case "message":
+		{
+
+			var v1msg core.MessageDocument[any]
+			err := json.Unmarshal([]byte(commit.Document), &v1msg)
+			if err != nil {
+				fmt.Println("failed to unmarshal message document: ", err)
+				return "", err
+			}
+
+			key := fmt.Sprintf("cckv://%s/concrnt.world/profiles/main/posts/m%s", v1msg.Signer, cdidBase)
+			subprofileID, hasSubprofile := hasSubprofileTimelien(v1msg.Timelines)
+			if hasSubprofile {
+				key = fmt.Sprintf("cckv://%s/concrnt.world/profiles/%s/posts/m%s", v1msg.Signer, subprofileID, cdidBase)
+			}
+
+			distributes := convertTimelines(v1msg.Timelines)
+
+			pol := convertPolicy(v1msg.Policy, v1msg.PolicyParams, v1msg.PolicyDefaults)
+
+			v2doc = &concrnt.Document[any]{
+				Key:         key,
+				Value:       v1msg.Body,
+				Author:      v1msg.Signer,
+				Schema:      v1msg.Schema,
+				CreatedAt:   v1msg.SignedAt,
+				Distributes: &distributes,
+				Policy:      pol,
+			}
+
+			v0id = "m" + cdidBase
+
+
+			if v1Author.Domain != fromFQDN {
+
+				serializedDoc, err := json.Marshal(v2doc)
+				if err != nil {
+					fmt.Println("failed to serialize v2 document: ", err)
+					return "", err
+				}
+
+				sd := concrnt.SignedDocument{
+					Document: string(serializedDoc),
+					Proof: concrnt.Proof{
+						Type: "none",
+					},
+				}
+
+				lines := ""
+				for _, timeline := range distributes {
+
+					hash := concrnt.GetHash(serializedDoc)
+					hash10 := [10]byte{}
+					copy(hash10[:], hash[:10])
+					documentID := cdidv2.New(hash10, v1msg.SignedAt).String()
+
+					distKey := timeline + "/" + documentID
+
+					authorURI := fmt.Sprintf("cckv://%s", v1msg.Signer)
+					if strings.HasPrefix(distKey, authorURI) {
+						continue // skip distributing to author's own timeline
+					}
+
+					distDoc := concrnt.Document[schemas.Reference]{
+						Key: distKey,
+						Value: schemas.Reference{
+							Href: key,
+						},
+						Author:    v1msg.Signer,
+						Schema:    schemas.ReferenceURL,
+						CreatedAt: time.Now(),
+					}
+					docBytes, err := json.Marshal(distDoc)
+					if err != nil {
+						return "", err
+					}
+					distSD := concrnt.SignedDocument{
+						Document: string(docBytes),
+						Proof: concrnt.Proof{
+							Type: "document-reference",
+							Href: &key,
+						},
+						References: map[string]concrnt.SignedDocument{
+							key: sd,
+						},
+					}
+
+					lineBytes, err := json.Marshal(distSD)
+					if err != nil {
+						return "", err
+					}
+
+					lines += string(lineBytes) + "\n"
+
+				}
+
+				return lines, nil
+
+			}
+		}
+	case "profile":
+		{
+			var v1prof core.ProfileDocument[any]
+			err := json.Unmarshal([]byte(commit.Document), &v1prof)
+			if err != nil {
+				fmt.Println("failed to unmarshal profile document: ", err)
+				return "", err
+			}
+
+			key := fmt.Sprintf("cckv://%s/concrnt.world/profiles/main", v1prof.Signer)
+
+			if v1prof.SemanticID != "" {
+				v0id = v1prof.SemanticID
+			} else if v1prof.ID != "" {
+				v0id = v1prof.ID
+			} else {
+				v0id = "p" + cdidBase
+			}
+
+			if v1prof.SemanticID != "world.concrnt.p" {
+				key = fmt.Sprintf("cckv://%s/concrnt.world/profiles/%s", v1prof.Signer, v0id)
+			}
+
+			v2doc = &concrnt.Document[any]{
+				Key:       key,
+				Value:     v1prof.Body,
+				Author:    v1prof.Signer,
+				Schema:    v1prof.Schema,
+				CreatedAt: v1prof.SignedAt,
+			}
+
+		}
+	case "association":
+		{
+			var v1ass core.AssociationDocument[any]
+			err := json.Unmarshal([]byte(commit.Document), &v1ass)
+			if err != nil {
+				fmt.Println("failed to unmarshal association document: ", err)
+				return "", err
+			}
+
+			target, ok := keyTable[v1ass.Target]
+			if !ok {
+				fmt.Printf("skipping association document with unknown target ID: %s\n", v1ass.Target)
+				//continue
+				return "", nil
+			}
+
+			distributes := convertTimelines(v1ass.Timelines)
+			pol := convertPolicy(v1ass.Policy, v1ass.PolicyParams, v1ass.PolicyDefaults)
+
+			var variant *string
+			if v1ass.Variant != "" {
+				variant = &v1ass.Variant
+			}
+
+			v2doc = &concrnt.Document[any]{
+				Value:       v1ass.Body,
+				Author:      v1ass.Signer,
+				Schema:      v1ass.Schema,
+				CreatedAt:   v1ass.SignedAt,
+				Distributes: &distributes,
+				Policy:      pol,
+
+				Associate:          &target,
+				AssociationVariant: variant,
+			}
+
+			if v1Author.Domain != fromFQDN {
+
+				serializedDoc, err := json.Marshal(v2doc)
+				if err != nil {
+					fmt.Println("failed to serialize v2 document: ", err)
+					return "", err
+				}
+
+				sd := concrnt.SignedDocument{
+					Document: string(serializedDoc),
+					Proof: concrnt.Proof{
+						Type: "none",
+					},
+				}
+
+				lines := ""
+				for _, timeline := range distributes {
+
+					hash := concrnt.GetHash(serializedDoc)
+					hash10 := [10]byte{}
+					copy(hash10[:], hash[:10])
+					documentID := cdidv2.New(hash10, v1ass.SignedAt).String()
+
+					ccfs := concrnt.ComposeCCURI("ccfs", v1ass.Signer, documentID)
+
+					distKey := timeline + "/" + documentID
+					authorURI := fmt.Sprintf("cckv://%s", v1ass.Signer)
+					if strings.HasPrefix(distKey, authorURI) {
+						continue // skip distributing to author's own timeline
+					}
+
+					distDoc := concrnt.Document[schemas.Reference]{
+						Key: distKey,
+						Value: schemas.Reference{
+							Href: ccfs,
+						},
+						Author:    v1ass.Signer,
+						Schema:    schemas.ReferenceURL,
+						CreatedAt: time.Now(),
+					}
+					docBytes, err := json.Marshal(distDoc)
+					if err != nil {
+						return "", err
+					}
+					distSD := concrnt.SignedDocument{
+						Document: string(docBytes),
+						Proof: concrnt.Proof{
+							Type: "document-reference",
+							Href: &ccfs,
+						},
+						References: map[string]concrnt.SignedDocument{
+							ccfs: sd,
+						},
+					}
+
+					lineBytes, err := json.Marshal(distSD)
+					if err != nil {
+						return "", err
+					}
+
+					lines += string(lineBytes) + "\n"
+
+				}
+
+				return lines, nil
+
+			}
+
+			v0id = "a" + cdidBase
+		}
+	case "timeline":
+		{
+			var v1tl core.TimelineDocument[any]
+			err := json.Unmarshal([]byte(commit.Document), &v1tl)
+			if err != nil {
+				fmt.Println("failed to unmarshal timeline document: ", err)
+				// continue
+				return "", nil
+			}
+
+			owner := v1tl.Owner
+			if owner == "" {
+				owner = v1tl.Signer
+			}
+			if v1tl.DomainOwned {
+				owner = destFQDN
+			}
+
+			id := "t" + cdidBase
+			tlid := id /* + "@" + owner*/
+
+			if v1tl.ID != "" {
+				tlid = v1tl.ID
+			}
+			if v1tl.SemanticID != "" {
+				tlid = v1tl.SemanticID
+			}
+
+			split := strings.Split(tlid, "@")
+			if len(split) == 1 {
+				tlid = tlid + "@" + owner
+			}
+
+			key := convertTimeline(tlid)
+			//fmt.Println("converted timeline key: ", key)
+
+			pol := convertPolicy(v1tl.Policy, v1tl.PolicyParams, v1tl.PolicyDefaults)
+
+			if strings.Contains(key, "communities") {
+				pol.Entries = append(pol.Entries, concrnt.PolicyEntry{
+					URL: &WritePublicPolicyURL,
+				})
+			}
+
+			v2doc = &concrnt.Document[any]{
+				Key:       key,
+				Value:     v1tl.Body,
+				Author:    v1tl.Signer,
+				Schema:    v1tl.Schema,
+				CreatedAt: v1tl.SignedAt,
+				Policy:    pol,
+			}
+
+			if v1tl.ID != "" {
+				v0id = id
+			} else {
+				v0id = "t" + cdidBase
+			}
+		}
+	case "subscription":
+		// {"owner":"con1khzfsjl2prkfa2c7ckfsyk7hk9nd84872hvve8","signer":"con1khzfsjl2prkfa2c7ckfsyk7hk9nd84872hvve8","type":"subscription","schema":"https://schema.concrnt.world/s/list.json","body":{"name":"Home"},"signedAt":"2025-06-03T15:03:41.221Z","indexable":false}
+		{
+			var v1sub core.SubscriptionDocument[any]
+			err := json.Unmarshal([]byte(commit.Document), &v1sub)
+			if err != nil {
+				fmt.Println("failed to unmarshal subscription document: ", err)
+				// continue
+				return "", nil
+			}
+
+			id := "s" + cdidBase
+			if v1sub.ID != "" {
+				id = v1sub.ID
+			}
+
+			key := fmt.Sprintf("cckv://%s/concrnt.world/profiles/main/lists/%s", v1sub.Signer, id)
+
+			v2doc = &concrnt.Document[any]{
+				Key:       key,
+				Value:     v1sub.Body,
+				Author:    v1sub.Signer,
+				Schema:    v1sub.Schema,
+				CreatedAt: v1sub.SignedAt,
+			}
+
+			v0id = "s" + cdidBase
+		}
+	case "subscribe":
+		// {"signer":"con1t0tey8uxhkqkd4wcp4hd4jedt7f0vfhk29xdd2","type":"subscribe","target":"tv9x2a976tp31yt6s06b9p2axz4@ariake.concrnt.net","subscription":"sqaspcetf6xaf5hdg067y1rga3g","signedAt":"2025-05-13T08:26:16.746Z","keyID":"cck1x9ee0xf4s7qrjze4n85malrdkreqtujfzq8jqv"}
+		{
+			var v1sub core.SubscribeDocument[any]
+			err := json.Unmarshal([]byte(commit.Document), &v1sub)
+			if err != nil {
+				fmt.Println("failed to unmarshal subscribe document: ", err)
+				// continue
+				return "", nil
+			}
+
+			target := convertTimeline(v1sub.Target)
+			targetHash := cdidv2.MakeHash([]byte(target))
+
+			key := fmt.Sprintf("cckv://%s/concrnt.world/profiles/main/lists/%s/%s", v1sub.Signer, v1sub.Subscription, targetHash.String())
+
+			v2doc = &concrnt.Document[any]{
+				Key: key,
+				Value: schemas.Reference{
+					Href: target,
+				},
+				Author:    v1sub.Signer,
+				Schema:    schemas.ReferenceURL,
+				CreatedAt: v1sub.SignedAt,
+			}
+		}
+	case "unsubscribe":
+		// {"signer":"con1t0tey8uxhkqkd4wcp4hd4jedt7f0vfhk29xdd2","type":"unsubscribe","target":"world.concrnt.t-home@con17hzd8gfpugmex6waxakrx3r42r2c33p6rgftna","subscription":"sg4gfzh4bqew8j7fp067v1wp9rr","signedAt":"2025-06-12T07:10:03.611Z","keyID":"cck1x9ee0xf4s7qrjze4n85malrdkreqtujfzq8jqv"}
+
+		var v1unsub core.SubscribeDocument[any]
+		err := json.Unmarshal([]byte(commit.Document), &v1unsub)
+		if err != nil {
+			fmt.Println("failed to unmarshal unsubscribe document: ", err)
+			// continue
+			return "", nil
+		}
+
+		target := convertTimeline(v1unsub.Target)
+		targetHash := cdidv2.MakeHash([]byte(target))
+
+		key := fmt.Sprintf("cckv://%s/concrnt.world/profiles/main/lists/%s/%s", v1unsub.Signer, v1unsub.Subscription, targetHash.String())
+
+		v2doc = &concrnt.Document[any]{
+			Value:     key,
+			Author:    v1unsub.Signer,
+			Schema:    "https://schema.concrnt.net/delete.json",
+			CreatedAt: v1unsub.SignedAt,
+		}
+
+	case "delete":
+		{
+			var v1del core.DeleteDocument
+			err := json.Unmarshal([]byte(commit.Document), &v1del)
+			if err != nil {
+				fmt.Println("failed to unmarshal delete document: ", err)
+				// continue
+				return "", nil
+			}
+
+			targetKey, ok := keyTable[v1del.Target]
+			if !ok {
+				fmt.Printf("skipping delete document with unknown target ID: %s\n", v1del.Target)
+				//continue
+				return "", nil
+			}
+
+			v2doc = &concrnt.Document[any]{
+				Value:     targetKey,
+				Author:    v1del.Signer,
+				Schema:    "https://schema.concrnt.net/delete.json",
+				CreatedAt: v1del.SignedAt,
+			}
+		}
+	case "ack", "unack", "enact", "affiliation", "event":
+		// continue // skip these types for now
+		return "", nil
+	default:
+		{
+			fmt.Printf("skipping document with unsupported type: %s\n", v1doc.Type)
+			// continue
+			return "", nil
+		}
+	}
+
+	serializedDoc, err := json.Marshal(v2doc)
+	if err != nil {
+		fmt.Println("failed to serialize v2 document: ", err)
+		return "", err
+	}
+
+	sd := concrnt.SignedDocument{
+		Document: string(serializedDoc),
+		Proof: concrnt.Proof{
+			Type: "none",
+		},
+	}
+
+	line, err := json.Marshal(sd)
+	if err != nil {
+		fmt.Println("failed to serialize signed document: ", err)
+		return "", err
+	}
+
+	if v0id != "" {
+		keyTable[v0id] = v2doc.Key
+	}
+
+
+	return string(line), nil
+}
+
 func transferRecords(db *gorm.DB, dest_db *gorm.DB) {
 
 	lastKey := uint(0)
@@ -351,8 +841,6 @@ func transferRecords(db *gorm.DB, dest_db *gorm.DB) {
 
 	pageSize := 512
 
-	keyTable := make(map[string]string) // v0id -> v2key
-
 	for {
 		var commits []core.CommitLog
 		db.Where("id > ?", lastKey).
@@ -369,325 +857,13 @@ func transferRecords(db *gorm.DB, dest_db *gorm.DB) {
 
 		for _, commit := range commits {
 
-			// fmt.Printf("processing commit id: %d\n", commit.ID)
-			// fmt.Printf("type: %s\n", commit.Type)
-
-			var v1doc core.DocumentBase[any]
-			err := json.Unmarshal([]byte(commit.Document), &v1doc)
+			lines, err := convertRecord(db, commit)
 			if err != nil {
-				fmt.Println("failed to unmarshal document base: ", err)
+				fmt.Printf("failed to convert record with commit id %d: %s\n", commit.ID, err)
 				continue
 			}
 
-			if slices.Contains(ignoreIDs, v1doc.Signer) {
-				// fmt.Printf("x")
-				continue
-			}
-
-			hash := core.GetHash([]byte(commit.Document))
-			hash10 := [10]byte{}
-			copy(hash10[:], hash[:10])
-			signedAt := v1doc.SignedAt
-			cdidBase := cdidv1.New(hash10, signedAt).String()
-
-			var v2doc *concrnt.Document[any]
-
-			var v0id string
-
-			switch v1doc.Type {
-			case "message":
-				{
-
-					var v1msg core.MessageDocument[any]
-					err := json.Unmarshal([]byte(commit.Document), &v1msg)
-					if err != nil {
-						fmt.Println("failed to unmarshal message document: ", err)
-						continue
-					}
-
-					key := fmt.Sprintf("cckv://%s/concrnt.world/profiles/main/posts/m%s", v1msg.Signer, cdidBase)
-					subprofileID, hasSubprofile := hasSubprofileTimelien(v1msg.Timelines)
-					if hasSubprofile {
-						key = fmt.Sprintf("cckv://%s/concrnt.world/profiles/%s/posts/m%s", v1msg.Signer, subprofileID, cdidBase)
-					}
-
-					distributes := convertTimelines(v1msg.Timelines)
-
-					pol := convertPolicy(v1msg.Policy, v1msg.PolicyParams, v1msg.PolicyDefaults)
-
-					v2doc = &concrnt.Document[any]{
-						Key:         key,
-						Value:       v1msg.Body,
-						Author:      v1msg.Signer,
-						Schema:      v1msg.Schema,
-						CreatedAt:   v1msg.SignedAt,
-						Distributes: &distributes,
-						Policy:      pol,
-					}
-
-					v0id = "m" + cdidBase
-				}
-			case "profile":
-				{
-					var v1prof core.ProfileDocument[any]
-					err := json.Unmarshal([]byte(commit.Document), &v1prof)
-					if err != nil {
-						fmt.Println("failed to unmarshal profile document: ", err)
-						continue
-					}
-
-					key := fmt.Sprintf("cckv://%s/concrnt.world/profiles/main", v1prof.Signer)
-
-					if v1prof.SemanticID != "" {
-						v0id = v1prof.SemanticID
-					} else if v1prof.ID != "" {
-						v0id = v1prof.ID
-					} else {
-						v0id = "p" + cdidBase
-					}
-
-					if v1prof.SemanticID != "world.concrnt.p" {
-						key = fmt.Sprintf("cckv://%s/concrnt.world/profiles/%s", v1prof.Signer, v0id)
-					}
-
-					v2doc = &concrnt.Document[any]{
-						Key:       key,
-						Value:     v1prof.Body,
-						Author:    v1prof.Signer,
-						Schema:    v1prof.Schema,
-						CreatedAt: v1prof.SignedAt,
-					}
-
-				}
-			case "association":
-				{
-					var v1ass core.AssociationDocument[any]
-					err := json.Unmarshal([]byte(commit.Document), &v1ass)
-					if err != nil {
-						fmt.Println("failed to unmarshal association document: ", err)
-						continue
-					}
-
-					target, ok := keyTable[v1ass.Target]
-					if !ok {
-						fmt.Printf("skipping association document with unknown target ID: %s\n", v1ass.Target)
-						continue
-					}
-
-					distributes := convertTimelines(v1ass.Timelines)
-					pol := convertPolicy(v1ass.Policy, v1ass.PolicyParams, v1ass.PolicyDefaults)
-
-					var variant *string
-					if v1ass.Variant != "" {
-						variant = &v1ass.Variant
-					}
-
-					v2doc = &concrnt.Document[any]{
-						Value:       v1ass.Body,
-						Author:      v1ass.Signer,
-						Schema:      v1ass.Schema,
-						CreatedAt:   v1ass.SignedAt,
-						Distributes: &distributes,
-						Policy:      pol,
-
-						Associate:          &target,
-						AssociationVariant: variant,
-					}
-
-					v0id = "a" + cdidBase
-				}
-			case "timeline":
-				{
-					var v1tl core.TimelineDocument[any]
-					err := json.Unmarshal([]byte(commit.Document), &v1tl)
-					if err != nil {
-						fmt.Println("failed to unmarshal timeline document: ", err)
-						continue
-					}
-
-					owner := v1tl.Owner
-					if owner == "" {
-						owner = v1tl.Signer
-					}
-					if v1tl.DomainOwned {
-						owner = destFQDN
-					}
-
-					id := "t" + cdidBase
-					tlid := id /* + "@" + owner*/
-
-					if v1tl.ID != "" {
-						tlid = v1tl.ID
-					}
-					if v1tl.SemanticID != "" {
-						tlid = v1tl.SemanticID
-					}
-
-					split := strings.Split(tlid, "@")
-					if len(split) == 1 {
-						tlid = tlid + "@" + owner
-					}
-
-					key := convertTimeline(tlid)
-					//fmt.Println("converted timeline key: ", key)
-
-					pol := convertPolicy(v1tl.Policy, v1tl.PolicyParams, v1tl.PolicyDefaults)
-
-					if strings.Contains(key, "communities") {
-						pol.Entries = append(pol.Entries, concrnt.PolicyEntry{
-							URL: &WritePublicPolicyURL,
-						})
-					}
-
-					v2doc = &concrnt.Document[any]{
-						Key:       key,
-						Value:     v1tl.Body,
-						Author:    v1tl.Signer,
-						Schema:    v1tl.Schema,
-						CreatedAt: v1tl.SignedAt,
-						Policy:    pol,
-					}
-
-					if v1tl.ID != "" {
-						v0id = id
-					} else {
-						v0id = "t" + cdidBase
-					}
-				}
-			case "subscription":
-				// {"owner":"con1khzfsjl2prkfa2c7ckfsyk7hk9nd84872hvve8","signer":"con1khzfsjl2prkfa2c7ckfsyk7hk9nd84872hvve8","type":"subscription","schema":"https://schema.concrnt.world/s/list.json","body":{"name":"Home"},"signedAt":"2025-06-03T15:03:41.221Z","indexable":false}
-				{
-					var v1sub core.SubscriptionDocument[any]
-					err := json.Unmarshal([]byte(commit.Document), &v1sub)
-					if err != nil {
-						fmt.Println("failed to unmarshal subscription document: ", err)
-						continue
-					}
-
-					id := "s" + cdidBase
-					if v1sub.ID != "" {
-						id = v1sub.ID
-					}
-
-					key := fmt.Sprintf("cckv://%s/concrnt.world/profiles/main/lists/%s", v1sub.Signer, id)
-
-					v2doc = &concrnt.Document[any]{
-						Key:       key,
-						Value:     v1sub.Body,
-						Author:    v1sub.Signer,
-						Schema:    v1sub.Schema,
-						CreatedAt: v1sub.SignedAt,
-					}
-
-					v0id = "s" + cdidBase
-				}
-			case "subscribe":
-				// {"signer":"con1t0tey8uxhkqkd4wcp4hd4jedt7f0vfhk29xdd2","type":"subscribe","target":"tv9x2a976tp31yt6s06b9p2axz4@ariake.concrnt.net","subscription":"sqaspcetf6xaf5hdg067y1rga3g","signedAt":"2025-05-13T08:26:16.746Z","keyID":"cck1x9ee0xf4s7qrjze4n85malrdkreqtujfzq8jqv"}
-				{
-					var v1sub core.SubscribeDocument[any]
-					err := json.Unmarshal([]byte(commit.Document), &v1sub)
-					if err != nil {
-						fmt.Println("failed to unmarshal subscribe document: ", err)
-						continue
-					}
-
-					target := convertTimeline(v1sub.Target)
-					targetHash := cdidv2.MakeHash([]byte(target))
-
-					key := fmt.Sprintf("cckv://%s/concrnt.world/profiles/main/lists/%s/%s", v1sub.Signer, v1sub.Subscription, targetHash.String())
-
-					v2doc = &concrnt.Document[any]{
-						Key: key,
-						Value: schemas.Reference{
-							Href: target,
-						},
-						Author:    v1sub.Signer,
-						Schema:    schemas.ReferenceURL,
-						CreatedAt: v1sub.SignedAt,
-					}
-				}
-			case "unsubscribe":
-				// {"signer":"con1t0tey8uxhkqkd4wcp4hd4jedt7f0vfhk29xdd2","type":"unsubscribe","target":"world.concrnt.t-home@con17hzd8gfpugmex6waxakrx3r42r2c33p6rgftna","subscription":"sg4gfzh4bqew8j7fp067v1wp9rr","signedAt":"2025-06-12T07:10:03.611Z","keyID":"cck1x9ee0xf4s7qrjze4n85malrdkreqtujfzq8jqv"}
-
-				var v1unsub core.SubscribeDocument[any]
-				err := json.Unmarshal([]byte(commit.Document), &v1unsub)
-				if err != nil {
-					fmt.Println("failed to unmarshal unsubscribe document: ", err)
-					continue
-				}
-
-				target := convertTimeline(v1unsub.Target)
-				targetHash := cdidv2.MakeHash([]byte(target))
-
-				key := fmt.Sprintf("cckv://%s/concrnt.world/profiles/main/lists/%s/%s", v1unsub.Signer, v1unsub.Subscription, targetHash.String())
-
-				v2doc = &concrnt.Document[any]{
-					Value:     key,
-					Author:    v1unsub.Signer,
-					Schema:    "https://schema.concrnt.net/delete.json",
-					CreatedAt: v1unsub.SignedAt,
-				}
-
-			case "delete":
-				{
-					var v1del core.DeleteDocument
-					err := json.Unmarshal([]byte(commit.Document), &v1del)
-					if err != nil {
-						fmt.Println("failed to unmarshal delete document: ", err)
-						continue
-					}
-
-					targetKey, ok := keyTable[v1del.Target]
-					if !ok {
-						fmt.Printf("skipping delete document with unknown target ID: %s\n", v1del.Target)
-						continue
-					}
-
-					v2doc = &concrnt.Document[any]{
-						Value:     targetKey,
-						Author:    v1del.Signer,
-						Schema:    "https://schema.concrnt.net/delete.json",
-						CreatedAt: v1del.SignedAt,
-					}
-				}
-			case "ack", "unack", "enact", "affiliation", "event":
-				continue // skip these types for now
-			default:
-				{
-					fmt.Printf("skipping document with unsupported type: %s\n", v1doc.Type)
-					continue
-				}
-			}
-
-			if v2doc == nil {
-				fmt.Printf("skipping document with nil v2doc for type: %s\n", v1doc.Type)
-				continue
-			}
-
-			if v0id != "" {
-				keyTable[v0id] = v2doc.Key
-			}
-
-			serializedDoc, err := json.Marshal(v2doc)
-			if err != nil {
-				fmt.Println("failed to serialize v2 document: ", err)
-				continue
-			}
-
-			sd := concrnt.SignedDocument{
-				Document: string(serializedDoc),
-				Proof: concrnt.Proof{
-					Type: "none",
-				},
-			}
-
-			line, err := json.Marshal(sd)
-			if err != nil {
-				fmt.Println("failed to serialize signed document: ", err)
-				continue
-			}
-
-			batch += string(line) + "\n"
+			batch += lines + "\n"
 		}
 
 		err = commit(batch)
@@ -729,11 +905,36 @@ var migrateV1toV2Cmd = &cobra.Command{
 			panic("failed to connect destination database")
 		}
 
-		destDB.AutoMigrate(&MigrationInfo{})
+		if (oneShotID != "") {
+			var commitLog core.CommitLog
+			result := fromDB.Where("document_id = ?", oneShotID).First(&commitLog)
+			if result.Error != nil {
+				fmt.Printf("failed to find commit with id %s: %s\n", oneShotID, result.Error)
+				return
+			}
 
-		transferMetas(fromDB, destDB)
-		transferEntities(fromDB, destDB)
-		transferRecords(fromDB, destDB)
+
+			lines, err := convertRecord(fromDB, commitLog)
+			if err != nil {
+				fmt.Printf("failed to convert record with commit id %d: %s\n", commitLog.ID, err)
+				return
+			}
+
+			fmt.Println(string(lines))
+
+			err = commit(string(lines) + "\n")
+			if err != nil {
+				fmt.Println("failed to commit document: ", err)
+				return
+			}
+
+		} else {
+			destDB.AutoMigrate(&MigrationInfo{})
+
+			transferMetas(fromDB, destDB)
+			transferEntities(fromDB, destDB)
+			transferRecords(fromDB, destDB)
+		}
 	},
 }
 
@@ -746,6 +947,8 @@ func init() {
 	migrateV1toV2Cmd.Flags().StringVar(&fromCSID, "from-csid", fromCSID, "CSID of the v1 server to migrate from")
 	migrateV1toV2Cmd.Flags().StringVar(&destFQDN, "dest-fqdn", destFQDN, "Domain of the v2 server to migrate to")
 	migrateV1toV2Cmd.Flags().StringVar(&token, "token", token, "Authentication token for the v2 server")
+
+	migrateV1toV2Cmd.Flags().StringVar(&oneShotID, "one-shot", oneShotID, "If set, only migrate the record with the specified commit ID (for testing/debugging)")
 
 	migrateV1toV2Cmd.MarkFlagRequired("from-dsn")
 	migrateV1toV2Cmd.MarkFlagRequired("dest-dsn")

@@ -10,6 +10,7 @@ import (
 	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/impl/interop"
 	"github.com/concrnt/concrnt/internal/domain"
+	"github.com/concrnt/concrnt/jwt"
 	"github.com/concrnt/concrnt/schemas"
 )
 
@@ -42,6 +43,53 @@ func NewEntityUsecase(
 func (uc *EntityUsecase) Register(ctx context.Context, req concrnt.RegisterRequest[domain.EntityMeta]) error {
 	ctx, span := tracer.Start(ctx, "EntityUsecase.Register")
 	defer span.End()
+
+	var inviter *string
+	switch uc.config.Registration {
+	case "invite":
+		if req.InviteToken != nil {
+			err := domain.PermissionError{Reason: "invite token is not supported in this implementation"}
+			span.RecordError(err)
+			return err
+		}
+
+		_, claims, err := jwt.Parse(*req.InviteToken)
+		if err != nil {
+			span.RecordError(err)
+			return domain.PermissionError{Reason: "invalid invitation code"}
+		}
+
+		err = jwt.Validate(*req.InviteToken, claims.Issuer)
+		if err != nil {
+			span.RecordError(err)
+			return domain.PermissionError{Reason: "invalid invitation code"}
+		}
+		if claims.Subject != "invite" {
+			return domain.PermissionError{Reason: "invalid invitation code(subject)"}
+		}
+
+		if claims.Issuer != uc.config.CSID {
+			inviterEntity, err := uc.repo.Get(ctx, claims.Issuer, nil)
+			if err != nil {
+				span.RecordError(err)
+				return domain.PermissionError{Reason: "invalid invitation code(issuer)"}
+			}
+
+			tag := inviterEntity.Tag()
+			if !tag.Has("_invite") {
+				return domain.PermissionError{Reason: "invalid invitation code(issuer tag)"}
+			}
+		}
+
+		inviter = &claims.Issuer
+
+	case "open":
+		// do nothing, allow registration
+	default:
+		err := domain.PermissionError{Reason: "registration is not allowed"}
+		span.RecordError(err)
+		return err
+	}
 
 	v := ctx.Value(interop.CaptchaVerifiedCtxKey)
 	if v != nil {
@@ -79,6 +127,7 @@ func (uc *EntityUsecase) Register(ctx context.Context, req concrnt.RegisterReque
 	}
 
 	req.Meta.ID = ccid
+	req.Meta.Inviter = inviter
 	err = uc.repo.SaveMeta(ctx, req.Meta)
 	if err != nil {
 		span.RecordError(err)

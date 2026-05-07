@@ -40,16 +40,16 @@ func newOperationContext() (*operationContext, error) {
 		return nil, err
 	}
 
-	globalConfig := conf.GlobalConfig()
+	globalConfig := conf.DomainConfig()
 
-	db, err := database.NewPostgres(conf.Server.PostgresDsn)
+	db, err := database.NewPostgres(conf.Backends.PostgresDsn)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect database: %w", err)
 	}
 
 	cl := client.New(globalConfig.FQDN)
-	if conf.Server.GatewayAddr != "" {
-		cl.AddHostRemapping(globalConfig.FQDN, conf.Server.GatewayAddr)
+	if conf.Backends.GatewayAddr != "" {
+		cl.AddHostRemapping(globalConfig.FQDN, conf.Backends.GatewayAddr)
 	}
 
 	return &operationContext{

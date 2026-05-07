@@ -1,0 +1,44 @@
+# this is example. you must replace ccid and keys before deploy.
+concrnt:
+  # fqdn is instance ID
+  # It is really hard and not recommended to change this value after node started
+  fqdn: example.com
+  # 'open' or 'invite' or 'close'
+  registration: open
+  # server agent account
+  # it is handy to generate these info with concurrent.world devtool
+  layer: concrnt-mainnet
+  debug: false
+
+backends:
+  postgresDsn: "host=db user=postgres password=postgres dbname=postgres port=5432 sslmode=disable"
+  gatewayAddr: http://concrnt:8000
+  redisAddr: "redis:6379"
+  memcachedAddr: "memcached:11211"
+
+observability:
+  enableTrace: true
+  traceEndpoint: "tempo:4318"
+
+integrations:
+  captchaSiteKey: "6LeIxAcTAAAAAJcZVRqyHh71UMIEGNQ_MXjiZKhI"
+  captchaSecret: "6LeIxAcTAAAAAGG-vFI1TnRWxMZNFuojJ4WifJWe"
+  vapidPublicKey: "BAdcVHrt3owKlClm4Rk-wxd_l-jZ7oqpGXsKVgP9l2Y6dF6zah48wPGHZ9vXeo78otErsKMha2DMiBTuzM0mDTQ"
+  vapidPrivateKey: "gK0wdxV-cRr3HMWtnuKle9rCxbeSWfVv2X0YyvvlFcc"
+
+meta:
+  nickname: concurrent-domain
+  description: domain description
+  logo: 'https://concurrent.world/concurrent.png'
+  wordmark: ''
+  themeColor: '#20193b'
+  maintainerName: notset
+  maintainerEmail: notset@example.com
+
+services:
+  - name: world.concrnt.web
+    host: web
+    port: 80
+    path: /
+    preservePath: true
+

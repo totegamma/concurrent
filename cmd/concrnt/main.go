@@ -72,14 +72,14 @@ func main() {
 		panic("failed to load config: " + err.Error())
 	}
 
-	globalConfig := conf.GlobalConfig()
+	domainConfig := conf.DomainConfig()
 
 	slog.Info("concrnt starting", slog.String("version", version))
 	slog.Info(
 		"config loaded",
-		slog.String("csid", globalConfig.CSID),
-		slog.String("fqdn", globalConfig.FQDN),
-		slog.String("layer", globalConfig.Layer),
+		slog.String("csid", domainConfig.CSID),
+		slog.String("fqdn", domainConfig.FQDN),
+		slog.String("layer", domainConfig.Layer),
 	)
 
 	e := echo.New()
@@ -88,8 +88,8 @@ func main() {
 
 	e.Use(echomiddleware.Recover())
 
-	if conf.Server.EnableTrace {
-		cleanup, err := utils.SetupTraceProvider(conf.Server.TraceEndpoint, conf.NodeInfo.FQDN+"/ccapi", version)
+	if conf.Observability.EnableTrace {
+		cleanup, err := utils.SetupTraceProvider(conf.Observability.TraceEndpoint, conf.Concrnt.FQDN+"/ccapi", version)
 		if err != nil {
 			panic(err)
 		}
@@ -100,7 +100,7 @@ func main() {
 				return c.Path() == "/metrics" || c.Path() == "/health"
 			},
 		)
-		e.Use(otelecho.Middleware(conf.NodeInfo.FQDN, skipper))
+		e.Use(otelecho.Middleware(conf.Concrnt.FQDN, skipper))
 
 		e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 			return func(c echo.Context) error {
@@ -134,7 +134,7 @@ func main() {
 		GoVersion:    goVersion,
 	}
 
-	db, err := database.NewPostgres(conf.Server.PostgresDsn)
+	db, err := database.NewPostgres(conf.Backends.PostgresDsn)
 	if err != nil {
 		panic("failed to connect database")
 	}
@@ -144,13 +144,13 @@ func main() {
 		panic("failed to migrate database")
 	}
 
-	mc := database.NewMemcached(conf.Server.MemcachedAddr)
+	mc := database.NewMemcached(conf.Backends.MemcachedAddr)
 	defer mc.Close()
 
-	redis := database.NewRedis(conf.Server.RedisAddr, "", conf.Server.RedisDB)
+	redis := database.NewRedis(conf.Backends.RedisAddr, "", conf.Backends.RedisDB)
 
-	cl := client.New(conf.NodeInfo.FQDN)
-	cl.AddHostRemapping(conf.NodeInfo.FQDN, conf.Server.GatewayAddr)
+	cl := client.New(domainConfig.FQDN)
+	cl.AddHostRemapping(domainConfig.FQDN, conf.Backends.GatewayAddr)
 	cl.SetUserAgent("concrnt", version)
 
 	moduleManager := service.NewModuleManager(rest.Endpoints, conf.Services)
@@ -159,19 +159,19 @@ func main() {
 	policy := service.NewPolicyService(
 		GetGlobalPolicy(),
 		service.GlobalParameters{
-			FQDN: globalConfig.FQDN,
+			FQDN: domainConfig.FQDN,
 		},
 		cl,
 	)
 
-	serverRepo := repository.NewServerRepository(&globalConfig, db, cl)
-	serverUC := usecase.NewServerUsecase(serverRepo, &globalConfig, softwareInfo, moduleManager)
+	serverRepo := repository.NewServerRepository(&domainConfig, db, cl)
+	serverUC := usecase.NewServerUsecase(serverRepo, &domainConfig, softwareInfo, moduleManager)
 
-	entityRepo := repository.NewEntityRepository(db, cl, globalConfig)
-	entityUC := usecase.NewEntityUsecase(entityRepo, &globalConfig)
+	entityRepo := repository.NewEntityRepository(db, cl, domainConfig)
+	entityUC := usecase.NewEntityUsecase(entityRepo, &domainConfig)
 
 	recordRepo := repository.NewRecordRepository(db)
-	recordUC := usecase.NewRecordUsecase(recordRepo, &globalConfig, cl, entityUC, signal, policy)
+	recordUC := usecase.NewRecordUsecase(recordRepo, &domainConfig, cl, entityUC, signal, policy)
 
 	chunklineRepo := repository.NewChunklineRepository(db)
 	chunklineGateway := gateway.NewChunklineGateway(cl)
@@ -180,29 +180,34 @@ func main() {
 	notificationRepo := repository.NewNotificationRepository(db)
 	notificationUC := usecase.NewNotificationUsecase(notificationRepo)
 
-	subscriber := worker.NewSubscriber(&globalConfig, cl, signal)
+	subscriber := worker.NewSubscriber(&domainConfig, cl, signal)
 	subscriber.Start(context.Background())
 
 	abuseRepo := repository.NewAbuseRepository(db)
 	abuseService := service.NewAbuseService(abuseRepo)
 
-	if conf.Server.VapidPublicKey != "" && conf.Server.VapidPrivateKey != "" {
+	if conf.Integrations.VapidPublicKey != "" && conf.Integrations.VapidPrivateKey != "" {
 		notificationReactor := worker.NewNotificationReactor(notificationUC, signal, webpush.Options{
-			Subscriber:      "mailto:admin@" + globalConfig.FQDN,
-			VAPIDPublicKey:  conf.Server.VapidPublicKey,
-			VAPIDPrivateKey: conf.Server.VapidPrivateKey,
+			Subscriber:      "mailto:admin@" + domainConfig.FQDN,
+			VAPIDPublicKey:  conf.Integrations.VapidPublicKey,
+			VAPIDPrivateKey: conf.Integrations.VapidPrivateKey,
 			TTL:             30,
 		})
 		notificationReactor.Start(context.Background())
 	}
 
-	authMiddleware := middleware.NewAuthMiddleware(globalConfig, cl, serverUC, entityRepo)
+	authMiddleware := middleware.NewAuthMiddleware(domainConfig, cl, serverUC, entityRepo)
 
-	wellKnownHandler := rest.NewWellKnownHandler(serverUC)
+	meta := conf.Meta
+	meta["captchaSiteKey"] = conf.Integrations.CaptchaSitekey
+	meta["vapidKey"] = conf.Integrations.VapidPublicKey
+
+	wellKnownHandler := rest.NewWellKnownHandler(serverUC, meta)
+
 	wellKnownHandler.RegisterRoutes(e)
 
 	apiHandler := rest.NewHandler(
-		globalConfig,
+		domainConfig,
 		recordUC,
 		chunklineUC,
 		serverUC,
@@ -214,8 +219,8 @@ func main() {
 	)
 	api := e.Group("", authMiddleware.IdentifyIdentity, authMiddleware.IdentifyIdentity)
 
-	if conf.Server.CaptchaSecret != "" {
-		validator, err := recaptcha.NewWithSecert(conf.Server.CaptchaSecret)
+	if conf.Integrations.CaptchaSecret != "" {
+		validator, err := recaptcha.NewWithSecert(conf.Integrations.CaptchaSecret)
 		if err != nil {
 			panic("failed to initialize recaptcha: " + err.Error())
 		}

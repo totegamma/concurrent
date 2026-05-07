@@ -22,17 +22,17 @@ func generateToken(subject string, validFor time.Duration) string {
 		panic("failed to load config: " + err.Error())
 	}
 
-	globalConfig := conf.GlobalConfig()
+	domainConfig := conf.DomainConfig()
 
 	claims := jwt.Claims{
-		Issuer:         globalConfig.CSID,
+		Issuer:         domainConfig.CSID,
 		Subject:        subject,
-		Audience:       globalConfig.CSID,
+		Audience:       domainConfig.CSID,
 		ExpirationTime: strconv.FormatInt(time.Now().Add(validFor).Unix(), 10),
 		IssuedAt:       strconv.FormatInt(time.Now().Unix(), 10),
 	}
 
-	token, err := jwt.Create(claims, conf.NodeInfo.PrivateKey)
+	token, err := jwt.Create(claims, conf.Concrnt.PrivateKey)
 	if err != nil {
 		panic("failed to create JWT: " + err.Error())
 	}

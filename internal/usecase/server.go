@@ -59,7 +59,6 @@ func (uc *ServerUsecase) GetThisServer() (*domain.Server, error) {
 		Domain:       uc.config.FQDN,
 		CSID:         uc.config.CSID,
 		Layer:        uc.config.Layer,
-		Dimension:    uc.config.Dimension,
 		Endpoints:    uc.mm.GetEndpoints(),
 		SoftwareInfo: uc.info,
 		Meta:         uc.config.Meta,

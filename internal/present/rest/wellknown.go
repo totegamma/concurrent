@@ -10,13 +10,16 @@ import (
 
 type WellKnownHandler struct {
 	server *usecase.ServerUsecase
+	meta   map[string]any
 }
 
 func NewWellKnownHandler(
 	server *usecase.ServerUsecase,
+	meta map[string]any,
 ) *WellKnownHandler {
 	return &WellKnownHandler{
 		server: server,
+		meta:   meta,
 	}
 }
 
@@ -31,5 +34,8 @@ func (p *WellKnownHandler) handleWellKnown(c echo.Context) error {
 		return presenter.InternalError(c, err)
 	}
 
-	return presenter.OK(c, server.WellKnown)
+	wellknown := server.WellKnown
+	wellknown.Meta = p.meta
+
+	return presenter.OK(c, wellknown)
 }

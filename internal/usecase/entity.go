@@ -47,7 +47,7 @@ func (uc *EntityUsecase) Register(ctx context.Context, req concrnt.RegisterReque
 	var inviter *string
 	switch uc.config.Registration {
 	case "invite":
-		if req.InviteToken != nil {
+		if req.InviteToken == nil {
 			err := domain.PermissionError{Reason: "invite token is not supported in this implementation"}
 			span.RecordError(err)
 			return err

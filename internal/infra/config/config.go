@@ -45,7 +45,7 @@ type Observability struct {
 }
 
 type Integrations struct {
-	CaptchaSitekey  string `yaml:"captchaSitekey"`
+	CaptchaSitekey  string `yaml:"captchaSiteKey"`
 	CaptchaSecret   string `yaml:"captchaSecret"`
 	VapidPublicKey  string `yaml:"vapidPublicKey"`
 	VapidPrivateKey string `yaml:"vapidPrivateKey"`

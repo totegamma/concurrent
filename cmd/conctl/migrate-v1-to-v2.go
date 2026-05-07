@@ -374,13 +374,11 @@ func convertRecord(
 	signedAt := v1doc.SignedAt
 	cdidBase := cdidv1.New(hash10, signedAt).String()
 
-	//if v2doc.Author 
 	v1Author, err := getEntity(db, v1doc.Signer)
 	if err != nil {
 		fmt.Printf("failed to get author entity for commit id %d: %s\n", commit.ID, err)
 		return "", err
 	}
-
 
 	var v2doc *concrnt.Document[any]
 
@@ -418,7 +416,6 @@ func convertRecord(
 			}
 
 			v0id = "m" + cdidBase
-
 
 			if v1Author.Domain != fromFQDN {
 
@@ -526,6 +523,17 @@ func convertRecord(
 			if err != nil {
 				fmt.Println("failed to unmarshal association document: ", err)
 				return "", err
+			}
+
+			ownerEntity, err := getEntity(db, v1ass.Owner)
+			if err != nil {
+				fmt.Printf("failed to get owner entity for association document with commit id %d: %s\n", commit.ID, err)
+				return "", err
+			}
+			if ownerEntity.Domain != fromFQDN {
+				// fmt.Printf("skipping association document with owner from different domain: %s\n", v1ass.Owner)
+				//continue
+				return "", nil
 			}
 
 			target, ok := keyTable[v1ass.Target]
@@ -819,7 +827,6 @@ func convertRecord(
 		keyTable[v0id] = v2doc.Key
 	}
 
-
 	return string(line), nil
 }
 
@@ -905,14 +912,13 @@ var migrateV1toV2Cmd = &cobra.Command{
 			panic("failed to connect destination database")
 		}
 
-		if (oneShotID != "") {
+		if oneShotID != "" {
 			var commitLog core.CommitLog
 			result := fromDB.Where("document_id = ?", oneShotID).First(&commitLog)
 			if result.Error != nil {
 				fmt.Printf("failed to find commit with id %s: %s\n", oneShotID, result.Error)
 				return
 			}
-
 
 			lines, err := convertRecord(fromDB, commitLog)
 			if err != nil {

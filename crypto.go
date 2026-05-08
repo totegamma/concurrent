@@ -94,6 +94,10 @@ func PubkeyToAddr(pubkeyHex string, hrp string) (string, error) {
 }
 
 func PrivKeyToAddr(privKeyHex string, hrp string) (string, error) {
+	if len(privKeyHex) != 64 {
+		return "", errors.New("invalid private key length")
+	}
+
 	privKeyBytes, err := hex.DecodeString(privKeyHex)
 	if err != nil {
 		return "", errors.Wrap(err, "failed to decode private key")

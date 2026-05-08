@@ -201,6 +201,7 @@ func main() {
 	meta := conf.Meta
 	meta["captchaSiteKey"] = conf.Integrations.CaptchaSitekey
 	meta["vapidKey"] = conf.Integrations.VapidPublicKey
+	meta["registration"] = conf.Concrnt.Registration
 
 	wellKnownHandler := rest.NewWellKnownHandler(serverUC, meta)
 

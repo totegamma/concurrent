@@ -32,6 +32,10 @@ func Create(claims Claims, privatekey string) (string, error) {
 	target := headerB64 + "." + payloadB64
 
 	signatureBytes, err := concrnt.SignBytes([]byte(target), privatekey)
+	if err != nil {
+		return "", err
+	}
+
 	signatureB64 := base64.RawURLEncoding.EncodeToString(signatureBytes)
 
 	return target + "." + signatureB64, nil

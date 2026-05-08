@@ -41,7 +41,7 @@ func generateToken(subject string, validFor time.Duration) string {
 }
 
 var generateJwtCmd = &cobra.Command{
-	Use:   "jwt",
+	Use:   "token",
 	Short: "Generate a Serve-signed JWT",
 	Run: func(cmd *cobra.Command, args []string) {
 

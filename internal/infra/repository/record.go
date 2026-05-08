@@ -15,6 +15,7 @@ import (
 	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/internal/domain"
 	"github.com/concrnt/concrnt/internal/infra/database/models"
+	"github.com/concrnt/concrnt/internal/usecase"
 	"github.com/concrnt/concrnt/internal/utils"
 	"github.com/concrnt/concrnt/schemas"
 )
@@ -27,7 +28,7 @@ func NewRecordRepository(db *gorm.DB) *RecordRepository {
 	return &RecordRepository{db: db}
 }
 
-func (r *RecordRepository) CreateRecord(ctx context.Context, write domain.RecordWrite) (string, error) {
+func (r *RecordRepository) CreateRecord(ctx context.Context, write usecase.RecordWrite) (string, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.CreateRecord")
 	defer span.End()
 
@@ -112,7 +113,7 @@ func (r *RecordRepository) CreateRecord(ctx context.Context, write domain.Record
 
 }
 
-func (r *RecordRepository) CreateAssociation(ctx context.Context, write domain.AssociationWrite) error {
+func (r *RecordRepository) CreateAssociation(ctx context.Context, write usecase.AssociationWrite) error {
 	ctx, span := tracer.Start(ctx, "Repository.Record.CreateAssociation")
 	defer span.End()
 
@@ -152,7 +153,7 @@ func (r *RecordRepository) CreateAssociation(ctx context.Context, write domain.A
 	return err
 }
 
-func (r *RecordRepository) Acknowledge(ctx context.Context, write domain.AckWrite) (string, error) {
+func (r *RecordRepository) Acknowledge(ctx context.Context, write usecase.AckWrite) (string, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.Acknowledge")
 	defer span.End()
 
@@ -164,7 +165,7 @@ func (r *RecordRepository) Acknowledge(ctx context.Context, write domain.AckWrit
 	return write.ResultURI, err
 }
 
-func (r *RecordRepository) UnAcknowledge(ctx context.Context, write domain.AckWrite) error {
+func (r *RecordRepository) UnAcknowledge(ctx context.Context, write usecase.AckWrite) error {
 	ctx, span := tracer.Start(ctx, "Repository.Record.Unacknowledge")
 	defer span.End()
 
@@ -176,7 +177,7 @@ func (r *RecordRepository) UnAcknowledge(ctx context.Context, write domain.AckWr
 	return err
 }
 
-func (r *RecordRepository) saveAck(ctx context.Context, write domain.AckWrite) error {
+func (r *RecordRepository) saveAck(ctx context.Context, write usecase.AckWrite) error {
 	ack := models.Ack{
 		From:       write.From,
 		To:         write.To,
@@ -199,7 +200,7 @@ func (r *RecordRepository) saveAck(ctx context.Context, write domain.AckWrite) e
 	})
 }
 
-func createCommitLogAndOwners(tx *gorm.DB, commit domain.CommitWrite) error {
+func createCommitLogAndOwners(tx *gorm.DB, commit usecase.CommitWrite) error {
 	commitLog := models.CommitLog{
 		ID:       commit.ID,
 		IP:       commit.IP,

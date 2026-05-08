@@ -3,16 +3,18 @@ package repository
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
 	"github.com/stretchr/testify/require"
+	"github.com/zeebo/xxh3"
 	"gorm.io/gorm"
 
 	"github.com/concrnt/concrnt"
-	"github.com/concrnt/concrnt/internal/domain"
 	"github.com/concrnt/concrnt/internal/infra/database/models"
 	"github.com/concrnt/concrnt/internal/testutil"
+	"github.com/concrnt/concrnt/internal/usecase"
 	"github.com/concrnt/concrnt/schemas"
 )
 
@@ -36,8 +38,21 @@ func TestRecordRepositoryWrites(t *testing.T) {
 			CreatedAt:   createdAt,
 			Distributes: &distributions,
 		})
-		oldWrite, err := domain.NewRecordWrite("127.0.0.1", "record-old", oldSD)
-		require.NoError(t, err)
+		oldWrite := usecase.RecordWrite{
+			Commit: usecase.CommitWrite{
+				ID:       "record-old",
+				IP:       "127.0.0.1",
+				Document: oldSD.Document,
+				Proof:    `{"type":"none"}`,
+				Owners:   []string{"con1owner"},
+			},
+			DocumentID:    "record-old",
+			Key:           key,
+			Owner:         "con1owner",
+			Schema:        "https://schema.example/post.json",
+			Distributions: distributions,
+			CreatedAt:     createdAt,
+		}
 
 		resultURI, err := repo.CreateRecord(ctx, oldWrite)
 		require.NoError(t, err)
@@ -76,8 +91,21 @@ func TestRecordRepositoryWrites(t *testing.T) {
 			Schema:    "https://schema.example/post.v2.json",
 			CreatedAt: newCreatedAt,
 		})
-		newWrite, err := domain.NewRecordWrite("127.0.0.1", "record-new", newSD)
-		require.NoError(t, err)
+		newWrite := usecase.RecordWrite{
+			Commit: usecase.CommitWrite{
+				ID:       "record-new",
+				IP:       "127.0.0.1",
+				Document: newSD.Document,
+				Proof:    `{"type":"none"}`,
+				Owners:   []string{"con1owner"},
+			},
+			DocumentID:    "record-new",
+			Key:           key,
+			Owner:         "con1owner",
+			Schema:        "https://schema.example/post.v2.json",
+			Distributions: []string{},
+			CreatedAt:     newCreatedAt,
+		}
 
 		_, err = repo.CreateRecord(ctx, newWrite)
 		require.NoError(t, err)
@@ -123,9 +151,23 @@ func TestRecordRepositoryWrites(t *testing.T) {
 			targetURI: targetSD,
 		}
 
-		write, err := domain.NewRecordWrite("127.0.0.1", "reference-record", refSD)
-		require.NoError(t, err)
-		_, err = repo.CreateRecord(ctx, write)
+		write := usecase.RecordWrite{
+			Commit: usecase.CommitWrite{
+				ID:       "reference-record",
+				IP:       "127.0.0.1",
+				Document: refSD.Document,
+				Proof:    `{"type":"none"}`,
+				Owners:   []string{"con1owner"},
+			},
+			DocumentID:    "reference-record",
+			Key:           "cckv://con1owner/timeline/ref-1",
+			Owner:         "con1owner",
+			Schema:        "https://schema.example/target.json",
+			Distributions: []string{},
+			Redirect:      &targetURI,
+			CreatedAt:     targetCreatedAt,
+		}
+		_, err := repo.CreateRecord(ctx, write)
 		require.NoError(t, err)
 
 		var record models.Record
@@ -146,11 +188,24 @@ func TestRecordRepositoryWrites(t *testing.T) {
 			Associate:          &key,
 			AssociationVariant: &variant,
 		})
-		var associationDoc concrnt.Document[any]
-		require.NoError(t, json.Unmarshal([]byte(associationSD.Document), &associationDoc))
-
-		associationWrite, err := domain.NewAssociationWrite("127.0.0.1", "association-record", associationDoc, associationSD)
-		require.NoError(t, err)
+		associationUnique := fmt.Sprintf("%x", xxh3.HashString("con1owner"+"con1author"+key+variant))
+		associationWrite := usecase.AssociationWrite{
+			Commit: usecase.CommitWrite{
+				ID:       "association-record",
+				IP:       "127.0.0.1",
+				Document: associationSD.Document,
+				Proof:    `{"type":"none"}`,
+				Owners:   []string{"con1owner"},
+			},
+			DocumentID: "association-record",
+			TargetURI:  key,
+			Owner:      "con1owner",
+			Author:     "con1author",
+			Schema:     "https://schema.example/comment.json",
+			Variant:    &variant,
+			Unique:     associationUnique,
+			CreatedAt:  time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC),
+		}
 		require.NoError(t, repo.CreateAssociation(ctx, associationWrite))
 
 		var association models.Association
@@ -170,8 +225,22 @@ func TestRecordRepositoryWrites(t *testing.T) {
 			CreatedAt: time.Date(2026, 4, 5, 6, 7, 8, 0, time.UTC),
 			Associate: &key,
 		})
-		ackWrite, err := domain.NewAckWrite("127.0.0.1", "ack-on", ackSD, true)
-		require.NoError(t, err)
+		ackWrite := usecase.AckWrite{
+			Commit: usecase.CommitWrite{
+				ID:       "ack-on",
+				IP:       "127.0.0.1",
+				Document: ackSD.Document,
+				Proof:    `{"type":"none"}`,
+				Owners:   []string{"con1author", "con1owner"},
+			},
+			DocumentID: "ack-on",
+			From:       "con1author",
+			To:         "con1owner",
+			Context:    "like",
+			Valid:      true,
+			CreatedAt:  time.Date(2026, 4, 5, 6, 7, 8, 0, time.UTC),
+			ResultURI:  "ccfs://con1owner/ack-on",
+		}
 
 		resultURI, err := repo.Acknowledge(ctx, ackWrite)
 		require.NoError(t, err)
@@ -184,8 +253,22 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		requireCommitOwner(t, db, "ack-on", "con1author")
 		requireCommitOwner(t, db, "ack-on", "con1owner")
 
-		unackWrite, err := domain.NewAckWrite("127.0.0.1", "ack-off", ackSD, false)
-		require.NoError(t, err)
+		unackWrite := usecase.AckWrite{
+			Commit: usecase.CommitWrite{
+				ID:       "ack-off",
+				IP:       "127.0.0.1",
+				Document: ackSD.Document,
+				Proof:    `{"type":"none"}`,
+				Owners:   []string{"con1author", "con1owner"},
+			},
+			DocumentID: "ack-off",
+			From:       "con1author",
+			To:         "con1owner",
+			Context:    "like",
+			Valid:      false,
+			CreatedAt:  time.Date(2026, 4, 5, 6, 7, 8, 0, time.UTC),
+			ResultURI:  "ccfs://con1owner/ack-off",
+		}
 		require.NoError(t, repo.UnAcknowledge(ctx, unackWrite))
 
 		var unack models.Ack

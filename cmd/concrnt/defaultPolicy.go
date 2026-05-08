@@ -58,6 +58,7 @@ var globalPolicyJson = `
 			"action": "record:create",
 			"key": "*",
 			"emit": "allow",
+			"reason": "ALLOW if the record is created under the namespace of the requester",
 			"condition": {
 				"op": "And",
 				"args": [
@@ -99,6 +100,7 @@ var globalPolicyJson = `
 			"action": "record:create",
 			"key": "*",
 			"emit": "ok",
+			"reason": "OK if the record is created under the namespace of this server",
 			"condition": {
 				"op": "And",
 				"args": [
@@ -140,6 +142,7 @@ var globalPolicyJson = `
 			"action": "record:read",
 			"key": "*",
 			"emit": "allow",
+			"reason": "ALLOW if the record is in the namespace of the requester",
 			"condition": {
 				"op": "Eq",
 				"args": [
@@ -163,6 +166,7 @@ var globalPolicyJson = `
 			"action": "record:update",
 			"key": "*",
 			"emit": "allow",
+			"reason": "ALLOW if the requester is the author of the record or the record is in the namespace of the requester",
 			"condition": {
 				"op": "Or",
 				"args": [
@@ -204,6 +208,7 @@ var globalPolicyJson = `
 			"action": "record:delete",
 			"key": "*",
 			"emit": "allow",
+			"reason": "ALLOW if the requester is the author of the record or the record is in the namespace of the requester",
 			"condition": {
 				"op": "Or",
 				"args": [
@@ -245,6 +250,7 @@ var globalPolicyJson = `
 			"action": "association:delete",
 			"key": "*",
 			"emit": "allow",
+			"reason": "ALLOW if the requester is the author of the association or the parent of the association is in the namespace of the requester",
 			"condition": {
 				"op": "Or",
 				"args": [

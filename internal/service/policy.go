@@ -219,7 +219,7 @@ func (s *PolicyService) Eval(ctx context.Context, req policy.RequestContext, sta
 		Globals:         s.globalParameters,
 	}
 
-	conclusion, error := policy.EvaluateStack(ctx, requestContext, policyStack, action, key)
+	conclusion, reason, error := policy.EvaluateStack(ctx, requestContext, policyStack, action, key)
 	if error != nil {
 		return error
 	}
@@ -228,6 +228,6 @@ func (s *PolicyService) Eval(ctx context.Context, req policy.RequestContext, sta
 	case policy.ALLOW, policy.OK:
 		return nil
 	default:
-		return domain.PermissionError{Reason: "action denied by policy"}
+		return domain.PermissionError{Reason: "action denied by policy: " + reason}
 	}
 }

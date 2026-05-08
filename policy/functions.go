@@ -11,17 +11,19 @@ import (
 	"go.opentelemetry.io/otel/trace"
 )
 
-func EvaluateStack(ctx context.Context, req RequestContext, stack PolicyStack, action string, key string) (Conclusion, error) {
+func EvaluateStack(ctx context.Context, req RequestContext, stack PolicyStack, action string, key string) (Conclusion, string, error) {
 	ctx, span := tracer.Start(ctx, "Policy.EvaluateStack")
 	defer span.End()
 
 	span.SetAttributes(attribute.Int("policy.stack.layers", len(stack)))
 
 	conclusion := UNSET
+	reason := ""
 
 	for _, layer := range stack {
 
 		layerConclusion := UNSET
+		layerReason := ""
 		for _, evalSet := range layer {
 
 			dflt := UNSET
@@ -44,10 +46,13 @@ func EvaluateStack(ctx context.Context, req RequestContext, stack PolicyStack, a
 				reqCtx.Params = *evalSet.Params
 			}
 
-			result, err := EvaluatePolicy(ctx, evalSet.Policy, reqCtx, action, key)
+			result, evalReason, err := EvaluatePolicy(ctx, evalSet.Policy, reqCtx, action, key)
 			if err != nil {
 				span.RecordError(err)
-				return UNSET, err
+				return UNSET, reason, err
+			}
+			if reason != "" {
+				layerReason += evalReason
 			}
 
 			if result == UNSET {
@@ -57,11 +62,13 @@ func EvaluateStack(ctx context.Context, req RequestContext, stack PolicyStack, a
 			layerConclusion = layerConclusion.Or(result)
 		}
 
+		reason += "[" + layerReason + "] "
+
 		switch layerConclusion {
 		case DENY:
-			return DENY, nil
+			return DENY, reason, nil
 		case ALLOW:
-			return ALLOW, nil
+			return ALLOW, reason, nil
 		case UNSET:
 			continue
 		default:
@@ -71,12 +78,14 @@ func EvaluateStack(ctx context.Context, req RequestContext, stack PolicyStack, a
 
 	}
 
-	return conclusion, nil
+	return conclusion, reason, nil
 }
 
-func EvaluatePolicy(ctx context.Context, policy Policy, req RequestContext, action string, key string) (Conclusion, error) {
+func EvaluatePolicy(ctx context.Context, policy Policy, req RequestContext, action string, key string) (Conclusion, string, error) {
 	ctx, span := tracer.Start(ctx, "Policy.EvaluatePolicy")
 	defer span.End()
+
+	reason := ""
 
 	statements := make([]Statement, 0)
 	for _, stmt := range policy.Statements {
@@ -112,6 +121,9 @@ func EvaluatePolicy(ctx context.Context, policy Policy, req RequestContext, acti
 
 		if evalResult.Result == true {
 			conclusion = conclusion.Or(stmt.Emit)
+			if stmt.Reason != nil {
+				reason += *stmt.Reason + "; "
+			}
 		}
 
 	}
@@ -125,7 +137,7 @@ func EvaluatePolicy(ctx context.Context, policy Policy, req RequestContext, acti
 
 	span.SetAttributes(attribute.String("policy.conclusion", conclusion.String()))
 
-	return conclusion, nil
+	return conclusion, reason, nil
 }
 
 func Eval(ctx RequestContext, expr Expr) (EvalResult, error) {

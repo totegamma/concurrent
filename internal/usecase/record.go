@@ -27,10 +27,10 @@ import (
 
 // RecordRepository defines storage operations for records/commits.
 type RecordRepository interface {
-	CreateRecord(ctx context.Context, ip string, documentID string, sd concrnt.SignedDocument) (string, error)
-	CreateAssociation(ctx context.Context, ip string, documentID string, parsed concrnt.Document[any], sd concrnt.SignedDocument) error
-	Acknowledge(ctx context.Context, ip string, documentID string, sd concrnt.SignedDocument) (string, error)
-	UnAcknowledge(ctx context.Context, ip string, documentID string, sd concrnt.SignedDocument) error
+	CreateRecord(ctx context.Context, write domain.RecordWrite) (string, error)
+	CreateAssociation(ctx context.Context, write domain.AssociationWrite) error
+	Acknowledge(ctx context.Context, write domain.AckWrite) (string, error)
+	UnAcknowledge(ctx context.Context, write domain.AckWrite) error
 	Delete(ctx context.Context, sd concrnt.SignedDocument) (string, error)
 
 	GetSignedDocument(ctx context.Context, uri string) (*concrnt.SignedDocument, error)
@@ -570,7 +570,13 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, ip string, requester 
 	copy(hash10[:], hash[:10])
 	documentID := cdid.New(hash10, parsed.CreatedAt).String()
 
-	resultURI, err := uc.repo.CreateRecord(ctx, ip, documentID, sd)
+	write, err := domain.NewRecordWrite(ip, documentID, sd)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	resultURI, err := uc.repo.CreateRecord(ctx, write)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -721,7 +727,13 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, ip string, reque
 	}
 
 	if isLocal {
-		err := uc.repo.CreateAssociation(ctx, ip, documentID, parsed, sd)
+		write, err := domain.NewAssociationWrite(ip, documentID, parsed, sd)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+
+		err = uc.repo.CreateAssociation(ctx, write)
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
@@ -897,7 +909,13 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, ip string, requester d
 	}
 
 	if uc.entity.IsLocal(ctx, requester) || uc.entity.IsLocal(ctx, *targetUser) {
-		_, err := uc.repo.Acknowledge(ctx, ip, documentID, sd)
+		write, err := domain.NewAckWrite(ip, documentID, sd, true)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+
+		_, err = uc.repo.Acknowledge(ctx, write)
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
@@ -952,7 +970,13 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, ip string, requester
 	}
 
 	if uc.entity.IsLocal(ctx, requester) || uc.entity.IsLocal(ctx, *targetUser) {
-		err := uc.repo.UnAcknowledge(ctx, ip, documentID, sd)
+		write, err := domain.NewAckWrite(ip, documentID, sd, false)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+
+		err = uc.repo.UnAcknowledge(ctx, write)
 		if err != nil {
 			span.RecordError(err)
 			return nil, err

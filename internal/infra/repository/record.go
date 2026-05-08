@@ -9,7 +9,6 @@ import (
 	"time"
 
 	"github.com/lib/pq"
-	"github.com/zeebo/xxh3"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -28,116 +27,22 @@ func NewRecordRepository(db *gorm.DB) *RecordRepository {
 	return &RecordRepository{db: db}
 }
 
-func (r *RecordRepository) CreateRecord(ctx context.Context, ip string, documentID string, sd concrnt.SignedDocument) (string, error) {
+func (r *RecordRepository) CreateRecord(ctx context.Context, write domain.RecordWrite) (string, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.CreateRecord")
 	defer span.End()
 
-	var doc concrnt.Document[any]
-	err := json.Unmarshal([]byte(sd.Document), &doc)
-	if err != nil {
-		span.RecordError(err)
-		return "", err
-	}
-
-	parsed, err := concrnt.ParseCCURI(doc.Key)
-	if err != nil {
-		span.RecordError(err)
-		return "", err
-	}
-
-	if parsed.Scheme != "cckv" {
-		err := fmt.Errorf("invalid key: document key scheme must be cckv")
-		span.RecordError(err)
-		return "", err
-	}
-
-	owner := parsed.Owner
-
-	var policies *string
-
-	if doc.Policy != nil {
-		policyBytes, err := json.Marshal(doc.Policy)
-		if err != nil {
-			return "", err
-		}
-		policyStr := string(policyBytes)
-		policies = &policyStr
-	}
-
-	distributions := []string{}
-	if doc.Distributes != nil {
-		distributions = *doc.Distributes
-	}
-
 	record := models.Record{
-		DocumentID:    documentID,
-		Owner:         owner,
-		Schema:        doc.Schema,
-		Policies:      policies,
-		Distributions: distributions,
-		CreatedAt:     doc.CreatedAt,
+		DocumentID:    write.DocumentID,
+		Owner:         write.Owner,
+		Redirect:      write.Redirect,
+		Schema:        write.Schema,
+		Policies:      write.Policies,
+		Distributions: write.Distributions,
+		CreatedAt:     write.CreatedAt,
 	}
 
-	if doc.Schema == schemas.ReferenceURL {
-		var refDoc concrnt.Document[schemas.Reference]
-		err := json.Unmarshal([]byte(sd.Document), &refDoc)
-		if err != nil {
-			span.RecordError(err)
-			return "", err
-		}
-		record.Redirect = &refDoc.Value.Href
-
-		refSD, ok := sd.References[refDoc.Value.Href]
-		if ok {
-			var targetDoc concrnt.Document[any]
-			err = json.Unmarshal([]byte(refSD.Document), &targetDoc)
-			if err != nil {
-				span.RecordError(err)
-				return "", err
-			}
-			record.Schema = targetDoc.Schema
-			record.CreatedAt = targetDoc.CreatedAt
-		} else {
-			if refDoc.Value.Schema != nil {
-				record.Schema = refDoc.Schema
-			}
-			if refDoc.Value.CreatedAt != nil {
-				record.CreatedAt = *refDoc.Value.CreatedAt
-			}
-		}
-	}
-
-	proof, err := json.Marshal(sd.Proof)
-	if err != nil {
-		span.RecordError(err)
-		return "", err
-	}
-
-	commitLog := models.CommitLog{
-		ID:       documentID,
-		IP:       ip,
-		Document: sd.Document,
-		Proof:    string(proof),
-	}
-
-	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-
-		if err := tx.Clauses(clause.OnConflict{
-			DoNothing: true,
-		}).Create(&commitLog).Error; err != nil {
-			span.RecordError(err)
-			return err
-		}
-
-		err := tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "commit_log_id"}, {Name: "owner"}},
-			DoNothing: true,
-		}).Create(&models.CommitOwner{
-			CommitLogID: commitLog.ID,
-			Owner:       owner,
-		}).Error
-		if err != nil {
-			span.RecordError(err)
+	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := createCommitLogAndOwners(tx, write.Commit); err != nil {
 			return err
 		}
 
@@ -150,18 +55,16 @@ func (r *RecordRepository) CreateRecord(ctx context.Context, ip string, document
 
 		// update RecordKey
 		var oldRecordKey models.RecordKey
-		err = tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("uri = ?", doc.Key).
+		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where("uri = ?", write.Key).
 			Take(&oldRecordKey).Error
 		if err != nil && err != gorm.ErrRecordNotFound {
-			span.RecordError(err)
 			return err
 		}
 
 		// ParentのRecordKeyを探す
-		parentRK, err := getOrCreateParentRecordKey(ctx, tx, doc.Key)
+		parentRK, err := getOrCreateParentRecordKey(ctx, tx, write.Key)
 		if err != nil {
-			span.RecordError(err)
 			return err
 		}
 
@@ -172,30 +75,27 @@ func (r *RecordRepository) CreateRecord(ctx context.Context, ip string, document
 
 		// RecordKeyを作る
 		rk := models.RecordKey{
-			URI:      doc.Key,
+			URI:      write.Key,
 			ParentID: pid,
-			RecordID: &documentID,
+			RecordID: &write.DocumentID,
 		}
 
 		err = tx.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "uri"}},
-			DoUpdates: clause.Assignments(map[string]any{"record_id": documentID}),
+			DoUpdates: clause.Assignments(map[string]any{"record_id": write.DocumentID}),
 		}).Create(&rk).Error
 		if err != nil {
-			span.RecordError(err)
 			return err
 		}
 
 		// 古いRecordKeyが指していたCommitのGCフラグを立て、Recordは消す
-		if oldRecordKey.RecordID != nil && *oldRecordKey.RecordID != documentID {
+		if oldRecordKey.RecordID != nil && *oldRecordKey.RecordID != write.DocumentID {
 			if err := tx.Model(&models.CommitLog{}).
 				Where("id = ?", oldRecordKey.RecordID).
 				Update("gc_candidate", true).Error; err != nil {
-				span.RecordError(err)
 				return err
 			}
 			if err := tx.Delete(&models.Record{}, "document_id = ?", oldRecordKey.RecordID).Error; err != nil {
-				span.RecordError(err)
 				return err
 			}
 		}
@@ -204,290 +104,129 @@ func (r *RecordRepository) CreateRecord(ctx context.Context, ip string, document
 	})
 
 	if err != nil {
+		span.RecordError(err)
 		return "", err
 	}
 
-	return doc.Key, nil
+	return write.Key, nil
 
 }
 
-func (r *RecordRepository) CreateAssociation(ctx context.Context, ip string, documentID string, parsed concrnt.Document[any], sd concrnt.SignedDocument) error {
+func (r *RecordRepository) CreateAssociation(ctx context.Context, write domain.AssociationWrite) error {
 	ctx, span := tracer.Start(ctx, "Repository.Record.CreateAssociation")
 	defer span.End()
 
-	targetURI, err := concrnt.ParseCCURI(*parsed.Associate)
+	targetRK, err := GetRecordKeyByURI(ctx, r.db, write.TargetURI)
 	if err != nil {
 		span.RecordError(err)
 		return err
 	}
-
-	if targetURI.Scheme != "cckv" {
-		err := fmt.Errorf("invalid associate: document associate scheme must be cckv")
-		span.RecordError(err)
-		return err
-	}
-
-	owner := targetURI.Owner
-
-	targetRK, err := GetRecordKeyByURI(ctx, r.db, *parsed.Associate)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-
-	uniqueKey := owner + parsed.Author + *parsed.Associate
-	if parsed.AssociationVariant != nil {
-		uniqueKey += *parsed.AssociationVariant
-	}
-	uniqueHash := xxh3.HashString(uniqueKey)
 
 	association := models.Association{
 		TargetID:   targetRK.ID,
-		DocumentID: documentID,
-		Unique:     fmt.Sprintf("%x", uniqueHash),
+		DocumentID: write.DocumentID,
+		Unique:     write.Unique,
 
-		Owner:     owner,
-		Author:    parsed.Author,
-		Variant:   parsed.AssociationVariant,
-		Schema:    parsed.Schema,
-		CreatedAt: parsed.CreatedAt,
-	}
-
-	proof, err := json.Marshal(sd.Proof)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-
-	commitLog := models.CommitLog{
-		ID:       documentID,
-		IP:       ip,
-		Document: sd.Document,
-		Proof:    string(proof),
+		Owner:     write.Owner,
+		Author:    write.Author,
+		Variant:   write.Variant,
+		Schema:    write.Schema,
+		CreatedAt: write.CreatedAt,
 	}
 
 	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-
-		if err := tx.Clauses(clause.OnConflict{
-			DoNothing: true,
-		}).Create(&commitLog).Error; err != nil {
-			span.RecordError(err)
-			return err
-		}
-
-		err := tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "commit_log_id"}, {Name: "owner"}},
-			DoNothing: true,
-		}).Create(&models.CommitOwner{
-			CommitLogID: commitLog.ID,
-			Owner:       owner,
-		}).Error
-		if err != nil {
-			span.RecordError(err)
+		if err := createCommitLogAndOwners(tx, write.Commit); err != nil {
 			return err
 		}
 
 		if err := tx.Create(&association).Error; err != nil {
-			span.RecordError(err)
 			return err
 		}
 
 		return nil
 	})
+	if err != nil {
+		span.RecordError(err)
+	}
 
 	return err
 }
 
-func (r *RecordRepository) Acknowledge(ctx context.Context, ip string, documentID string, sd concrnt.SignedDocument) (string, error) {
+func (r *RecordRepository) Acknowledge(ctx context.Context, write domain.AckWrite) (string, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.Acknowledge")
 	defer span.End()
 
-	var doc concrnt.Document[schemas.Acknowledge]
-	err := json.Unmarshal([]byte(sd.Document), &doc)
+	err := r.saveAck(ctx, write)
 	if err != nil {
 		span.RecordError(err)
-		return "", err
 	}
 
-	parsed, err := concrnt.ParseCCURI(*doc.Associate)
-	if err != nil {
-		span.RecordError(err)
-		return "", err
-	}
-
-	if parsed.Scheme != "cckv" {
-		err := fmt.Errorf("invalid associate: document associate scheme must be cckv")
-		span.RecordError(err)
-		return "", err
-	}
-
-	to := parsed.Owner
-	from := doc.Author
-
-	ack := models.Ack{
-		From:       from,
-		To:         to,
-		Context:    doc.Value.Context,
-		DocumentID: documentID,
-		Valid:      true,
-		CreatedAt:  doc.CreatedAt,
-	}
-
-	proof, err := json.Marshal(sd.Proof)
-	if err != nil {
-		span.RecordError(err)
-		return "", err
-	}
-
-	commitLog := models.CommitLog{
-		ID:       documentID,
-		IP:       ip,
-		Document: sd.Document,
-		Proof:    string(proof),
-	}
-
-	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-
-		if err := tx.Clauses(clause.OnConflict{
-			DoNothing: true,
-		}).Create(&commitLog).Error; err != nil {
-			span.RecordError(err)
-			return err
-		}
-
-		err := tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "commit_log_id"}, {Name: "owner"}},
-			DoNothing: true,
-		}).Create(&models.CommitOwner{
-			CommitLogID: commitLog.ID,
-			Owner:       from,
-		}).Error
-		if err != nil {
-			span.RecordError(err)
-			return err
-		}
-		err = tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "commit_log_id"}, {Name: "owner"}},
-			DoNothing: true,
-		}).Create(&models.CommitOwner{
-			CommitLogID: commitLog.ID,
-			Owner:       to,
-		}).Error
-		if err != nil {
-			span.RecordError(err)
-			return err
-		}
-
-		err = tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "context"}},
-			DoUpdates: clause.Assignments(map[string]any{"valid": true, "document_id": documentID}),
-		}).Create(&ack).Error
-		if err != nil {
-			span.RecordError(err)
-			return err
-		}
-
-		return nil
-	})
-
-	ccfs := concrnt.ComposeCCURI("ccfs", to, documentID)
-
-	return ccfs, err
+	return write.ResultURI, err
 }
 
-func (r *RecordRepository) UnAcknowledge(ctx context.Context, ip string, documentID string, sd concrnt.SignedDocument) error {
+func (r *RecordRepository) UnAcknowledge(ctx context.Context, write domain.AckWrite) error {
 	ctx, span := tracer.Start(ctx, "Repository.Record.Unacknowledge")
 	defer span.End()
 
-	var doc concrnt.Document[schemas.Acknowledge]
-	err := json.Unmarshal([]byte(sd.Document), &doc)
+	err := r.saveAck(ctx, write)
 	if err != nil {
 		span.RecordError(err)
-		return err
 	}
 
-	parsed, err := concrnt.ParseCCURI(*doc.Associate)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
+	return err
+}
 
-	if parsed.Scheme != "cckv" {
-		err := fmt.Errorf("invalid associate: document associate scheme must be cckv")
-		span.RecordError(err)
-		return err
-	}
-
-	to := parsed.Owner
-	from := doc.Author
-
+func (r *RecordRepository) saveAck(ctx context.Context, write domain.AckWrite) error {
 	ack := models.Ack{
-		From:       from,
-		To:         to,
-		Context:    doc.Value.Context,
-		DocumentID: documentID,
-		Valid:      false,
-		CreatedAt:  doc.CreatedAt,
+		From:       write.From,
+		To:         write.To,
+		Context:    write.Context,
+		DocumentID: write.DocumentID,
+		Valid:      write.Valid,
+		CreatedAt:  write.CreatedAt,
 	}
 
-	proof, err := json.Marshal(sd.Proof)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-
-	commitLog := models.CommitLog{
-		ID:       documentID,
-		IP:       ip,
-		Document: sd.Document,
-		Proof:    string(proof),
-	}
-
-	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-
-		if err := tx.Clauses(clause.OnConflict{
-			DoNothing: true,
-		}).Create(&commitLog).Error; err != nil {
-			span.RecordError(err)
+	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+		if err := createCommitLogAndOwners(tx, write.Commit); err != nil {
 			return err
 		}
 
 		err := tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "commit_log_id"}, {Name: "owner"}},
-			DoNothing: true,
-		}).Create(&models.CommitOwner{
-			CommitLogID: commitLog.ID,
-			Owner:       from,
-		}).Error
-		if err != nil {
-			span.RecordError(err)
-			return err
-		}
-		err = tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "commit_log_id"}, {Name: "owner"}},
-			DoNothing: true,
-		}).Create(&models.CommitOwner{
-			CommitLogID: commitLog.ID,
-			Owner:       to,
-		}).Error
-		if err != nil {
-			span.RecordError(err)
-			return err
-		}
-
-		err = tx.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "context"}},
-			DoUpdates: clause.Assignments(map[string]any{"valid": false, "document_id": documentID}),
+			DoUpdates: clause.Assignments(map[string]any{"valid": write.Valid, "document_id": write.DocumentID}),
 		}).Create(&ack).Error
+		return err
+	})
+}
+
+func createCommitLogAndOwners(tx *gorm.DB, commit domain.CommitWrite) error {
+	commitLog := models.CommitLog{
+		ID:       commit.ID,
+		IP:       commit.IP,
+		Document: commit.Document,
+		Proof:    commit.Proof,
+	}
+
+	if err := tx.Clauses(clause.OnConflict{
+		DoNothing: true,
+	}).Create(&commitLog).Error; err != nil {
+		return err
+	}
+
+	for _, owner := range commit.Owners {
+		err := tx.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "commit_log_id"}, {Name: "owner"}},
+			DoNothing: true,
+		}).Create(&models.CommitOwner{
+			CommitLogID: commit.ID,
+			Owner:       owner,
+		}).Error
 		if err != nil {
-			span.RecordError(err)
 			return err
 		}
+	}
 
-		return nil
-	})
-
-	return err
+	return nil
 }
 
 func (r *RecordRepository) GetHierarchicalRecordPolicies(ctx context.Context, uri string) ([]concrnt.Policy, error) {

@@ -1,4 +1,4 @@
-package repository
+package postgres
 
 import (
 	"context"
@@ -10,6 +10,7 @@ import (
 
 	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/client"
+	"github.com/concrnt/concrnt/internal/usecase"
 	"github.com/concrnt/concrnt/internal/domain"
 	"github.com/concrnt/concrnt/internal/infra/database/models"
 )
@@ -20,7 +21,7 @@ type ServerRepository struct {
 	client *client.Client
 }
 
-func NewServerRepository(config *domain.Config, db *gorm.DB, cl *client.Client) *ServerRepository {
+func NewServerRepository(config *domain.Config, db *gorm.DB, cl *client.Client) usecase.ServerRepository {
 	return &ServerRepository{
 		config: config,
 		db:     db,

@@ -19,7 +19,7 @@ import (
 	"github.com/concrnt/concrnt/internal/infra/config"
 	"github.com/concrnt/concrnt/internal/infra/database"
 	"github.com/concrnt/concrnt/internal/infra/gateway"
-	"github.com/concrnt/concrnt/internal/infra/repository"
+	"github.com/concrnt/concrnt/internal/infra/repository/postgres"
 	"github.com/concrnt/concrnt/internal/present/rest"
 	"github.com/concrnt/concrnt/internal/present/rest/middleware"
 	"github.com/concrnt/concrnt/internal/service"
@@ -164,26 +164,26 @@ func main() {
 		cl,
 	)
 
-	serverRepo := repository.NewServerRepository(&domainConfig, db, cl)
+	serverRepo := postgres.NewServerRepository(&domainConfig, db, cl)
 	serverUC := usecase.NewServerUsecase(serverRepo, &domainConfig, softwareInfo, moduleManager)
 
-	entityRepo := repository.NewEntityRepository(db, cl, domainConfig)
+	entityRepo := postgres.NewEntityRepository(db, cl, domainConfig)
 	entityUC := usecase.NewEntityUsecase(entityRepo, &domainConfig)
 
-	recordRepo := repository.NewRecordRepository(db)
+	recordRepo := postgres.NewRecordRepository(db)
 	recordUC := usecase.NewRecordUsecase(recordRepo, &domainConfig, cl, entityUC, signal, policy)
 
-	chunklineRepo := repository.NewChunklineRepository(db)
+	chunklineRepo := postgres.NewChunklineRepository(db)
 	chunklineGateway := gateway.NewChunklineGateway(cl)
 	chunklineUC := usecase.NewChunklineUsecase(chunklineRepo, chunklineGateway)
 
-	notificationRepo := repository.NewNotificationRepository(db)
+	notificationRepo := postgres.NewNotificationRepository(db)
 	notificationUC := usecase.NewNotificationUsecase(notificationRepo)
 
 	subscriber := worker.NewSubscriber(&domainConfig, cl, signal)
 	subscriber.Start(context.Background())
 
-	abuseRepo := repository.NewAbuseRepository(db)
+	abuseRepo := postgres.NewAbuseRepository(db)
 	abuseService := service.NewAbuseService(abuseRepo)
 
 	if conf.Integrations.VapidPublicKey != "" && conf.Integrations.VapidPrivateKey != "" {

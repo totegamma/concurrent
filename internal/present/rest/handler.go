@@ -33,7 +33,7 @@ type Handler struct {
 	server    *usecase.ServerUsecase
 	entity    *usecase.EntityUsecase
 	notify    *usecase.NotificationUsecase
-	abuse     *service.AbuseService
+	abuse     *usecase.AbuseUsecase
 	signal    *service.SignalService
 	mm        *service.ModuleManager
 }
@@ -45,7 +45,7 @@ func NewHandler(
 	server *usecase.ServerUsecase,
 	entity *usecase.EntityUsecase,
 	notify *usecase.NotificationUsecase,
-	abuse *service.AbuseService,
+	abuse *usecase.AbuseUsecase,
 	signal *service.SignalService,
 	mm *service.ModuleManager,
 ) *Handler {

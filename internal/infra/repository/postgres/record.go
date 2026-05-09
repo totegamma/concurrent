@@ -1,4 +1,4 @@
-package repository
+package postgres
 
 import (
 	"context"
@@ -24,7 +24,7 @@ type RecordRepository struct {
 	db *gorm.DB
 }
 
-func NewRecordRepository(db *gorm.DB) *RecordRepository {
+func NewRecordRepository(db *gorm.DB) usecase.RecordRepository {
 	return &RecordRepository{db: db}
 }
 

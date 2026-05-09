@@ -184,7 +184,7 @@ func main() {
 	subscriber.Start(context.Background())
 
 	abuseRepo := postgres.NewAbuseRepository(db)
-	abuseService := service.NewAbuseService(abuseRepo)
+	abuseUC := usecase.NewAbuseUsecase(abuseRepo)
 
 	if conf.Integrations.VapidPublicKey != "" && conf.Integrations.VapidPrivateKey != "" {
 		notificationReactor := worker.NewNotificationReactor(notificationUC, signal, webpush.Options{
@@ -214,7 +214,7 @@ func main() {
 		serverUC,
 		entityUC,
 		notificationUC,
-		abuseService,
+		abuseUC,
 		signal,
 		moduleManager,
 	)

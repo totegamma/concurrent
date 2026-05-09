@@ -1,0 +1,73 @@
+indexes:
+  - kind: RecordKey
+    properties:
+      - name: parentURI
+      - name: recordSchema
+      - name: recordCreatedAt
+
+  - kind: RecordKey
+    properties:
+      - name: parentURI
+      - name: recordSchema
+      - name: recordCreatedAt
+        direction: desc
+
+  - kind: RecordKey
+    properties:
+      - name: prefixes
+      - name: recordSchema
+      - name: recordCreatedAt
+
+  - kind: RecordKey
+    properties:
+      - name: prefixes
+      - name: recordSchema
+      - name: recordCreatedAt
+        direction: desc
+
+  - kind: Association
+    properties:
+      - name: targetURI
+      - name: schema
+      - name: variant
+      - name: author
+      - name: createdAt
+
+  - kind: Association
+    properties:
+      - name: targetURI
+      - name: schema
+      - name: variant
+      - name: author
+      - name: createdAt
+        direction: desc
+
+  - kind: Ack
+    properties:
+      - name: from
+      - name: to
+      - name: context
+      - name: valid
+      - name: createdAt
+
+  - kind: Ack
+    properties:
+      - name: from
+      - name: to
+      - name: context
+      - name: valid
+      - name: createdAt
+        direction: desc
+
+  - kind: CommitOwner
+    properties:
+      - name: owner
+      - name: commitCreatedAt
+
+  - kind: Entity
+    properties:
+      - name: alias
+
+  - kind: Server
+    properties:
+      - name: csid

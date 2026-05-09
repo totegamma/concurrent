@@ -6,7 +6,6 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/concrnt/concrnt/internal/infra/repository/postgres"
 	"github.com/concrnt/concrnt/internal/usecase"
 )
 
@@ -41,7 +40,10 @@ var createAccountCmd = &cobra.Command{
 			return err
 		}
 
-		entityRepo := postgres.NewEntityRepository(op.DB, op.Client, op.GlobalConfig)
+		entityRepo, err := op.NewEntityRepository()
+		if err != nil {
+			return err
+		}
 		entityUC := usecase.NewEntityUsecase(entityRepo, &op.GlobalConfig)
 
 		if err := entityUC.Register(cmd.Context(), req); err != nil {

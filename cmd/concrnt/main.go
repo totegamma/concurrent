@@ -19,6 +19,7 @@ import (
 	"github.com/concrnt/concrnt/internal/infra/config"
 	"github.com/concrnt/concrnt/internal/infra/database"
 	"github.com/concrnt/concrnt/internal/infra/gateway"
+	dsrepo "github.com/concrnt/concrnt/internal/infra/repository/datastore"
 	"github.com/concrnt/concrnt/internal/infra/repository/postgres"
 	"github.com/concrnt/concrnt/internal/present/rest"
 	"github.com/concrnt/concrnt/internal/present/rest/middleware"
@@ -134,16 +135,6 @@ func main() {
 		GoVersion:    goVersion,
 	}
 
-	db, err := database.NewPostgres(conf.Backends.PostgresDsn)
-	if err != nil {
-		panic("failed to connect database")
-	}
-
-	err = database.MigratePostgres(db)
-	if err != nil {
-		panic("failed to migrate database")
-	}
-
 	mc := database.NewMemcached(conf.Backends.MemcachedAddr)
 	defer mc.Close()
 
@@ -164,26 +155,73 @@ func main() {
 		cl,
 	)
 
-	serverRepo := postgres.NewServerRepository(&domainConfig, db, cl)
+	repositoryBackend := conf.Backends.Repository
+	if repositoryBackend == "" {
+		repositoryBackend = "postgres"
+	}
+
+	var serverRepo usecase.ServerRepository
+	var entityRepo usecase.EntityRepository
+	var recordRepo usecase.RecordRepository
+	var chunklineRepo usecase.ChunklineRepository
+	var notificationRepo usecase.NotificationRepository
+	var abuseRepo usecase.AbuseRepository
+
+	switch repositoryBackend {
+	case "postgres":
+		db, err := database.NewPostgres(conf.Backends.PostgresDsn)
+		if err != nil {
+			panic("failed to connect database")
+		}
+
+		err = database.MigratePostgres(db)
+		if err != nil {
+			panic("failed to migrate database")
+		}
+
+		serverRepo = postgres.NewServerRepository(&domainConfig, db, cl)
+		entityRepo = postgres.NewEntityRepository(db, cl, domainConfig)
+		recordRepo = postgres.NewRecordRepository(db)
+		chunklineRepo = postgres.NewChunklineRepository(db)
+		notificationRepo = postgres.NewNotificationRepository(db)
+		abuseRepo = postgres.NewAbuseRepository(db)
+
+	case "datastore":
+		if conf.Backends.DatastoreProjectID == "" {
+			panic("backends.datastoreProjectID is required when backends.repository is datastore")
+		}
+		datastoreClient, err := dsrepo.NewClient(context.Background(), conf.Backends.DatastoreProjectID)
+		if err != nil {
+			panic("failed to connect datastore: " + err.Error())
+		}
+		defer datastoreClient.Close()
+
+		namespace := conf.Backends.DatastoreNamespace
+		serverRepo = dsrepo.NewServerRepository(&domainConfig, datastoreClient, namespace, cl)
+		entityRepo = dsrepo.NewEntityRepository(datastoreClient, namespace, cl, domainConfig)
+		recordRepo = dsrepo.NewRecordRepository(datastoreClient, namespace)
+		chunklineRepo = dsrepo.NewChunklineRepository(datastoreClient, namespace)
+		notificationRepo = dsrepo.NewNotificationRepository(datastoreClient, namespace)
+		abuseRepo = dsrepo.NewAbuseRepository(datastoreClient, namespace)
+
+	default:
+		panic("unsupported repository backend: " + repositoryBackend)
+	}
+
 	serverUC := usecase.NewServerUsecase(serverRepo, &domainConfig, softwareInfo, moduleManager)
 
-	entityRepo := postgres.NewEntityRepository(db, cl, domainConfig)
 	entityUC := usecase.NewEntityUsecase(entityRepo, &domainConfig)
 
-	recordRepo := postgres.NewRecordRepository(db)
 	recordUC := usecase.NewRecordUsecase(recordRepo, &domainConfig, cl, entityUC, signal, policy)
 
-	chunklineRepo := postgres.NewChunklineRepository(db)
 	chunklineGateway := gateway.NewChunklineGateway(cl)
 	chunklineUC := usecase.NewChunklineUsecase(chunklineRepo, chunklineGateway)
 
-	notificationRepo := postgres.NewNotificationRepository(db)
 	notificationUC := usecase.NewNotificationUsecase(notificationRepo)
 
 	subscriber := worker.NewSubscriber(&domainConfig, cl, signal)
 	subscriber.Start(context.Background())
 
-	abuseRepo := postgres.NewAbuseRepository(db)
 	abuseUC := usecase.NewAbuseUsecase(abuseRepo)
 
 	if conf.Integrations.VapidPublicKey != "" && conf.Integrations.VapidPrivateKey != "" {

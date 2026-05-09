@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"os"
 
+	gcdatastore "cloud.google.com/go/datastore"
 	"github.com/spf13/cobra"
 	"gorm.io/gorm"
 
@@ -11,13 +13,18 @@ import (
 	"github.com/concrnt/concrnt/internal/domain"
 	"github.com/concrnt/concrnt/internal/infra/config"
 	"github.com/concrnt/concrnt/internal/infra/database"
+	dsrepo "github.com/concrnt/concrnt/internal/infra/repository/datastore"
+	"github.com/concrnt/concrnt/internal/infra/repository/postgres"
+	"github.com/concrnt/concrnt/internal/usecase"
 )
 
 type operationContext struct {
-	Config       config.Config
-	GlobalConfig domain.Config
-	DB           *gorm.DB
-	Client       *client.Client
+	Config          config.Config
+	GlobalConfig    domain.Config
+	Repository      string
+	DB              *gorm.DB
+	DatastoreClient *gcdatastore.Client
+	Client          *client.Client
 }
 
 func loadConcrntConfig() (config.Config, error) {
@@ -42,33 +49,78 @@ func newOperationContext() (*operationContext, error) {
 
 	globalConfig := conf.DomainConfig()
 
-	db, err := database.NewPostgres(conf.Backends.PostgresDsn)
-	if err != nil {
-		return nil, fmt.Errorf("failed to connect database: %w", err)
-	}
-
 	cl := client.New(globalConfig.FQDN)
 	if conf.Backends.GatewayAddr != "" {
 		cl.AddHostRemapping(globalConfig.FQDN, conf.Backends.GatewayAddr)
 	}
 
-	return &operationContext{
+	repository := conf.Backends.Repository
+	if repository == "" {
+		repository = "postgres"
+	}
+
+	op := &operationContext{
 		Config:       conf,
 		GlobalConfig: globalConfig,
-		DB:           db,
+		Repository:   repository,
 		Client:       cl,
-	}, nil
+	}
+
+	switch repository {
+	case "postgres":
+		db, err := database.NewPostgres(conf.Backends.PostgresDsn)
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect database: %w", err)
+		}
+		op.DB = db
+	case "datastore":
+		if conf.Backends.DatastoreProjectID == "" {
+			return nil, fmt.Errorf("backends.datastoreProjectID is required when backends.repository is datastore")
+		}
+		ds, err := dsrepo.NewClient(context.Background(), conf.Backends.DatastoreProjectID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect datastore: %w", err)
+		}
+		op.DatastoreClient = ds
+	default:
+		return nil, fmt.Errorf("unsupported repository backend: %s", repository)
+	}
+
+	return op, nil
 }
 
 func (o *operationContext) Close() error {
-	if o == nil || o.DB == nil {
+	if o == nil {
 		return nil
 	}
-	sqlDB, err := o.DB.DB()
-	if err != nil {
-		return err
+	if o.DatastoreClient != nil {
+		return o.DatastoreClient.Close()
 	}
-	return sqlDB.Close()
+	if o.DB != nil {
+		sqlDB, err := o.DB.DB()
+		if err != nil {
+			return err
+		}
+		return sqlDB.Close()
+	}
+	return nil
+}
+
+func (o *operationContext) NewEntityRepository() (usecase.EntityRepository, error) {
+	switch o.Repository {
+	case "postgres":
+		if o.DB == nil {
+			return nil, fmt.Errorf("postgres database is not initialized")
+		}
+		return postgres.NewEntityRepository(o.DB, o.Client, o.GlobalConfig), nil
+	case "datastore":
+		if o.DatastoreClient == nil {
+			return nil, fmt.Errorf("datastore client is not initialized")
+		}
+		return dsrepo.NewEntityRepository(o.DatastoreClient, o.Config.Backends.DatastoreNamespace, o.Client, o.GlobalConfig), nil
+	default:
+		return nil, fmt.Errorf("unsupported repository backend: %s", o.Repository)
+	}
 }
 
 func withOperationContext(run func(cmd *cobra.Command, args []string, op *operationContext) error) func(cmd *cobra.Command, args []string) error {

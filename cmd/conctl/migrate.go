@@ -5,7 +5,8 @@ import (
 )
 
 var migrateCmd = &cobra.Command{
-	Use: "migrate",
+	Use:   "migrate",
+	Short: "Run PostgreSQL migration helpers",
 }
 
 func init() {

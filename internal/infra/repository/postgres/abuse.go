@@ -1,10 +1,11 @@
-package repository
+package postgres
 
 import (
 	"context"
 	"gorm.io/gorm"
 
 	"github.com/concrnt/concrnt"
+	"github.com/concrnt/concrnt/internal/usecase"
 	"github.com/concrnt/concrnt/internal/infra/database/models"
 )
 
@@ -12,7 +13,7 @@ type AbuseRepository struct {
 	db *gorm.DB
 }
 
-func NewAbuseRepository(db *gorm.DB) *AbuseRepository {
+func NewAbuseRepository(db *gorm.DB) usecase.AbuseRepository {
 	return &AbuseRepository{db: db}
 }
 

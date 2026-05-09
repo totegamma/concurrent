@@ -1,4 +1,4 @@
-package repository
+package postgres
 
 import (
 	"context"
@@ -14,6 +14,7 @@ import (
 	"github.com/concrnt/concrnt/cdid"
 	"github.com/concrnt/concrnt/client"
 	"github.com/concrnt/concrnt/internal/domain"
+	"github.com/concrnt/concrnt/internal/usecase"
 	"github.com/concrnt/concrnt/internal/infra/database/models"
 	"github.com/concrnt/concrnt/schemas"
 )
@@ -24,7 +25,7 @@ type EntityRepository struct {
 	config domain.Config
 }
 
-func NewEntityRepository(db *gorm.DB, cl *client.Client, config domain.Config) *EntityRepository {
+func NewEntityRepository(db *gorm.DB, cl *client.Client, config domain.Config) usecase.EntityRepository {
 	return &EntityRepository{db: db, client: cl, config: config}
 }
 

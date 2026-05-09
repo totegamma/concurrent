@@ -15,7 +15,6 @@ import (
 	"github.com/concrnt/concrnt/client"
 	"github.com/concrnt/concrnt/impl/interop"
 	"github.com/concrnt/concrnt/internal/domain"
-	"github.com/concrnt/concrnt/internal/infra/repository"
 	"github.com/concrnt/concrnt/internal/usecase"
 	"github.com/concrnt/concrnt/jwt"
 	"github.com/concrnt/concrnt/schemas"
@@ -27,14 +26,14 @@ type AuthMiddleware struct {
 	config domain.Config
 	client *client.Client
 	server *usecase.ServerUsecase
-	entity *repository.EntityRepository
+	entity usecase.EntityRepository
 }
 
 func NewAuthMiddleware(
 	config domain.Config,
 	client *client.Client,
 	server *usecase.ServerUsecase,
-	entity *repository.EntityRepository,
+	entity usecase.EntityRepository,
 ) *AuthMiddleware {
 	return &AuthMiddleware{
 		config: config,

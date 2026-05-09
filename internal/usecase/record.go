@@ -13,6 +13,7 @@ import (
 
 	"github.com/patrickmn/go-cache"
 	"github.com/pkg/errors"
+	"github.com/zeebo/xxh3"
 
 	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/cdid"
@@ -24,30 +25,6 @@ import (
 	"github.com/concrnt/concrnt/policy"
 	"github.com/concrnt/concrnt/schemas"
 )
-
-// RecordRepository defines storage operations for records/commits.
-type RecordRepository interface {
-	CreateRecord(ctx context.Context, ip string, documentID string, sd concrnt.SignedDocument) (string, error)
-	CreateAssociation(ctx context.Context, ip string, documentID string, parsed concrnt.Document[any], sd concrnt.SignedDocument) error
-	Acknowledge(ctx context.Context, ip string, documentID string, sd concrnt.SignedDocument) (string, error)
-	UnAcknowledge(ctx context.Context, ip string, documentID string, sd concrnt.SignedDocument) error
-	Delete(ctx context.Context, sd concrnt.SignedDocument) (string, error)
-
-	GetSignedDocument(ctx context.Context, uri string) (*concrnt.SignedDocument, error)
-	GetHierarchicalRecordPolicies(ctx context.Context, uri string) ([]concrnt.Policy, error)
-	GetAllCommitLogs(ctx context.Context, owner string) ([]concrnt.SignedDocument, error)
-
-	GetDistributions(ctx context.Context, uri string) ([]string, error)
-
-	GetAcknowledgeRecords(ctx context.Context, from, to, context string) ([]concrnt.SignedDocument, error)
-	GetAcknowledgeRecordCounts(ctx context.Context, from, to, context string) (map[string]int64, error)
-	GetAssociatedRecords(ctx context.Context, targetURI, schema, variant, author string) ([]concrnt.SignedDocument, error)
-	GetAssociatedRecordCountsBySchema(ctx context.Context, targetURI string) (map[string]int64, error)
-	GetAssociatedRecordCountsByVariant(ctx context.Context, targetURI, schema string) (*utils.OrderedKVMap[int64], error)
-
-	QueryByPrefix(ctx context.Context, prefix, schema string, since, until *time.Time, limit int, order string) ([]concrnt.SignedDocument, error)
-	QueryByParent(ctx context.Context, parent, schema string, since, until *time.Time, limit int, order string) ([]concrnt.SignedDocument, error)
-}
 
 type RecordUsecase struct {
 	repo   RecordRepository
@@ -570,7 +547,86 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, ip string, requester 
 	copy(hash10[:], hash[:10])
 	documentID := cdid.New(hash10, parsed.CreatedAt).String()
 
-	resultURI, err := uc.repo.CreateRecord(ctx, ip, documentID, sd)
+	parsedKey, err := concrnt.ParseCCURI(parsed.Key)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+	if parsedKey.Scheme != "cckv" {
+		err := fmt.Errorf("invalid key: document key scheme must be cckv")
+		span.RecordError(err)
+		return nil, err
+	}
+
+	proof, err := json.Marshal(sd.Proof)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	var policies *string
+	if parsed.Policy != nil {
+		policyBytes, err := json.Marshal(parsed.Policy)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+		policyStr := string(policyBytes)
+		policies = &policyStr
+	}
+
+	distributions := []string{}
+	if parsed.Distributes != nil {
+		distributions = *parsed.Distributes
+	}
+
+	write := RecordWrite{
+		Commit: CommitWrite{
+			ID:       documentID,
+			IP:       ip,
+			Document: sd.Document,
+			Proof:    string(proof),
+			Owners:   []string{parsedKey.Owner},
+		},
+		DocumentID:    documentID,
+		Key:           parsed.Key,
+		Owner:         parsedKey.Owner,
+		Schema:        parsed.Schema,
+		Policies:      policies,
+		Distributions: distributions,
+		CreatedAt:     parsed.CreatedAt,
+	}
+
+	if parsed.Schema == schemas.ReferenceURL {
+		var refDoc concrnt.Document[schemas.Reference]
+		err := json.Unmarshal([]byte(sd.Document), &refDoc)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+		write.Redirect = &refDoc.Value.Href
+
+		refSD, ok := sd.References[refDoc.Value.Href]
+		if ok {
+			var targetDoc concrnt.Document[any]
+			err = json.Unmarshal([]byte(refSD.Document), &targetDoc)
+			if err != nil {
+				span.RecordError(err)
+				return nil, err
+			}
+			write.Schema = targetDoc.Schema
+			write.CreatedAt = targetDoc.CreatedAt
+		} else {
+			if refDoc.Value.Schema != nil {
+				write.Schema = refDoc.Schema
+			}
+			if refDoc.Value.CreatedAt != nil {
+				write.CreatedAt = *refDoc.Value.CreatedAt
+			}
+		}
+	}
+
+	resultURI, err := uc.repo.CreateRecord(ctx, write)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -703,6 +759,11 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, ip string, reque
 		span.RecordError(err)
 		return nil, err
 	}
+	if targetURI.Scheme != "cckv" {
+		err := fmt.Errorf("invalid associate: document associate scheme must be cckv")
+		span.RecordError(err)
+		return nil, err
+	}
 
 	ccfs := concrnt.ComposeCCURI("ccfs", targetURI.Owner, documentID)
 
@@ -721,7 +782,37 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, ip string, reque
 	}
 
 	if isLocal {
-		err := uc.repo.CreateAssociation(ctx, ip, documentID, parsed, sd)
+		proof, err := json.Marshal(sd.Proof)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+
+		uniqueKey := targetURI.Owner + parsed.Author + *parsed.Associate
+		if parsed.AssociationVariant != nil {
+			uniqueKey += *parsed.AssociationVariant
+		}
+		uniqueHash := xxh3.HashString(uniqueKey)
+
+		write := AssociationWrite{
+			Commit: CommitWrite{
+				ID:       documentID,
+				IP:       ip,
+				Document: sd.Document,
+				Proof:    string(proof),
+				Owners:   []string{targetURI.Owner},
+			},
+			DocumentID: documentID,
+			TargetURI:  *parsed.Associate,
+			Owner:      targetURI.Owner,
+			Author:     parsed.Author,
+			Schema:     parsed.Schema,
+			Variant:    parsed.AssociationVariant,
+			Unique:     fmt.Sprintf("%x", uniqueHash),
+			CreatedAt:  parsed.CreatedAt,
+		}
+
+		err = uc.repo.CreateAssociation(ctx, write)
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
@@ -897,7 +988,41 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, ip string, requester d
 	}
 
 	if uc.entity.IsLocal(ctx, requester) || uc.entity.IsLocal(ctx, *targetUser) {
-		_, err := uc.repo.Acknowledge(ctx, ip, documentID, sd)
+		parsedAssociate, err := concrnt.ParseCCURI(*doc.Associate)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+		if parsedAssociate.Scheme != "cckv" {
+			err := fmt.Errorf("invalid associate: document associate scheme must be cckv")
+			span.RecordError(err)
+			return nil, err
+		}
+
+		proof, err := json.Marshal(sd.Proof)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+
+		write := AckWrite{
+			Commit: CommitWrite{
+				ID:       documentID,
+				IP:       ip,
+				Document: sd.Document,
+				Proof:    string(proof),
+				Owners:   uc.ackCommitOwners(ctx, requester, *targetUser),
+			},
+			DocumentID: documentID,
+			From:       doc.Author,
+			To:         parsedAssociate.Owner,
+			Context:    doc.Value.Context,
+			Valid:      true,
+			CreatedAt:  doc.CreatedAt,
+			ResultURI:  concrnt.ComposeCCURI("ccfs", parsedAssociate.Owner, documentID),
+		}
+
+		_, err = uc.repo.Acknowledge(ctx, write)
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
@@ -952,7 +1077,41 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, ip string, requester
 	}
 
 	if uc.entity.IsLocal(ctx, requester) || uc.entity.IsLocal(ctx, *targetUser) {
-		err := uc.repo.UnAcknowledge(ctx, ip, documentID, sd)
+		parsedAssociate, err := concrnt.ParseCCURI(*doc.Associate)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+		if parsedAssociate.Scheme != "cckv" {
+			err := fmt.Errorf("invalid associate: document associate scheme must be cckv")
+			span.RecordError(err)
+			return nil, err
+		}
+
+		proof, err := json.Marshal(sd.Proof)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+
+		write := AckWrite{
+			Commit: CommitWrite{
+				ID:       documentID,
+				IP:       ip,
+				Document: sd.Document,
+				Proof:    string(proof),
+				Owners:   uc.ackCommitOwners(ctx, requester, *targetUser),
+			},
+			DocumentID: documentID,
+			From:       doc.Author,
+			To:         parsedAssociate.Owner,
+			Context:    doc.Value.Context,
+			Valid:      false,
+			CreatedAt:  doc.CreatedAt,
+			ResultURI:  concrnt.ComposeCCURI("ccfs", parsedAssociate.Owner, documentID),
+		}
+
+		err = uc.repo.UnAcknowledge(ctx, write)
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
@@ -981,6 +1140,17 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, ip string, requester
 	}
 
 	return &sd, nil
+}
+
+func (uc *RecordUsecase) ackCommitOwners(ctx context.Context, requester domain.Entity, targetUser domain.Entity) []string {
+	owners := []string{}
+	if uc.entity.IsLocal(ctx, requester) {
+		owners = append(owners, requester.ID)
+	}
+	if uc.entity.IsLocal(ctx, targetUser) && !slices.Contains(owners, targetUser.ID) {
+		owners = append(owners, targetUser.ID)
+	}
+	return owners
 }
 
 func (uc *RecordUsecase) GetSigned(ctx context.Context, uri string) (*concrnt.SignedDocument, error) {

@@ -292,7 +292,7 @@ func TestGlobalPolicyAllowsRemoteCreateWhenDescendantPolicyAllows(t *testing.T) 
 
 	// 外部ユーザーはグローバルポリシーでは確定拒否されず、
 	// 登録ユーザー配下の下位ポリシーがrecord:createを明示許可すれば投稿できる。
-	conclusion, err := policy.EvaluateStack(
+	conclusion, _, err := policy.EvaluateStack(
 		context.Background(),
 		policy.RequestContext{
 			Requester: remoteRequester,
@@ -340,7 +340,7 @@ func TestGlobalPolicyDeniesRemoteCreateWithoutDescendantPolicyAllow(t *testing.T
 
 	// 下位レイヤーが存在しても、record:createへの許可が明示されていなければ
 	// グローバルポリシーのデフォルトNGが残り、外部ユーザーの投稿は拒否される。
-	conclusion, err := policy.EvaluateStack(
+	conclusion, _, err := policy.EvaluateStack(
 		context.Background(),
 		policy.RequestContext{
 			Requester: remoteRequester,

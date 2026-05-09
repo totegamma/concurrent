@@ -1,4 +1,4 @@
-package repository
+package postgres
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/concrnt/concrnt/internal/domain"
+	"github.com/concrnt/concrnt/internal/usecase"
 	"github.com/concrnt/concrnt/internal/infra/database/models"
 )
 
@@ -15,7 +16,7 @@ type NotificationRepository struct {
 	db *gorm.DB
 }
 
-func NewNotificationRepository(db *gorm.DB) *NotificationRepository {
+func NewNotificationRepository(db *gorm.DB) usecase.NotificationRepository {
 	return &NotificationRepository{db: db}
 }
 

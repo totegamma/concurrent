@@ -6,6 +6,7 @@ import (
 	"os"
 
 	gcdatastore "cloud.google.com/go/datastore"
+	gcfirestore "cloud.google.com/go/firestore"
 	"github.com/spf13/cobra"
 	"gorm.io/gorm"
 
@@ -14,6 +15,7 @@ import (
 	"github.com/concrnt/concrnt/internal/infra/config"
 	"github.com/concrnt/concrnt/internal/infra/database"
 	dsrepo "github.com/concrnt/concrnt/internal/infra/repository/datastore"
+	fsrepo "github.com/concrnt/concrnt/internal/infra/repository/firestore"
 	"github.com/concrnt/concrnt/internal/infra/repository/postgres"
 	"github.com/concrnt/concrnt/internal/usecase"
 )
@@ -24,6 +26,7 @@ type operationContext struct {
 	Repository      string
 	DB              *gorm.DB
 	DatastoreClient *gcdatastore.Client
+	FirestoreClient *gcfirestore.Client
 	Client          *client.Client
 }
 
@@ -82,6 +85,15 @@ func newOperationContext() (*operationContext, error) {
 			return nil, fmt.Errorf("failed to connect datastore: %w", err)
 		}
 		op.DatastoreClient = ds
+	case "firestore":
+		if conf.Backends.FirestoreProjectID == "" {
+			return nil, fmt.Errorf("backends.firestoreProjectID is required when backends.repository is firestore")
+		}
+		fs, err := fsrepo.NewClient(context.Background(), conf.Backends.FirestoreProjectID, conf.Backends.FirestoreDatabaseID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect firestore: %w", err)
+		}
+		op.FirestoreClient = fs
 	default:
 		return nil, fmt.Errorf("unsupported repository backend: %s", repository)
 	}
@@ -95,6 +107,9 @@ func (o *operationContext) Close() error {
 	}
 	if o.DatastoreClient != nil {
 		return o.DatastoreClient.Close()
+	}
+	if o.FirestoreClient != nil {
+		return o.FirestoreClient.Close()
 	}
 	if o.DB != nil {
 		sqlDB, err := o.DB.DB()
@@ -118,6 +133,11 @@ func (o *operationContext) NewEntityRepository() (usecase.EntityRepository, erro
 			return nil, fmt.Errorf("datastore client is not initialized")
 		}
 		return dsrepo.NewEntityRepository(o.DatastoreClient, o.Config.Backends.DatastoreNamespace, o.Client, o.GlobalConfig), nil
+	case "firestore":
+		if o.FirestoreClient == nil {
+			return nil, fmt.Errorf("firestore client is not initialized")
+		}
+		return fsrepo.NewEntityRepository(o.FirestoreClient, o.Config.Backends.FirestoreNamespace, o.Client, o.GlobalConfig), nil
 	default:
 		return nil, fmt.Errorf("unsupported repository backend: %s", o.Repository)
 	}

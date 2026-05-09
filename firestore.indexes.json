@@ -1,0 +1,77 @@
+{
+  "indexes": [
+    {
+      "collectionGroup": "RecordKey",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "parentURI", "order": "ASCENDING" },
+        { "fieldPath": "recordSchema", "order": "ASCENDING" },
+        { "fieldPath": "recordCreatedAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "RecordKey",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "parentURI", "order": "ASCENDING" },
+        { "fieldPath": "recordSchema", "order": "ASCENDING" },
+        { "fieldPath": "recordCreatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "RecordKey",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "prefixes", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "recordSchema", "order": "ASCENDING" },
+        { "fieldPath": "recordCreatedAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "RecordKey",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "prefixes", "arrayConfig": "CONTAINS" },
+        { "fieldPath": "recordSchema", "order": "ASCENDING" },
+        { "fieldPath": "recordCreatedAt", "order": "DESCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "Association",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "targetURI", "order": "ASCENDING" },
+        { "fieldPath": "schema", "order": "ASCENDING" },
+        { "fieldPath": "variant", "order": "ASCENDING" },
+        { "fieldPath": "author", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "Ack",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "from", "order": "ASCENDING" },
+        { "fieldPath": "to", "order": "ASCENDING" },
+        { "fieldPath": "context", "order": "ASCENDING" },
+        { "fieldPath": "valid", "order": "ASCENDING" },
+        { "fieldPath": "createdAt", "order": "ASCENDING" }
+      ]
+    },
+    {
+      "collectionGroup": "CommitOwner",
+      "queryScope": "COLLECTION",
+      "fields": [
+        { "fieldPath": "owner", "order": "ASCENDING" },
+        { "fieldPath": "commitCreatedAt", "order": "ASCENDING" }
+      ]
+    }
+  ],
+  "fieldOverrides": [
+    { "collectionGroup": "CommitLog", "fieldPath": "document", "indexes": [] },
+    { "collectionGroup": "CommitLog", "fieldPath": "proof", "indexes": [] },
+    { "collectionGroup": "Record", "fieldPath": "policies", "indexes": [] },
+    { "collectionGroup": "Subscription", "fieldPath": "subscription", "indexes": [] },
+    { "collectionGroup": "AbuseReport", "fieldPath": "body", "indexes": [] }
+  ]
+}

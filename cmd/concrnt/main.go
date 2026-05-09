@@ -20,6 +20,7 @@ import (
 	"github.com/concrnt/concrnt/internal/infra/database"
 	"github.com/concrnt/concrnt/internal/infra/gateway"
 	dsrepo "github.com/concrnt/concrnt/internal/infra/repository/datastore"
+	fsrepo "github.com/concrnt/concrnt/internal/infra/repository/firestore"
 	"github.com/concrnt/concrnt/internal/infra/repository/postgres"
 	"github.com/concrnt/concrnt/internal/present/rest"
 	"github.com/concrnt/concrnt/internal/present/rest/middleware"
@@ -203,6 +204,24 @@ func main() {
 		chunklineRepo = dsrepo.NewChunklineRepository(datastoreClient, namespace)
 		notificationRepo = dsrepo.NewNotificationRepository(datastoreClient, namespace)
 		abuseRepo = dsrepo.NewAbuseRepository(datastoreClient, namespace)
+
+	case "firestore":
+		if conf.Backends.FirestoreProjectID == "" {
+			panic("backends.firestoreProjectID is required when backends.repository is firestore")
+		}
+		firestoreClient, err := fsrepo.NewClient(context.Background(), conf.Backends.FirestoreProjectID, conf.Backends.FirestoreDatabaseID)
+		if err != nil {
+			panic("failed to connect firestore: " + err.Error())
+		}
+		defer firestoreClient.Close()
+
+		namespace := conf.Backends.FirestoreNamespace
+		serverRepo = fsrepo.NewServerRepository(&domainConfig, firestoreClient, namespace, cl)
+		entityRepo = fsrepo.NewEntityRepository(firestoreClient, namespace, cl, domainConfig)
+		recordRepo = fsrepo.NewRecordRepository(firestoreClient, namespace)
+		chunklineRepo = fsrepo.NewChunklineRepository(firestoreClient, namespace)
+		notificationRepo = fsrepo.NewNotificationRepository(firestoreClient, namespace)
+		abuseRepo = fsrepo.NewAbuseRepository(firestoreClient, namespace)
 
 	default:
 		panic("unsupported repository backend: " + repositoryBackend)

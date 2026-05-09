@@ -32,14 +32,17 @@ type Concrnt struct {
 }
 
 type Backends struct {
-	Repository         string `yaml:"repository"`
-	PostgresDsn        string `yaml:"postgresDsn"`
-	DatastoreProjectID string `yaml:"datastoreProjectID"`
-	DatastoreNamespace string `yaml:"datastoreNamespace"`
-	GatewayAddr        string `yaml:"gatewayAddr"`
-	RedisAddr          string `yaml:"redisAddr"`
-	RedisDB            int    `yaml:"redisDB"`
-	MemcachedAddr      string `yaml:"memcachedAddr"`
+	Repository          string `yaml:"repository"`
+	PostgresDsn         string `yaml:"postgresDsn"`
+	DatastoreProjectID  string `yaml:"datastoreProjectID"`
+	DatastoreNamespace  string `yaml:"datastoreNamespace"`
+	FirestoreProjectID  string `yaml:"firestoreProjectID"`
+	FirestoreDatabaseID string `yaml:"firestoreDatabaseID"`
+	FirestoreNamespace  string `yaml:"firestoreNamespace"`
+	GatewayAddr         string `yaml:"gatewayAddr"`
+	RedisAddr           string `yaml:"redisAddr"`
+	RedisDB             int    `yaml:"redisDB"`
+	MemcachedAddr       string `yaml:"memcachedAddr"`
 }
 
 type Observability struct {

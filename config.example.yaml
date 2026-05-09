@@ -11,12 +11,18 @@ concrnt:
   debug: false
 
 backends:
-  # repository can be "postgres" or "datastore". Empty defaults to "postgres".
+  # repository can be "postgres", "datastore", or "firestore". Empty defaults to "postgres".
   repository: postgres
   postgresDsn: "host=db user=postgres password=postgres dbname=postgres port=5432 sslmode=disable"
-  # Required when repository is "datastore".
+  # Required when repository is "datastore" (Firestore in Datastore mode).
   datastoreProjectID: ""
   datastoreNamespace: ""
+  # Required when repository is "firestore" (Firestore Native mode).
+  firestoreProjectID: ""
+  # Optional. Empty uses the default Firestore database.
+  firestoreDatabaseID: ""
+  # Optional logical namespace; stored under Namespaces/{namespace}/... collections.
+  firestoreNamespace: ""
   gatewayAddr: http://concrnt:8000
   redisAddr: "redis:6379"
   memcachedAddr: "memcached:11211"

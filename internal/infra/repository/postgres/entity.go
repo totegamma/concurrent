@@ -14,8 +14,8 @@ import (
 	"github.com/concrnt/concrnt/cdid"
 	"github.com/concrnt/concrnt/client"
 	"github.com/concrnt/concrnt/internal/domain"
-	"github.com/concrnt/concrnt/internal/usecase"
 	"github.com/concrnt/concrnt/internal/infra/database/models"
+	"github.com/concrnt/concrnt/internal/usecase"
 	"github.com/concrnt/concrnt/schemas"
 )
 

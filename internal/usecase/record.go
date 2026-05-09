@@ -932,8 +932,9 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, ip string, reque
 
 			if host == uc.config.FQDN { // local
 				err = uc.signal.Publish(ctx, channel, concrnt.Event{
-					Type: "associated",
-					URI:  target,
+					Type:        "associated",
+					URI:         target,
+					Association: &ccfs,
 					References: map[string]concrnt.SignedDocument{
 						ccfs: sd,
 					},

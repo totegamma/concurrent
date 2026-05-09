@@ -945,4 +945,3 @@ func (r *RecordRepository) GetAllCommitLogs(ctx context.Context, owner string) (
 
 	return sds, nil
 }
-

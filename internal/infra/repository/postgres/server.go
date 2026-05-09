@@ -10,9 +10,9 @@ import (
 
 	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/client"
-	"github.com/concrnt/concrnt/internal/usecase"
 	"github.com/concrnt/concrnt/internal/domain"
 	"github.com/concrnt/concrnt/internal/infra/database/models"
+	"github.com/concrnt/concrnt/internal/usecase"
 )
 
 type ServerRepository struct {

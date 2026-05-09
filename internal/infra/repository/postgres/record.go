@@ -946,33 +946,3 @@ func (r *RecordRepository) GetAllCommitLogs(ctx context.Context, owner string) (
 	return sds, nil
 }
 
-/*
-func (r *RecordRepository) GetReferencesByParent(
-	ctx context.Context,
-	parentURI string,
-) ([]string, error) {
-	ctx, span := tracer.Start(ctx, "Repository.Record.GetReferencesByParent")
-	defer span.End()
-
-	var records []models.Record
-
-	err := r.db.WithContext(ctx).
-		Joins("JOIN record_keys rk ON rk.record_id = records.document_id").
-		Where("rk.parent_id = (SELECT id FROM record_keys WHERE uri = ?)", parentURI).
-		Where("records.schema = ?", schemas.ReferenceURL).
-		Find(&records).Error
-	if err != nil {
-		span.RecordError(err)
-		return nil, err
-	}
-
-	references := []string{}
-	for _, record := range records {
-		if record.Redirect != nil {
-			references = append(references, *record.Redirect)
-		}
-	}
-
-	return references, nil
-}
-*/

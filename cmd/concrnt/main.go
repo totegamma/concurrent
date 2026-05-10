@@ -174,13 +174,13 @@ func main() {
 	recordUC := usecase.NewRecordUsecase(recordRepo, &domainConfig, cl, entityUC, signal, policy)
 
 	chunklineRepo := postgres.NewChunklineRepository(db)
-	chunklineGateway := gateway.NewChunklineGateway(cl)
+	chunklineGateway := gateway.NewChunklineGateway(cl, mc, signal)
 	chunklineUC := usecase.NewChunklineUsecase(chunklineRepo, chunklineGateway)
 
 	notificationRepo := postgres.NewNotificationRepository(db)
 	notificationUC := usecase.NewNotificationUsecase(notificationRepo)
 
-	subscriber := worker.NewSubscriber(&domainConfig, cl, signal)
+	subscriber := worker.NewSubscriber(&domainConfig, cl, signal, mc)
 	subscriber.Start(context.Background())
 
 	abuseRepo := postgres.NewAbuseRepository(db)

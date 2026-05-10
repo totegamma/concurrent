@@ -7,12 +7,16 @@ import (
 	"log/slog"
 	"maps"
 	"slices"
+	"strings"
 	"time"
 
+	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/concrnt/concrnt"
+	"github.com/concrnt/concrnt/chunkline"
 	"github.com/concrnt/concrnt/client"
 	"github.com/concrnt/concrnt/internal/domain"
 	"github.com/concrnt/concrnt/internal/service"
+	"github.com/concrnt/concrnt/schemas"
 	"github.com/gorilla/websocket"
 )
 
@@ -32,18 +36,21 @@ type Subscriber struct {
 	Config        *domain.Config
 	Client        *client.Client
 	Signal        *service.SignalService
+	Memcache      *memcache.Client
 }
 
 func NewSubscriber(
 	config *domain.Config,
 	client *client.Client,
 	signal *service.SignalService,
+	mc *memcache.Client,
 ) *Subscriber {
 	return &Subscriber{
 		Subscriptions: make(map[string]*SubState),
 		Config:        config,
 		Client:        client,
 		Signal:        signal,
+		Memcache:      mc,
 	}
 }
 
@@ -243,7 +250,7 @@ func (s *Subscriber) subscribeRemote(ctx context.Context, domain string, prefixe
 						continue
 					}
 
-					// TODO: add cache update logic here
+					s.cacheChunklineEvent(ctx, state.Prefixes, event)
 				case <-pingTicker.C:
 					if err := c.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
 						slog.Error(
@@ -288,6 +295,77 @@ func (s *Subscriber) subscribeRemote(ctx context.Context, domain string, prefixe
 		slog.String("group", "realtime"),
 	)
 
+}
+
+func (s *Subscriber) cacheChunklineEvent(ctx context.Context, prefixes []string, event concrnt.Event) {
+	if s.Memcache == nil || event.Type != "created" || event.URI == "" {
+		return
+	}
+
+	source := event.Source
+	if source == "" {
+		source = event.URI
+	}
+
+	item := bodyItemFromEvent(event)
+	chunkID := item.Timestamp.Unix() / 600
+	itemBytes, err := json.Marshal(item)
+	if err != nil {
+		slog.ErrorContext(ctx, "failed to marshal chunkline cache item", slog.String("error", err.Error()))
+		return
+	}
+
+	for _, prefix := range prefixes {
+		timeline := strings.TrimSuffix(prefix, "*")
+		if timeline == "" || !strings.HasPrefix(source, timeline) {
+			continue
+		}
+
+		itrKey := chunkline.IteratorCacheKey(timeline, chunkID)
+		bodyKey := chunkline.BodyCacheKey(timeline, chunkID)
+		if err := s.Memcache.Replace(&memcache.Item{Key: itrKey, Value: []byte(fmt.Sprintf("%d", chunkID))}); err != nil && err != memcache.ErrCacheMiss {
+			slog.ErrorContext(ctx, "failed to update chunkline iterator cache", slog.String("error", err.Error()))
+		}
+		if err := s.Memcache.Prepend(&memcache.Item{Key: bodyKey, Value: append([]byte(","), itemBytes...)}); err != nil && err != memcache.ErrCacheMiss {
+			slog.ErrorContext(ctx, "failed to update chunkline body cache", slog.String("error", err.Error()))
+		}
+	}
+}
+
+func bodyItemFromEvent(event concrnt.Event) chunkline.BodyItem {
+	item := chunkline.BodyItem{
+		Timestamp:   time.Now().UTC(),
+		Href:        event.URI,
+		ContentType: "application/concrnt.document+json",
+	}
+
+	sd, ok := event.References[event.URI]
+	if !ok {
+		return item
+	}
+
+	var doc concrnt.Document[schemas.Reference]
+	if err := json.Unmarshal([]byte(sd.Document), &doc); err == nil {
+		if !doc.CreatedAt.IsZero() {
+			item.Timestamp = doc.CreatedAt
+		}
+		if doc.Value.Href != "" {
+			item.Href = doc.Value.Href
+			if targetSD, ok := event.References[doc.Value.Href]; ok {
+				var targetDoc concrnt.Document[any]
+				if err := json.Unmarshal([]byte(targetSD.Document), &targetDoc); err == nil && !targetDoc.CreatedAt.IsZero() {
+					item.Timestamp = targetDoc.CreatedAt
+				}
+			}
+		}
+		return item
+	}
+
+	var genericDoc concrnt.Document[any]
+	if err := json.Unmarshal([]byte(sd.Document), &genericDoc); err == nil && !genericDoc.CreatedAt.IsZero() {
+		item.Timestamp = genericDoc.CreatedAt
+	}
+	return item
 }
 
 func Time2Chunk(t time.Time) string {

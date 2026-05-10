@@ -24,16 +24,16 @@ func TestSubscriberCacheChunklineEventPrependsCachedChunk(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	const chunkSize = int64(300)
+	const testChunkSize = int64(300)
 	chunkID := int64(42)
-	createdAt := time.Unix(chunkID*chunkSize+10, 0).UTC()
+	createdAt := time.Unix(chunkID*testChunkSize+10, 0).UTC()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/timeline", r.URL.Path)
 		require.Equal(t, "application/chunkline+json", r.Header.Get("Accept"))
 		require.NoError(t, json.NewEncoder(w).Encode(chunkline.Manifest{
 			Version:   "1.0",
-			ChunkSize: chunkSize,
+			ChunkSize: testChunkSize,
 		}))
 	}))
 	defer server.Close()
@@ -43,7 +43,7 @@ func TestSubscriberCacheChunklineEventPrependsCachedChunk(t *testing.T) {
 	target := "cckv://remote.example/concrnt.world/posts/post"
 
 	existing := chunkline.BodyItem{
-		Timestamp:   time.Unix(chunkID*chunkSize+1, 0).UTC(),
+		Timestamp:   time.Unix(chunkID*testChunkSize+1, 0).UTC(),
 		Href:        "cckv://remote.example/concrnt.world/posts/old",
 		ContentType: "application/concrnt.document+json",
 	}

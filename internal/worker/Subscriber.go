@@ -368,7 +368,9 @@ func (s *Subscriber) loadChunklineManifest(ctx context.Context, timeline string)
 	}
 	if s.manifestCache != nil {
 		if cached, ok := s.manifestCache.Get(timeline); ok {
-			return cached.(chunkline.Manifest), nil
+			if manifest, ok := cached.(chunkline.Manifest); ok {
+				return manifest, nil
+			}
 		}
 	}
 
@@ -377,7 +379,7 @@ func (s *Subscriber) loadChunklineManifest(ctx context.Context, timeline string)
 		return chunkline.Manifest{}, err
 	}
 	if manifest.ChunkSize <= 0 {
-		return chunkline.Manifest{}, fmt.Errorf("timeline %s has invalid chunk size %d: must be greater than 0", timeline, manifest.ChunkSize)
+		return chunkline.Manifest{}, fmt.Errorf("chunkline manifest has invalid chunk size %d: must be greater than 0", manifest.ChunkSize)
 	}
 	if s.manifestCache != nil {
 		s.manifestCache.Set(timeline, manifest, cache.DefaultExpiration)

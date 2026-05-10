@@ -307,7 +307,10 @@ func (s *Subscriber) cacheChunklineEvent(ctx context.Context, prefixes []string,
 		source = event.URI
 	}
 
-	item := bodyItemFromEvent(event)
+	item, ok := bodyItemFromEvent(event)
+	if !ok {
+		return
+	}
 	chunkID := item.Timestamp.Unix() / 600
 	itemBytes, err := json.Marshal(item)
 	if err != nil {
@@ -326,22 +329,33 @@ func (s *Subscriber) cacheChunklineEvent(ctx context.Context, prefixes []string,
 		if err := s.Memcache.Replace(&memcache.Item{Key: itrKey, Value: []byte(fmt.Sprintf("%d", chunkID))}); err != nil && err != memcache.ErrCacheMiss {
 			slog.ErrorContext(ctx, "failed to update chunkline iterator cache", slog.String("error", err.Error()))
 		}
+		cachedBody, err := s.Memcache.Get(bodyKey)
+		if err != nil {
+			if err != memcache.ErrCacheMiss {
+				slog.ErrorContext(ctx, "failed to load chunkline body cache", slog.String("error", err.Error()))
+			}
+			continue
+		}
+		if len(cachedBody.Value) == 0 || cachedBody.Value[0] != ',' {
+			slog.WarnContext(ctx, "skip updating malformed chunkline body cache", slog.String("key", bodyKey))
+			continue
+		}
+
 		if err := s.Memcache.Prepend(&memcache.Item{Key: bodyKey, Value: append([]byte(","), itemBytes...)}); err != nil && err != memcache.ErrCacheMiss {
 			slog.ErrorContext(ctx, "failed to update chunkline body cache", slog.String("error", err.Error()))
 		}
 	}
 }
 
-func bodyItemFromEvent(event concrnt.Event) chunkline.BodyItem {
+func bodyItemFromEvent(event concrnt.Event) (chunkline.BodyItem, bool) {
 	item := chunkline.BodyItem{
-		Timestamp:   time.Now().UTC(),
 		Href:        event.URI,
 		ContentType: "application/concrnt.document+json",
 	}
 
 	sd, ok := event.References[event.URI]
 	if !ok {
-		return item
+		return item, false
 	}
 
 	var doc concrnt.Document[schemas.Reference]
@@ -358,14 +372,14 @@ func bodyItemFromEvent(event concrnt.Event) chunkline.BodyItem {
 				}
 			}
 		}
-		return item
+		return item, !item.Timestamp.IsZero()
 	}
 
 	var genericDoc concrnt.Document[any]
 	if err := json.Unmarshal([]byte(sd.Document), &genericDoc); err == nil && !genericDoc.CreatedAt.IsZero() {
 		item.Timestamp = genericDoc.CreatedAt
 	}
-	return item
+	return item, !item.Timestamp.IsZero()
 }
 
 func Time2Chunk(t time.Time) string {

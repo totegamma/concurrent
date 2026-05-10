@@ -382,7 +382,7 @@ func (r *resolver) isTimelineSubscribed(timeline string) bool {
 	}
 	for _, subscription := range r.subscriptions.GetCurrentSubscriptions() {
 		subscription = strings.TrimSuffix(subscription, "*")
-		if subscription == timeline {
+		if subscription == timeline || strings.HasPrefix(timeline, subscription) {
 			return true
 		}
 	}

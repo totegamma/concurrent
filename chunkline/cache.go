@@ -20,6 +20,9 @@ func BodyCacheKey(uri string, chunkID int64) string {
 }
 
 func EncodeBodyCache(items []BodyItem) ([]byte, error) {
+	if len(items) == 0 {
+		return []byte(","), nil
+	}
 	body, err := json.Marshal(items)
 	if err != nil {
 		return nil, err

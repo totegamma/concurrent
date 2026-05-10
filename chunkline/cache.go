@@ -6,7 +6,7 @@ import (
 )
 
 const (
-	CacheTTL           int32 = 60 * 60 * 24 * 2
+	CacheTTL           int32 = 2 * 24 * 60 * 60
 	itrCacheKeyPrefix        = "chunkline:itr:"
 	bodyCacheKeyPrefix       = "chunkline:body:"
 )

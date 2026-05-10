@@ -368,7 +368,7 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 
 func (r *resolver) shouldCacheChunk(timeline string, chunkID int64, manifest chunkline.Manifest) bool {
 	if manifest.ChunkSize <= 0 {
-		return true
+		return false
 	}
 	if chunkID != manifest.Time2Chunk(time.Now().UTC()) {
 		return true

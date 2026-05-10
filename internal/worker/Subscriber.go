@@ -341,7 +341,10 @@ func (s *Subscriber) cacheChunklineEvent(ctx context.Context, prefixes []string,
 			continue
 		}
 
-		if err := s.Memcache.Prepend(&memcache.Item{Key: bodyKey, Value: append([]byte(","), itemBytes...)}); err != nil && err != memcache.ErrCacheMiss {
+		value := make([]byte, 0, len(itemBytes)+1)
+		value = append(value, ',')
+		value = append(value, itemBytes...)
+		if err := s.Memcache.Prepend(&memcache.Item{Key: bodyKey, Value: value}); err != nil && err != memcache.ErrCacheMiss {
 			slog.ErrorContext(ctx, "failed to update chunkline body cache", slog.String("error", err.Error()))
 		}
 	}

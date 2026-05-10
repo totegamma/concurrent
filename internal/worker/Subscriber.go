@@ -26,6 +26,11 @@ var (
 	disconnectTimeout = 30 * time.Second
 )
 
+const (
+	manifestCacheExpiration = 10 * time.Minute
+	manifestCacheCleanup    = 15 * time.Minute
+)
+
 type SubState struct {
 	Prefixes   []string
 	Connection *websocket.Conn
@@ -53,7 +58,7 @@ func NewSubscriber(
 		Client:        client,
 		Signal:        signal,
 		Memcache:      mc,
-		manifestCache: cache.New(10*time.Minute, 15*time.Minute),
+		manifestCache: cache.New(manifestCacheExpiration, manifestCacheCleanup),
 	}
 }
 
@@ -372,7 +377,7 @@ func (s *Subscriber) loadChunklineManifest(ctx context.Context, timeline string)
 		return chunkline.Manifest{}, err
 	}
 	if manifest.ChunkSize <= 0 {
-		return chunkline.Manifest{}, fmt.Errorf("invalid chunk size %d", manifest.ChunkSize)
+		return chunkline.Manifest{}, fmt.Errorf("timeline %s has invalid chunk size %d: must be greater than 0", timeline, manifest.ChunkSize)
 	}
 	if s.manifestCache != nil {
 		s.manifestCache.Set(timeline, manifest, cache.DefaultExpiration)

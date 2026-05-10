@@ -71,7 +71,7 @@ func TestSubscriberCacheChunklineEventPrependsCachedChunk(t *testing.T) {
 	subscriber := &Subscriber{
 		Client:        client.New(""),
 		Memcache:      mc,
-		manifestCache: cache.New(10*time.Minute, 15*time.Minute),
+		manifestCache: cache.New(manifestCacheExpiration, manifestCacheCleanup),
 	}
 	subscriber.cacheChunklineEvent(ctx, []string{timeline}, concrnt.Event{
 		Type:   "created",

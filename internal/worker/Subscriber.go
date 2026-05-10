@@ -312,11 +312,6 @@ func (s *Subscriber) cacheChunklineEvent(ctx context.Context, prefixes []string,
 		return
 	}
 	chunkID := item.Timestamp.Unix() / 600
-	itemBytes, err := json.Marshal(item)
-	if err != nil {
-		slog.ErrorContext(ctx, "failed to marshal chunkline cache item", slog.String("error", err.Error()))
-		return
-	}
 
 	for _, prefix := range prefixes {
 		timeline := strings.TrimSuffix(prefix, "*")
@@ -326,6 +321,7 @@ func (s *Subscriber) cacheChunklineEvent(ctx context.Context, prefixes []string,
 
 		itrKey := chunkline.IteratorCacheKey(timeline, chunkID)
 		bodyKey := chunkline.BodyCacheKey(timeline, chunkID)
+		// Update only cache entries created by previous chunkline requests.
 		if err := s.Memcache.Replace(&memcache.Item{Key: itrKey, Value: []byte(fmt.Sprintf("%d", chunkID))}); err != nil && err != memcache.ErrCacheMiss {
 			slog.ErrorContext(ctx, "failed to update chunkline iterator cache", slog.String("error", err.Error()))
 		}
@@ -341,9 +337,11 @@ func (s *Subscriber) cacheChunklineEvent(ctx context.Context, prefixes []string,
 			continue
 		}
 
-		value := make([]byte, 0, len(itemBytes)+1)
-		value = append(value, ',')
-		value = append(value, itemBytes...)
+		value, err := chunkline.EncodeBodyCache([]chunkline.BodyItem{item})
+		if err != nil {
+			slog.ErrorContext(ctx, "failed to encode chunkline body cache update", slog.String("error", err.Error()))
+			continue
+		}
 		if err := s.Memcache.Prepend(&memcache.Item{Key: bodyKey, Value: value}); err != nil && err != memcache.ErrCacheMiss {
 			slog.ErrorContext(ctx, "failed to update chunkline body cache", slog.String("error", err.Error()))
 		}

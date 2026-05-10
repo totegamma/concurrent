@@ -27,6 +27,9 @@ func EncodeBodyCache(items []BodyItem) ([]byte, error) {
 	if err != nil {
 		return nil, err
 	}
+	if len(body) < 2 {
+		return nil, fmt.Errorf("invalid chunkline body JSON")
+	}
 	return []byte("," + string(body[1:len(body)-1])), nil
 }
 
@@ -34,12 +37,13 @@ func DecodeBodyCache(body []byte) ([]BodyItem, error) {
 	if len(body) == 0 {
 		return []BodyItem{}, nil
 	}
-	cacheStr := string(body)
-	if cacheStr == "," {
+	if body[0] != ',' {
+		return nil, fmt.Errorf("invalid chunkline body cache")
+	}
+	if len(body) == 1 {
 		return []BodyItem{}, nil
 	}
-	cacheStr = cacheStr[1:]
-	cacheStr = "[" + cacheStr + "]"
+	cacheStr := "[" + string(body[1:]) + "]"
 
 	var items []BodyItem
 	err := json.Unmarshal([]byte(cacheStr), &items)

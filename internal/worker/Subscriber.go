@@ -311,7 +311,6 @@ func (s *Subscriber) cacheChunklineEvent(ctx context.Context, prefixes []string,
 	if !ok {
 		return
 	}
-	chunkID := item.Timestamp.Unix() / 600
 
 	for _, prefix := range prefixes {
 		timeline := strings.TrimSuffix(prefix, "*")
@@ -319,6 +318,17 @@ func (s *Subscriber) cacheChunklineEvent(ctx context.Context, prefixes []string,
 			continue
 		}
 
+		manifest, err := s.loadChunklineManifest(ctx, timeline)
+		if err != nil {
+			slog.ErrorContext(ctx, "failed to load chunkline manifest for cache update", slog.String("timeline", timeline), slog.String("error", err.Error()))
+			continue
+		}
+		if manifest.ChunkSize <= 0 {
+			slog.WarnContext(ctx, "skip chunkline cache update with invalid chunk size", slog.String("timeline", timeline))
+			continue
+		}
+
+		chunkID := manifest.Time2Chunk(item.Timestamp)
 		itrKey := chunkline.IteratorCacheKey(timeline, chunkID)
 		bodyKey := chunkline.BodyCacheKey(timeline, chunkID)
 		// Update only cache entries created by previous chunkline requests.
@@ -346,6 +356,16 @@ func (s *Subscriber) cacheChunklineEvent(ctx context.Context, prefixes []string,
 			slog.ErrorContext(ctx, "failed to update chunkline body cache", slog.String("error", err.Error()))
 		}
 	}
+}
+
+func (s *Subscriber) loadChunklineManifest(ctx context.Context, timeline string) (chunkline.Manifest, error) {
+	if s.Client == nil {
+		return chunkline.Manifest{}, fmt.Errorf("client is not configured")
+	}
+
+	var manifest chunkline.Manifest
+	err := s.Client.GetResource(ctx, timeline, "application/chunkline+json", nil, &manifest)
+	return manifest, err
 }
 
 func bodyItemFromEvent(event concrnt.Event) (chunkline.BodyItem, bool) {
@@ -383,13 +403,7 @@ func bodyItemFromEvent(event concrnt.Event) (chunkline.BodyItem, bool) {
 	return item, !item.Timestamp.IsZero()
 }
 
-func Time2Chunk(t time.Time) string {
-	const chunkLength = 600
-	return fmt.Sprintf("%d", (t.Unix()/chunkLength)*chunkLength)
-}
-
 func (s *Subscriber) epochRoutine() {
-	currentChunk := Time2Chunk(time.Now())
 	for {
 		// 次の実行時刻を計算
 		nextRun := time.Now().Truncate(time.Hour).Add(time.Minute * 10)
@@ -402,26 +416,18 @@ func (s *Subscriber) epochRoutine() {
 		// 次の実行時刻まで待機
 		time.Sleep(time.Until(nextRun))
 
-		// まだだったら待ちなおす
-		newChunk := Time2Chunk(time.Now())
-		if newChunk == currentChunk {
-			continue
-		}
-
 		// ctx, span := tracer.Start(ctx, "Agent.chunkUpdaterRoutine")
 		// defer span.End()
 
 		// span.SetAttributes(attribute.String("currentChunk", currentChunk))
 
 		slog.Info(
-			fmt.Sprintf("update chunks: %s -> %s", currentChunk, newChunk),
+			"update chunkline subscriptions",
 			slog.String("module", "agent"),
 			slog.String("group", "realtime"),
 		)
 
 		s.deleteExcessSubscriptions()
-
-		currentChunk = newChunk
 	}
 }
 

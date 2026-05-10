@@ -3,6 +3,8 @@ package worker
 import (
 	"context"
 	"encoding/json"
+	"net/http"
+	"net/http/httptest"
 	"testing"
 	"time"
 
@@ -11,6 +13,7 @@ import (
 
 	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/chunkline"
+	"github.com/concrnt/concrnt/client"
 	"github.com/concrnt/concrnt/internal/testutil"
 	"github.com/concrnt/concrnt/schemas"
 )
@@ -20,14 +23,26 @@ func TestSubscriberCacheChunklineEventPrependsCachedChunk(t *testing.T) {
 	defer cleanup()
 
 	ctx := context.Background()
-	timeline := "cckv://remote.example/concrnt.world/profiles/main/home-timeline"
+	const chunkSize = int64(300)
+	createdAt := time.Unix(42*600+10, 0).UTC()
+	chunkID := createdAt.Unix() / chunkSize
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.Equal(t, "/timeline", r.URL.Path)
+		require.Equal(t, "application/chunkline+json", r.Header.Get("Accept"))
+		require.NoError(t, json.NewEncoder(w).Encode(chunkline.Manifest{
+			Version:   "1.0",
+			ChunkSize: chunkSize,
+		}))
+	}))
+	defer server.Close()
+
+	timeline := server.URL + "/timeline"
 	source := timeline + "/reference"
 	target := "cckv://remote.example/concrnt.world/posts/post"
-	chunkID := int64(42)
-	createdAt := time.Unix(chunkID*600+10, 0).UTC()
 
 	existing := chunkline.BodyItem{
-		Timestamp:   time.Unix(chunkID*600+1, 0).UTC(),
+		Timestamp:   time.Unix(chunkID*chunkSize+1, 0).UTC(),
 		Href:        "cckv://remote.example/concrnt.world/posts/old",
 		ContentType: "application/concrnt.document+json",
 	}
@@ -52,7 +67,10 @@ func TestSubscriberCacheChunklineEventPrependsCachedChunk(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	subscriber := &Subscriber{Memcache: mc}
+	subscriber := &Subscriber{
+		Client:   client.New(""),
+		Memcache: mc,
+	}
 	subscriber.cacheChunklineEvent(ctx, []string{timeline}, concrnt.Event{
 		Type:   "created",
 		Source: source,
@@ -65,7 +83,7 @@ func TestSubscriberCacheChunklineEventPrependsCachedChunk(t *testing.T) {
 
 	cachedItr, err := mc.Get(chunkline.IteratorCacheKey(timeline, chunkID))
 	require.NoError(t, err)
-	require.Equal(t, "42", string(cachedItr.Value))
+	require.Equal(t, "84", string(cachedItr.Value))
 
 	cachedBody, err := mc.Get(chunkline.BodyCacheKey(timeline, chunkID))
 	require.NoError(t, err)

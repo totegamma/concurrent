@@ -18,6 +18,7 @@ import (
 	"github.com/concrnt/concrnt/internal/service"
 	"github.com/concrnt/concrnt/schemas"
 	"github.com/gorilla/websocket"
+	"github.com/patrickmn/go-cache"
 )
 
 var (
@@ -37,6 +38,7 @@ type Subscriber struct {
 	Client        *client.Client
 	Signal        *service.SignalService
 	Memcache      *memcache.Client
+	manifestCache *cache.Cache
 }
 
 func NewSubscriber(
@@ -51,6 +53,7 @@ func NewSubscriber(
 		Client:        client,
 		Signal:        signal,
 		Memcache:      mc,
+		manifestCache: cache.New(10*time.Minute, 15*time.Minute),
 	}
 }
 
@@ -323,10 +326,6 @@ func (s *Subscriber) cacheChunklineEvent(ctx context.Context, prefixes []string,
 			slog.ErrorContext(ctx, "failed to load chunkline manifest for cache update", slog.String("timeline", timeline), slog.String("error", err.Error()))
 			continue
 		}
-		if manifest.ChunkSize <= 0 {
-			slog.WarnContext(ctx, "skip chunkline cache update with invalid chunk size", slog.String("timeline", timeline))
-			continue
-		}
 
 		chunkID := manifest.Time2Chunk(item.Timestamp)
 		itrKey := chunkline.IteratorCacheKey(timeline, chunkID)
@@ -362,10 +361,23 @@ func (s *Subscriber) loadChunklineManifest(ctx context.Context, timeline string)
 	if s.Client == nil {
 		return chunkline.Manifest{}, fmt.Errorf("client is not configured")
 	}
+	if s.manifestCache != nil {
+		if cached, ok := s.manifestCache.Get(timeline); ok {
+			return cached.(chunkline.Manifest), nil
+		}
+	}
 
 	var manifest chunkline.Manifest
-	err := s.Client.GetResource(ctx, timeline, "application/chunkline+json", nil, &manifest)
-	return manifest, err
+	if err := s.Client.GetResource(ctx, timeline, "application/chunkline+json", nil, &manifest); err != nil {
+		return chunkline.Manifest{}, err
+	}
+	if manifest.ChunkSize <= 0 {
+		return chunkline.Manifest{}, fmt.Errorf("invalid chunk size %d", manifest.ChunkSize)
+	}
+	if s.manifestCache != nil {
+		s.manifestCache.Set(timeline, manifest, cache.DefaultExpiration)
+	}
+	return manifest, nil
 }
 
 func bodyItemFromEvent(event concrnt.Event) (chunkline.BodyItem, bool) {

@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
+	"github.com/patrickmn/go-cache"
 	"github.com/stretchr/testify/require"
 
 	"github.com/concrnt/concrnt"
@@ -24,8 +25,8 @@ func TestSubscriberCacheChunklineEventPrependsCachedChunk(t *testing.T) {
 
 	ctx := context.Background()
 	const chunkSize = int64(300)
-	createdAt := time.Unix(42*600+10, 0).UTC()
-	chunkID := createdAt.Unix() / chunkSize
+	chunkID := int64(42)
+	createdAt := time.Unix(chunkID*chunkSize+10, 0).UTC()
 
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		require.Equal(t, "/timeline", r.URL.Path)
@@ -68,8 +69,9 @@ func TestSubscriberCacheChunklineEventPrependsCachedChunk(t *testing.T) {
 	require.NoError(t, err)
 
 	subscriber := &Subscriber{
-		Client:   client.New(""),
-		Memcache: mc,
+		Client:        client.New(""),
+		Memcache:      mc,
+		manifestCache: cache.New(10*time.Minute, 15*time.Minute),
 	}
 	subscriber.cacheChunklineEvent(ctx, []string{timeline}, concrnt.Event{
 		Type:   "created",
@@ -83,7 +85,7 @@ func TestSubscriberCacheChunklineEventPrependsCachedChunk(t *testing.T) {
 
 	cachedItr, err := mc.Get(chunkline.IteratorCacheKey(timeline, chunkID))
 	require.NoError(t, err)
-	require.Equal(t, "84", string(cachedItr.Value))
+	require.Equal(t, "42", string(cachedItr.Value))
 
 	cachedBody, err := mc.Get(chunkline.BodyCacheKey(timeline, chunkID))
 	require.NoError(t, err)

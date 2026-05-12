@@ -22,6 +22,7 @@ import (
 type ChunklineGateway struct {
 	client   *client.Client
 	cache    *cache.Cache
+	rcb      *resolver
 	resolver *chunkline.Client
 }
 
@@ -39,12 +40,27 @@ func NewChunklineGateway(cl *client.Client, mc *memcache.Client, subs subscripti
 	return &ChunklineGateway{
 		client:   cl,
 		cache:    r.cache,
+		rcb:      r,
 		resolver: chunkline.NewClient(r),
 	}
 }
 
 func (g *ChunklineGateway) QueryDescending(ctx context.Context, uris []string, until time.Time, limit int) ([]chunkline.BodyItemWithSource, error) {
 	return g.resolver.QueryDescending(ctx, uris, until, limit)
+}
+
+// PrefetchChunks warms the memcached chunkline cache for the given timelines by
+// fetching the iterator and body for the current chunk from the remote source.
+// It is intended to be called when a new realtime subscription is established.
+func (g *ChunklineGateway) PrefetchChunks(ctx context.Context, timelines []string) {
+	if len(timelines) == 0 || g.rcb == nil {
+		return
+	}
+	itrs, err := g.rcb.LookupChunkItrs(ctx, timelines, time.Now().UTC())
+	if err != nil || len(itrs) == 0 {
+		return
+	}
+	_, _ = g.rcb.LoadChunkBodies(ctx, itrs)
 }
 
 // resolver implements chunkline resolver callbacks.

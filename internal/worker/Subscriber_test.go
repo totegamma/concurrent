@@ -96,3 +96,62 @@ func TestSubscriberCacheChunklineEventPrependsCachedChunk(t *testing.T) {
 	require.Equal(t, createdAt, items[0].Timestamp)
 	require.Equal(t, existing, items[1])
 }
+
+func TestSubscriberCacheChunklineEventCreatesEntryOnCacheMiss(t *testing.T) {
+	mc, cleanup := testutil.CreateMC()
+	defer cleanup()
+
+	ctx := context.Background()
+	const testChunkSize = int64(300)
+	chunkID := int64(42)
+	createdAt := time.Unix(chunkID*testChunkSize+10, 0).UTC()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		require.NoError(t, json.NewEncoder(w).Encode(chunkline.Manifest{
+			Version:   "1.0",
+			ChunkSize: testChunkSize,
+		}))
+	}))
+	defer server.Close()
+
+	timeline := server.URL + "/timeline"
+	source := timeline + "/reference"
+	target := "cckv://remote.example/concrnt.world/posts/post"
+
+	refDoc, err := json.Marshal(concrnt.Document[schemas.Reference]{
+		Key:       source,
+		Value:     schemas.Reference{Href: target},
+		Schema:    schemas.ReferenceURL,
+		CreatedAt: time.Now().UTC(),
+	})
+	require.NoError(t, err)
+	targetDoc, err := json.Marshal(concrnt.Document[any]{
+		Key:       target,
+		Value:     map[string]any{},
+		CreatedAt: createdAt,
+	})
+	require.NoError(t, err)
+
+	subscriber := &Subscriber{
+		Client:        client.New(""),
+		Memcache:      mc,
+		manifestCache: cache.New(manifestCacheExpiration, manifestCacheCleanup),
+	}
+	subscriber.cacheChunklineEvent(ctx, []string{timeline}, concrnt.Event{
+		Type:   "created",
+		Source: source,
+		URI:    source,
+		References: map[string]concrnt.SignedDocument{
+			source: {Document: string(refDoc)},
+			target: {Document: string(targetDoc)},
+		},
+	})
+
+	cachedBody, err := mc.Get(chunkline.BodyCacheKey(timeline, chunkID))
+	require.NoError(t, err)
+	items, err := chunkline.DecodeBodyCache(cachedBody.Value)
+	require.NoError(t, err)
+	require.Len(t, items, 1)
+	require.Equal(t, target, items[0].Href)
+	require.Equal(t, createdAt, items[0].Timestamp)
+}

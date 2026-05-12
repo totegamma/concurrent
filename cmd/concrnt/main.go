@@ -180,7 +180,7 @@ func main() {
 	notificationRepo := postgres.NewNotificationRepository(db)
 	notificationUC := usecase.NewNotificationUsecase(notificationRepo)
 
-	subscriber := worker.NewSubscriber(&domainConfig, cl, signal, mc)
+	subscriber := worker.NewSubscriber(&domainConfig, cl, signal, mc, chunklineGateway)
 	subscriber.Start(context.Background())
 
 	abuseRepo := postgres.NewAbuseRepository(db)

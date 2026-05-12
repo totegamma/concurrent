@@ -37,12 +37,20 @@ type SubState struct {
 	CancelFunc context.CancelFunc
 }
 
+// ChunklinePrefetcher warms the memcached chunkline cache for newly
+// subscribed timelines so that subsequent realtime updates can prepend
+// onto an existing entry.
+type ChunklinePrefetcher interface {
+	PrefetchChunks(ctx context.Context, timelines []string)
+}
+
 type Subscriber struct {
 	Subscriptions map[string]*SubState
 	Config        *domain.Config
 	Client        *client.Client
 	Signal        *service.SignalService
 	Memcache      *memcache.Client
+	Prefetcher    ChunklinePrefetcher
 	manifestCache *cache.Cache
 }
 
@@ -51,6 +59,7 @@ func NewSubscriber(
 	client *client.Client,
 	signal *service.SignalService,
 	mc *memcache.Client,
+	prefetcher ChunklinePrefetcher,
 ) *Subscriber {
 	return &Subscriber{
 		Subscriptions: make(map[string]*SubState),
@@ -58,6 +67,7 @@ func NewSubscriber(
 		Client:        client,
 		Signal:        signal,
 		Memcache:      mc,
+		Prefetcher:    prefetcher,
 		manifestCache: cache.New(manifestCacheExpiration, manifestCacheCleanup),
 	}
 }
@@ -303,6 +313,19 @@ func (s *Subscriber) subscribeRemote(ctx context.Context, domain string, prefixe
 		slog.String("group", "realtime"),
 	)
 
+	if s.Prefetcher != nil && len(prefixes) > 0 {
+		timelines := make([]string, 0, len(prefixes))
+		for _, prefix := range prefixes {
+			tl := strings.TrimSuffix(prefix, "*")
+			if tl != "" {
+				timelines = append(timelines, tl)
+			}
+		}
+		if len(timelines) > 0 {
+			s.Prefetcher.PrefetchChunks(ctx, timelines)
+		}
+	}
+
 }
 
 func (s *Subscriber) cacheChunklineEvent(ctx context.Context, prefixes []string, event concrnt.Event) {
@@ -339,25 +362,24 @@ func (s *Subscriber) cacheChunklineEvent(ctx context.Context, prefixes []string,
 		if err := s.Memcache.Replace(&memcache.Item{Key: itrKey, Value: []byte(fmt.Sprintf("%d", chunkID))}); err != nil && err != memcache.ErrCacheMiss {
 			slog.ErrorContext(ctx, "failed to update chunkline iterator cache", slog.String("error", err.Error()))
 		}
-		cachedBody, err := s.Memcache.Get(bodyKey)
-		if err != nil {
-			if err != memcache.ErrCacheMiss {
-				slog.ErrorContext(ctx, "failed to load chunkline body cache", slog.String("error", err.Error()))
-			}
-			continue
-		}
-		if len(cachedBody.Value) == 0 || cachedBody.Value[0] != ',' {
-			slog.WarnContext(ctx, "skip updating malformed chunkline body cache", slog.String("key", bodyKey))
-			continue
-		}
 
 		value, err := chunkline.EncodeBodyCache([]chunkline.BodyItem{item})
 		if err != nil {
 			slog.ErrorContext(ctx, "failed to encode chunkline body cache update", slog.String("error", err.Error()))
 			continue
 		}
-		if err := s.Memcache.Prepend(&memcache.Item{Key: bodyKey, Value: value}); err != nil && err != memcache.ErrCacheMiss {
-			slog.ErrorContext(ctx, "failed to update chunkline body cache", slog.String("error", err.Error()))
+		prependErr := s.Memcache.Prepend(&memcache.Item{Key: bodyKey, Value: value})
+		if prependErr == nil {
+			continue
+		}
+		if prependErr != memcache.ErrCacheMiss && prependErr != memcache.ErrNotStored {
+			slog.ErrorContext(ctx, "failed to prepend chunkline body cache", slog.String("error", prependErr.Error()))
+			continue
+		}
+		// Cache miss: create a fresh entry holding just this item so that
+		// future events can prepend onto it while the timeline stays subscribed.
+		if err := s.Memcache.Add(&memcache.Item{Key: bodyKey, Value: value, Expiration: chunkline.CacheTTL}); err != nil && err != memcache.ErrNotStored {
+			slog.ErrorContext(ctx, "failed to create chunkline body cache", slog.String("error", err.Error()))
 		}
 	}
 }
@@ -422,36 +444,22 @@ func bodyItemFromEvent(event concrnt.Event) (chunkline.BodyItem, bool) {
 	return item, !item.Timestamp.IsZero()
 }
 
+// chunkBoundaryThreshold is the fraction of a chunk_size that, once elapsed,
+// causes us to defer dropping a subscription so we are still listening when
+// the chunk rolls over.
+const chunkBoundaryThreshold = 0.9
+
 func (s *Subscriber) epochRoutine() {
-	for {
-		// 次の実行時刻を計算
-		nextRun := time.Now().Truncate(time.Hour).Add(time.Minute * 10)
-		if time.Now().After(nextRun) {
-			// 現在時刻がnextRunを過ぎている場合、次の10分単位の時刻を計算
-			elapsed := time.Since(nextRun)
-			nextRun = nextRun.Add(time.Minute * 10 * ((elapsed / (time.Minute * 10)) + 1))
-		}
-
-		// 次の実行時刻まで待機
-		time.Sleep(time.Until(nextRun))
-
-		// ctx, span := tracer.Start(ctx, "Agent.chunkUpdaterRoutine")
-		// defer span.End()
-
-		// span.SetAttributes(attribute.String("currentChunk", currentChunk))
-
-		slog.Info(
-			"update chunkline subscriptions",
-			slog.String("module", "agent"),
-			slog.String("group", "realtime"),
-		)
-
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for range ticker.C {
 		s.deleteExcessSubscriptions()
 	}
 }
 
 func (s *Subscriber) deleteExcessSubscriptions() {
 	currentSubs := s.Signal.GetCurrentSubscriptions()
+	ctx := context.Background()
 
 	closeDomains := make(map[string]bool)
 	updatedDomains := make(map[string]bool)
@@ -460,6 +468,10 @@ func (s *Subscriber) deleteExcessSubscriptions() {
 		var newPrefixes []string
 		for _, prefix := range state.Prefixes {
 			if slices.Contains(currentSubs, prefix) {
+				newPrefixes = append(newPrefixes, prefix)
+				continue
+			}
+			if s.shouldRetainPrefix(ctx, prefix) {
 				newPrefixes = append(newPrefixes, prefix)
 			}
 		}
@@ -488,13 +500,47 @@ func (s *Subscriber) deleteExcessSubscriptions() {
 	}
 
 	for domain := range updatedDomains {
-		s.subscribeRemote(context.Background(), domain, s.Subscriptions[domain].Prefixes)
+		s.subscribeRemote(ctx, domain, s.Subscriptions[domain].Prefixes)
 	}
 
-	slog.Info(
-		fmt.Sprintf("Subscriptions cleaned up: %v", maps.Keys(closeDomains)),
-		slog.String("module", "worker"),
-		slog.String("group", "realtime"),
-	)
+	if len(closeDomains) > 0 {
+		slog.Info(
+			fmt.Sprintf("Subscriptions cleaned up: %v", maps.Keys(closeDomains)),
+			slog.String("module", "worker"),
+			slog.String("group", "realtime"),
+		)
+	}
+}
 
+// shouldRetainPrefix decides whether a no-longer-requested prefix should be
+// kept alive. We retain it when we are within the last 10% of the current
+// chunk (so we do not drop the subscription right at chunk rollover) or when
+// the current chunk still has cached body content that we want to keep
+// freshening via incoming events.
+func (s *Subscriber) shouldRetainPrefix(ctx context.Context, prefix string) bool {
+	timeline := strings.TrimSuffix(prefix, "*")
+	if timeline == "" {
+		return false
+	}
+
+	manifest, err := s.loadChunklineManifest(ctx, timeline)
+	if err != nil {
+		// Without a manifest we cannot reason about the chunk window; drop.
+		return false
+	}
+
+	now := time.Now().UTC()
+	chunkID := manifest.Time2Chunk(now)
+	elapsed := now.Unix() - chunkID*manifest.ChunkSize
+	if elapsed >= int64(float64(manifest.ChunkSize)*chunkBoundaryThreshold) {
+		return true
+	}
+
+	if s.Memcache == nil {
+		return false
+	}
+	if _, err := s.Memcache.Get(chunkline.BodyCacheKey(timeline, chunkID)); err == nil {
+		return true
+	}
+	return false
 }

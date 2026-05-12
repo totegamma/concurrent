@@ -21,7 +21,7 @@ func BodyCacheKey(uri string, chunkID int64) string {
 
 func EncodeBodyCache(items []BodyItem) ([]byte, error) {
 	if len(items) == 0 {
-		return []byte(","), nil
+		return []byte{}, nil
 	}
 	body, err := json.Marshal(items)
 	if err != nil {
@@ -43,7 +43,13 @@ func DecodeBodyCache(body []byte) ([]BodyItem, error) {
 	if len(body) == 1 {
 		return []BodyItem{}, nil
 	}
-	cacheStr := "[" + string(body[1:]) + "]"
+	// Tolerate a trailing comma that may appear if a prepend was performed
+	// onto a previously-empty (",") cache entry.
+	end := len(body)
+	if body[end-1] == ',' {
+		end--
+	}
+	cacheStr := "[" + string(body[1:end]) + "]"
 
 	var items []BodyItem
 	err := json.Unmarshal([]byte(cacheStr), &items)

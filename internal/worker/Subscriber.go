@@ -268,7 +268,7 @@ func (s *Subscriber) subscribeRemote(ctx context.Context, domain string, prefixe
 						continue
 					}
 
-					s.cacheChunklineEvent(ctx, state.Prefixes, event)
+					s.cacheChunklineEvent(ctx, s.Signal.GetCurrentSubscriptions(), event)
 				case <-pingTicker.C:
 					if err := c.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
 						slog.Error(
@@ -359,7 +359,7 @@ func (s *Subscriber) cacheChunklineEvent(ctx context.Context, prefixes []string,
 		itrKey := chunkline.IteratorCacheKey(timeline, chunkID)
 		bodyKey := chunkline.BodyCacheKey(timeline, chunkID)
 		// Update only cache entries created by previous chunkline requests.
-		if err := s.Memcache.Replace(&memcache.Item{Key: itrKey, Value: []byte(fmt.Sprintf("%d", chunkID))}); err != nil && err != memcache.ErrCacheMiss {
+		if err := s.Memcache.Replace(&memcache.Item{Key: itrKey, Value: []byte(fmt.Sprintf("%d", chunkID)), Expiration: chunkline.CacheTTL}); err != nil && err != memcache.ErrCacheMiss {
 			slog.ErrorContext(ctx, "failed to update chunkline iterator cache", slog.String("error", err.Error()))
 		}
 

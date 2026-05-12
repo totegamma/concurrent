@@ -99,6 +99,10 @@ func (r *resolver) ResolveTimelines(ctx context.Context, timelines []string) (ma
 			span.RecordError(errors.Join(fmt.Errorf("failed to fetch chunkline manifest for %s", tl), err))
 			continue
 		}
+		if manifest.ChunkSize <= 0 {
+			span.RecordError(fmt.Errorf("chunkline manifest for %s has invalid chunk size %d", tl, manifest.ChunkSize))
+			continue
+		}
 		result[tl] = manifest
 		r.cache.Set(tl, manifest, cache.DefaultExpiration)
 	}

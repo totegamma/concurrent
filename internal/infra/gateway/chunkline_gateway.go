@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -57,10 +58,15 @@ func (g *ChunklineGateway) PrefetchChunks(ctx context.Context, timelines []strin
 		return
 	}
 	itrs, err := g.rcb.LookupChunkItrs(ctx, timelines, time.Now().UTC())
-	if err != nil || len(itrs) == 0 {
+	if err != nil {
+		slog.DebugContext(ctx, "chunkline prefetch: iterator lookup failed", slog.String("error", err.Error()))
+	}
+	if len(itrs) == 0 {
 		return
 	}
-	_, _ = g.rcb.LoadChunkBodies(ctx, itrs)
+	if _, err := g.rcb.LoadChunkBodies(ctx, itrs); err != nil {
+		slog.DebugContext(ctx, "chunkline prefetch: body load failed", slog.String("error", err.Error()))
+	}
 }
 
 // resolver implements chunkline resolver callbacks.

@@ -8,6 +8,7 @@ import (
 	"maps"
 	"slices"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/bradfitz/gomemcache/memcache"
@@ -171,12 +172,29 @@ func (s *Subscriber) subscribeRemote(ctx context.Context, domain string, prefixe
 
 		messageChan := make(chan []byte)
 
+		// disconnectOnce ensures the chunkline cache invalidation runs at
+		// most once per connection, regardless of which goroutine notices
+		// the disconnect first.
+		var disconnectOnce sync.Once
+		onDisconnect := func(reason string) {
+			disconnectOnce.Do(func() {
+				prefixesSnapshot := append([]string(nil), state.Prefixes...)
+				slog.Debug(
+					fmt.Sprintf("invalidating chunkline cache for disconnected domain %s (%s): %v", domain, reason, prefixesSnapshot),
+					slog.String("module", "worker"),
+					slog.String("group", "realtime"),
+				)
+				s.invalidateChunklineCache(ctx, prefixesSnapshot)
+			})
+		}
+
 		go func(ctx context.Context, c *websocket.Conn, messageChan chan<- []byte) {
 			defer func() {
 				cancel()
 				if c != nil {
 					c.Close()
 				}
+				onDisconnect("listener")
 				delete(s.Subscriptions, domain)
 				slog.Debug(
 					fmt.Sprintf("remote connection closed(listener): %s", domain),
@@ -220,6 +238,7 @@ func (s *Subscriber) subscribeRemote(ctx context.Context, domain string, prefixe
 					c.Close()
 				}
 				pingTicker.Stop()
+				onDisconnect("relayer")
 				delete(s.Subscriptions, domain)
 				slog.Debug(
 					fmt.Sprintf("remote connection closed(relayer): %s", domain),
@@ -380,6 +399,41 @@ func (s *Subscriber) cacheChunklineEvent(ctx context.Context, prefixes []string,
 		// future events can prepend onto it while the timeline stays subscribed.
 		if err := s.Memcache.Add(&memcache.Item{Key: bodyKey, Value: value, Expiration: chunkline.CacheTTL}); err != nil && err != memcache.ErrNotStored {
 			slog.ErrorContext(ctx, "failed to create chunkline body cache", slog.String("error", err.Error()))
+		}
+	}
+}
+
+// invalidateChunklineCache deletes the iterator and body memcached entries
+// for the current chunk of each given prefix. This is invoked when a remote
+// realtime connection drops so that subsequent reads do not serve a stale
+// chunk body that can no longer be kept fresh by realtime updates.
+func (s *Subscriber) invalidateChunklineCache(ctx context.Context, prefixes []string) {
+	if s.Memcache == nil || len(prefixes) == 0 {
+		return
+	}
+
+	now := time.Now()
+	for _, prefix := range prefixes {
+		timeline := strings.TrimSuffix(prefix, "*")
+		if timeline == "" {
+			continue
+		}
+
+		manifest, err := s.loadChunklineManifest(ctx, timeline)
+		if err != nil {
+			slog.DebugContext(ctx, "failed to load chunkline manifest for cache invalidation", slog.String("timeline", timeline), slog.String("error", err.Error()))
+			continue
+		}
+
+		chunkID := manifest.Time2Chunk(now)
+		itrKey := chunkline.IteratorCacheKey(timeline, chunkID)
+		bodyKey := chunkline.BodyCacheKey(timeline, chunkID)
+
+		if err := s.Memcache.Delete(itrKey); err != nil && err != memcache.ErrCacheMiss {
+			slog.ErrorContext(ctx, "failed to delete chunkline iterator cache", slog.String("error", err.Error()), slog.String("key", itrKey))
+		}
+		if err := s.Memcache.Delete(bodyKey); err != nil && err != memcache.ErrCacheMiss {
+			slog.ErrorContext(ctx, "failed to delete chunkline body cache", slog.String("error", err.Error()), slog.String("key", bodyKey))
 		}
 	}
 }

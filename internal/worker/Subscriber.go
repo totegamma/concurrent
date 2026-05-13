@@ -36,6 +36,11 @@ type SubState struct {
 	Prefixes   []string
 	Connection *websocket.Conn
 	CancelFunc context.CancelFunc
+	// onDisconnect is set right after each successful listen request so
+	// that it always reflects the prefixes we actually told the remote
+	// server we care about. It is invoked at most once per connection
+	// (guarded by disconnectOnce in subscribeRemote).
+	onDisconnect func()
 }
 
 // ChunklinePrefetcher warms the memcached chunkline cache for newly
@@ -174,17 +179,21 @@ func (s *Subscriber) subscribeRemote(ctx context.Context, domain string, prefixe
 
 		// disconnectOnce ensures the chunkline cache invalidation runs at
 		// most once per connection, regardless of which goroutine notices
-		// the disconnect first.
+		// the disconnect first. The actual cleanup logic lives in
+		// state.onDisconnect, which is (re)assigned each time a listen
+		// request is sent so it always matches what we subscribed to.
 		var disconnectOnce sync.Once
 		onDisconnect := func(reason string) {
 			disconnectOnce.Do(func() {
-				prefixesSnapshot := append([]string(nil), state.Prefixes...)
+				if state.onDisconnect == nil {
+					return
+				}
 				slog.Debug(
-					fmt.Sprintf("invalidating chunkline cache for disconnected domain %s (%s): %v", domain, reason, prefixesSnapshot),
+					fmt.Sprintf("running disconnect cleanup for %s (%s)", domain, reason),
 					slog.String("module", "worker"),
 					slog.String("group", "realtime"),
 				)
-				s.invalidateChunklineCache(ctx, prefixesSnapshot)
+				state.onDisconnect()
 			})
 		}
 
@@ -326,6 +335,15 @@ func (s *Subscriber) subscribeRemote(ctx context.Context, domain string, prefixe
 		delete(s.Subscriptions, domain)
 		return
 	}
+
+	// Build the disconnect cleanup target list at the same time as the
+	// listen request, so the two stay in sync. Each successful listen
+	// request supersedes the previous cleanup target.
+	cleanupPrefixes := append([]string(nil), prefixes...)
+	state.onDisconnect = func() {
+		s.invalidateChunklineCache(ctx, cleanupPrefixes)
+	}
+
 	slog.Debug(
 		fmt.Sprintf("remote connection updated: %s > %v", domain, prefixes),
 		slog.String("module", "worker"),

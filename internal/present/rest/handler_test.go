@@ -20,7 +20,11 @@ func TestHandleRealtimeDisconnectAfterListenDoesNotPanic(t *testing.T) {
 
 	e := echo.New()
 	h := &Handler{signal: service.NewSignalService(rdb)}
-	e.GET("/realtime", h.handleRealtime)
+	handlerDone := make(chan struct{})
+	e.GET("/realtime", func(c echo.Context) error {
+		defer close(handlerDone)
+		return h.handleRealtime(c)
+	})
 
 	server := httptest.NewServer(e)
 	defer server.Close()
@@ -35,8 +39,15 @@ func TestHandleRealtimeDisconnectAfterListenDoesNotPanic(t *testing.T) {
 	}))
 	require.NoError(t, conn.Close())
 
-	// Give the handler and SignalService goroutines time to observe the
-	// disconnect and subscription acknowledgement. Before the fix, this path
-	// could panic with "send on closed channel".
-	time.Sleep(200 * time.Millisecond)
+	require.Eventually(t, func() bool {
+		select {
+		case <-handlerDone:
+			return true
+		default:
+			return false
+		}
+	}, time.Second, 10*time.Millisecond)
+	require.Eventually(t, func() bool {
+		return len(h.signal.GetCurrentSubscriptions()) == 0
+	}, time.Second, 10*time.Millisecond)
 }

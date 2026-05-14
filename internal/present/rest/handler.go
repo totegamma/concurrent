@@ -606,7 +606,7 @@ func (h *Handler) handleRealtime(c echo.Context) error {
 
 	go h.signal.Realtime(ctx, input, output)
 
-	quit := make(chan struct{}, 1)
+	quit := make(chan struct{})
 
 	go func() {
 		for {

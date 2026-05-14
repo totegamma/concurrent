@@ -52,7 +52,7 @@ func TestSignalRealtimeStopsWhenRequestChannelCloses(t *testing.T) {
 	defer cancel()
 
 	requests := make(chan []string)
-	events := make(chan concrnt.Event)
+	events := make(chan concrnt.Event, 1)
 	done := make(chan struct{})
 	go func() {
 		signal.Realtime(ctx, requests, events)

@@ -598,6 +598,9 @@ func (h *Handler) handleRealtime(c echo.Context) error {
 	ctx, cancel := context.WithCancel(c.Request().Context())
 	defer cancel()
 
+	// SignalService owns the channel send side; canceling ctx is the cleanup
+	// signal. Do not close these channels here because its goroutines may still
+	// be selecting on them while a websocket disconnect is being handled.
 	input := make(chan []string)
 	output := make(chan concrnt.Event)
 

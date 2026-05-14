@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -59,7 +60,10 @@ func (s *SignalService) Realtime(ctx context.Context, request <-chan []string, r
 
 			patterns := make([]string, len(prefixes))
 			for i, prefix := range prefixes {
-				patterns[i] = prefix + "*"
+				patterns[i] = prefix
+				if !strings.HasSuffix(patterns[i], "*") {
+					patterns[i] += "*"
+				}
 			}
 
 			var subctx context.Context
@@ -81,7 +85,16 @@ func (s *SignalService) Realtime(ctx context.Context, request <-chan []string, r
 func (s *SignalService) subscribe(ctx context.Context, patterns []string, event chan<- concrnt.Event) error {
 
 	if len(patterns) == 0 {
+		event <- concrnt.Event{Type: "subscribed", Prefixes: []string{}}
 		return nil
+	}
+
+	pubsub := s.rdb.PSubscribe(ctx, patterns...)
+	defer pubsub.Close()
+
+	if _, err := pubsub.Receive(ctx); err != nil {
+		slog.Error("failed to subscribe realtime patterns", slog.String("error", err.Error()))
+		return err
 	}
 
 	id := func() int64 {
@@ -101,8 +114,7 @@ func (s *SignalService) subscribe(ctx context.Context, patterns []string, event 
 		delete(s.currentSubs, id)
 	}()
 
-	pubsub := s.rdb.PSubscribe(ctx, patterns...)
-	defer pubsub.Close()
+	event <- concrnt.Event{Type: "subscribed", Prefixes: patterns}
 
 	psch := pubsub.Channel()
 

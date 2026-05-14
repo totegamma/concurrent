@@ -5,9 +5,11 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"strconv"
 	"testing"
 	"time"
 
+	"github.com/bradfitz/gomemcache/memcache"
 	"github.com/patrickmn/go-cache"
 	"github.com/stretchr/testify/require"
 
@@ -105,8 +107,80 @@ func TestResolverSkipsCurrentChunkCacheWithoutSubscription(t *testing.T) {
 	require.True(t, resolver.shouldCacheChunk(timeline, currentChunk, manifest))
 }
 
+func TestResolverCachesCurrentChunkOnlyAfterSubscribed(t *testing.T) {
+	mc, cleanup := testutil.CreateMC()
+	defer cleanup()
+
+	ctx := context.Background()
+	now := time.Now().UTC()
+	manifest := chunkline.Manifest{
+		Version:   "1.0",
+		ChunkSize: 60,
+		Descending: &chunkline.Endpoint{
+			Iterator: "/itr/{chunk}",
+			Body:     "/body/{chunk}",
+		},
+	}
+	currentChunk := manifest.Time2Chunk(now)
+	item := chunkline.BodyItem{
+		Timestamp:   now,
+		Href:        "cckv://remote.example/documents/item",
+		ContentType: "application/concrnt.document+json",
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/timeline":
+			require.NoError(t, json.NewEncoder(w).Encode(manifest))
+		case "/itr/" + strconv.FormatInt(currentChunk, 10):
+			_, _ = w.Write([]byte(strconv.FormatInt(currentChunk, 10)))
+		case "/body/" + strconv.FormatInt(currentChunk, 10):
+			require.NoError(t, json.NewEncoder(w).Encode([]chunkline.BodyItem{item}))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	timeline := server.URL + "/timeline"
+	subscriptions := &mutableSubscriptions{}
+	resolver := &resolver{
+		client:        client.New(""),
+		cache:         cache.New(10*time.Minute, 15*time.Minute),
+		mc:            mc,
+		subscriptions: subscriptions,
+	}
+
+	itrs, err := resolver.LookupChunkItrs(ctx, []string{timeline}, now)
+	require.NoError(t, err)
+	_, err = resolver.LoadChunkBodies(ctx, itrs)
+	require.NoError(t, err)
+	_, err = mc.Get(chunkline.BodyCacheKey(timeline, currentChunk))
+	require.ErrorIs(t, err, memcache.ErrCacheMiss)
+
+	subscriptions.subs = []string{timeline + "*"}
+	itrs, err = resolver.LookupChunkItrs(ctx, []string{timeline}, now)
+	require.NoError(t, err)
+	_, err = resolver.LoadChunkBodies(ctx, itrs)
+	require.NoError(t, err)
+
+	cachedBody, err := mc.Get(chunkline.BodyCacheKey(timeline, currentChunk))
+	require.NoError(t, err)
+	decoded, err := chunkline.DecodeBodyCache(cachedBody.Value)
+	require.NoError(t, err)
+	require.Equal(t, []chunkline.BodyItem{item}, decoded)
+}
+
 type staticSubscriptions []string
 
 func (s staticSubscriptions) GetCurrentSubscriptions() []string {
 	return []string(s)
+}
+
+type mutableSubscriptions struct {
+	subs []string
+}
+
+func (s *mutableSubscriptions) GetCurrentSubscriptions() []string {
+	return append([]string(nil), s.subs...)
 }

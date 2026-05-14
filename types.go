@@ -100,10 +100,11 @@ type RegisterRequest[T any] struct {
 
 type Event struct {
 	Type        string                    `json:"type"`
-	Source      string                    `json:"source"`
-	URI         string                    `json:"uri"`
+	Source      string                    `json:"source,omitempty"`
+	URI         string                    `json:"uri,omitempty"`
 	Association *string                   `json:"association,omitempty"`
 	References  map[string]SignedDocument `json:"documents,omitempty"`
+	Prefixes    []string                  `json:"prefixes,omitempty"`
 }
 
 type RealtimeRequest struct {

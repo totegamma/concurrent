@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"testing"
 	"time"
 
@@ -18,6 +19,31 @@ import (
 	"github.com/concrnt/concrnt/internal/testutil"
 	"github.com/concrnt/concrnt/schemas"
 )
+
+type recordingPrefetcher struct {
+	timelines []string
+}
+
+func (p *recordingPrefetcher) PrefetchChunks(ctx context.Context, timelines []string) {
+	p.timelines = append(p.timelines, timelines...)
+}
+
+func TestSubscriberActivatesSubscriptionFromSubscribedEvent(t *testing.T) {
+	ctx := context.Background()
+	timeline := "cckv://remote.example/concrnt.world/timeline"
+	prefetcher := &recordingPrefetcher{}
+	subscriber := NewSubscriber(nil, nil, nil, nil, prefetcher)
+
+	require.Empty(t, subscriber.GetCurrentSubscriptions())
+
+	subscriber.activateSubscription(ctx, "remote.example", []string{timeline + "*"})
+
+	require.True(t, slices.Contains(subscriber.GetCurrentSubscriptions(), timeline+"*"))
+	require.Equal(t, []string{timeline}, prefetcher.timelines)
+
+	subscriber.deactivateSubscription(ctx, "remote.example")
+	require.Empty(t, subscriber.GetCurrentSubscriptions())
+}
 
 func TestSubscriberCacheChunklineEventPrependsCachedChunk(t *testing.T) {
 	mc, cleanup := testutil.CreateMC()
@@ -154,4 +180,45 @@ func TestSubscriberCacheChunklineEventCreatesEntryOnCacheMiss(t *testing.T) {
 	require.Len(t, items, 1)
 	require.Equal(t, target, items[0].Href)
 	require.Equal(t, createdAt, items[0].Timestamp)
+}
+
+func TestBodyItemFromEventUsesNestedReferenceDocumentTimestamp(t *testing.T) {
+	referenceURI := "cckv://remote.example/concrnt.world/refs/ref"
+	targetURI := "cckv://remote.example/concrnt.world/posts/post"
+	referenceCreatedAt := time.Unix(1200, 0).UTC()
+	targetCreatedAt := time.Unix(600, 0).UTC()
+
+	targetDoc, err := json.Marshal(concrnt.Document[any]{
+		Key:       targetURI,
+		Value:     map[string]any{},
+		CreatedAt: targetCreatedAt,
+	})
+	require.NoError(t, err)
+
+	referenceDoc, err := json.Marshal(concrnt.Document[schemas.Reference]{
+		Key: referenceURI,
+		Value: schemas.Reference{
+			Href: targetURI,
+		},
+		Schema:    schemas.ReferenceURL,
+		CreatedAt: referenceCreatedAt,
+	})
+	require.NoError(t, err)
+
+	item, ok := bodyItemFromEvent(concrnt.Event{
+		Type: "created",
+		URI:  referenceURI,
+		References: map[string]concrnt.SignedDocument{
+			referenceURI: {
+				Document: string(referenceDoc),
+				References: map[string]concrnt.SignedDocument{
+					targetURI: {Document: string(targetDoc)},
+				},
+			},
+		},
+	})
+
+	require.True(t, ok)
+	require.Equal(t, targetURI, item.Href)
+	require.Equal(t, targetCreatedAt, item.Timestamp)
 }

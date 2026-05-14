@@ -36,11 +36,6 @@ type SubState struct {
 	Prefixes   []string
 	Connection *websocket.Conn
 	CancelFunc context.CancelFunc
-	// onDisconnect is set right after each successful listen request so
-	// that it always reflects the prefixes we actually told the remote
-	// server we care about. It is invoked at most once per connection
-	// (guarded by disconnectOnce in subscribeRemote).
-	onDisconnect func()
 }
 
 // ChunklinePrefetcher warms the memcached chunkline cache for newly
@@ -51,13 +46,15 @@ type ChunklinePrefetcher interface {
 }
 
 type Subscriber struct {
-	Subscriptions map[string]*SubState
-	Config        *domain.Config
-	Client        *client.Client
-	Signal        *service.SignalService
-	Memcache      *memcache.Client
-	Prefetcher    ChunklinePrefetcher
-	manifestCache *cache.Cache
+	Subscriptions  map[string]*SubState
+	Config         *domain.Config
+	Client         *client.Client
+	Signal         *service.SignalService
+	Memcache       *memcache.Client
+	Prefetcher     ChunklinePrefetcher
+	manifestCache  *cache.Cache
+	activeMu       sync.RWMutex
+	activePrefixes map[string][]string
 }
 
 func NewSubscriber(
@@ -68,14 +65,33 @@ func NewSubscriber(
 	prefetcher ChunklinePrefetcher,
 ) *Subscriber {
 	return &Subscriber{
-		Subscriptions: make(map[string]*SubState),
-		Config:        config,
-		Client:        client,
-		Signal:        signal,
-		Memcache:      mc,
-		Prefetcher:    prefetcher,
-		manifestCache: cache.New(manifestCacheExpiration, manifestCacheCleanup),
+		Subscriptions:  make(map[string]*SubState),
+		Config:         config,
+		Client:         client,
+		Signal:         signal,
+		Memcache:       mc,
+		Prefetcher:     prefetcher,
+		manifestCache:  cache.New(manifestCacheExpiration, manifestCacheCleanup),
+		activePrefixes: make(map[string][]string),
 	}
+}
+
+func (s *Subscriber) GetCurrentSubscriptions() []string {
+	s.activeMu.RLock()
+	defer s.activeMu.RUnlock()
+
+	unique := make(map[string]struct{})
+	for _, prefixes := range s.activePrefixes {
+		for _, prefix := range prefixes {
+			unique[prefix] = struct{}{}
+		}
+	}
+
+	prefixes := make([]string, 0, len(unique))
+	for prefix := range unique {
+		prefixes = append(prefixes, prefix)
+	}
+	return prefixes
 }
 
 func (s *Subscriber) Start(ctx context.Context) {
@@ -179,21 +195,16 @@ func (s *Subscriber) subscribeRemote(ctx context.Context, domain string, prefixe
 
 		// disconnectOnce ensures the chunkline cache invalidation runs at
 		// most once per connection, regardless of which goroutine notices
-		// the disconnect first. The actual cleanup logic lives in
-		// state.onDisconnect, which is (re)assigned each time a listen
-		// request is sent so it always matches what we subscribed to.
+		// the disconnect first.
 		var disconnectOnce sync.Once
 		onDisconnect := func(reason string) {
 			disconnectOnce.Do(func() {
-				if state.onDisconnect == nil {
-					return
-				}
 				slog.Debug(
 					fmt.Sprintf("running disconnect cleanup for %s (%s)", domain, reason),
 					slog.String("module", "worker"),
 					slog.String("group", "realtime"),
 				)
-				state.onDisconnect()
+				s.deactivateSubscription(ctx, domain)
 			})
 		}
 
@@ -285,6 +296,11 @@ func (s *Subscriber) subscribeRemote(ctx context.Context, domain string, prefixe
 						continue
 					}
 
+					if event.Type == "subscribed" {
+						s.activateSubscription(ctx, domain, event.Prefixes)
+						continue
+					}
+
 					err = s.Signal.Publish(ctx, event.Source, event)
 					if err != nil {
 						slog.Error(
@@ -296,7 +312,7 @@ func (s *Subscriber) subscribeRemote(ctx context.Context, domain string, prefixe
 						continue
 					}
 
-					s.cacheChunklineEvent(ctx, s.Signal.GetCurrentSubscriptions(), event)
+					s.cacheChunklineEvent(ctx, s.GetCurrentSubscriptions(), event)
 				case <-pingTicker.C:
 					if err := c.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
 						slog.Error(
@@ -336,19 +352,23 @@ func (s *Subscriber) subscribeRemote(ctx context.Context, domain string, prefixe
 		return
 	}
 
-	// Build the disconnect cleanup target list at the same time as the
-	// listen request, so the two stay in sync. Each successful listen
-	// request supersedes the previous cleanup target.
-	cleanupPrefixes := append([]string(nil), prefixes...)
-	state.onDisconnect = func() {
-		s.invalidateChunklineCache(ctx, cleanupPrefixes)
-	}
-
 	slog.Debug(
 		fmt.Sprintf("remote connection updated: %s > %v", domain, prefixes),
 		slog.String("module", "worker"),
 		slog.String("group", "realtime"),
 	)
+
+}
+
+func (s *Subscriber) activateSubscription(ctx context.Context, domain string, prefixes []string) {
+	prefixes = append([]string(nil), prefixes...)
+
+	s.activeMu.Lock()
+	if s.activePrefixes == nil {
+		s.activePrefixes = make(map[string][]string)
+	}
+	s.activePrefixes[domain] = prefixes
+	s.activeMu.Unlock()
 
 	if s.Prefetcher != nil && len(prefixes) > 0 {
 		timelines := make([]string, 0, len(prefixes))
@@ -362,7 +382,15 @@ func (s *Subscriber) subscribeRemote(ctx context.Context, domain string, prefixe
 			s.Prefetcher.PrefetchChunks(ctx, timelines)
 		}
 	}
+}
 
+func (s *Subscriber) deactivateSubscription(ctx context.Context, domain string) {
+	s.activeMu.Lock()
+	prefixes := append([]string(nil), s.activePrefixes[domain]...)
+	delete(s.activePrefixes, domain)
+	s.activeMu.Unlock()
+
+	s.invalidateChunklineCache(ctx, prefixes)
 }
 
 func (s *Subscriber) cacheChunklineEvent(ctx context.Context, prefixes []string, event concrnt.Event) {
@@ -499,7 +527,11 @@ func bodyItemFromEvent(event concrnt.Event) (chunkline.BodyItem, bool) {
 		}
 		if doc.Value.Href != "" {
 			item.Href = doc.Value.Href
-			if targetSD, ok := event.References[doc.Value.Href]; ok {
+			targetSD, ok := sd.References[doc.Value.Href]
+			if !ok {
+				targetSD, ok = event.References[doc.Value.Href]
+			}
+			if ok {
 				var targetDoc concrnt.Document[any]
 				if err := json.Unmarshal([]byte(targetSD.Document), &targetDoc); err == nil && !targetDoc.CreatedAt.IsZero() {
 					item.Timestamp = targetDoc.CreatedAt

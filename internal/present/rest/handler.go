@@ -595,16 +595,15 @@ func (h *Handler) handleRealtime(c echo.Context) error {
 		ws.Close()
 	}()
 
-	ctx := c.Request().Context()
+	ctx, cancel := context.WithCancel(c.Request().Context())
+	defer cancel()
 
 	input := make(chan []string)
-	defer close(input)
 	output := make(chan concrnt.Event)
-	defer close(output)
 
 	go h.signal.Realtime(ctx, input, output)
 
-	quit := make(chan struct{})
+	quit := make(chan struct{}, 1)
 
 	go func() {
 		for {
@@ -629,13 +628,20 @@ func (h *Handler) handleRealtime(c echo.Context) error {
 					)
 				}
 
-				quit <- struct{}{}
-				break
+				select {
+				case quit <- struct{}{}:
+				case <-ctx.Done():
+				}
+				return
 			}
 
 			switch req.Type {
 			case "listen":
-				input <- req.Prefixes
+				select {
+				case input <- req.Prefixes:
+				case <-ctx.Done():
+					return
+				}
 				slog.DebugContext(
 					ctx, fmt.Sprintf("Socket subscribe: %s", req.Prefixes),
 					slog.String("module", "socket"),
@@ -655,6 +661,8 @@ func (h *Handler) handleRealtime(c echo.Context) error {
 	for {
 		select {
 		case <-quit:
+			return nil
+		case <-ctx.Done():
 			return nil
 		case items := <-output:
 			err := ws.WriteJSON(items)

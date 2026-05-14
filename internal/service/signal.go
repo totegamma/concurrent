@@ -53,7 +53,13 @@ func (s *SignalService) Realtime(ctx context.Context, request <-chan []string, r
 
 	for {
 		select {
-		case prefixes := <-request:
+		case prefixes, ok := <-request:
+			if !ok {
+				if cancel != nil {
+					cancel()
+				}
+				return
+			}
 			if cancel != nil {
 				cancel()
 			}
@@ -71,7 +77,14 @@ func (s *SignalService) Realtime(ctx context.Context, request <-chan []string, r
 			go s.subscribe(subctx, patterns, events)
 
 		case event := <-events:
-			response <- event
+			select {
+			case response <- event:
+			case <-ctx.Done():
+				if cancel != nil {
+					cancel()
+				}
+				return
+			}
 
 		case <-ctx.Done():
 			if cancel != nil {
@@ -85,7 +98,10 @@ func (s *SignalService) Realtime(ctx context.Context, request <-chan []string, r
 func (s *SignalService) subscribe(ctx context.Context, patterns []string, event chan<- concrnt.Event) error {
 
 	if len(patterns) == 0 {
-		event <- concrnt.Event{Type: "subscribed", Prefixes: []string{}}
+		select {
+		case event <- concrnt.Event{Type: "subscribed"}:
+		case <-ctx.Done():
+		}
 		return nil
 	}
 
@@ -114,7 +130,11 @@ func (s *SignalService) subscribe(ctx context.Context, patterns []string, event 
 		delete(s.currentSubs, id)
 	}()
 
-	event <- concrnt.Event{Type: "subscribed", Prefixes: patterns}
+	select {
+	case event <- concrnt.Event{Type: "subscribed", Prefixes: patterns}:
+	case <-ctx.Done():
+		return nil
+	}
 
 	psch := pubsub.Channel()
 
@@ -122,14 +142,21 @@ func (s *SignalService) subscribe(ctx context.Context, patterns []string, event 
 		select {
 		case <-ctx.Done():
 			return nil
-		case msg := <-psch:
+		case msg, ok := <-psch:
+			if !ok {
+				return nil
+			}
 			var item concrnt.Event
 			err := json.Unmarshal([]byte(msg.Payload), &item)
 			if err != nil {
 				slog.Error("failed to unmarshal event", slog.String("error", err.Error()))
 				continue
 			}
-			event <- item
+			select {
+			case event <- item:
+			case <-ctx.Done():
+				return nil
+			}
 		}
 	}
 }

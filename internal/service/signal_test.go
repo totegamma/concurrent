@@ -42,3 +42,31 @@ func TestSignalRealtimeAcknowledgesSubscribedAfterRedisSubscribe(t *testing.T) {
 		return len(signal.GetCurrentSubscriptions()) == 1 && signal.GetCurrentSubscriptions()[0] == prefix+"*"
 	}, 5*time.Second, 10*time.Millisecond)
 }
+
+func TestSignalRealtimeStopsWhenRequestChannelCloses(t *testing.T) {
+	rdb, cleanup := testutil.CreateRDB()
+	defer cleanup()
+
+	signal := NewSignalService(rdb)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	requests := make(chan []string)
+	responses := make(chan concrnt.Event)
+	done := make(chan struct{})
+	go func() {
+		signal.Realtime(ctx, requests, responses)
+		close(done)
+	}()
+
+	close(requests)
+
+	require.Eventually(t, func() bool {
+		select {
+		case <-done:
+			return true
+		default:
+			return false
+		}
+	}, time.Second, 10*time.Millisecond)
+}

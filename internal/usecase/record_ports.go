@@ -11,7 +11,8 @@ import (
 // RecordRepository defines storage operations for records/commits.
 type RecordRepository interface {
 	BeginTx(ctx context.Context) (RepositoryTx, error)
-	CreateCommitLog(ctx context.Context, tx RepositoryTx, id string, ip string, document string, proof string, owners []string) error
+	CreateCommitLog(ctx context.Context, tx RepositoryTx, id string, ip string, document string, proof string) error
+	CreateCommitOwners(ctx context.Context, tx RepositoryTx, id string, owners []string) error
 	CreateRecord(ctx context.Context, tx RepositoryTx, documentID string, key string, owner string, schema string, policies *string, distributions []string, redirect *string, createdAt time.Time) (string, error)
 	CreateAssociation(ctx context.Context, tx RepositoryTx, documentID string, targetURI string, owner string, author string, schema string, variant *string, unique string, createdAt time.Time) error
 	Acknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, ackContext string, valid bool, createdAt time.Time, resultURI string) (string, error)

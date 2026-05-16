@@ -55,7 +55,7 @@ func getRecordTx(ctx context.Context, tx usecase.RepositoryTx) (*gorm.DB, error)
 	return recordTx.tx.WithContext(ctx), nil
 }
 
-func (r *RecordRepository) CreateCommitLog(ctx context.Context, tx usecase.RepositoryTx, id string, ip string, document string, proof string, owners []string) error {
+func (r *RecordRepository) CreateCommitLog(ctx context.Context, tx usecase.RepositoryTx, id string, ip string, document string, proof string) error {
 	ctx, span := tracer.Start(ctx, "Repository.Record.CreateCommitLog")
 	defer span.End()
 
@@ -75,6 +75,19 @@ func (r *RecordRepository) CreateCommitLog(ctx context.Context, tx usecase.Repos
 	if err := db.Clauses(clause.OnConflict{
 		DoNothing: true,
 	}).Create(&commitLog).Error; err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	return nil
+}
+
+func (r *RecordRepository) CreateCommitOwners(ctx context.Context, tx usecase.RepositoryTx, id string, owners []string) error {
+	ctx, span := tracer.Start(ctx, "Repository.Record.CreateCommitOwners")
+	defer span.End()
+
+	db, err := getRecordTx(ctx, tx)
+	if err != nil {
 		span.RecordError(err)
 		return err
 	}

@@ -6,7 +6,6 @@ import (
 	"github.com/stretchr/testify/require"
 
 	"github.com/concrnt/concrnt"
-	"github.com/concrnt/concrnt/internal/domain"
 )
 
 func TestPolicyActionSelection(t *testing.T) {
@@ -30,27 +29,4 @@ func TestPolicyActionSelection(t *testing.T) {
 
 func ptr[T any](v T) *T {
 	return &v
-}
-
-func TestAckCommitOwners(t *testing.T) {
-	t.Parallel()
-
-	uc := &RecordUsecase{
-		entity: &EntityUsecase{
-			config: &domain.Config{FQDN: "local.example"},
-		},
-	}
-
-	localFrom := domain.Entity{ID: "con1from", Domain: "local.example"}
-	localTo := domain.Entity{ID: "con1to", Domain: "local.example"}
-	remoteFrom := domain.Entity{ID: "con1from", Domain: "remote.example"}
-	remoteTo := domain.Entity{ID: "con1to", Domain: "remote.example"}
-
-	require.Equal(t, []string{"con1from", "con1to"}, uc.ackCommitOwners(t.Context(), localFrom, localTo))
-	require.Equal(t, []string{"con1from"}, uc.ackCommitOwners(t.Context(), localFrom, remoteTo))
-	require.Equal(t, []string{"con1to"}, uc.ackCommitOwners(t.Context(), remoteFrom, localTo))
-	require.Empty(t, uc.ackCommitOwners(t.Context(), remoteFrom, remoteTo))
-
-	sameLocal := domain.Entity{ID: "con1same", Domain: "local.example"}
-	require.Equal(t, []string{"con1same"}, uc.ackCommitOwners(t.Context(), sameLocal, sameLocal))
 }

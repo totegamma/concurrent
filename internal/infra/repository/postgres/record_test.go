@@ -211,7 +211,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 
 		tx, err := repo.BeginTx(ctx)
 		require.NoError(t, err)
-		require.NoError(t, repo.Commit(ctx, tx, "rollback-record", "127.0.0.1", rollbackSD.Document, `{"type":"none"}`, []string{"con1owner"}))
+		require.NoError(t, repo.CreateCommitLog(ctx, tx, "rollback-record", "127.0.0.1", rollbackSD.Document, `{"type":"none"}`, []string{"con1owner"}))
 		_, err = repo.CreateRecord(ctx, tx, "rollback-record", rollbackKey, "con1owner", "https://schema.example/post.json", nil, []string{}, nil, time.Date(2026, 5, 6, 7, 8, 9, 0, time.UTC))
 		require.NoError(t, err)
 		require.NoError(t, tx.Rollback(ctx))
@@ -274,7 +274,7 @@ func withRepositoryTx(t *testing.T, ctx context.Context, repo usecase.RecordRepo
 
 	tx, err := repo.BeginTx(ctx)
 	require.NoError(t, err)
-	require.NoError(t, repo.Commit(ctx, tx, id, ip, sd.Document, `{"type":"none"}`, owners))
+	require.NoError(t, repo.CreateCommitLog(ctx, tx, id, ip, sd.Document, `{"type":"none"}`, owners))
 	if err := fn(tx); err != nil {
 		require.NoError(t, tx.Rollback(ctx))
 		require.NoError(t, err)

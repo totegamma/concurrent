@@ -88,7 +88,27 @@ func proofJSON(proof concrnt.Proof) (string, error) {
 	return string(proofBytes), nil
 }
 
-func (uc *RecordUsecase) withRecordTx(ctx context.Context, fn func(tx RepositoryTx) error) error {
+type receivedCommitLog struct {
+	ID       string
+	IP       string
+	Document string
+	Proof    string
+}
+
+func newReceivedCommitLog(ip string, sd concrnt.SignedDocument, createdAt time.Time) (receivedCommitLog, error) {
+	proof, err := proofJSON(sd.Proof)
+	if err != nil {
+		return receivedCommitLog{}, err
+	}
+	return receivedCommitLog{
+		ID:       documentIDFromSignedDocument(sd, createdAt),
+		IP:       ip,
+		Document: sd.Document,
+		Proof:    proof,
+	}, nil
+}
+
+func (uc *RecordUsecase) withRecordTx(ctx context.Context, commitLog receivedCommitLog, owners []string, fn func(tx RepositoryTx) error) error {
 	tx, err := uc.repo.BeginTx(ctx)
 	if err != nil {
 		return err
@@ -100,6 +120,10 @@ func (uc *RecordUsecase) withRecordTx(ctx context.Context, fn func(tx Repository
 			_ = tx.Rollback(ctx)
 		}
 	}()
+
+	if err := uc.repo.CreateCommitLog(ctx, tx, commitLog.ID, commitLog.IP, commitLog.Document, commitLog.Proof, owners); err != nil {
+		return err
+	}
 
 	if err := fn(tx); err != nil {
 		return err
@@ -235,6 +259,12 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		}
 	}
 
+	commitLog, err := newReceivedCommitLog(ip, sd, doc.CreatedAt)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
 	// accept
 	switch doc.Schema {
 	// 特殊なスキーマの場合の処理
@@ -246,21 +276,21 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 			span.RecordError(err)
 			return nil, err
 		}
-		return uc.deleteRecord(ctx, ip, *requester, sd, mode)
+		return uc.deleteRecord(ctx, commitLog, *requester, sd, mode)
 	case schemas.AcknowledgeURL:
 		if requester == nil {
 			err := errors.New("requester entity not found for ack operation")
 			span.RecordError(err)
 			return nil, err
 		}
-		return uc.acknowledge(ctx, ip, *requester, sd, mode)
+		return uc.acknowledge(ctx, commitLog, *requester, sd, mode)
 	case schemas.UnAcknowledgeURL:
 		if requester == nil {
 			err := errors.New("requester entity not found for unack operation")
 			span.RecordError(err)
 			return nil, err
 		}
-		return uc.unacknowledge(ctx, ip, *requester, sd, mode)
+		return uc.unacknowledge(ctx, commitLog, *requester, sd, mode)
 	default:
 		if requester == nil {
 			err := errors.New("requester entity not found for record or associate operation")
@@ -270,9 +300,9 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		}
 		// Associateフィールドがあれば通常Recordではない
 		if doc.Associate != nil {
-			return uc.createAssociation(ctx, ip, *requester, doc, sd, mode)
+			return uc.createAssociation(ctx, commitLog, *requester, doc, sd, mode)
 		} else { // 通常Record
-			return uc.createRecord(ctx, ip, *requester, doc, sd, mode)
+			return uc.createRecord(ctx, commitLog, *requester, doc, sd, mode)
 		}
 	}
 }
@@ -281,7 +311,7 @@ func (uc *RecordUsecase) saveEntity(ctx context.Context, sd concrnt.SignedDocume
 	return uc.entity.SaveEntity(ctx, sd)
 }
 
-func (uc *RecordUsecase) deleteRecord(ctx context.Context, ip string, requester domain.Entity, sd concrnt.SignedDocument, mode domain.CommitMode) (*concrnt.SignedDocument, error) {
+func (uc *RecordUsecase) deleteRecord(ctx context.Context, commitLog receivedCommitLog, requester domain.Entity, sd concrnt.SignedDocument, mode domain.CommitMode) (*concrnt.SignedDocument, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.Delete")
 	defer span.End()
 
@@ -339,18 +369,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, ip string, requester 
 			return nil, err
 		}
 
-		documentID := documentIDFromSignedDocument(sd, deletedoc.CreatedAt)
-		proof, err := proofJSON(sd.Proof)
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
-
-		err = uc.withRecordTx(ctx, func(tx RepositoryTx) error {
-			if err := uc.repo.Commit(ctx, tx, documentID, ip, sd.Document, proof, []string{requester.ID}); err != nil {
-				return err
-			}
-
+		err = uc.withRecordTx(ctx, commitLog, []string{requester.ID}, func(tx RepositoryTx) error {
 			_, err := uc.repo.Delete(ctx, tx, targetURI)
 			return err
 		})
@@ -552,7 +571,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, ip string, requester 
 	}
 }
 
-func (uc *RecordUsecase) createRecord(ctx context.Context, ip string, requester domain.Entity, parsed concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*concrnt.SignedDocument, error) {
+func (uc *RecordUsecase) createRecord(ctx context.Context, commitLog receivedCommitLog, requester domain.Entity, parsed concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*concrnt.SignedDocument, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.CreateRecord")
 	defer span.End()
 
@@ -595,8 +614,6 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, ip string, requester 
 		return nil, err
 	}
 
-	documentID := documentIDFromSignedDocument(sd, parsed.CreatedAt)
-
 	parsedKey, err := concrnt.ParseCCURI(parsed.Key)
 	if err != nil {
 		span.RecordError(err)
@@ -604,12 +621,6 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, ip string, requester 
 	}
 	if parsedKey.Scheme != "cckv" {
 		err := fmt.Errorf("invalid key: document key scheme must be cckv")
-		span.RecordError(err)
-		return nil, err
-	}
-
-	proof, err := proofJSON(sd.Proof)
-	if err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
@@ -664,12 +675,8 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, ip string, requester 
 	}
 
 	var resultURI string
-	err = uc.withRecordTx(ctx, func(tx RepositoryTx) error {
-		if err := uc.repo.Commit(ctx, tx, documentID, ip, sd.Document, proof, []string{parsedKey.Owner}); err != nil {
-			return err
-		}
-
-		resultURI, err = uc.repo.CreateRecord(ctx, tx, documentID, parsed.Key, parsedKey.Owner, schema, policies, distributions, redirect, createdAt)
+	err = uc.withRecordTx(ctx, commitLog, []string{parsedKey.Owner}, func(tx RepositoryTx) error {
+		resultURI, err = uc.repo.CreateRecord(ctx, tx, commitLog.ID, parsed.Key, parsedKey.Owner, schema, policies, distributions, redirect, createdAt)
 		return err
 	})
 	if err != nil {
@@ -711,9 +718,9 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, ip string, requester 
 				continue
 			}
 
-			key, err := url.JoinPath(destURI, documentID)
+			key, err := url.JoinPath(destURI, commitLog.ID)
 			if err != nil {
-				slog.Error("failed to join path for distribution", slog.String("destination", destURI), slog.String("document_id", documentID), slog.String("error", err.Error()))
+				slog.Error("failed to join path for distribution", slog.String("destination", destURI), slog.String("document_id", commitLog.ID), slog.String("error", err.Error()))
 				span.RecordError(err)
 				continue
 			}
@@ -745,9 +752,9 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, ip string, requester 
 			}
 
 			if host == uc.config.FQDN { // local
-				_, err = uc.Commit(ctx, ip, distSD, mode)
+				_, err = uc.Commit(ctx, commitLog.IP, distSD, mode)
 				if err != nil {
-					slog.Error("failed to commit local distribution reference", slog.String("destination", destURI), slog.String("document_id", documentID), slog.String("error", err.Error()))
+					slog.Error("failed to commit local distribution reference", slog.String("destination", destURI), slog.String("document_id", commitLog.ID), slog.String("error", err.Error()))
 					span.RecordError(err)
 					continue
 				}
@@ -757,7 +764,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, ip string, requester 
 				}
 				err = uc.client.Commit(ctx, dest.Owner, distSD)
 				if err != nil {
-					slog.Error("failed to commit remote distribution reference", slog.String("destination_owner", dest.Owner), slog.String("destination", destURI), slog.String("document_id", documentID), slog.String("error", err.Error()))
+					slog.Error("failed to commit remote distribution reference", slog.String("destination_owner", dest.Owner), slog.String("destination", destURI), slog.String("document_id", commitLog.ID), slog.String("error", err.Error()))
 					span.RecordError(err)
 					continue
 				}
@@ -768,7 +775,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, ip string, requester 
 	return &sd, nil
 }
 
-func (uc *RecordUsecase) createAssociation(ctx context.Context, ip string, requester domain.Entity, parsed concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*concrnt.SignedDocument, error) {
+func (uc *RecordUsecase) createAssociation(ctx context.Context, commitLog receivedCommitLog, requester domain.Entity, parsed concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*concrnt.SignedDocument, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.CreateAssociation")
 	defer span.End()
 
@@ -793,8 +800,6 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, ip string, reque
 		return nil, err
 	}
 
-	documentID := documentIDFromSignedDocument(sd, parsed.CreatedAt)
-
 	target := *parsed.Associate
 	targetURI, err := concrnt.ParseCCURI(*parsed.Associate)
 	if err != nil {
@@ -807,7 +812,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, ip string, reque
 		return nil, err
 	}
 
-	ccfs := concrnt.ComposeCCURI("ccfs", targetURI.Owner, documentID)
+	ccfs := concrnt.ComposeCCURI("ccfs", targetURI.Owner, commitLog.ID)
 
 	isLocal, err := uc.entity.IsLocalByCCID(ctx, targetURI.Owner)
 	if err != nil {
@@ -824,24 +829,14 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, ip string, reque
 	}
 
 	if isLocal {
-		proof, err := proofJSON(sd.Proof)
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
-
 		uniqueKey := targetURI.Owner + parsed.Author + *parsed.Associate
 		if parsed.AssociationVariant != nil {
 			uniqueKey += *parsed.AssociationVariant
 		}
 		uniqueHash := xxh3.HashString(uniqueKey)
 
-		err = uc.withRecordTx(ctx, func(tx RepositoryTx) error {
-			if err := uc.repo.Commit(ctx, tx, documentID, ip, sd.Document, proof, []string{targetURI.Owner}); err != nil {
-				return err
-			}
-
-			return uc.repo.CreateAssociation(ctx, tx, documentID, *parsed.Associate, targetURI.Owner, parsed.Author, parsed.Schema, parsed.AssociationVariant, fmt.Sprintf("%x", uniqueHash), parsed.CreatedAt)
+		err = uc.withRecordTx(ctx, commitLog, []string{targetURI.Owner}, func(tx RepositoryTx) error {
+			return uc.repo.CreateAssociation(ctx, tx, commitLog.ID, *parsed.Associate, targetURI.Owner, parsed.Author, parsed.Schema, parsed.AssociationVariant, fmt.Sprintf("%x", uniqueHash), parsed.CreatedAt)
 		})
 		if err != nil {
 			span.RecordError(err)
@@ -866,9 +861,9 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, ip string, reque
 				continue
 			}
 
-			key, err := url.JoinPath(destURI, documentID)
+			key, err := url.JoinPath(destURI, commitLog.ID)
 			if err != nil {
-				slog.Error("failed to join path for distribution", slog.String("destination", destURI), slog.String("document_id", documentID), slog.String("error", err.Error()))
+				slog.Error("failed to join path for distribution", slog.String("destination", destURI), slog.String("document_id", commitLog.ID), slog.String("error", err.Error()))
 				span.RecordError(err)
 				continue
 			}
@@ -900,9 +895,9 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, ip string, reque
 			}
 
 			if host == uc.config.FQDN { // local
-				_, err = uc.Commit(ctx, ip, distSD, mode)
+				_, err = uc.Commit(ctx, commitLog.IP, distSD, mode)
 				if err != nil {
-					slog.Error("failed to commit local distribution reference", slog.String("destination", destURI), slog.String("document_id", documentID), slog.String("error", err.Error()))
+					slog.Error("failed to commit local distribution reference", slog.String("destination", destURI), slog.String("document_id", commitLog.ID), slog.String("error", err.Error()))
 					span.RecordError(err)
 					continue
 				}
@@ -912,7 +907,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, ip string, reque
 				}
 				err = uc.client.Commit(ctx, dest.Owner, distSD)
 				if err != nil {
-					slog.Error("failed to commit remote distribution reference", slog.String("destination_owner", dest.Owner), slog.String("destination", destURI), slog.String("document_id", documentID), slog.String("error", err.Error()))
+					slog.Error("failed to commit remote distribution reference", slog.String("destination_owner", dest.Owner), slog.String("destination", destURI), slog.String("document_id", commitLog.ID), slog.String("error", err.Error()))
 					span.RecordError(err)
 					continue
 				}
@@ -995,7 +990,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, ip string, reque
 	return &sd, nil
 }
 
-func (uc *RecordUsecase) acknowledge(ctx context.Context, ip string, requester domain.Entity, sd concrnt.SignedDocument, mode domain.CommitMode) (*concrnt.SignedDocument, error) {
+func (uc *RecordUsecase) acknowledge(ctx context.Context, commitLog receivedCommitLog, requester domain.Entity, sd concrnt.SignedDocument, mode domain.CommitMode) (*concrnt.SignedDocument, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.Acknowledge")
 	defer span.End()
 
@@ -1005,8 +1000,6 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, ip string, requester d
 		span.RecordError(err)
 		return nil, err
 	}
-
-	documentID := documentIDFromSignedDocument(sd, doc.CreatedAt)
 
 	referrer := GetReferrerFromReferences(sd, requester.CCKV())
 	targetUser, err := uc.entity.Get(ctx, *doc.Associate, referrer)
@@ -1027,20 +1020,10 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, ip string, requester d
 			return nil, err
 		}
 
-		proof, err := proofJSON(sd.Proof)
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
-
 		owners := uc.ackCommitOwners(ctx, requester, *targetUser)
-		resultURI := concrnt.ComposeCCURI("ccfs", parsedAssociate.Owner, documentID)
-		err = uc.withRecordTx(ctx, func(tx RepositoryTx) error {
-			if err := uc.repo.Commit(ctx, tx, documentID, ip, sd.Document, proof, owners); err != nil {
-				return err
-			}
-
-			_, err := uc.repo.Acknowledge(ctx, tx, documentID, doc.Author, parsedAssociate.Owner, doc.Value.Context, true, doc.CreatedAt, resultURI)
+		resultURI := concrnt.ComposeCCURI("ccfs", parsedAssociate.Owner, commitLog.ID)
+		err = uc.withRecordTx(ctx, commitLog, owners, func(tx RepositoryTx) error {
+			_, err := uc.repo.Acknowledge(ctx, tx, commitLog.ID, doc.Author, parsedAssociate.Owner, doc.Value.Context, true, doc.CreatedAt, resultURI)
 			return err
 		})
 		if err != nil {
@@ -1074,7 +1057,7 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, ip string, requester d
 	return &sd, nil
 }
 
-func (uc *RecordUsecase) unacknowledge(ctx context.Context, ip string, requester domain.Entity, sd concrnt.SignedDocument, mode domain.CommitMode) (*concrnt.SignedDocument, error) {
+func (uc *RecordUsecase) unacknowledge(ctx context.Context, commitLog receivedCommitLog, requester domain.Entity, sd concrnt.SignedDocument, mode domain.CommitMode) (*concrnt.SignedDocument, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.UnAcknowledge")
 	defer span.End()
 
@@ -1084,8 +1067,6 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, ip string, requester
 		span.RecordError(err)
 		return nil, err
 	}
-
-	documentID := documentIDFromSignedDocument(sd, doc.CreatedAt)
 
 	targetUser, err := uc.entity.Get(ctx, *doc.Associate, nil)
 	if err != nil {
@@ -1105,19 +1086,9 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, ip string, requester
 			return nil, err
 		}
 
-		proof, err := proofJSON(sd.Proof)
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
-
 		owners := uc.ackCommitOwners(ctx, requester, *targetUser)
-		err = uc.withRecordTx(ctx, func(tx RepositoryTx) error {
-			if err := uc.repo.Commit(ctx, tx, documentID, ip, sd.Document, proof, owners); err != nil {
-				return err
-			}
-
-			return uc.repo.UnAcknowledge(ctx, tx, documentID, doc.Author, parsedAssociate.Owner, doc.Value.Context, false, doc.CreatedAt)
+		err = uc.withRecordTx(ctx, commitLog, owners, func(tx RepositoryTx) error {
+			return uc.repo.UnAcknowledge(ctx, tx, commitLog.ID, doc.Author, parsedAssociate.Owner, doc.Value.Context, false, doc.CreatedAt)
 		})
 		if err != nil {
 			span.RecordError(err)

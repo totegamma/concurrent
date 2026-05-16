@@ -55,8 +55,8 @@ func getRecordTx(ctx context.Context, tx usecase.RepositoryTx) (*gorm.DB, error)
 	return recordTx.tx.WithContext(ctx), nil
 }
 
-func (r *RecordRepository) Commit(ctx context.Context, tx usecase.RepositoryTx, id string, ip string, document string, proof string, owners []string) error {
-	ctx, span := tracer.Start(ctx, "Repository.Record.Commit")
+func (r *RecordRepository) CreateCommitLog(ctx context.Context, tx usecase.RepositoryTx, id string, ip string, document string, proof string, owners []string) error {
+	ctx, span := tracer.Start(ctx, "Repository.Record.CreateCommitLog")
 	defer span.End()
 
 	db, err := getRecordTx(ctx, tx)

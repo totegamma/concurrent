@@ -211,7 +211,8 @@ func TestRecordRepositoryWrites(t *testing.T) {
 
 		tx, err := repo.BeginTx(ctx)
 		require.NoError(t, err)
-		insertCommitLog(t, ctx, tx, "rollback-record", "127.0.0.1", rollbackSD.Document, `{"type":"none"}`, []string{"con1owner"})
+		require.NoError(t, repo.CreateCommitLog(ctx, tx, "rollback-record", "127.0.0.1", rollbackSD.Document, rollbackSD.Proof))
+		require.NoError(t, repo.CreateCommitOwners(ctx, tx, "rollback-record", []string{"con1owner"}))
 		_, err = repo.CreateRecord(ctx, tx, "rollback-record", rollbackKey, "con1owner", "https://schema.example/post.json", nil, []string{}, nil, time.Date(2026, 5, 6, 7, 8, 9, 0, time.UTC))
 		require.NoError(t, err)
 		require.NoError(t, tx.Rollback(ctx))
@@ -260,8 +261,45 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		requireCommitOwner(t, db, "delete-commit", "con1owner")
 	})
 
+	t.Run("commit log methods marshal proof and ignore conflicts", func(t *testing.T) {
+		href := "cckv://con1owner/timeline/conflict"
+		proof := concrnt.Proof{
+			Type: concrnt.ProofTypeNone,
+			Href: &href,
+		}
+
+		tx, err := repo.BeginTx(ctx)
+		require.NoError(t, err)
+		require.NoError(t, repo.CreateCommitLog(ctx, tx, "commit-methods", "127.0.0.1", "first", proof))
+		require.NoError(t, repo.CreateCommitLog(ctx, tx, "commit-methods", "192.0.2.1", "second", concrnt.Proof{Type: "ignored"}))
+		require.NoError(t, repo.CreateCommitOwners(ctx, tx, "commit-methods", []string{"con1owner", "con1owner"}))
+		require.NoError(t, tx.Commit(ctx))
+
+		var commit models.CommitLog
+		require.NoError(t, db.Where("id = ?", "commit-methods").Take(&commit).Error)
+		require.Equal(t, "127.0.0.1", commit.IP)
+		require.Equal(t, "first", commit.Document)
+		require.JSONEq(t, `{"type":"none","href":"cckv://con1owner/timeline/conflict"}`, commit.Proof)
+
+		var ownerCount int64
+		require.NoError(t, db.Model(&models.CommitOwner{}).Where("commit_log_id = ? AND owner = ?", "commit-methods", "con1owner").Count(&ownerCount).Error)
+		require.EqualValues(t, 1, ownerCount)
+	})
+
 	t.Run("write methods reject invalid tx", func(t *testing.T) {
-		_, err := repo.CreateRecord(ctx, nil, "invalid", key, "con1owner", "https://schema.example/post.json", nil, []string{}, nil, time.Now())
+		err := repo.CreateCommitLog(ctx, nil, "invalid", "127.0.0.1", "{}", concrnt.Proof{Type: concrnt.ProofTypeNone})
+		require.Error(t, err)
+
+		err = repo.CreateCommitLog(ctx, fakeRecordTx{}, "invalid", "127.0.0.1", "{}", concrnt.Proof{Type: concrnt.ProofTypeNone})
+		require.Error(t, err)
+
+		err = repo.CreateCommitOwners(ctx, nil, "invalid", []string{"con1owner"})
+		require.Error(t, err)
+
+		err = repo.CreateCommitOwners(ctx, fakeRecordTx{}, "invalid", []string{"con1owner"})
+		require.Error(t, err)
+
+		_, err = repo.CreateRecord(ctx, nil, "invalid", key, "con1owner", "https://schema.example/post.json", nil, []string{}, nil, time.Now())
 		require.Error(t, err)
 
 		_, err = repo.CreateRecord(ctx, fakeRecordTx{}, "invalid", key, "con1owner", "https://schema.example/post.json", nil, []string{}, nil, time.Now())
@@ -274,33 +312,13 @@ func withRepositoryTx(t *testing.T, ctx context.Context, repo usecase.RecordRepo
 
 	tx, err := repo.BeginTx(ctx)
 	require.NoError(t, err)
-	insertCommitLog(t, ctx, tx, id, ip, sd.Document, `{"type":"none"}`, owners)
+	require.NoError(t, repo.CreateCommitLog(ctx, tx, id, ip, sd.Document, sd.Proof))
+	require.NoError(t, repo.CreateCommitOwners(ctx, tx, id, owners))
 	if err := fn(tx); err != nil {
 		require.NoError(t, tx.Rollback(ctx))
 		require.NoError(t, err)
 	}
 	require.NoError(t, tx.Commit(ctx))
-}
-
-func insertCommitLog(t *testing.T, ctx context.Context, tx usecase.RepositoryTx, id string, ip string, document string, proof string, owners []string) {
-	t.Helper()
-
-	recordTx, ok := tx.(*recordTx)
-	require.True(t, ok)
-
-	require.NoError(t, recordTx.tx.WithContext(ctx).Create(&models.CommitLog{
-		ID:       id,
-		IP:       ip,
-		Document: document,
-		Proof:    proof,
-	}).Error)
-
-	for _, owner := range owners {
-		require.NoError(t, recordTx.tx.WithContext(ctx).Create(&models.CommitOwner{
-			CommitLogID: id,
-			Owner:       owner,
-		}).Error)
-	}
 }
 
 type fakeRecordTx struct{}

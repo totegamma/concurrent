@@ -325,11 +325,11 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		// Associateフィールドがあれば通常Recordではない
 		if doc.Associate != nil {
 			applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
-				return uc.createAssociation(ctx, tx, documentID, *requester, doc, sd, mode)
+				return uc.createAssociation(ctx, tx, documentID, ip, *requester, doc, sd, mode)
 			}
 		} else { // 通常Record
 			applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
-				return uc.createRecord(ctx, tx, documentID, *requester, doc, sd, mode)
+				return uc.createRecord(ctx, tx, documentID, ip, *requester, doc, sd, mode)
 			}
 		}
 	}
@@ -548,7 +548,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 				}
 			}
 		}
-		return &commitApplyResult{result: targetSD, owners: []string{requester.ID}, afterCommit: afterCommit}, nil
+		return &commitApplyResult{result: targetSD, owners: localEntityOwners(ctx, uc.entity, requester), afterCommit: afterCommit}, nil
 
 	} else { // remote entity. only emit signals.
 		targetSD, ok := sd.References[targetURI]
@@ -637,11 +637,11 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 			}
 		}
 
-		return &commitApplyResult{result: &targetSD, owners: []string{requester.ID}, afterCommit: afterCommit}, nil
+		return &commitApplyResult{result: &targetSD, owners: localEntityOwners(ctx, uc.entity, requester), afterCommit: afterCommit}, nil
 	}
 }
 
-func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, documentID string, requester domain.Entity, parsed concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
+func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, documentID string, ip string, requester domain.Entity, parsed concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.CreateRecord")
 	defer span.End()
 
@@ -736,7 +736,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 			createdAt = targetDoc.CreatedAt
 		} else {
 			if refDoc.Value.Schema != nil {
-				schema = refDoc.Schema
+				schema = *refDoc.Value.Schema
 			}
 			if refDoc.Value.CreatedAt != nil {
 				createdAt = *refDoc.Value.CreatedAt
@@ -816,7 +816,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 						return err
 					}
 					if host == uc.config.FQDN {
-						_, err = uc.Commit(ctx, "", distSD, mode)
+						_, err = uc.Commit(ctx, ip, distSD, mode)
 						return err
 					}
 					if mode != domain.CommitModeExecute {
@@ -832,10 +832,16 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 		}
 	}
 
-	return &commitApplyResult{result: &sd, owners: []string{parsedKey.Owner}, afterCommit: afterCommit}, nil
+	owners, err := uc.localCommitOwners(ctx, parsedKey.Owner)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	return &commitApplyResult{result: &sd, owners: owners, afterCommit: afterCommit}, nil
 }
 
-func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx, documentID string, requester domain.Entity, parsed concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
+func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx, documentID string, ip string, requester domain.Entity, parsed concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.CreateAssociation")
 	defer span.End()
 
@@ -948,7 +954,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 						return err
 					}
 					if host == uc.config.FQDN {
-						_, err = uc.Commit(ctx, "", distSD, mode)
+						_, err = uc.Commit(ctx, ip, distSD, mode)
 						return err
 					}
 					if mode != domain.CommitModeExecute {
@@ -1033,7 +1039,39 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 		}
 	}
 
-	return &commitApplyResult{result: &sd, owners: []string{targetURI.Owner}, afterCommit: afterCommit}, nil
+	owners := []string{}
+	if isLocal {
+		owners = append(owners, targetURI.Owner)
+	}
+
+	return &commitApplyResult{result: &sd, owners: owners, afterCommit: afterCommit}, nil
+}
+
+func (uc *RecordUsecase) localCommitOwners(ctx context.Context, candidates ...string) ([]string, error) {
+	owners := []string{}
+	for _, candidate := range candidates {
+		if slices.Contains(owners, candidate) {
+			continue
+		}
+		isLocal, err := uc.entity.IsLocalByCCID(ctx, candidate)
+		if err != nil {
+			return nil, err
+		}
+		if isLocal {
+			owners = append(owners, candidate)
+		}
+	}
+	return owners, nil
+}
+
+func localEntityOwners(ctx context.Context, entityUsecase *EntityUsecase, candidates ...domain.Entity) []string {
+	owners := []string{}
+	for _, candidate := range candidates {
+		if entityUsecase.IsLocal(ctx, candidate) && !slices.Contains(owners, candidate.ID) {
+			owners = append(owners, candidate.ID)
+		}
+	}
+	return owners
 }
 
 func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, documentID string, requester domain.Entity, targetUser domain.Entity, doc concrnt.Document[schemas.Acknowledge], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {

@@ -10,11 +10,13 @@ import (
 
 // RecordRepository defines storage operations for records/commits.
 type RecordRepository interface {
-	CreateRecord(ctx context.Context, write RecordWrite) (string, error)
-	CreateAssociation(ctx context.Context, write AssociationWrite) error
-	Acknowledge(ctx context.Context, write AckWrite) (string, error)
-	UnAcknowledge(ctx context.Context, write AckWrite) error
-	Delete(ctx context.Context, sd concrnt.SignedDocument) (string, error)
+	BeginTx(ctx context.Context) (RepositoryTx, error)
+	Commit(ctx context.Context, tx RepositoryTx, id string, ip string, document string, proof string, owners []string) error
+	CreateRecord(ctx context.Context, tx RepositoryTx, documentID string, key string, owner string, schema string, policies *string, distributions []string, redirect *string, createdAt time.Time) (string, error)
+	CreateAssociation(ctx context.Context, tx RepositoryTx, documentID string, targetURI string, owner string, author string, schema string, variant *string, unique string, createdAt time.Time) error
+	Acknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, ackContext string, valid bool, createdAt time.Time, resultURI string) (string, error)
+	UnAcknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, ackContext string, valid bool, createdAt time.Time) error
+	Delete(ctx context.Context, tx RepositoryTx, targetURI string) (string, error)
 
 	GetSignedDocument(ctx context.Context, uri string) (*concrnt.SignedDocument, error)
 	GetHierarchicalRecordPolicies(ctx context.Context, uri string) ([]concrnt.Policy, error)
@@ -32,49 +34,7 @@ type RecordRepository interface {
 	QueryByParent(ctx context.Context, parent, schema string, since, until *time.Time, limit int, order string) ([]concrnt.SignedDocument, error)
 }
 
-// CommitWrite is the storage-neutral representation of a commit log write.
-type CommitWrite struct {
-	ID       string
-	IP       string
-	Document string
-	Proof    string
-	Owners   []string
-}
-
-// RecordWrite contains all record data that can be derived without DB access.
-type RecordWrite struct {
-	Commit        CommitWrite
-	DocumentID    string
-	Key           string
-	Owner         string
-	Schema        string
-	Policies      *string
-	Distributions []string
-	Redirect      *string
-	CreatedAt     time.Time
-}
-
-// AssociationWrite contains all association data that can be derived without DB access.
-type AssociationWrite struct {
-	Commit     CommitWrite
-	DocumentID string
-	TargetURI  string
-	Owner      string
-	Author     string
-	Schema     string
-	Variant    *string
-	Unique     string
-	CreatedAt  time.Time
-}
-
-// AckWrite contains all ack/unack data that can be derived without DB access.
-type AckWrite struct {
-	Commit     CommitWrite
-	DocumentID string
-	From       string
-	To         string
-	Context    string
-	Valid      bool
-	CreatedAt  time.Time
-	ResultURI  string
+type RepositoryTx interface {
+	Commit(ctx context.Context) error
+	Rollback(ctx context.Context) error
 }

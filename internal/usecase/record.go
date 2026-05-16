@@ -73,6 +73,45 @@ func GetReferrerFromReferences(sd concrnt.SignedDocument, requesterID string) *s
 	return nil
 }
 
+func documentIDFromSignedDocument(sd concrnt.SignedDocument, createdAt time.Time) string {
+	hash := concrnt.GetHash([]byte(sd.Document))
+	hash10 := [10]byte{}
+	copy(hash10[:], hash[:10])
+	return cdid.New(hash10, createdAt).String()
+}
+
+func proofJSON(proof concrnt.Proof) (string, error) {
+	proofBytes, err := json.Marshal(proof)
+	if err != nil {
+		return "", err
+	}
+	return string(proofBytes), nil
+}
+
+func (uc *RecordUsecase) withRecordTx(ctx context.Context, fn func(tx RepositoryTx) error) error {
+	tx, err := uc.repo.BeginTx(ctx)
+	if err != nil {
+		return err
+	}
+
+	committed := false
+	defer func() {
+		if !committed {
+			_ = tx.Rollback(ctx)
+		}
+	}()
+
+	if err := fn(tx); err != nil {
+		return err
+	}
+
+	if err := tx.Commit(ctx); err != nil {
+		return err
+	}
+	committed = true
+	return nil
+}
+
 func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.SignedDocument, mode domain.CommitMode) (*concrnt.SignedDocument, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.Commit")
 	defer span.End()
@@ -207,7 +246,7 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 			span.RecordError(err)
 			return nil, err
 		}
-		return uc.deleteRecord(ctx, *requester, sd, mode)
+		return uc.deleteRecord(ctx, ip, *requester, sd, mode)
 	case schemas.AcknowledgeURL:
 		if requester == nil {
 			err := errors.New("requester entity not found for ack operation")
@@ -242,7 +281,7 @@ func (uc *RecordUsecase) saveEntity(ctx context.Context, sd concrnt.SignedDocume
 	return uc.entity.SaveEntity(ctx, sd)
 }
 
-func (uc *RecordUsecase) deleteRecord(ctx context.Context, requester domain.Entity, sd concrnt.SignedDocument, mode domain.CommitMode) (*concrnt.SignedDocument, error) {
+func (uc *RecordUsecase) deleteRecord(ctx context.Context, ip string, requester domain.Entity, sd concrnt.SignedDocument, mode domain.CommitMode) (*concrnt.SignedDocument, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.Delete")
 	defer span.End()
 
@@ -300,7 +339,21 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, requester domain.Enti
 			return nil, err
 		}
 
-		_, err = uc.repo.Delete(ctx, sd)
+		documentID := documentIDFromSignedDocument(sd, deletedoc.CreatedAt)
+		proof, err := proofJSON(sd.Proof)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+
+		err = uc.withRecordTx(ctx, func(tx RepositoryTx) error {
+			if err := uc.repo.Commit(ctx, tx, documentID, ip, sd.Document, proof, []string{requester.ID}); err != nil {
+				return err
+			}
+
+			_, err := uc.repo.Delete(ctx, tx, targetURI)
+			return err
+		})
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
@@ -542,10 +595,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, ip string, requester 
 		return nil, err
 	}
 
-	hash := concrnt.GetHash([]byte(sd.Document))
-	hash10 := [10]byte{}
-	copy(hash10[:], hash[:10])
-	documentID := cdid.New(hash10, parsed.CreatedAt).String()
+	documentID := documentIDFromSignedDocument(sd, parsed.CreatedAt)
 
 	parsedKey, err := concrnt.ParseCCURI(parsed.Key)
 	if err != nil {
@@ -558,7 +608,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, ip string, requester 
 		return nil, err
 	}
 
-	proof, err := json.Marshal(sd.Proof)
+	proof, err := proofJSON(sd.Proof)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -580,22 +630,9 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, ip string, requester 
 		distributions = *parsed.Distributes
 	}
 
-	write := RecordWrite{
-		Commit: CommitWrite{
-			ID:       documentID,
-			IP:       ip,
-			Document: sd.Document,
-			Proof:    string(proof),
-			Owners:   []string{parsedKey.Owner},
-		},
-		DocumentID:    documentID,
-		Key:           parsed.Key,
-		Owner:         parsedKey.Owner,
-		Schema:        parsed.Schema,
-		Policies:      policies,
-		Distributions: distributions,
-		CreatedAt:     parsed.CreatedAt,
-	}
+	schema := parsed.Schema
+	createdAt := parsed.CreatedAt
+	var redirect *string
 
 	if parsed.Schema == schemas.ReferenceURL {
 		var refDoc concrnt.Document[schemas.Reference]
@@ -604,7 +641,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, ip string, requester 
 			span.RecordError(err)
 			return nil, err
 		}
-		write.Redirect = &refDoc.Value.Href
+		redirect = &refDoc.Value.Href
 
 		refSD, ok := sd.References[refDoc.Value.Href]
 		if ok {
@@ -614,19 +651,27 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, ip string, requester 
 				span.RecordError(err)
 				return nil, err
 			}
-			write.Schema = targetDoc.Schema
-			write.CreatedAt = targetDoc.CreatedAt
+			schema = targetDoc.Schema
+			createdAt = targetDoc.CreatedAt
 		} else {
 			if refDoc.Value.Schema != nil {
-				write.Schema = refDoc.Schema
+				schema = refDoc.Schema
 			}
 			if refDoc.Value.CreatedAt != nil {
-				write.CreatedAt = *refDoc.Value.CreatedAt
+				createdAt = *refDoc.Value.CreatedAt
 			}
 		}
 	}
 
-	resultURI, err := uc.repo.CreateRecord(ctx, write)
+	var resultURI string
+	err = uc.withRecordTx(ctx, func(tx RepositoryTx) error {
+		if err := uc.repo.Commit(ctx, tx, documentID, ip, sd.Document, proof, []string{parsedKey.Owner}); err != nil {
+			return err
+		}
+
+		resultURI, err = uc.repo.CreateRecord(ctx, tx, documentID, parsed.Key, parsedKey.Owner, schema, policies, distributions, redirect, createdAt)
+		return err
+	})
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -748,10 +793,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, ip string, reque
 		return nil, err
 	}
 
-	hash := concrnt.GetHash([]byte(sd.Document))
-	hash10 := [10]byte{}
-	copy(hash10[:], hash[:10])
-	documentID := cdid.New(hash10, parsed.CreatedAt).String()
+	documentID := documentIDFromSignedDocument(sd, parsed.CreatedAt)
 
 	target := *parsed.Associate
 	targetURI, err := concrnt.ParseCCURI(*parsed.Associate)
@@ -782,7 +824,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, ip string, reque
 	}
 
 	if isLocal {
-		proof, err := json.Marshal(sd.Proof)
+		proof, err := proofJSON(sd.Proof)
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
@@ -794,25 +836,13 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, ip string, reque
 		}
 		uniqueHash := xxh3.HashString(uniqueKey)
 
-		write := AssociationWrite{
-			Commit: CommitWrite{
-				ID:       documentID,
-				IP:       ip,
-				Document: sd.Document,
-				Proof:    string(proof),
-				Owners:   []string{targetURI.Owner},
-			},
-			DocumentID: documentID,
-			TargetURI:  *parsed.Associate,
-			Owner:      targetURI.Owner,
-			Author:     parsed.Author,
-			Schema:     parsed.Schema,
-			Variant:    parsed.AssociationVariant,
-			Unique:     fmt.Sprintf("%x", uniqueHash),
-			CreatedAt:  parsed.CreatedAt,
-		}
+		err = uc.withRecordTx(ctx, func(tx RepositoryTx) error {
+			if err := uc.repo.Commit(ctx, tx, documentID, ip, sd.Document, proof, []string{targetURI.Owner}); err != nil {
+				return err
+			}
 
-		err = uc.repo.CreateAssociation(ctx, write)
+			return uc.repo.CreateAssociation(ctx, tx, documentID, *parsed.Associate, targetURI.Owner, parsed.Author, parsed.Schema, parsed.AssociationVariant, fmt.Sprintf("%x", uniqueHash), parsed.CreatedAt)
+		})
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
@@ -976,10 +1006,7 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, ip string, requester d
 		return nil, err
 	}
 
-	hash := concrnt.GetHash([]byte(sd.Document))
-	hash10 := [10]byte{}
-	copy(hash10[:], hash[:10])
-	documentID := cdid.New(hash10, doc.CreatedAt).String()
+	documentID := documentIDFromSignedDocument(sd, doc.CreatedAt)
 
 	referrer := GetReferrerFromReferences(sd, requester.CCKV())
 	targetUser, err := uc.entity.Get(ctx, *doc.Associate, referrer)
@@ -1000,30 +1027,22 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, ip string, requester d
 			return nil, err
 		}
 
-		proof, err := json.Marshal(sd.Proof)
+		proof, err := proofJSON(sd.Proof)
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
 		}
 
-		write := AckWrite{
-			Commit: CommitWrite{
-				ID:       documentID,
-				IP:       ip,
-				Document: sd.Document,
-				Proof:    string(proof),
-				Owners:   uc.ackCommitOwners(ctx, requester, *targetUser),
-			},
-			DocumentID: documentID,
-			From:       doc.Author,
-			To:         parsedAssociate.Owner,
-			Context:    doc.Value.Context,
-			Valid:      true,
-			CreatedAt:  doc.CreatedAt,
-			ResultURI:  concrnt.ComposeCCURI("ccfs", parsedAssociate.Owner, documentID),
-		}
+		owners := uc.ackCommitOwners(ctx, requester, *targetUser)
+		resultURI := concrnt.ComposeCCURI("ccfs", parsedAssociate.Owner, documentID)
+		err = uc.withRecordTx(ctx, func(tx RepositoryTx) error {
+			if err := uc.repo.Commit(ctx, tx, documentID, ip, sd.Document, proof, owners); err != nil {
+				return err
+			}
 
-		_, err = uc.repo.Acknowledge(ctx, write)
+			_, err := uc.repo.Acknowledge(ctx, tx, documentID, doc.Author, parsedAssociate.Owner, doc.Value.Context, true, doc.CreatedAt, resultURI)
+			return err
+		})
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
@@ -1066,10 +1085,7 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, ip string, requester
 		return nil, err
 	}
 
-	hash := concrnt.GetHash([]byte(sd.Document))
-	hash10 := [10]byte{}
-	copy(hash10[:], hash[:10])
-	documentID := cdid.New(hash10, doc.CreatedAt).String()
+	documentID := documentIDFromSignedDocument(sd, doc.CreatedAt)
 
 	targetUser, err := uc.entity.Get(ctx, *doc.Associate, nil)
 	if err != nil {
@@ -1089,30 +1105,20 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, ip string, requester
 			return nil, err
 		}
 
-		proof, err := json.Marshal(sd.Proof)
+		proof, err := proofJSON(sd.Proof)
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
 		}
 
-		write := AckWrite{
-			Commit: CommitWrite{
-				ID:       documentID,
-				IP:       ip,
-				Document: sd.Document,
-				Proof:    string(proof),
-				Owners:   uc.ackCommitOwners(ctx, requester, *targetUser),
-			},
-			DocumentID: documentID,
-			From:       doc.Author,
-			To:         parsedAssociate.Owner,
-			Context:    doc.Value.Context,
-			Valid:      false,
-			CreatedAt:  doc.CreatedAt,
-			ResultURI:  concrnt.ComposeCCURI("ccfs", parsedAssociate.Owner, documentID),
-		}
+		owners := uc.ackCommitOwners(ctx, requester, *targetUser)
+		err = uc.withRecordTx(ctx, func(tx RepositoryTx) error {
+			if err := uc.repo.Commit(ctx, tx, documentID, ip, sd.Document, proof, owners); err != nil {
+				return err
+			}
 
-		err = uc.repo.UnAcknowledge(ctx, write)
+			return uc.repo.UnAcknowledge(ctx, tx, documentID, doc.Author, parsedAssociate.Owner, doc.Value.Context, false, doc.CreatedAt)
+		})
 		if err != nil {
 			span.RecordError(err)
 			return nil, err

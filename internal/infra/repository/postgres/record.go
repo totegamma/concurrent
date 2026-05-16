@@ -17,107 +17,179 @@ import (
 	"github.com/concrnt/concrnt/internal/infra/database/models"
 	"github.com/concrnt/concrnt/internal/usecase"
 	"github.com/concrnt/concrnt/internal/utils"
-	"github.com/concrnt/concrnt/schemas"
 )
 
 type RecordRepository struct {
 	db *gorm.DB
 }
 
+type recordTx struct {
+	tx *gorm.DB
+}
+
 func NewRecordRepository(db *gorm.DB) usecase.RecordRepository {
 	return &RecordRepository{db: db}
 }
 
-func (r *RecordRepository) CreateRecord(ctx context.Context, write usecase.RecordWrite) (string, error) {
-	ctx, span := tracer.Start(ctx, "Repository.Record.CreateRecord")
+func (r *RecordRepository) BeginTx(ctx context.Context) (usecase.RepositoryTx, error) {
+	tx := r.db.WithContext(ctx).Begin()
+	if tx.Error != nil {
+		return nil, tx.Error
+	}
+	return &recordTx{tx: tx}, nil
+}
+
+func (tx *recordTx) Commit(ctx context.Context) error {
+	return tx.tx.WithContext(ctx).Commit().Error
+}
+
+func (tx *recordTx) Rollback(ctx context.Context) error {
+	return tx.tx.WithContext(ctx).Rollback().Error
+}
+
+func getRecordTx(ctx context.Context, tx usecase.RepositoryTx) (*gorm.DB, error) {
+	recordTx, ok := tx.(*recordTx)
+	if !ok || recordTx == nil || recordTx.tx == nil {
+		return nil, errors.New("invalid record repository transaction")
+	}
+	return recordTx.tx.WithContext(ctx), nil
+}
+
+func (r *RecordRepository) Commit(ctx context.Context, tx usecase.RepositoryTx, id string, ip string, document string, proof string, owners []string) error {
+	ctx, span := tracer.Start(ctx, "Repository.Record.Commit")
 	defer span.End()
 
-	record := models.Record{
-		DocumentID:    write.DocumentID,
-		Owner:         write.Owner,
-		Redirect:      write.Redirect,
-		Schema:        write.Schema,
-		Policies:      write.Policies,
-		Distributions: write.Distributions,
-		CreatedAt:     write.CreatedAt,
+	db, err := getRecordTx(ctx, tx)
+	if err != nil {
+		span.RecordError(err)
+		return err
 	}
 
-	err := r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := createCommitLogAndOwners(tx, write.Commit); err != nil {
-			return err
-		}
+	commitLog := models.CommitLog{
+		ID:       id,
+		IP:       ip,
+		Document: document,
+		Proof:    proof,
+	}
 
-		if err := tx.Clauses(clause.OnConflict{
+	if err := db.Clauses(clause.OnConflict{
+		DoNothing: true,
+	}).Create(&commitLog).Error; err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	for _, owner := range owners {
+		err := db.Clauses(clause.OnConflict{
+			Columns:   []clause.Column{{Name: "commit_log_id"}, {Name: "owner"}},
 			DoNothing: true,
-		}).Create(&record).Error; err != nil {
+		}).Create(&models.CommitOwner{
+			CommitLogID: id,
+			Owner:       owner,
+		}).Error
+		if err != nil {
 			span.RecordError(err)
 			return err
 		}
+	}
 
-		// update RecordKey
-		var oldRecordKey models.RecordKey
-		err := tx.Clauses(clause.Locking{Strength: "UPDATE"}).
-			Where("uri = ?", write.Key).
-			Take(&oldRecordKey).Error
-		if err != nil && err != gorm.ErrRecordNotFound {
-			return err
-		}
+	return nil
+}
 
-		// ParentのRecordKeyを探す
-		parentRK, err := getOrCreateParentRecordKey(ctx, tx, write.Key)
-		if err != nil {
-			return err
-		}
+func (r *RecordRepository) CreateRecord(ctx context.Context, tx usecase.RepositoryTx, documentID string, key string, owner string, schema string, policies *string, distributions []string, redirect *string, createdAt time.Time) (string, error) {
+	ctx, span := tracer.Start(ctx, "Repository.Record.CreateRecord")
+	defer span.End()
 
-		var pid *int64
-		if parentRK != nil {
-			pid = &parentRK.ID
-		}
-
-		// RecordKeyを作る
-		rk := models.RecordKey{
-			URI:      write.Key,
-			ParentID: pid,
-			RecordID: &write.DocumentID,
-		}
-
-		err = tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "uri"}},
-			DoUpdates: clause.Assignments(map[string]any{"record_id": write.DocumentID}),
-		}).Create(&rk).Error
-		if err != nil {
-			return err
-		}
-
-		// 古いRecordKeyが指していたCommitのGCフラグを立て、Recordは消す
-		if oldRecordKey.RecordID != nil && *oldRecordKey.RecordID != write.DocumentID {
-			if err := tx.Model(&models.CommitLog{}).
-				Where("id = ?", oldRecordKey.RecordID).
-				Update("gc_candidate", true).Error; err != nil {
-				return err
-			}
-			if err := tx.Delete(&models.Record{}, "document_id = ?", oldRecordKey.RecordID).Error; err != nil {
-				return err
-			}
-		}
-
-		return nil
-	})
-
+	db, err := getRecordTx(ctx, tx)
 	if err != nil {
 		span.RecordError(err)
 		return "", err
 	}
 
-	return write.Key, nil
+	record := models.Record{
+		DocumentID:    documentID,
+		Owner:         owner,
+		Redirect:      redirect,
+		Schema:        schema,
+		Policies:      policies,
+		Distributions: distributions,
+		CreatedAt:     createdAt,
+	}
+
+	if err := db.Clauses(clause.OnConflict{
+		DoNothing: true,
+	}).Create(&record).Error; err != nil {
+		span.RecordError(err)
+		return "", err
+	}
+
+	// update RecordKey
+	var oldRecordKey models.RecordKey
+	err = db.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("uri = ?", key).
+		Take(&oldRecordKey).Error
+	if err != nil && err != gorm.ErrRecordNotFound {
+		span.RecordError(err)
+		return "", err
+	}
+
+	// ParentのRecordKeyを探す
+	parentRK, err := getOrCreateParentRecordKey(ctx, db, key)
+	if err != nil {
+		span.RecordError(err)
+		return "", err
+	}
+
+	var pid *int64
+	if parentRK != nil {
+		pid = &parentRK.ID
+	}
+
+	// RecordKeyを作る
+	rk := models.RecordKey{
+		URI:      key,
+		ParentID: pid,
+		RecordID: &documentID,
+	}
+
+	err = db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "uri"}},
+		DoUpdates: clause.Assignments(map[string]any{"record_id": documentID}),
+	}).Create(&rk).Error
+	if err != nil {
+		span.RecordError(err)
+		return "", err
+	}
+
+	// 古いRecordKeyが指していたCommitのGCフラグを立て、Recordは消す
+	if oldRecordKey.RecordID != nil && *oldRecordKey.RecordID != documentID {
+		if err := db.Model(&models.CommitLog{}).
+			Where("id = ?", oldRecordKey.RecordID).
+			Update("gc_candidate", true).Error; err != nil {
+			span.RecordError(err)
+			return "", err
+		}
+		if err := db.Delete(&models.Record{}, "document_id = ?", oldRecordKey.RecordID).Error; err != nil {
+			span.RecordError(err)
+			return "", err
+		}
+	}
+
+	return key, nil
 
 }
 
-func (r *RecordRepository) CreateAssociation(ctx context.Context, write usecase.AssociationWrite) error {
+func (r *RecordRepository) CreateAssociation(ctx context.Context, tx usecase.RepositoryTx, documentID string, targetURI string, owner string, author string, schema string, variant *string, unique string, createdAt time.Time) error {
 	ctx, span := tracer.Start(ctx, "Repository.Record.CreateAssociation")
 	defer span.End()
 
-	targetRK, err := GetRecordKeyByURI(ctx, r.db, write.TargetURI)
+	db, err := getRecordTx(ctx, tx)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	targetRK, err := GetRecordKeyByURI(ctx, db, targetURI)
 	if err != nil {
 		span.RecordError(err)
 		return err
@@ -125,27 +197,17 @@ func (r *RecordRepository) CreateAssociation(ctx context.Context, write usecase.
 
 	association := models.Association{
 		TargetID:   targetRK.ID,
-		DocumentID: write.DocumentID,
-		Unique:     write.Unique,
+		DocumentID: documentID,
+		Unique:     unique,
 
-		Owner:     write.Owner,
-		Author:    write.Author,
-		Variant:   write.Variant,
-		Schema:    write.Schema,
-		CreatedAt: write.CreatedAt,
+		Owner:     owner,
+		Author:    author,
+		Variant:   variant,
+		Schema:    schema,
+		CreatedAt: createdAt,
 	}
 
-	err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := createCommitLogAndOwners(tx, write.Commit); err != nil {
-			return err
-		}
-
-		if err := tx.Create(&association).Error; err != nil {
-			return err
-		}
-
-		return nil
-	})
+	err = db.Create(&association).Error
 	if err != nil {
 		span.RecordError(err)
 	}
@@ -153,23 +215,23 @@ func (r *RecordRepository) CreateAssociation(ctx context.Context, write usecase.
 	return err
 }
 
-func (r *RecordRepository) Acknowledge(ctx context.Context, write usecase.AckWrite) (string, error) {
+func (r *RecordRepository) Acknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, ackContext string, valid bool, createdAt time.Time, resultURI string) (string, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.Acknowledge")
 	defer span.End()
 
-	err := r.saveAck(ctx, write)
+	err := r.saveAck(ctx, tx, documentID, from, to, ackContext, valid, createdAt)
 	if err != nil {
 		span.RecordError(err)
 	}
 
-	return write.ResultURI, err
+	return resultURI, err
 }
 
-func (r *RecordRepository) UnAcknowledge(ctx context.Context, write usecase.AckWrite) error {
+func (r *RecordRepository) UnAcknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, ackContext string, valid bool, createdAt time.Time) error {
 	ctx, span := tracer.Start(ctx, "Repository.Record.Unacknowledge")
 	defer span.End()
 
-	err := r.saveAck(ctx, write)
+	err := r.saveAck(ctx, tx, documentID, from, to, ackContext, valid, createdAt)
 	if err != nil {
 		span.RecordError(err)
 	}
@@ -177,57 +239,25 @@ func (r *RecordRepository) UnAcknowledge(ctx context.Context, write usecase.AckW
 	return err
 }
 
-func (r *RecordRepository) saveAck(ctx context.Context, write usecase.AckWrite) error {
+func (r *RecordRepository) saveAck(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, ackContext string, valid bool, createdAt time.Time) error {
+	db, err := getRecordTx(ctx, tx)
+	if err != nil {
+		return err
+	}
+
 	ack := models.Ack{
-		From:       write.From,
-		To:         write.To,
-		Context:    write.Context,
-		DocumentID: write.DocumentID,
-		Valid:      write.Valid,
-		CreatedAt:  write.CreatedAt,
+		From:       from,
+		To:         to,
+		Context:    ackContext,
+		DocumentID: documentID,
+		Valid:      valid,
+		CreatedAt:  createdAt,
 	}
 
-	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		if err := createCommitLogAndOwners(tx, write.Commit); err != nil {
-			return err
-		}
-
-		err := tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "context"}},
-			DoUpdates: clause.Assignments(map[string]any{"valid": write.Valid, "document_id": write.DocumentID}),
-		}).Create(&ack).Error
-		return err
-	})
-}
-
-func createCommitLogAndOwners(tx *gorm.DB, commit usecase.CommitWrite) error {
-	commitLog := models.CommitLog{
-		ID:       commit.ID,
-		IP:       commit.IP,
-		Document: commit.Document,
-		Proof:    commit.Proof,
-	}
-
-	if err := tx.Clauses(clause.OnConflict{
-		DoNothing: true,
-	}).Create(&commitLog).Error; err != nil {
-		return err
-	}
-
-	for _, owner := range commit.Owners {
-		err := tx.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "commit_log_id"}, {Name: "owner"}},
-			DoNothing: true,
-		}).Create(&models.CommitOwner{
-			CommitLogID: commit.ID,
-			Owner:       owner,
-		}).Error
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
+	return db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "context"}},
+		DoUpdates: clause.Assignments(map[string]any{"valid": valid, "document_id": documentID}),
+	}).Create(&ack).Error
 }
 
 func (r *RecordRepository) GetHierarchicalRecordPolicies(ctx context.Context, uri string) ([]concrnt.Policy, error) {
@@ -405,19 +435,17 @@ func (r *RecordRepository) GetSignedDocument(ctx context.Context, uri string) (*
 	}
 }
 
-func (r *RecordRepository) Delete(ctx context.Context, sd concrnt.SignedDocument) (string, error) {
+func (r *RecordRepository) Delete(ctx context.Context, tx usecase.RepositoryTx, targetURI string) (string, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.Delete")
 	defer span.End()
 
-	var doc concrnt.Document[schemas.Delete]
-	err := json.Unmarshal([]byte(sd.Document), &doc)
+	db, err := getRecordTx(ctx, tx)
 	if err != nil {
 		span.RecordError(err)
 		return "", err
 	}
 
-	target := string(doc.Value)
-	parsed, err := concrnt.ParseCCURI(target)
+	parsed, err := concrnt.ParseCCURI(targetURI)
 	if err != nil {
 		span.RecordError(err)
 		return "", err
@@ -426,9 +454,9 @@ func (r *RecordRepository) Delete(ctx context.Context, sd concrnt.SignedDocument
 	switch parsed.Scheme {
 	case "cckv":
 		var recordKey models.RecordKey
-		err = r.db.WithContext(ctx).Preload("Record").
+		err = db.Preload("Record").
 			Preload("Record.Document").
-			Where("uri = ?", target).
+			Where("uri = ?", targetURI).
 			Take(&recordKey).Error
 		if err != nil {
 			span.RecordError(err)
@@ -436,33 +464,21 @@ func (r *RecordRepository) Delete(ctx context.Context, sd concrnt.SignedDocument
 		}
 
 		id := recordKey.Record.DocumentID
-		err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-			if err := tx.Delete(&models.CommitLog{}, "id = ?", id).Error; err != nil {
-				span.RecordError(err)
-				return err
-			}
-			return nil
-		})
+		err = db.Delete(&models.CommitLog{}, "id = ?", id).Error
 		if err != nil {
 			span.RecordError(err)
 			return "", err
 		}
 
-		return target, nil
+		return targetURI, nil
 
 	case "ccfs":
-		err = r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-			if err := tx.Delete(&models.CommitLog{}, "id = ?", parsed.CDID).Error; err != nil {
-				span.RecordError(err)
-				return err
-			}
-			return nil
-		})
+		err = db.Delete(&models.CommitLog{}, "id = ?", parsed.CDID).Error
 		if err != nil {
 			span.RecordError(err)
 			return "", err
 		}
-		return target, nil
+		return targetURI, nil
 	default:
 		err := fmt.Errorf("unsupported uri scheme: %s", parsed.Scheme)
 		span.RecordError(err)

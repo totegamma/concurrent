@@ -211,7 +211,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 
 		tx, err := repo.BeginTx(ctx)
 		require.NoError(t, err)
-		require.NoError(t, repo.CreateCommitLog(ctx, tx, "rollback-record", "127.0.0.1", rollbackSD.Document, `{"type":"none"}`, []string{"con1owner"}))
+		insertCommitLog(t, ctx, tx, "rollback-record", "127.0.0.1", rollbackSD.Document, `{"type":"none"}`, []string{"con1owner"})
 		_, err = repo.CreateRecord(ctx, tx, "rollback-record", rollbackKey, "con1owner", "https://schema.example/post.json", nil, []string{}, nil, time.Date(2026, 5, 6, 7, 8, 9, 0, time.UTC))
 		require.NoError(t, err)
 		require.NoError(t, tx.Rollback(ctx))
@@ -274,12 +274,33 @@ func withRepositoryTx(t *testing.T, ctx context.Context, repo usecase.RecordRepo
 
 	tx, err := repo.BeginTx(ctx)
 	require.NoError(t, err)
-	require.NoError(t, repo.CreateCommitLog(ctx, tx, id, ip, sd.Document, `{"type":"none"}`, owners))
+	insertCommitLog(t, ctx, tx, id, ip, sd.Document, `{"type":"none"}`, owners)
 	if err := fn(tx); err != nil {
 		require.NoError(t, tx.Rollback(ctx))
 		require.NoError(t, err)
 	}
 	require.NoError(t, tx.Commit(ctx))
+}
+
+func insertCommitLog(t *testing.T, ctx context.Context, tx usecase.RepositoryTx, id string, ip string, document string, proof string, owners []string) {
+	t.Helper()
+
+	recordTx, ok := tx.(*recordTx)
+	require.True(t, ok)
+
+	require.NoError(t, recordTx.tx.WithContext(ctx).Create(&models.CommitLog{
+		ID:       id,
+		IP:       ip,
+		Document: document,
+		Proof:    proof,
+	}).Error)
+
+	for _, owner := range owners {
+		require.NoError(t, recordTx.tx.WithContext(ctx).Create(&models.CommitOwner{
+			CommitLogID: id,
+			Owner:       owner,
+		}).Error)
+	}
 }
 
 type fakeRecordTx struct{}

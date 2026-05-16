@@ -1048,7 +1048,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 }
 
 func (uc *RecordUsecase) localCommitOwners(ctx context.Context, candidates ...string) ([]string, error) {
-	owners := []string{}
+	owners := make([]string, 0, len(candidates))
 	seen := map[string]struct{}{}
 	for _, candidate := range candidates {
 		if _, ok := seen[candidate]; ok {
@@ -1067,7 +1067,7 @@ func (uc *RecordUsecase) localCommitOwners(ctx context.Context, candidates ...st
 }
 
 func localEntityOwners(ctx context.Context, entity *EntityUsecase, candidates ...domain.Entity) []string {
-	owners := []string{}
+	owners := make([]string, 0, len(candidates))
 	seen := map[string]struct{}{}
 	for _, candidate := range candidates {
 		if _, ok := seen[candidate.ID]; ok {

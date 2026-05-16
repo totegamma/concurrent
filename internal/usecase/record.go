@@ -57,6 +57,18 @@ type RepositoryTx interface {
 	Rollback(ctx context.Context) error
 }
 
+type commitApplyResult struct {
+	result      *concrnt.SignedDocument
+	owners      []string
+	afterCommit []postCommitAction
+}
+
+type postCommitAction struct {
+	kind   string
+	target string
+	run    func(ctx context.Context) error
+}
+
 type RecordUsecase struct {
 	repo   RecordRepository
 	config *domain.Config
@@ -232,7 +244,7 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 	copy(hash10[:], hash[:10])
 	documentID := cdid.New(hash10, doc.CreatedAt).String()
 
-	var applyCommit func(tx RepositoryTx) (*concrnt.SignedDocument, []string, error)
+	var applyCommit func(tx RepositoryTx) (*commitApplyResult, error)
 
 	// accept
 	switch doc.Schema {
@@ -245,7 +257,7 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 			span.RecordError(err)
 			return nil, err
 		}
-		applyCommit = func(tx RepositoryTx) (*concrnt.SignedDocument, []string, error) {
+		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
 			return uc.deleteRecord(ctx, tx, *requester, sd, mode)
 		}
 	case schemas.AcknowledgeURL:
@@ -266,7 +278,7 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 			span.RecordError(err)
 			return nil, err
 		}
-		applyCommit = func(tx RepositoryTx) (*concrnt.SignedDocument, []string, error) {
+		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
 			return uc.acknowledge(ctx, tx, documentID, *requester, *targetUser, ackDoc, sd, mode)
 		}
 	case schemas.UnAcknowledgeURL:
@@ -286,7 +298,7 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 			span.RecordError(err)
 			return nil, err
 		}
-		applyCommit = func(tx RepositoryTx) (*concrnt.SignedDocument, []string, error) {
+		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
 			return uc.unacknowledge(ctx, tx, documentID, *requester, *targetUser, ackDoc, sd, mode)
 		}
 	default:
@@ -298,11 +310,11 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		}
 		// Associateフィールドがあれば通常Recordではない
 		if doc.Associate != nil {
-			applyCommit = func(tx RepositoryTx) (*concrnt.SignedDocument, []string, error) {
+			applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
 				return uc.createAssociation(ctx, tx, documentID, *requester, doc, sd, mode)
 			}
 		} else { // 通常Record
-			applyCommit = func(tx RepositoryTx) (*concrnt.SignedDocument, []string, error) {
+			applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
 				return uc.createRecord(ctx, tx, documentID, *requester, doc, sd, mode)
 			}
 		}
@@ -326,13 +338,13 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		return nil, err
 	}
 
-	result, owners, err := applyCommit(tx)
+	applyResult, err := applyCommit(tx)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
 
-	if err := uc.repo.CreateCommitOwners(ctx, tx, documentID, owners); err != nil {
+	if err := uc.repo.CreateCommitOwners(ctx, tx, documentID, applyResult.owners); err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
@@ -343,14 +355,81 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 	}
 	committed = true
 
-	return result, nil
+	for _, action := range applyResult.afterCommit {
+		if action.run == nil {
+			continue
+		}
+		if err := action.run(ctx); err != nil {
+			slog.Error(
+				"failed to run post-commit action",
+				slog.String("kind", action.kind),
+				slog.String("target", action.target),
+				slog.String("error", err.Error()),
+			)
+			span.RecordError(err)
+		}
+	}
+
+	return applyResult.result, nil
 }
 
 func (uc *RecordUsecase) saveEntity(ctx context.Context, sd concrnt.SignedDocument) (*concrnt.SignedDocument, error) {
 	return uc.entity.SaveEntity(ctx, sd)
 }
 
-func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requester domain.Entity, sd concrnt.SignedDocument, mode domain.CommitMode) (*concrnt.SignedDocument, []string, error) {
+func (uc *RecordUsecase) publishSignalAction(channel string, event concrnt.Event) postCommitAction {
+	return postCommitAction{
+		kind:   "signal.publish",
+		target: channel,
+		run: func(ctx context.Context) error {
+			return uc.signal.Publish(ctx, channel, event)
+		},
+	}
+}
+
+func (uc *RecordUsecase) remoteCommitAction(kind string, target string, host string, sd concrnt.SignedDocument) postCommitAction {
+	return postCommitAction{
+		kind:   kind,
+		target: target,
+		run: func(ctx context.Context) error {
+			return uc.client.Commit(ctx, host, sd)
+		},
+	}
+}
+
+func (uc *RecordUsecase) distributionCommitAction(destURI string, distSD concrnt.SignedDocument, mode domain.CommitMode) postCommitAction {
+	return postCommitAction{
+		kind:   "distribution.commit",
+		target: destURI,
+		run: func(ctx context.Context) error {
+			host, err := uc.client.ResolveResourceHost(ctx, destURI)
+			if err != nil {
+				return err
+			}
+			if host == uc.config.FQDN {
+				_, err = uc.Commit(ctx, "", distSD, mode)
+				return err
+			}
+			if mode != domain.CommitModeExecute {
+				return nil
+			}
+			dest, err := concrnt.ParseCCURI(destURI)
+			if err != nil {
+				return err
+			}
+			return uc.client.Commit(ctx, dest.Owner, distSD)
+		},
+	}
+}
+
+func distributionsFromPtr(distributions *[]string) []string {
+	if distributions == nil {
+		return nil
+	}
+	return *distributions
+}
+
+func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requester domain.Entity, sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.Delete")
 	defer span.End()
 
@@ -358,28 +437,28 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 	err := json.Unmarshal([]byte(sd.Document), &deletedoc)
 	if err != nil {
 		span.RecordError(err)
-		return nil, nil, err
+		return nil, err
 	}
 
 	targetURI := string(deletedoc.Value)
 	targetHost, err := uc.client.ResolveResourceHost(ctx, targetURI)
 	if err != nil {
 		span.RecordError(err)
-		return nil, nil, err
+		return nil, err
 	}
 
 	if targetHost == uc.config.FQDN {
 		targetSD, err := uc.repo.GetSignedDocument(ctx, targetURI)
 		if err != nil {
 			span.RecordError(err)
-			return nil, nil, err
+			return nil, err
 		}
 
 		targetDoc := concrnt.Document[any]{}
 		err = json.Unmarshal([]byte(targetSD.Document), &targetDoc)
 		if err != nil {
 			span.RecordError(err)
-			return nil, nil, err
+			return nil, err
 		}
 
 		policyRoot := string(deletedoc.Value)
@@ -390,7 +469,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 		stack, err := uc.repo.GetHierarchicalRecordPolicies(ctx, policyRoot)
 		if err != nil {
 			span.RecordError(err)
-			return nil, nil, err
+			return nil, err
 		}
 
 		err = uc.policy.Eval(
@@ -405,54 +484,47 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 		)
 		if err != nil {
 			span.RecordError(err)
-			return nil, nil, err
+			return nil, err
 		}
 
 		_, err = uc.repo.Delete(ctx, tx, targetURI)
 		if err != nil {
 			span.RecordError(err)
-			return nil, nil, err
+			return nil, err
 		}
 
-		// signal
+		afterCommit := []postCommitAction{}
 		if mode == domain.CommitModeExecute {
 			destinations := []string{targetURI}
 			if targetDoc.Distributes != nil {
 				destinations = append(destinations, *targetDoc.Distributes...)
 			}
 			for _, dest := range destinations {
-				host, err := uc.client.ResolveResourceHost(ctx, dest)
-				if err != nil {
-					slog.Error("failed to resolve resource host for signal", slog.String("destination", dest), slog.String("error", err.Error()))
-					span.RecordError(err)
-					continue
+				dest := dest
+				remoteSD := concrnt.SignedDocument{
+					Document: sd.Document,
+					Proof:    sd.Proof,
+					References: map[string]concrnt.SignedDocument{
+						targetURI: *targetSD,
+					},
 				}
-
-				if host == uc.config.FQDN { // local
-					err = uc.signal.Publish(ctx, dest, concrnt.Event{
-						Type: "deleted",
-						URI:  targetURI,
-					})
-					if err != nil {
-						slog.Error("failed to publish delete signal", slog.String("destination", dest), slog.String("target_uri", targetURI), slog.String("error", err.Error()))
-						span.RecordError(err)
-						return nil, nil, err
-					}
-				} else { // remote
-					sd := concrnt.SignedDocument{
-						Document: sd.Document,
-						Proof:    sd.Proof,
-						References: map[string]concrnt.SignedDocument{
-							targetURI: *targetSD,
-						},
-					}
-					err = uc.client.Commit(ctx, host, sd)
-					if err != nil {
-						slog.Error("failed to commit delete document to remote", slog.String("host", host), slog.String("target_uri", targetURI), slog.String("error", err.Error()))
-						span.RecordError(err)
-						return nil, nil, err
-					}
-				}
+				afterCommit = append(afterCommit, postCommitAction{
+					kind:   "delete.propagate",
+					target: dest,
+					run: func(ctx context.Context) error {
+						host, err := uc.client.ResolveResourceHost(ctx, dest)
+						if err != nil {
+							return err
+						}
+						if host == uc.config.FQDN {
+							return uc.signal.Publish(ctx, dest, concrnt.Event{
+								Type: "deleted",
+								URI:  targetURI,
+							})
+						}
+						return uc.client.Commit(ctx, host, remoteSD)
+					},
+				})
 			}
 
 			if targetDoc.Associate != nil {
@@ -461,7 +533,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 				if err != nil {
 					slog.Error("failed to fetch associated document for signal", slog.String("associated_uri", associatedURI), slog.String("error", err.Error()))
 					span.RecordError(err)
-					return nil, nil, err
+					return nil, err
 				}
 
 				var associatedDoc concrnt.Document[any]
@@ -469,7 +541,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 				if err != nil {
 					slog.Error("failed to unmarshal associated document for signal", slog.String("associated_uri", associatedURI), slog.String("error", err.Error()))
 					span.RecordError(err)
-					return nil, nil, err
+					return nil, err
 				}
 
 				destinations := []string{*targetDoc.Associate}
@@ -478,83 +550,77 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 				}
 
 				for _, dest := range destinations {
-					host, err := uc.client.ResolveResourceHost(ctx, dest)
-					if err != nil {
-						slog.Error("failed to resolve resource host for unassociation signal", slog.String("destination", dest), slog.String("associated_uri", associatedURI), slog.String("error", err.Error()))
-						span.RecordError(err)
-						continue
+					dest := dest
+					remoteSD := concrnt.SignedDocument{
+						Document: sd.Document,
+						Proof:    sd.Proof,
+						References: map[string]concrnt.SignedDocument{
+							targetURI:     *targetSD,
+							associatedURI: *associatedSD,
+						},
 					}
-
-					if host == uc.config.FQDN { // local
-						err = uc.signal.Publish(ctx, dest, concrnt.Event{
-							Type: "unassociated",
-							URI:  *targetDoc.Associate,
-						})
-						if err != nil {
-							slog.Error("failed to publish unassociation signal", slog.String("destination", dest), slog.String("associated_uri", associatedURI), slog.String("error", err.Error()))
-							span.RecordError(err)
-							return nil, nil, err
-						}
-					} else { // remote
-						sd := concrnt.SignedDocument{
-							Document: sd.Document,
-							Proof:    sd.Proof,
-							References: map[string]concrnt.SignedDocument{
-								targetURI:     *targetSD,
-								associatedURI: *associatedSD,
-							},
-						}
-						err = uc.client.Commit(ctx, host, sd)
-						if err != nil {
-							slog.Error("failed to commit unassociation document to remote", slog.String("host", host), slog.String("associated_uri", associatedURI), slog.String("error", err.Error()))
-							span.RecordError(err)
-							return nil, nil, err
-						}
-					}
+					afterCommit = append(afterCommit, postCommitAction{
+						kind:   "unassociation.propagate",
+						target: dest,
+						run: func(ctx context.Context) error {
+							host, err := uc.client.ResolveResourceHost(ctx, dest)
+							if err != nil {
+								return err
+							}
+							if host == uc.config.FQDN {
+								return uc.signal.Publish(ctx, dest, concrnt.Event{
+									Type: "unassociated",
+									URI:  associatedURI,
+								})
+							}
+							return uc.client.Commit(ctx, host, remoteSD)
+						},
+					})
 				}
 			}
 		}
-		return targetSD, []string{requester.ID}, nil
+		return &commitApplyResult{result: targetSD, owners: []string{requester.ID}, afterCommit: afterCommit}, nil
 
 	} else { // remote entity. only emit signals.
 		targetSD, ok := sd.References[targetURI]
 		if !ok {
 			err := errors.New("target document not found in references for remote delete")
 			span.RecordError(err)
-			return nil, nil, err
+			return nil, err
 		}
 
 		document := concrnt.Document[any]{}
 		err = json.Unmarshal([]byte(targetSD.Document), &document)
 		if err != nil {
 			span.RecordError(err)
-			return nil, nil, err
+			return nil, err
 		}
 
+		afterCommit := []postCommitAction{}
 		destinations := []string{targetURI}
 		if document.Distributes != nil {
 			destinations = append(destinations, *document.Distributes...)
 		}
 
 		for _, dest := range destinations {
-			host, err := uc.client.ResolveResourceHost(ctx, dest)
-			if err != nil {
-				slog.Error("failed to resolve resource host for signal", slog.String("destination", dest), slog.String("target_uri", targetURI), slog.String("error", err.Error()))
-				span.RecordError(err)
-				continue
-			}
-
-			if host == uc.config.FQDN { // local
-				err = uc.signal.Publish(ctx, dest, concrnt.Event{
-					Type: "deleted",
-					URI:  targetURI,
-				})
-				if err != nil {
-					slog.Error("failed to publish delete signal", slog.String("destination", dest), slog.String("target_uri", targetURI), slog.String("error", err.Error()))
-					span.RecordError(err)
-					return nil, nil, err
-				}
-			}
+			dest := dest
+			afterCommit = append(afterCommit, postCommitAction{
+				kind:   "delete.signal",
+				target: dest,
+				run: func(ctx context.Context) error {
+					host, err := uc.client.ResolveResourceHost(ctx, dest)
+					if err != nil {
+						return err
+					}
+					if host != uc.config.FQDN {
+						return nil
+					}
+					return uc.signal.Publish(ctx, dest, concrnt.Event{
+						Type: "deleted",
+						URI:  targetURI,
+					})
+				},
+			})
 		}
 
 		if document.Associate != nil {
@@ -563,7 +629,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 			if !ok {
 				slog.Error("associated document not found in references for remote delete", slog.String("associated_uri", associatedURI))
 				span.RecordError(errors.New("associated document not found in references for remote delete"))
-				return nil, nil, err
+				return nil, errors.New("associated document not found in references for remote delete")
 			}
 
 			var associatedDoc concrnt.Document[any]
@@ -571,7 +637,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 			if err != nil {
 				slog.Error("failed to unmarshal associated document for signal", slog.String("associated_uri", associatedURI), slog.String("error", err.Error()))
 				span.RecordError(err)
-				return nil, nil, err
+				return nil, err
 			}
 
 			destinations := []string{}
@@ -581,39 +647,39 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 			destinations = append(destinations, associatedURI)
 
 			for _, dest := range destinations {
-				host, err := uc.client.ResolveResourceHost(ctx, dest)
-				if err != nil {
-					slog.Error("failed to resolve resource host for unassociation signal", slog.String("destination", dest), slog.String("associated_uri", associatedURI), slog.String("error", err.Error()))
-					span.RecordError(err)
-					continue
-				}
-
-				if host == uc.config.FQDN { // local
-					err = uc.signal.Publish(ctx, dest, concrnt.Event{
-						Type: "unassociated",
-						URI:  associatedURI,
-					})
-					if err != nil {
-						slog.Error("failed to publish unassociation signal", slog.String("destination", dest), slog.String("associated_uri", associatedURI), slog.String("error", err.Error()))
-						span.RecordError(err)
-						return nil, nil, err
-					}
-				}
+				dest := dest
+				afterCommit = append(afterCommit, postCommitAction{
+					kind:   "unassociation.signal",
+					target: dest,
+					run: func(ctx context.Context) error {
+						host, err := uc.client.ResolveResourceHost(ctx, dest)
+						if err != nil {
+							return err
+						}
+						if host != uc.config.FQDN {
+							return nil
+						}
+						return uc.signal.Publish(ctx, dest, concrnt.Event{
+							Type: "unassociated",
+							URI:  associatedURI,
+						})
+					},
+				})
 			}
 		}
 
-		return &targetSD, []string{requester.ID}, nil
+		return &commitApplyResult{result: &targetSD, owners: []string{requester.ID}, afterCommit: afterCommit}, nil
 	}
 }
 
-func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, documentID string, requester domain.Entity, parsed concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*concrnt.SignedDocument, []string, error) {
+func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, documentID string, requester domain.Entity, parsed concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.CreateRecord")
 	defer span.End()
 
 	stack, err := uc.repo.GetHierarchicalRecordPolicies(ctx, parsed.Key)
 	if err != nil {
 		span.RecordError(err)
-		return nil, nil, err
+		return nil, err
 	}
 
 	action := "record:create"
@@ -625,13 +691,13 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 		err = json.Unmarshal([]byte(existingSD.Document), &existingDoc)
 		if err != nil {
 			span.RecordError(err)
-			return nil, nil, err
+			return nil, err
 		}
 		action = "record:update"
 		policySelf = existingDoc
 	} else if !errors.Is(err, domain.ErrNotFound) {
 		span.RecordError(err)
-		return nil, nil, err
+		return nil, err
 	}
 
 	err = uc.policy.Eval(
@@ -646,18 +712,18 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 	)
 	if err != nil {
 		span.RecordError(err)
-		return nil, nil, err
+		return nil, err
 	}
 
 	parsedKey, err := concrnt.ParseCCURI(parsed.Key)
 	if err != nil {
 		span.RecordError(err)
-		return nil, nil, err
+		return nil, err
 	}
 	if parsedKey.Scheme != "cckv" {
 		err := fmt.Errorf("invalid key: document key scheme must be cckv")
 		span.RecordError(err)
-		return nil, nil, err
+		return nil, err
 	}
 
 	var policies *string
@@ -665,7 +731,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 		policyBytes, err := json.Marshal(parsed.Policy)
 		if err != nil {
 			span.RecordError(err)
-			return nil, nil, err
+			return nil, err
 		}
 		policyStr := string(policyBytes)
 		policies = &policyStr
@@ -685,7 +751,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 		err := json.Unmarshal([]byte(sd.Document), &refDoc)
 		if err != nil {
 			span.RecordError(err)
-			return nil, nil, err
+			return nil, err
 		}
 		redirect = &refDoc.Value.Href
 
@@ -695,7 +761,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 			err = json.Unmarshal([]byte(refSD.Document), &targetDoc)
 			if err != nil {
 				span.RecordError(err)
-				return nil, nil, err
+				return nil, err
 			}
 			schema = targetDoc.Schema
 			createdAt = targetDoc.CreatedAt
@@ -713,44 +779,25 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 	resultURI, err = uc.repo.CreateRecord(ctx, tx, documentID, parsed.Key, parsedKey.Owner, schema, policies, distributions, redirect, createdAt)
 	if err != nil {
 		span.RecordError(err)
-		return nil, nil, err
+		return nil, err
 	}
 
-	// signal
-	err = uc.signal.Publish(ctx, resultURI, concrnt.Event{
-		Type:       "created",
-		URI:        resultURI,
-		References: map[string]concrnt.SignedDocument{resultURI: sd},
-	})
-	if err != nil {
-		slog.Error("failed to publish record created signal", slog.String("result_uri", resultURI), slog.String("error", err.Error()))
-		span.RecordError(err)
-		return nil, nil, err
+	afterCommit := []postCommitAction{
+		uc.publishSignalAction(resultURI, concrnt.Event{
+			Type:       "created",
+			URI:        resultURI,
+			References: map[string]concrnt.SignedDocument{resultURI: sd},
+		}),
 	}
 
 	if parsed.Distributes != nil {
 		requesterSD, err := uc.entity.GetSD(ctx, requester.ID, &requester.Domain)
 		if err != nil {
 			span.RecordError(err)
-			return nil, nil, err
+			return nil, err
 		}
 
 		for _, destURI := range *parsed.Distributes {
-
-			host, err := uc.client.ResolveResourceHost(ctx, destURI)
-			if err != nil {
-				slog.Error("failed to resolve resource host for distribution", slog.String("destination", destURI), slog.String("error", err.Error()))
-				span.RecordError(err)
-				continue
-			}
-
-			dest, err := concrnt.ParseCCURI(destURI)
-			if err != nil {
-				slog.Error("failed to parse distribution uri", slog.String("destination", destURI), slog.String("error", err.Error()))
-				span.RecordError(err)
-				continue
-			}
-
 			key, err := url.JoinPath(destURI, documentID)
 			if err != nil {
 				slog.Error("failed to join path for distribution", slog.String("destination", destURI), slog.String("document_id", documentID), slog.String("error", err.Error()))
@@ -770,7 +817,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 			docBytes, err := json.Marshal(distDoc)
 			if err != nil {
 				span.RecordError(err)
-				return nil, nil, err
+				return nil, err
 			}
 			distSD := concrnt.SignedDocument{
 				Document: string(docBytes),
@@ -784,38 +831,21 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 				},
 			}
 
-			if host == uc.config.FQDN { // local
-				_, err = uc.Commit(ctx, "", distSD, mode)
-				if err != nil {
-					slog.Error("failed to commit local distribution reference", slog.String("destination", destURI), slog.String("document_id", documentID), slog.String("error", err.Error()))
-					span.RecordError(err)
-					continue
-				}
-			} else { // remote
-				if mode != domain.CommitModeExecute {
-					continue
-				}
-				err = uc.client.Commit(ctx, dest.Owner, distSD)
-				if err != nil {
-					slog.Error("failed to commit remote distribution reference", slog.String("destination_owner", dest.Owner), slog.String("destination", destURI), slog.String("document_id", documentID), slog.String("error", err.Error()))
-					span.RecordError(err)
-					continue
-				}
-			}
+			afterCommit = append(afterCommit, uc.distributionCommitAction(destURI, distSD, mode))
 		}
 	}
 
-	return &sd, []string{parsedKey.Owner}, nil
+	return &commitApplyResult{result: &sd, owners: []string{parsedKey.Owner}, afterCommit: afterCommit}, nil
 }
 
-func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx, documentID string, requester domain.Entity, parsed concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*concrnt.SignedDocument, []string, error) {
+func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx, documentID string, requester domain.Entity, parsed concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.CreateAssociation")
 	defer span.End()
 
 	stack, err := uc.repo.GetHierarchicalRecordPolicies(ctx, *parsed.Associate)
 	if err != nil {
 		span.RecordError(err)
-		return nil, nil, err
+		return nil, err
 	}
 
 	err = uc.policy.Eval(
@@ -830,19 +860,19 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 	)
 	if err != nil {
 		span.RecordError(err)
-		return nil, nil, err
+		return nil, err
 	}
 
 	target := *parsed.Associate
 	targetURI, err := concrnt.ParseCCURI(*parsed.Associate)
 	if err != nil {
 		span.RecordError(err)
-		return nil, nil, err
+		return nil, err
 	}
 	if targetURI.Scheme != "cckv" {
 		err := fmt.Errorf("invalid associate: document associate scheme must be cckv")
 		span.RecordError(err)
-		return nil, nil, err
+		return nil, err
 	}
 
 	ccfs := concrnt.ComposeCCURI("ccfs", targetURI.Owner, documentID)
@@ -850,15 +880,16 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 	isLocal, err := uc.entity.IsLocalByCCID(ctx, targetURI.Owner)
 	if err != nil {
 		span.RecordError(err)
-		return nil, nil, err
+		return nil, err
 	}
 
 	created := false
+	afterCommit := []postCommitAction{}
 
 	requesterSD, err := uc.entity.GetSD(ctx, requester.ID, &requester.Domain)
 	if err != nil {
 		span.RecordError(err)
-		return nil, nil, err
+		return nil, err
 	}
 
 	if isLocal {
@@ -871,27 +902,12 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 		err = uc.repo.CreateAssociation(ctx, tx, documentID, *parsed.Associate, targetURI.Owner, parsed.Author, parsed.Schema, parsed.AssociationVariant, fmt.Sprintf("%x", uniqueHash), parsed.CreatedAt)
 		if err != nil {
 			span.RecordError(err)
-			return nil, nil, err
+			return nil, err
 		}
 
 		created = true
 
-		for _, destURI := range *parsed.Distributes {
-
-			host, err := uc.client.ResolveResourceHost(ctx, destURI)
-			if err != nil {
-				slog.Error("failed to resolve resource host for distribution", slog.String("destination", destURI), slog.String("error", err.Error()))
-				span.RecordError(err)
-				continue
-			}
-
-			dest, err := concrnt.ParseCCURI(destURI)
-			if err != nil {
-				slog.Error("failed to parse distribution uri", slog.String("destination", destURI), slog.String("error", err.Error()))
-				span.RecordError(err)
-				continue
-			}
-
+		for _, destURI := range distributionsFromPtr(parsed.Distributes) {
 			key, err := url.JoinPath(destURI, documentID)
 			if err != nil {
 				slog.Error("failed to join path for distribution", slog.String("destination", destURI), slog.String("document_id", documentID), slog.String("error", err.Error()))
@@ -911,7 +927,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 			docBytes, err := json.Marshal(distDoc)
 			if err != nil {
 				span.RecordError(err)
-				return nil, nil, err
+				return nil, err
 			}
 			distSD := concrnt.SignedDocument{
 				Document: string(docBytes),
@@ -925,24 +941,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 				},
 			}
 
-			if host == uc.config.FQDN { // local
-				_, err = uc.Commit(ctx, "", distSD, mode)
-				if err != nil {
-					slog.Error("failed to commit local distribution reference", slog.String("destination", destURI), slog.String("document_id", documentID), slog.String("error", err.Error()))
-					span.RecordError(err)
-					continue
-				}
-			} else {
-				if mode != domain.CommitModeExecute {
-					continue
-				}
-				err = uc.client.Commit(ctx, dest.Owner, distSD)
-				if err != nil {
-					slog.Error("failed to commit remote distribution reference", slog.String("destination_owner", dest.Owner), slog.String("destination", destURI), slog.String("document_id", documentID), slog.String("error", err.Error()))
-					span.RecordError(err)
-					continue
-				}
-			}
+			afterCommit = append(afterCommit, uc.distributionCommitAction(destURI, distSD, mode))
 		}
 	}
 
@@ -955,7 +954,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 			sd, ok := sd.References[target]
 			if !ok {
 				span.RecordError(err)
-				return nil, nil, errors.New("target document not found in references")
+				return nil, errors.New("target document not found in references")
 			}
 			targetSD = &sd
 
@@ -965,63 +964,60 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 			err = json.Unmarshal([]byte(targetSD.Document), &targetDoc)
 			if err != nil {
 				span.RecordError(err)
-				return nil, nil, err
+				return nil, err
 			}
 
-			distributions = append(distributions, *targetDoc.Distributes...)
+			distributions = append(distributions, distributionsFromPtr(targetDoc.Distributes)...)
 		} else { // あるとき
 			dists, err := uc.repo.GetDistributions(ctx, target)
 			if err != nil {
 				span.RecordError(err)
-				return nil, nil, err
+				return nil, err
 			}
 			distributions = append(distributions, dists...)
 		}
 
 		for _, channel := range distributions {
-
-			host, err := uc.client.ResolveResourceHost(ctx, channel)
-			if err != nil {
-				span.RecordError(err)
-				continue
+			channel := channel
+			remoteSD := concrnt.SignedDocument{
+				Document: sd.Document,
+				Proof:    sd.Proof,
+				References: map[string]concrnt.SignedDocument{
+					requester.CCKV(): *requesterSD,
+					target:           *targetSD,
+				},
 			}
-
-			if host == uc.config.FQDN { // local
-				err = uc.signal.Publish(ctx, channel, concrnt.Event{
-					Type:        "associated",
-					URI:         target,
-					Association: &ccfs,
-					References: map[string]concrnt.SignedDocument{
-						ccfs: sd,
-					},
-				})
-				if err != nil {
-					span.RecordError(err)
-					return nil, nil, err
-				}
-			} else { // remote
-				if !created {
-					continue
-				}
-
-				sd := concrnt.SignedDocument{
-					Document: sd.Document,
-					Proof:    sd.Proof,
-					References: map[string]concrnt.SignedDocument{
-						requester.CCKV(): *requesterSD,
-						target:           *targetSD,
-					},
-				}
-
-				uc.client.Commit(ctx, host, sd)
-			}
+			afterCommit = append(afterCommit, postCommitAction{
+				kind:   "association.propagate",
+				target: channel,
+				run: func(ctx context.Context) error {
+					host, err := uc.client.ResolveResourceHost(ctx, channel)
+					if err != nil {
+						return err
+					}
+					if host == uc.config.FQDN {
+						return uc.signal.Publish(ctx, channel, concrnt.Event{
+							Type:        "associated",
+							URI:         target,
+							Association: &ccfs,
+							References: map[string]concrnt.SignedDocument{
+								ccfs: sd,
+							},
+						})
+					}
+					if !created {
+						return nil
+					}
+					return uc.client.Commit(ctx, host, remoteSD)
+				},
+			})
 		}
 	}
 
-	return &sd, []string{targetURI.Owner}, nil
+	return &commitApplyResult{result: &sd, owners: []string{targetURI.Owner}, afterCommit: afterCommit}, nil
 }
 
-func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, documentID string, requester domain.Entity, targetUser domain.Entity, doc concrnt.Document[schemas.Acknowledge], sd concrnt.SignedDocument, mode domain.CommitMode) (*concrnt.SignedDocument, []string, error) {
+func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, documentID string, requester domain.Entity, targetUser domain.Entity, doc concrnt.Document[schemas.Acknowledge], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.Acknowledge")
 	defer span.End()
 
@@ -1029,28 +1025,29 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 		parsedAssociate, err := concrnt.ParseCCURI(*doc.Associate)
 		if err != nil {
 			span.RecordError(err)
-			return nil, nil, err
+			return nil, err
 		}
 		if parsedAssociate.Scheme != "cckv" {
 			err := fmt.Errorf("invalid associate: document associate scheme must be cckv")
 			span.RecordError(err)
-			return nil, nil, err
+			return nil, err
 		}
 
 		resultURI := concrnt.ComposeCCURI("ccfs", parsedAssociate.Owner, documentID)
 		_, err = uc.repo.Acknowledge(ctx, tx, documentID, doc.Author, parsedAssociate.Owner, doc.Value.Context, true, doc.CreatedAt, resultURI)
 		if err != nil {
 			span.RecordError(err)
-			return nil, nil, err
+			return nil, err
 		}
 	}
 
+	afterCommit := []postCommitAction{}
 	if !uc.entity.IsLocal(ctx, targetUser) && mode == domain.CommitModeExecute {
 
 		requesterSD, err := uc.entity.GetSD(ctx, requester.ID, &requester.Domain)
 		if err != nil {
 			span.RecordError(err)
-			return nil, nil, err
+			return nil, err
 		}
 
 		distSD := concrnt.SignedDocument{
@@ -1060,11 +1057,7 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 				requester.CCKV(): *requesterSD,
 			},
 		}
-		err = uc.client.Commit(ctx, targetUser.Domain, distSD)
-		if err != nil {
-			span.RecordError(err)
-			return nil, nil, err
-		}
+		afterCommit = append(afterCommit, uc.remoteCommitAction("acknowledge.commit", targetUser.ID, targetUser.Domain, distSD))
 	}
 
 	owners := []string{}
@@ -1074,10 +1067,10 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 	if uc.entity.IsLocal(ctx, targetUser) && !slices.Contains(owners, targetUser.ID) {
 		owners = append(owners, targetUser.ID)
 	}
-	return &sd, owners, nil
+	return &commitApplyResult{result: &sd, owners: owners, afterCommit: afterCommit}, nil
 }
 
-func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, documentID string, requester domain.Entity, targetUser domain.Entity, doc concrnt.Document[schemas.Acknowledge], sd concrnt.SignedDocument, mode domain.CommitMode) (*concrnt.SignedDocument, []string, error) {
+func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, documentID string, requester domain.Entity, targetUser domain.Entity, doc concrnt.Document[schemas.Acknowledge], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.UnAcknowledge")
 	defer span.End()
 
@@ -1085,26 +1078,27 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, doc
 		parsedAssociate, err := concrnt.ParseCCURI(*doc.Associate)
 		if err != nil {
 			span.RecordError(err)
-			return nil, nil, err
+			return nil, err
 		}
 		if parsedAssociate.Scheme != "cckv" {
 			err := fmt.Errorf("invalid associate: document associate scheme must be cckv")
 			span.RecordError(err)
-			return nil, nil, err
+			return nil, err
 		}
 
 		err = uc.repo.UnAcknowledge(ctx, tx, documentID, doc.Author, parsedAssociate.Owner, doc.Value.Context, false, doc.CreatedAt)
 		if err != nil {
 			span.RecordError(err)
-			return nil, nil, err
+			return nil, err
 		}
 	}
 
+	afterCommit := []postCommitAction{}
 	if !uc.entity.IsLocal(ctx, targetUser) && mode == domain.CommitModeExecute {
 		requesterSD, err := uc.entity.GetSD(ctx, requester.ID, &requester.Domain)
 		if err != nil {
 			span.RecordError(err)
-			return nil, nil, err
+			return nil, err
 		}
 
 		distSD := concrnt.SignedDocument{
@@ -1114,11 +1108,7 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, doc
 				requester.CCKV(): *requesterSD,
 			},
 		}
-		err = uc.client.Commit(ctx, targetUser.Domain, distSD)
-		if err != nil {
-			span.RecordError(err)
-			return nil, nil, err
-		}
+		afterCommit = append(afterCommit, uc.remoteCommitAction("unacknowledge.commit", targetUser.ID, targetUser.Domain, distSD))
 	}
 
 	owners := []string{}
@@ -1128,7 +1118,7 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, doc
 	if uc.entity.IsLocal(ctx, targetUser) && !slices.Contains(owners, targetUser.ID) {
 		owners = append(owners, targetUser.ID)
 	}
-	return &sd, owners, nil
+	return &commitApplyResult{result: &sd, owners: owners, afterCommit: afterCommit}, nil
 }
 
 func (uc *RecordUsecase) GetSigned(ctx context.Context, uri string) (*concrnt.SignedDocument, error) {

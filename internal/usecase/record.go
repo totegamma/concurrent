@@ -1049,10 +1049,12 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 
 func (uc *RecordUsecase) localCommitOwners(ctx context.Context, candidates ...string) ([]string, error) {
 	owners := []string{}
+	seen := map[string]struct{}{}
 	for _, candidate := range candidates {
-		if slices.Contains(owners, candidate) {
+		if _, ok := seen[candidate]; ok {
 			continue
 		}
+		seen[candidate] = struct{}{}
 		isLocal, err := uc.entity.IsLocalByCCID(ctx, candidate)
 		if err != nil {
 			return nil, err
@@ -1064,10 +1066,15 @@ func (uc *RecordUsecase) localCommitOwners(ctx context.Context, candidates ...st
 	return owners, nil
 }
 
-func localEntityOwners(ctx context.Context, entityUsecase *EntityUsecase, candidates ...domain.Entity) []string {
+func localEntityOwners(ctx context.Context, entity *EntityUsecase, candidates ...domain.Entity) []string {
 	owners := []string{}
+	seen := map[string]struct{}{}
 	for _, candidate := range candidates {
-		if entityUsecase.IsLocal(ctx, candidate) && !slices.Contains(owners, candidate.ID) {
+		if _, ok := seen[candidate.ID]; ok {
+			continue
+		}
+		seen[candidate.ID] = struct{}{}
+		if entity.IsLocal(ctx, candidate) {
 			owners = append(owners, candidate.ID)
 		}
 	}

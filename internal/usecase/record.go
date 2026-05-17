@@ -1015,12 +1015,20 @@ func (uc *RecordUsecase) localCommitOwners(ctx context.Context, candidates ...st
 			continue
 		}
 		seen[candidate] = struct{}{}
-		isLocal, err := uc.entity.IsLocalByCCID(ctx, candidate)
-		if err != nil {
-			return nil, err
+
+		if concrnt.IsCCID(candidate) {
+			isLocal, err := uc.entity.IsLocalByCCID(ctx, candidate)
+			if err != nil {
+				return nil, err
+			}
+			if isLocal {
+				owners = append(owners, candidate)
+			}
 		}
-		if isLocal {
-			owners = append(owners, candidate)
+		if concrnt.IsCSID(candidate) {
+			if candidate == uc.config.FQDN {
+				owners = append(owners, candidate)
+			}
 		}
 	}
 	return owners, nil

@@ -144,6 +144,9 @@ func (uc *EntityUsecase) Register(ctx context.Context, req concrnt.RegisterReque
 }
 
 func (uc *EntityUsecase) SaveEntity(ctx context.Context, sd concrnt.SignedDocument) (*concrnt.SignedDocument, error) {
+	ctx, span := tracer.Start(ctx, "EntityUsecase.SaveEntity")
+	defer span.End()
+
 	_, err := uc.repo.SaveEntity(ctx, sd)
 	if err != nil {
 		return nil, err
@@ -153,6 +156,8 @@ func (uc *EntityUsecase) SaveEntity(ctx context.Context, sd concrnt.SignedDocume
 }
 
 func (uc *EntityUsecase) Get(ctx context.Context, key string, resolver *string) (*domain.Entity, error) {
+	ctx, span := tracer.Start(ctx, "EntityUsecase.Get")
+	defer span.End()
 
 	parsed, err := concrnt.ParseCCURI(key)
 	if err != nil {
@@ -177,6 +182,9 @@ func (uc *EntityUsecase) IsLocal(ctx context.Context, entity domain.Entity) bool
 }
 
 func (uc *EntityUsecase) IsLocalByCCID(ctx context.Context, ccid string) (bool, error) {
+	ctx, span := tracer.Start(ctx, "EntityUsecase.IsLocalByCCID")
+	defer span.End()
+
 	entity, err := uc.repo.Get(ctx, ccid, nil)
 	if err != nil {
 		return false, err

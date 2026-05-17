@@ -57,30 +57,12 @@ type RepositoryTx interface {
 	Rollback(ctx context.Context) error
 }
 
+type PostProcessAction func(ctx context.Context) error
+
 type commitApplyResult struct {
-	result      *concrnt.SignedDocument
-	owners      []string
-	afterCommit []postCommitAction
-}
-
-type postCommitActionKind string
-
-const (
-	postCommitActionKindSignalPublish          postCommitActionKind = "signal.publish"
-	postCommitActionKindDistributionCommit     postCommitActionKind = "distribution.commit"
-	postCommitActionKindDeletePropagate        postCommitActionKind = "delete.propagate"
-	postCommitActionKindDeleteSignal           postCommitActionKind = "delete.signal"
-	postCommitActionKindUnassociationPropagate postCommitActionKind = "unassociation.propagate"
-	postCommitActionKindUnassociationSignal    postCommitActionKind = "unassociation.signal"
-	postCommitActionKindAssociationPropagate   postCommitActionKind = "association.propagate"
-	postCommitActionKindAcknowledgeCommit      postCommitActionKind = "acknowledge.commit"
-	postCommitActionKindUnacknowledgeCommit    postCommitActionKind = "unacknowledge.commit"
-)
-
-type postCommitAction struct {
-	kind   postCommitActionKind
-	target string
-	run    func(ctx context.Context) error
+	result        *concrnt.SignedDocument
+	owners        []string
+	postProcesses []PostProcessAction
 }
 
 type RecordUsecase struct {
@@ -369,15 +351,10 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 	}
 	committed = true
 
-	for _, action := range applyResult.afterCommit {
-		if action.run == nil {
-			continue
-		}
-		if err := action.run(ctx); err != nil {
+	for _, task := range applyResult.postProcesses {
+		if err := task(ctx); err != nil {
 			slog.Error(
 				"failed to run post-commit action",
-				slog.String("kind", string(action.kind)),
-				slog.String("target", action.target),
 				slog.String("error", err.Error()),
 			)
 			span.RecordError(err)
@@ -462,7 +439,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 			return nil, err
 		}
 
-		afterCommit := []postCommitAction{}
+		postProcesses := []PostProcessAction{}
 		if mode == domain.CommitModeExecute {
 			destinations := []string{targetURI}
 			if targetDoc.Distributes != nil {
@@ -477,10 +454,9 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 						targetURI: *targetSD,
 					},
 				}
-				afterCommit = append(afterCommit, postCommitAction{
-					kind:   postCommitActionKindDeletePropagate,
-					target: dest,
-					run: func(ctx context.Context) error {
+				postProcesses = append(
+					postProcesses,
+					func(ctx context.Context) error {
 						host, err := uc.client.ResolveResourceHost(ctx, dest)
 						if err != nil {
 							return err
@@ -493,7 +469,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 						}
 						return uc.client.Commit(ctx, host, remoteSD)
 					},
-				})
+				)
 			}
 
 			if targetDoc.Associate != nil {
@@ -528,10 +504,8 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 							associatedURI: *associatedSD,
 						},
 					}
-					afterCommit = append(afterCommit, postCommitAction{
-						kind:   postCommitActionKindUnassociationPropagate,
-						target: dest,
-						run: func(ctx context.Context) error {
+					postProcesses = append(postProcesses,
+						func(ctx context.Context) error {
 							host, err := uc.client.ResolveResourceHost(ctx, dest)
 							if err != nil {
 								return err
@@ -544,11 +518,11 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 							}
 							return uc.client.Commit(ctx, host, remoteSD)
 						},
-					})
+					)
 				}
 			}
 		}
-		return &commitApplyResult{result: targetSD, owners: localEntityOwners(ctx, uc.entity, requester), afterCommit: afterCommit}, nil
+		return &commitApplyResult{result: targetSD, owners: localEntityOwners(ctx, uc.entity, requester), postProcesses: postProcesses}, nil
 
 	} else { // remote entity. only emit signals.
 		targetSD, ok := sd.References[targetURI]
@@ -565,7 +539,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 			return nil, err
 		}
 
-		afterCommit := []postCommitAction{}
+		postProcesses := []PostProcessAction{}
 		destinations := []string{targetURI}
 		if document.Distributes != nil {
 			destinations = append(destinations, *document.Distributes...)
@@ -573,10 +547,8 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 
 		for _, dest := range destinations {
 			dest := dest
-			afterCommit = append(afterCommit, postCommitAction{
-				kind:   postCommitActionKindDeleteSignal,
-				target: dest,
-				run: func(ctx context.Context) error {
+			postProcesses = append(postProcesses,
+				func(ctx context.Context) error {
 					host, err := uc.client.ResolveResourceHost(ctx, dest)
 					if err != nil {
 						return err
@@ -589,7 +561,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 						URI:  targetURI,
 					})
 				},
-			})
+			)
 		}
 
 		if document.Associate != nil {
@@ -617,10 +589,8 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 
 			for _, dest := range destinations {
 				dest := dest
-				afterCommit = append(afterCommit, postCommitAction{
-					kind:   postCommitActionKindUnassociationSignal,
-					target: dest,
-					run: func(ctx context.Context) error {
+				postProcesses = append(postProcesses,
+					func(ctx context.Context) error {
 						host, err := uc.client.ResolveResourceHost(ctx, dest)
 						if err != nil {
 							return err
@@ -633,11 +603,11 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 							URI:  associatedURI,
 						})
 					},
-				})
+				)
 			}
 		}
 
-		return &commitApplyResult{result: &targetSD, owners: localEntityOwners(ctx, uc.entity, requester), afterCommit: afterCommit}, nil
+		return &commitApplyResult{result: &targetSD, owners: localEntityOwners(ctx, uc.entity, requester), postProcesses: postProcesses}, nil
 	}
 }
 
@@ -751,17 +721,13 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 		return nil, err
 	}
 
-	afterCommit := []postCommitAction{
-		{
-			kind:   postCommitActionKindSignalPublish,
-			target: resultURI,
-			run: func(ctx context.Context) error {
-				return uc.signal.Publish(ctx, resultURI, concrnt.Event{
-					Type:       "created",
-					URI:        resultURI,
-					References: map[string]concrnt.SignedDocument{resultURI: sd},
-				})
-			},
+	postProcesses := []PostProcessAction{
+		func(ctx context.Context) error {
+			return uc.signal.Publish(ctx, resultURI, concrnt.Event{
+				Type:       "created",
+				URI:        resultURI,
+				References: map[string]concrnt.SignedDocument{resultURI: sd},
+			})
 		},
 	}
 
@@ -807,10 +773,8 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 			}
 
 			destURI := destURI
-			afterCommit = append(afterCommit, postCommitAction{
-				kind:   postCommitActionKindDistributionCommit,
-				target: destURI,
-				run: func(ctx context.Context) error {
+			postProcesses = append(postProcesses,
+				func(ctx context.Context) error {
 					host, err := uc.client.ResolveResourceHost(ctx, destURI)
 					if err != nil {
 						return err
@@ -828,7 +792,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 					}
 					return uc.client.Commit(ctx, dest.Owner, distSD)
 				},
-			})
+			)
 		}
 	}
 
@@ -838,7 +802,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 		return nil, err
 	}
 
-	return &commitApplyResult{result: &sd, owners: owners, afterCommit: afterCommit}, nil
+	return &commitApplyResult{result: &sd, owners: owners, postProcesses: postProcesses}, nil
 }
 
 func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx, documentID string, ip string, requester domain.Entity, parsed concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
@@ -887,7 +851,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 	}
 
 	created := false
-	afterCommit := []postCommitAction{}
+	postProcesses := []PostProcessAction{}
 
 	requesterSD, err := uc.entity.GetSD(ctx, requester.ID, &requester.Domain)
 	if err != nil {
@@ -945,10 +909,8 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 			}
 
 			destURI := destURI
-			afterCommit = append(afterCommit, postCommitAction{
-				kind:   postCommitActionKindDistributionCommit,
-				target: destURI,
-				run: func(ctx context.Context) error {
+			postProcesses = append(postProcesses,
+				func(ctx context.Context) error {
 					host, err := uc.client.ResolveResourceHost(ctx, destURI)
 					if err != nil {
 						return err
@@ -966,7 +928,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 					}
 					return uc.client.Commit(ctx, dest.Owner, distSD)
 				},
-			})
+			)
 		}
 	}
 
@@ -1012,10 +974,8 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 					target:           *targetSD,
 				},
 			}
-			afterCommit = append(afterCommit, postCommitAction{
-				kind:   postCommitActionKindAssociationPropagate,
-				target: channel,
-				run: func(ctx context.Context) error {
+			postProcesses = append(postProcesses,
+				func(ctx context.Context) error {
 					host, err := uc.client.ResolveResourceHost(ctx, channel)
 					if err != nil {
 						return err
@@ -1035,7 +995,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 					}
 					return uc.client.Commit(ctx, host, remoteSD)
 				},
-			})
+			)
 		}
 	}
 
@@ -1044,7 +1004,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 		owners = append(owners, targetURI.Owner)
 	}
 
-	return &commitApplyResult{result: &sd, owners: owners, afterCommit: afterCommit}, nil
+	return &commitApplyResult{result: &sd, owners: owners, postProcesses: postProcesses}, nil
 }
 
 func (uc *RecordUsecase) localCommitOwners(ctx context.Context, candidates ...string) ([]string, error) {
@@ -1105,7 +1065,7 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 		}
 	}
 
-	afterCommit := []postCommitAction{}
+	postProcesses := []PostProcessAction{}
 	if !uc.entity.IsLocal(ctx, targetUser) && mode == domain.CommitModeExecute {
 
 		requesterSD, err := uc.entity.GetSD(ctx, requester.ID, &requester.Domain)
@@ -1121,13 +1081,11 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 				requester.CCKV(): *requesterSD,
 			},
 		}
-		afterCommit = append(afterCommit, postCommitAction{
-			kind:   postCommitActionKindAcknowledgeCommit,
-			target: targetUser.ID,
-			run: func(ctx context.Context) error {
+		postProcesses = append(postProcesses,
+			func(ctx context.Context) error {
 				return uc.client.Commit(ctx, targetUser.Domain, distSD)
 			},
-		})
+		)
 	}
 
 	owners := []string{}
@@ -1137,7 +1095,7 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 	if uc.entity.IsLocal(ctx, targetUser) && !slices.Contains(owners, targetUser.ID) {
 		owners = append(owners, targetUser.ID)
 	}
-	return &commitApplyResult{result: &sd, owners: owners, afterCommit: afterCommit}, nil
+	return &commitApplyResult{result: &sd, owners: owners, postProcesses: postProcesses}, nil
 }
 
 func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, documentID string, requester domain.Entity, targetUser domain.Entity, doc concrnt.Document[schemas.Acknowledge], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
@@ -1163,7 +1121,7 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, doc
 		}
 	}
 
-	afterCommit := []postCommitAction{}
+	postProcesses := []PostProcessAction{}
 	if !uc.entity.IsLocal(ctx, targetUser) && mode == domain.CommitModeExecute {
 		requesterSD, err := uc.entity.GetSD(ctx, requester.ID, &requester.Domain)
 		if err != nil {
@@ -1178,13 +1136,11 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, doc
 				requester.CCKV(): *requesterSD,
 			},
 		}
-		afterCommit = append(afterCommit, postCommitAction{
-			kind:   postCommitActionKindUnacknowledgeCommit,
-			target: targetUser.ID,
-			run: func(ctx context.Context) error {
+		postProcesses = append(postProcesses,
+			func(ctx context.Context) error {
 				return uc.client.Commit(ctx, targetUser.Domain, distSD)
 			},
-		})
+		)
 	}
 
 	owners := []string{}
@@ -1194,7 +1150,7 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, doc
 	if uc.entity.IsLocal(ctx, targetUser) && !slices.Contains(owners, targetUser.ID) {
 		owners = append(owners, targetUser.ID)
 	}
-	return &commitApplyResult{result: &sd, owners: owners, afterCommit: afterCommit}, nil
+	return &commitApplyResult{result: &sd, owners: owners, postProcesses: postProcesses}, nil
 }
 
 func (uc *RecordUsecase) GetSigned(ctx context.Context, uri string) (*concrnt.SignedDocument, error) {

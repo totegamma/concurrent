@@ -712,6 +712,7 @@ func (r *RecordRepository) GetAssociatedRecordCountsByVariant(ctx context.Contex
 		Select("variant, COUNT(*) AS count, MIN(created_at) AS min_created_at").
 		Joins("JOIN record_keys rk ON rk.id = associations.target_id").
 		Where("rk.uri = ?", targetURI).
+		Where("associations.schema = ?", schema).
 		Group("variant").
 		Order("min_created_at ASC").
 		Scan(&counts).Error

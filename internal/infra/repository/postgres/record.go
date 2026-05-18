@@ -115,7 +115,19 @@ func (r *RecordRepository) CreateCommitOwners(ctx context.Context, tx usecase.Re
 	return nil
 }
 
-func (r *RecordRepository) CreateRecord(ctx context.Context, tx usecase.RepositoryTx, documentID string, key string, owner string, schema string, policies *string, distributions []string, redirect *string, createdAt time.Time) (string, error) {
+func (r *RecordRepository) CreateRecord(
+	ctx context.Context,
+	tx usecase.RepositoryTx,
+	documentID string,
+	key string,
+	owner string,
+	schema string,
+	onUpdate *string,
+	policies *string,
+	distributions []string,
+	redirect *string,
+	createdAt time.Time,
+) (string, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.CreateRecord")
 	defer span.End()
 
@@ -163,12 +175,17 @@ func (r *RecordRepository) CreateRecord(ctx context.Context, tx usecase.Reposito
 	if parentRK != nil {
 		pid = &parentRK.ID
 	}
+	cleanOnUpdate := false
+	if onUpdate != nil {
+		cleanOnUpdate = *onUpdate == "delete"
+	}
 
 	// RecordKeyを作る
 	rk := models.RecordKey{
-		URI:      key,
-		ParentID: pid,
-		RecordID: &documentID,
+		URI:           key,
+		ParentID:      pid,
+		RecordID:      &documentID,
+		CleanOnUpdate: cleanOnUpdate,
 	}
 
 	err = db.Clauses(clause.OnConflict{
@@ -181,7 +198,7 @@ func (r *RecordRepository) CreateRecord(ctx context.Context, tx usecase.Reposito
 	}
 
 	// 古いRecordKeyが指していたCommitのGCフラグを立て、Recordは消す
-	if oldRecordKey.RecordID != nil && *oldRecordKey.RecordID != documentID {
+	if oldRecordKey.CleanOnUpdate && oldRecordKey.RecordID != nil && *oldRecordKey.RecordID != documentID {
 		if err := db.Model(&models.CommitLog{}).
 			Where("id = ?", oldRecordKey.RecordID).
 			Update("gc_candidate", true).Error; err != nil {

@@ -22,11 +22,12 @@ type CommitLog struct {
 }
 
 type RecordKey struct {
-	ID       int64   `json:"id" gorm:"primaryKey;autoIncrement"`
-	ParentID *int64  `json:"parentID" gorm:"index"`
-	URI      string  `json:"uri" gorm:"type:text;unique"`
-	RecordID *string `json:"recordID" gorm:"type:text;uniqueIndex"`
-	Record   Record  `json:"record" gorm:"foreignKey:RecordID;references:DocumentID;constraint:OnDelete:CASCADE;"`
+	ID            int64   `json:"id" gorm:"primaryKey;autoIncrement"`
+	ParentID      *int64  `json:"parentID" gorm:"index"`
+	URI           string  `json:"uri" gorm:"type:text;unique"`
+	RecordID      *string `json:"recordID" gorm:"type:text;uniqueIndex"`
+	Record        Record  `json:"record" gorm:"foreignKey:RecordID;references:DocumentID;constraint:OnDelete:CASCADE;"`
+	CleanOnUpdate bool    `json:"cleanOnUpdate" gorm:"type:boolean;not null;default:false"`
 }
 
 type Record struct {

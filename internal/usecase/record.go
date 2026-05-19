@@ -21,7 +21,6 @@ import (
 	"github.com/concrnt/concrnt/client"
 	"github.com/concrnt/concrnt/impl/interop"
 	"github.com/concrnt/concrnt/internal/domain"
-	"github.com/concrnt/concrnt/internal/service"
 	"github.com/concrnt/concrnt/internal/utils"
 	"github.com/concrnt/concrnt/policy"
 	"github.com/concrnt/concrnt/schemas"
@@ -62,6 +61,14 @@ type RepositoryTx interface {
 
 type PostProcessAction func(ctx context.Context) error
 
+type SignalService interface {
+	Publish(ctx context.Context, channel string, event concrnt.Event) error
+}
+
+type PolicyService interface {
+	Eval(ctx context.Context, req policy.RequestContext, stack []concrnt.Policy, action string, key string) error
+}
+
 type commitApplyResult struct {
 	result        *concrnt.SignedDocument
 	owners        []string
@@ -73,8 +80,8 @@ type RecordUsecase struct {
 	residence ResidenceRepository
 	config    *domain.Config
 	client    *client.Client
-	signal    *service.SignalService
-	policy    *service.PolicyService
+	signal    SignalService
+	policy    PolicyService
 	cache     *cache.Cache
 }
 
@@ -83,8 +90,8 @@ func NewRecordUsecase(
 	residence ResidenceRepository,
 	config *domain.Config,
 	client *client.Client,
-	signal *service.SignalService,
-	policy *service.PolicyService,
+	signal SignalService,
+	policy PolicyService,
 ) *RecordUsecase {
 	return &RecordUsecase{
 		repo:      repo,
@@ -1223,6 +1230,12 @@ func (uc *RecordUsecase) GetEntity(ctx context.Context, uri string) (*domain.Ent
 
 	parsed, err := concrnt.ParseCCURI(uri)
 	if err != nil {
+		return nil, err
+	}
+
+	if len(parsed.Owner) == 0 {
+		err := fmt.Errorf("invalid URI: owner is required: %s", uri)
+		span.RecordError(err)
 		return nil, err
 	}
 

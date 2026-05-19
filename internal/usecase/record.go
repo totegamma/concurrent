@@ -1253,10 +1253,8 @@ func (uc *RecordUsecase) GetEntity(ctx context.Context, uri string) (*domain.Ent
 		redirect := ""
 		for _, record := range txtrecords {
 			parsed, err := concrnt.ParseCCURI(record)
-			if err == nil {
-				if concrnt.IsCCID(parsed.Owner) && parsed.Hint != nil {
-					redirect = record
-				}
+			if err == nil && concrnt.IsCCID(parsed.Owner) && parsed.Hint != nil {
+				redirect = record
 				break
 			}
 		}

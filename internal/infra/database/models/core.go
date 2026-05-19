@@ -23,23 +23,23 @@ type CommitLog struct {
 
 type RecordKey struct {
 	ID            int64   `json:"id" gorm:"primaryKey;autoIncrement"`
-	ParentID      *int64  `json:"parentID" gorm:"index"`
+	ParentID      *int64  `json:"parentID" gorm:"index:idx_record_keys_parent_id_record_id,priority:1"`
 	URI           string  `json:"uri" gorm:"type:text;unique"`
-	RecordID      *string `json:"recordID" gorm:"type:text;uniqueIndex"`
+	RecordID      *string `json:"recordID" gorm:"type:text;uniqueIndex;index:idx_record_keys_parent_id_record_id,priority:2"`
 	Record        Record  `json:"record" gorm:"foreignKey:RecordID;references:DocumentID;constraint:OnDelete:CASCADE;"`
 	CleanOnUpdate bool    `json:"cleanOnUpdate" gorm:"type:boolean;not null;default:false"`
 }
 
 type Record struct {
-	DocumentID    string         `json:"id" gorm:"primaryKey;type:text;index:idx_records_schema_createdat_docid"`
+	DocumentID    string         `json:"id" gorm:"primaryKey;type:text;index:idx_records_schema_created_at_document_id,priority:3;index:idx_records_document_id_created_at,priority:1"`
 	Document      CommitLog      `json:"documnet" gorm:"foreignKey:DocumentID;references:ID;constraint:OnDelete:CASCADE;"`
 	Owner         string         `json:"owner" gorm:"type:text"`
 	Redirect      *string        `json:"redirect" gorm:"type:text"`
-	Schema        string         `json:"schema" gorm:"type:text;index:idx_records_schema_createdat_docid"`
+	Schema        string         `json:"schema" gorm:"type:text;index:idx_records_schema_created_at_document_id,priority:1"`
 	Policies      *string        `json:"policies" gorm:"type:text"`
 	Distributions pq.StringArray `json:"distributions" gorm:"type:text[]"`
 	// user-provided creation time
-	CreatedAt time.Time `json:"createdAt" gorm:"type:timestamp with time zone;not null;index:idx_records_schema_createdat_docid"`
+	CreatedAt time.Time `json:"createdAt" gorm:"type:timestamp with time zone;not null;index:idx_records_schema_created_at_document_id,priority:2;index:idx_records_document_id_created_at,priority:2"`
 	// record creation time in the system
 	CDate time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 }

@@ -28,10 +28,10 @@ import (
 
 type Handler struct {
 	config    domain.Config
+	residence *usecase.ResidenceUsecase
 	record    *usecase.RecordUsecase
 	chunkline *usecase.ChunklineUsecase
 	server    *usecase.ServerUsecase
-	entity    *usecase.EntityUsecase
 	notify    *usecase.NotificationUsecase
 	abuse     *usecase.AbuseUsecase
 	signal    *service.SignalService
@@ -40,10 +40,10 @@ type Handler struct {
 
 func NewHandler(
 	config domain.Config,
+	residence *usecase.ResidenceUsecase,
 	record *usecase.RecordUsecase,
 	chunkline *usecase.ChunklineUsecase,
 	server *usecase.ServerUsecase,
-	entity *usecase.EntityUsecase,
 	notify *usecase.NotificationUsecase,
 	abuse *usecase.AbuseUsecase,
 	signal *service.SignalService,
@@ -51,10 +51,10 @@ func NewHandler(
 ) *Handler {
 	return &Handler{
 		config:    config,
+		residence: residence,
 		record:    record,
 		chunkline: chunkline,
 		server:    server,
-		entity:    entity,
 		notify:    notify,
 		abuse:     abuse,
 		signal:    signal,
@@ -211,7 +211,7 @@ func (h *Handler) handleResolve(c echo.Context) error {
 
 	if parsed.Key == "" && parsed.CDID == "" {
 		if concrnt.IsCCID(parsed.Owner) {
-			entity, err := h.entity.GetSD(ctx, parsed.Owner, parsed.Hint)
+			entity, err := h.record.GetSigned(ctx, uri.String())
 			if err != nil {
 				if errors.Is(err, domain.ErrPermissionDenied) {
 					return presenter.Forbidden(c, "permission denied") // TODO: should be return NotFound
@@ -376,7 +376,9 @@ func (h *Handler) handleRegister(c echo.Context) error {
 		return presenter.BadRequest(c, err)
 	}
 
-	err = h.entity.Register(ctx, req)
+	ip := c.RealIP()
+
+	err = h.residence.Register(ctx, ip, req)
 	if err != nil {
 		return presenter.InternalError(c, err)
 	}

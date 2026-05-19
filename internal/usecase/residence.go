@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"strings"
 	"time"
 
 	"github.com/concrnt/concrnt"
@@ -14,34 +13,34 @@ import (
 	"github.com/concrnt/concrnt/schemas"
 )
 
-// EntityRepository defines persistence/lookup for entities.
-type EntityRepository interface {
+type ResidenceRepository interface {
 	SaveMeta(ctx context.Context, meta domain.EntityMeta) error
-	SaveEntity(ctx context.Context, sd concrnt.SignedDocument) (*concrnt.Document[schemas.Entity], error)
-	Get(ctx context.Context, ccid string, hint *string) (*domain.Entity, error)
-	GetSD(ctx context.Context, ccid string, hint *string) (*concrnt.SignedDocument, error)
-	GetDocument(ctx context.Context, ccid string, hint *string) (*concrnt.Document[schemas.Entity], error)
-	GetByAlias(ctx context.Context, alias string) (*domain.Entity, error)
 	GetMeta(ctx context.Context, ccid string) (*domain.EntityMeta, error)
+
+	GetEntityByCCID(ctx context.Context, ccid string) (*domain.Entity, error)
+	GetEntityByAlias(ctx context.Context, alias string) (*domain.Entity, error)
 }
 
-type EntityUsecase struct {
-	repo   EntityRepository
+type ResidenceUsecase struct {
+	repo   ResidenceRepository
+	record *RecordUsecase
 	config *domain.Config
 }
 
-func NewEntityUsecase(
-	repo EntityRepository,
+func NewResidenceUsecase(
+	repo ResidenceRepository,
+	record *RecordUsecase,
 	config *domain.Config,
-) *EntityUsecase {
-	return &EntityUsecase{
+) *ResidenceUsecase {
+	return &ResidenceUsecase{
 		repo:   repo,
+		record: record,
 		config: config,
 	}
 }
 
-func (uc *EntityUsecase) Register(ctx context.Context, req concrnt.RegisterRequest[domain.EntityMeta]) error {
-	ctx, span := tracer.Start(ctx, "EntityUsecase.Register")
+func (uc *ResidenceUsecase) Register(ctx context.Context, ip string, req concrnt.RegisterRequest[domain.EntityMeta]) error {
+	ctx, span := tracer.Start(ctx, "RecordUsecase.Register")
 	defer span.End()
 
 	var inviter *string
@@ -69,7 +68,7 @@ func (uc *EntityUsecase) Register(ctx context.Context, req concrnt.RegisterReque
 		}
 
 		if claims.Issuer != uc.config.CSID {
-			inviterEntity, err := uc.repo.Get(ctx, claims.Issuer, nil)
+			inviterEntity, err := uc.repo.GetEntityByCCID(ctx, claims.Issuer)
 			if err != nil {
 				span.RecordError(err)
 				return domain.PermissionError{Reason: "invalid invitation code(issuer)"}
@@ -115,9 +114,15 @@ func (uc *EntityUsecase) Register(ctx context.Context, req concrnt.RegisterReque
 	}
 
 	var latest time.Time
-	existing, err := uc.repo.GetDocument(ctx, ccid, nil)
+	existing, err := uc.repo.GetEntityByCCID(ctx, ccid)
 	if err == nil {
-		latest = existing.CreatedAt
+		var existingDoc concrnt.Document[schemas.Entity]
+		err = json.Unmarshal([]byte(existing.SignedDocument.Document), &existingDoc)
+		if err != nil {
+			span.RecordError(err)
+			return err
+		}
+		latest = existingDoc.CreatedAt
 	}
 
 	if entity.CreatedAt.Before(latest) {
@@ -134,61 +139,11 @@ func (uc *EntityUsecase) Register(ctx context.Context, req concrnt.RegisterReque
 		return err
 	}
 
-	_, err = uc.repo.SaveEntity(ctx, req.SignedDocument)
+	_, err = uc.record.Commit(ctx, ip, req.SignedDocument, domain.CommitModeLocalOnlyExecute)
 	if err != nil {
 		span.RecordError(err)
 		return err
 	}
 
 	return nil
-}
-
-func (uc *EntityUsecase) SaveEntity(ctx context.Context, sd concrnt.SignedDocument) (*concrnt.SignedDocument, error) {
-	ctx, span := tracer.Start(ctx, "EntityUsecase.SaveEntity")
-	defer span.End()
-
-	_, err := uc.repo.SaveEntity(ctx, sd)
-	if err != nil {
-		return nil, err
-	}
-
-	return &sd, nil
-}
-
-func (uc *EntityUsecase) Get(ctx context.Context, key string, resolver *string) (*domain.Entity, error) {
-	ctx, span := tracer.Start(ctx, "EntityUsecase.Get")
-	defer span.End()
-
-	parsed, err := concrnt.ParseCCURI(key)
-	if err != nil {
-		return nil, err
-	}
-
-	id := parsed.Owner
-
-	if strings.HasPrefix(id, "@") {
-		return uc.repo.GetByAlias(ctx, id)
-	} else {
-		return uc.repo.Get(ctx, id, resolver)
-	}
-}
-
-func (uc *EntityUsecase) GetSD(ctx context.Context, ccid string, resolver *string) (*concrnt.SignedDocument, error) {
-	return uc.repo.GetSD(ctx, ccid, resolver)
-}
-
-func (uc *EntityUsecase) IsLocal(ctx context.Context, entity domain.Entity) bool {
-	return entity.Domain == uc.config.FQDN
-}
-
-func (uc *EntityUsecase) IsLocalByCCID(ctx context.Context, ccid string) (bool, error) {
-	ctx, span := tracer.Start(ctx, "EntityUsecase.IsLocalByCCID")
-	defer span.End()
-
-	entity, err := uc.repo.Get(ctx, ccid, nil)
-	if err != nil {
-		return false, err
-	}
-
-	return uc.IsLocal(ctx, *entity), nil
 }

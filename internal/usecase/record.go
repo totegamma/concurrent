@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/url"
 	"slices"
 	"strings"
@@ -20,7 +21,6 @@ import (
 	"github.com/concrnt/concrnt/client"
 	"github.com/concrnt/concrnt/impl/interop"
 	"github.com/concrnt/concrnt/internal/domain"
-	"github.com/concrnt/concrnt/internal/service"
 	"github.com/concrnt/concrnt/internal/utils"
 	"github.com/concrnt/concrnt/policy"
 	"github.com/concrnt/concrnt/schemas"
@@ -28,8 +28,10 @@ import (
 
 type RecordRepository interface {
 	BeginTx(ctx context.Context) (RepositoryTx, error)
+
 	CreateCommitLog(ctx context.Context, tx RepositoryTx, id string, ip string, document string, proof any) error
 	CreateCommitOwners(ctx context.Context, tx RepositoryTx, id string, owners []string) error
+	CreateEntity(ctx context.Context, tx RepositoryTx, ccid string, alias *string, domain string, documentID string) error
 	CreateRecord(ctx context.Context, tx RepositoryTx, documentID string, key string, owner string, schema string, onUpdate *string, policies *string, distributions []string, redirect *string, createdAt time.Time) (string, error)
 	CreateAssociation(ctx context.Context, tx RepositoryTx, documentID string, targetURI string, owner string, author string, schema string, variant *string, unique string, createdAt time.Time) error
 	Acknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, ackContext string, valid bool, createdAt time.Time, resultURI string) (string, error)
@@ -59,6 +61,14 @@ type RepositoryTx interface {
 
 type PostProcessAction func(ctx context.Context) error
 
+type SignalService interface {
+	Publish(ctx context.Context, channel string, event concrnt.Event) error
+}
+
+type PolicyService interface {
+	Eval(ctx context.Context, req policy.RequestContext, stack []concrnt.Policy, action string, key string) error
+}
+
 type commitApplyResult struct {
 	result        *concrnt.SignedDocument
 	owners        []string
@@ -66,48 +76,46 @@ type commitApplyResult struct {
 }
 
 type RecordUsecase struct {
-	repo   RecordRepository
-	config *domain.Config
-	client *client.Client
-	entity *EntityUsecase
-	signal *service.SignalService
-	policy *service.PolicyService
-	cache  *cache.Cache
+	repo      RecordRepository
+	residence ResidenceRepository
+	config    *domain.Config
+	client    *client.Client
+	signal    SignalService
+	policy    PolicyService
+	cache     *cache.Cache
 }
 
 func NewRecordUsecase(
 	repo RecordRepository,
+	residence ResidenceRepository,
 	config *domain.Config,
 	client *client.Client,
-	entity *EntityUsecase,
-	signal *service.SignalService,
-	policy *service.PolicyService,
+	signal SignalService,
+	policy PolicyService,
 ) *RecordUsecase {
 	return &RecordUsecase{
-		repo:   repo,
-		config: config,
-		client: client,
-		entity: entity,
-		signal: signal,
-		policy: policy,
-		cache:  cache.New(10*time.Minute, 15*time.Minute),
+		repo:      repo,
+		residence: residence,
+		config:    config,
+		client:    client,
+		signal:    signal,
+		policy:    policy,
+		cache:     cache.New(10*time.Minute, 15*time.Minute),
 	}
 }
 
 func GetReferrerFromReferences(sd concrnt.SignedDocument, requesterID string) *string {
-	requesterCCKV := concrnt.ComposeCCURI("cckv", requesterID, "")
+	requesterCCKV := concrnt.CCURI{Scheme: "cckv", Owner: requesterID}.String()
 	entityRef, ok := sd.References[requesterCCKV]
 	if ok {
-		jsonBytes, err := json.Marshal(entityRef)
-		if err != nil {
-			return nil
-		}
 		var entity concrnt.Document[schemas.Entity]
-		err = json.Unmarshal(jsonBytes, &entity)
+		err := json.Unmarshal([]byte(entityRef.Document), &entity)
 		if err != nil {
 			return nil
 		}
 		return &entity.Value.Domain
+	} else {
+		slog.Debug("no reference found for requester in commit references", slog.String("requester_cckv", requesterCCKV))
 	}
 	return nil
 }
@@ -197,10 +205,9 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 	requesterID := doc.Author
 	referrer := GetReferrerFromReferences(sd, requesterID)
 
-	requester, err := uc.entity.Get(ctx, requesterID, referrer)
+	requester, err := uc.GetEntity(ctx, concrnt.CCURI{Scheme: "cckv", Owner: requesterID, Hint: referrer}.String())
 	if err != nil {
 		span.RecordError(err)
-		// return nil, err
 	}
 
 	targetUserID := ""
@@ -246,7 +253,10 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 	switch doc.Schema {
 	// 特殊なスキーマの場合の処理
 	case schemas.EntityURL:
-		return uc.saveEntity(ctx, sd)
+		//return uc.saveEntity(ctx, tx, documentID, sd)
+		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
+			return uc.saveEntity(ctx, tx, documentID, sd)
+		}
 	case schemas.DeleteURL:
 		if requester == nil {
 			err := errors.New("requester entity not found for delete operation")
@@ -269,7 +279,7 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 			return nil, err
 		}
 		referrer := GetReferrerFromReferences(sd, requester.CCKV())
-		targetUser, err := uc.entity.Get(ctx, *ackDoc.Associate, referrer)
+		targetUser, err := uc.GetEntity(ctx, concrnt.CCURI{Scheme: "cckv", Owner: *ackDoc.Associate, Hint: referrer}.String())
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
@@ -289,7 +299,7 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 			span.RecordError(err)
 			return nil, err
 		}
-		targetUser, err := uc.entity.Get(ctx, *ackDoc.Associate, nil)
+		targetUser, err := uc.GetEntity(ctx, concrnt.CCURI{Scheme: "cckv", Owner: *ackDoc.Associate}.String())
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
@@ -364,8 +374,59 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 	return applyResult.result, nil
 }
 
-func (uc *RecordUsecase) saveEntity(ctx context.Context, sd concrnt.SignedDocument) (*concrnt.SignedDocument, error) {
-	return uc.entity.SaveEntity(ctx, sd)
+func (uc *RecordUsecase) saveEntity(ctx context.Context, tx RepositoryTx, documentID string, sd concrnt.SignedDocument) (*commitApplyResult, error) {
+	ctx, span := tracer.Start(ctx, "Usecase.Record.SaveEntity")
+	defer span.End()
+
+	var entity concrnt.Document[schemas.Entity]
+	if err := json.Unmarshal([]byte(sd.Document), &entity); err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	if entity.Value.Domain == uc.config.FQDN {
+		// if local, check if author is registered
+		_, err := uc.residence.GetMeta(ctx, entity.Author)
+		if err != nil {
+			span.RecordError(err)
+			return nil, errors.New("user is not registered for this domain")
+		}
+	}
+
+	if entity.Value.Alias != nil {
+		name := "_concrnt." + *entity.Value.Alias
+		txtrecords, err := net.DefaultResolver.LookupTXT(ctx, name)
+		if err != nil {
+			span.RecordError(err)
+			return nil, errors.New("alias ownership verification failed: TXT record not found for " + name)
+		}
+
+		verified := false
+		for _, record := range txtrecords {
+			parsed, err := concrnt.ParseCCURI(record)
+			if err != nil {
+				continue
+			}
+			if parsed.Owner == entity.Author {
+				verified = true
+				break
+			}
+		}
+
+		if !verified {
+			err := errors.New("alias ownership verification failed: no valid TXT record found for " + name)
+			span.RecordError(err)
+			return nil, err
+		}
+	}
+
+	err := uc.repo.CreateEntity(ctx, tx, entity.Author, entity.Value.Alias, entity.Value.Domain, documentID)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	return &commitApplyResult{result: &sd, owners: []string{entity.Author}}, nil
 }
 
 func distributionsFromPtr(distributions *[]string) []string {
@@ -446,7 +507,6 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 				destinations = append(destinations, *targetDoc.Distributes...)
 			}
 			for _, dest := range destinations {
-				dest := dest
 				remoteSD := concrnt.SignedDocument{
 					Document: sd.Document,
 					Proof:    sd.Proof,
@@ -495,7 +555,6 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 				}
 
 				for _, dest := range destinations {
-					dest := dest
 					remoteSD := concrnt.SignedDocument{
 						Document: sd.Document,
 						Proof:    sd.Proof,
@@ -522,7 +581,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 				}
 			}
 		}
-		return &commitApplyResult{result: targetSD, owners: localEntityOwners(ctx, uc.entity, requester), postProcesses: postProcesses}, nil
+		return &commitApplyResult{result: targetSD, owners: uc.localEntityOwners(ctx, requester), postProcesses: postProcesses}, nil
 
 	} else { // remote entity. only emit signals.
 		targetSD, ok := sd.References[targetURI]
@@ -546,7 +605,6 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 		}
 
 		for _, dest := range destinations {
-			dest := dest
 			postProcesses = append(postProcesses,
 				func(ctx context.Context) error {
 					host, err := uc.client.ResolveResourceHost(ctx, dest)
@@ -588,7 +646,6 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 			destinations = append(destinations, associatedURI)
 
 			for _, dest := range destinations {
-				dest := dest
 				postProcesses = append(postProcesses,
 					func(ctx context.Context) error {
 						host, err := uc.client.ResolveResourceHost(ctx, dest)
@@ -607,7 +664,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 			}
 		}
 
-		return &commitApplyResult{result: &targetSD, owners: localEntityOwners(ctx, uc.entity, requester), postProcesses: postProcesses}, nil
+		return &commitApplyResult{result: &targetSD, owners: uc.localEntityOwners(ctx, requester), postProcesses: postProcesses}, nil
 	}
 }
 
@@ -732,7 +789,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 	}
 
 	if parsed.Distributes != nil {
-		requesterSD, err := uc.entity.GetSD(ctx, requester.ID, &requester.Domain)
+		requesterSD, err := uc.GetSigned(ctx, requester.CCKVWithHint())
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
@@ -844,7 +901,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 
 	ccfs := concrnt.ComposeCCURI("ccfs", targetURI.Owner, documentID)
 
-	isLocal, err := uc.entity.IsLocalByCCID(ctx, targetURI.Owner)
+	isLocal, err := uc.IsLocalEntityByCCID(ctx, targetURI.Owner)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -853,7 +910,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 	created := false
 	postProcesses := []PostProcessAction{}
 
-	requesterSD, err := uc.entity.GetSD(ctx, requester.ID, &requester.Domain)
+	requesterSD, err := uc.GetSigned(ctx, requester.CCKVWithHint())
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -965,7 +1022,6 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 		}
 
 		for _, channel := range distributions {
-			channel := channel
 			remoteSD := concrnt.SignedDocument{
 				Document: sd.Document,
 				Proof:    sd.Proof,
@@ -1017,7 +1073,7 @@ func (uc *RecordUsecase) localCommitOwners(ctx context.Context, candidates ...st
 		seen[candidate] = struct{}{}
 
 		if concrnt.IsCCID(candidate) {
-			isLocal, err := uc.entity.IsLocalByCCID(ctx, candidate)
+			isLocal, err := uc.IsLocalEntityByCCID(ctx, candidate)
 			if err != nil {
 				return nil, err
 			}
@@ -1034,7 +1090,7 @@ func (uc *RecordUsecase) localCommitOwners(ctx context.Context, candidates ...st
 	return owners, nil
 }
 
-func localEntityOwners(ctx context.Context, entity *EntityUsecase, candidates ...domain.Entity) []string {
+func (uc *RecordUsecase) localEntityOwners(ctx context.Context, candidates ...domain.Entity) []string {
 	owners := make([]string, 0, len(candidates))
 	seen := map[string]struct{}{}
 	for _, candidate := range candidates {
@@ -1042,7 +1098,7 @@ func localEntityOwners(ctx context.Context, entity *EntityUsecase, candidates ..
 			continue
 		}
 		seen[candidate.ID] = struct{}{}
-		if entity.IsLocal(ctx, candidate) {
+		if uc.IsLocalEntity(ctx, &candidate) {
 			owners = append(owners, candidate.ID)
 		}
 	}
@@ -1053,7 +1109,7 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 	ctx, span := tracer.Start(ctx, "Usecase.Record.Acknowledge")
 	defer span.End()
 
-	if uc.entity.IsLocal(ctx, requester) || uc.entity.IsLocal(ctx, targetUser) {
+	if uc.IsLocalEntity(ctx, &requester) || uc.IsLocalEntity(ctx, &targetUser) {
 		parsedAssociate, err := concrnt.ParseCCURI(*doc.Associate)
 		if err != nil {
 			span.RecordError(err)
@@ -1074,9 +1130,9 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 	}
 
 	postProcesses := []PostProcessAction{}
-	if !uc.entity.IsLocal(ctx, targetUser) && mode == domain.CommitModeExecute {
+	if !uc.IsLocalEntity(ctx, &targetUser) && mode == domain.CommitModeExecute {
 
-		requesterSD, err := uc.entity.GetSD(ctx, requester.ID, &requester.Domain)
+		requesterSD, err := uc.GetSigned(ctx, requester.CCKVWithHint())
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
@@ -1097,10 +1153,10 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 	}
 
 	owners := []string{}
-	if uc.entity.IsLocal(ctx, requester) {
+	if uc.IsLocalEntity(ctx, &requester) {
 		owners = append(owners, requester.ID)
 	}
-	if uc.entity.IsLocal(ctx, targetUser) && !slices.Contains(owners, targetUser.ID) {
+	if uc.IsLocalEntity(ctx, &targetUser) && !slices.Contains(owners, targetUser.ID) {
 		owners = append(owners, targetUser.ID)
 	}
 	return &commitApplyResult{result: &sd, owners: owners, postProcesses: postProcesses}, nil
@@ -1110,7 +1166,7 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, doc
 	ctx, span := tracer.Start(ctx, "Usecase.Record.UnAcknowledge")
 	defer span.End()
 
-	if uc.entity.IsLocal(ctx, requester) || uc.entity.IsLocal(ctx, targetUser) {
+	if uc.IsLocalEntity(ctx, &requester) || uc.IsLocalEntity(ctx, &targetUser) {
 		parsedAssociate, err := concrnt.ParseCCURI(*doc.Associate)
 		if err != nil {
 			span.RecordError(err)
@@ -1130,8 +1186,8 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, doc
 	}
 
 	postProcesses := []PostProcessAction{}
-	if !uc.entity.IsLocal(ctx, targetUser) && mode == domain.CommitModeExecute {
-		requesterSD, err := uc.entity.GetSD(ctx, requester.ID, &requester.Domain)
+	if !uc.IsLocalEntity(ctx, &targetUser) && mode == domain.CommitModeExecute {
+		requesterSD, err := uc.GetSigned(ctx, requester.CCKVWithHint())
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
@@ -1152,30 +1208,130 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, doc
 	}
 
 	owners := []string{}
-	if uc.entity.IsLocal(ctx, requester) {
+	if uc.IsLocalEntity(ctx, &requester) {
 		owners = append(owners, requester.ID)
 	}
-	if uc.entity.IsLocal(ctx, targetUser) && !slices.Contains(owners, targetUser.ID) {
+	if uc.IsLocalEntity(ctx, &targetUser) && !slices.Contains(owners, targetUser.ID) {
 		owners = append(owners, targetUser.ID)
 	}
 	return &commitApplyResult{result: &sd, owners: owners, postProcesses: postProcesses}, nil
+}
+
+func (uc *RecordUsecase) GetEntity(ctx context.Context, uri string) (*domain.Entity, error) {
+	ctx, span := tracer.Start(ctx, "Usecase.Record.GetEntity")
+	defer span.End()
+
+	parsed, err := concrnt.ParseCCURI(uri)
+	if err != nil {
+		return nil, err
+	}
+
+	if len(parsed.Owner) == 0 {
+		err := fmt.Errorf("invalid URI: owner is required: %s", uri)
+		span.RecordError(err)
+		return nil, err
+	}
+
+	if parsed.Owner[0] == '@' { // alias
+		alias := parsed.Owner[1:]
+		sd, err := uc.residence.GetEntityByAlias(ctx, alias)
+		if err == nil {
+			return sd, nil
+		}
+		if !errors.Is(err, domain.ErrNotFound) {
+			span.RecordError(err)
+			return nil, err
+		}
+
+		name := "_concrnt." + alias
+		txtrecords, err := net.DefaultResolver.LookupTXT(ctx, name)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+
+		redirect := ""
+		for _, record := range txtrecords {
+			parsed, err := concrnt.ParseCCURI(record)
+			if err == nil && concrnt.IsCCID(parsed.Owner) && parsed.Hint != nil {
+				redirect = record
+				break
+			}
+		}
+		if redirect == "" {
+			return nil, errors.New("no valid CCURI found in TXT records")
+		}
+
+		return uc.GetEntity(ctx, redirect)
+	} else {
+		ccid := parsed.Owner
+		entity, err := uc.residence.GetEntityByCCID(ctx, ccid)
+		if err == nil {
+			return entity, nil
+		}
+		if !errors.Is(err, domain.ErrNotFound) {
+			span.RecordError(err)
+			return nil, err
+		}
+
+		if parsed.Hint == nil {
+			return nil, domain.NotFoundError{Resource: uri}
+		}
+
+		hint := *parsed.Hint
+
+		var sd concrnt.SignedDocument
+		err = uc.client.GetResource(ctx, uri, "application/json", &client.Options{
+			Resolver: hint,
+		}, &sd)
+		if err != nil {
+			return nil, err
+		}
+
+		_, err = uc.Commit(ctx, hint, sd, domain.CommitModeExecute)
+		if err != nil {
+			return nil, err
+		}
+
+		// commit済みなので今度は成功するはず
+		entity, err = uc.residence.GetEntityByCCID(ctx, ccid)
+		if err != nil {
+			return nil, err
+		}
+		return entity, nil
+	}
 }
 
 func (uc *RecordUsecase) GetSigned(ctx context.Context, uri string) (*concrnt.SignedDocument, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.GetSigned")
 	defer span.End()
 
-	sd, err := uc.repo.GetSignedDocument(ctx, uri)
+	parsed, err := concrnt.ParseCCURI(uri)
 	if err != nil {
+		span.RecordError(err)
 		return nil, err
 	}
 
-	err = uc.checkReadAccess(ctx, uri, *sd)
-	if err != nil {
-		return nil, err
-	}
+	if parsed.Scheme == "cckv" && parsed.Key == "" { // entity document
+		entity, err := uc.GetEntity(ctx, uri)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+		return entity.SignedDocument, nil
+	} else {
+		sd, err := uc.repo.GetSignedDocument(ctx, uri)
+		if err != nil {
+			return nil, err
+		}
 
-	return sd, nil
+		err = uc.checkReadAccess(ctx, uri, *sd)
+		if err != nil {
+			return nil, err
+		}
+
+		return sd, nil
+	}
 }
 
 func (uc *RecordUsecase) checkReadAccess(ctx context.Context, uri string, sd concrnt.SignedDocument) error {
@@ -1338,6 +1494,30 @@ func (uc *RecordUsecase) DumpCommitLogs(ctx context.Context) (string, error) {
 	}
 
 	return result, nil
+}
+
+func (uc *RecordUsecase) IsLocalEntity(ctx context.Context, entity *domain.Entity) bool {
+	return uc.config.FQDN == entity.Domain
+}
+
+func (uc *RecordUsecase) IsLocalEntityByCCID(ctx context.Context, entityID string) (bool, error) {
+	ctx, span := tracer.Start(ctx, "Usecase.Record.IsLocalEntity")
+	defer span.End()
+
+	if concrnt.IsCCID(entityID) {
+		entityID = concrnt.CCURI{
+			Scheme: "cckv",
+			Owner:  entityID,
+		}.String()
+	}
+
+	entity, err := uc.GetEntity(ctx, entityID)
+	if err != nil {
+		span.RecordError(err)
+		return false, err
+	}
+
+	return uc.IsLocalEntity(ctx, entity), nil
 }
 
 type ImportResult struct {

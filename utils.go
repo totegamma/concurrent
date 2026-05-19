@@ -26,6 +26,29 @@ type CCURI struct {
 	Key    string  `json:"key"`
 	CDID   string  `json:"cdid"`
 	Hint   *string `json:"hint,omitempty"`
+	Raw    string  `json:"raw"`
+}
+
+func (c CCURI) String() string {
+	result := c.Raw
+	switch c.Scheme {
+	case "cckv":
+		if c.Hint != nil {
+			result = fmt.Sprintf("cckv://%s@%s/%s", c.Owner, *c.Hint, c.Key)
+		} else {
+			result = fmt.Sprintf("cckv://%s/%s", c.Owner, c.Key)
+		}
+	case "ccfs":
+		if c.Hint != nil {
+			result = fmt.Sprintf("ccfs://%s@%s/%s", c.Owner, *c.Hint, c.CDID)
+		} else {
+			result = fmt.Sprintf("ccfs://%s/%s", c.Owner, c.CDID)
+		}
+	}
+	if c.Key == "" {
+		result = strings.TrimSuffix(result, "/")
+	}
+	return result
 }
 
 func ParseCCURI(escaped string) (*CCURI, error) {
@@ -68,6 +91,7 @@ func ParseCCURI(escaped string) (*CCURI, error) {
 			Key:    key,
 			CDID:   "",
 			Hint:   hint,
+			Raw:    uriString,
 		}, nil
 	case "ccfs":
 		return &CCURI{
@@ -76,15 +100,18 @@ func ParseCCURI(escaped string) (*CCURI, error) {
 			Key:    "",
 			CDID:   key,
 			Hint:   hint,
+			Raw:    uriString,
 		}, nil
 	case "http", "https":
 		return &CCURI{
 			Scheme: "http",
+			Raw:    uriString,
 		}, nil
 	case "":
 		return &CCURI{
 			Scheme: "cckv",
-			Owner:  uriString,
+			Owner:  path,
+			Raw:    uriString,
 		}, nil
 	default:
 		return nil, fmt.Errorf("unsupported uri scheme: %s", uri.Scheme)

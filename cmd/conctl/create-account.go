@@ -1,13 +1,16 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/internal/infra/repository/postgres"
 	"github.com/concrnt/concrnt/internal/usecase"
+	"github.com/concrnt/concrnt/policy"
 )
 
 var (
@@ -15,6 +18,18 @@ var (
 	createAccountInfo    string
 	createAccountInviter string
 )
+
+type nopSignal struct{}
+
+func (nopSignal) Publish(context.Context, string, concrnt.Event) error {
+	return nil
+}
+
+type nopPolicy struct{}
+
+func (nopPolicy) Eval(context.Context, policy.RequestContext, []concrnt.Policy, string, string) error {
+	return nil
+}
 
 var createAccountCmd = &cobra.Command{
 	Use:   "create-account",
@@ -41,10 +56,12 @@ var createAccountCmd = &cobra.Command{
 			return err
 		}
 
-		entityRepo := postgres.NewEntityRepository(op.DB, op.Client, op.GlobalConfig)
-		entityUC := usecase.NewEntityUsecase(entityRepo, &op.GlobalConfig)
+		residenceRepo := postgres.NewResidenceRepository(op.DB, op.Client, op.GlobalConfig)
+		recordRepo := postgres.NewRecordRepository(op.DB)
+		recordUC := usecase.NewRecordUsecase(recordRepo, residenceRepo, &op.GlobalConfig, op.Client, nopSignal{}, nopPolicy{})
+		residenceUC := usecase.NewResidenceUsecase(residenceRepo, recordUC, &op.GlobalConfig)
 
-		if err := entityUC.Register(cmd.Context(), req); err != nil {
+		if err := residenceUC.Register(cmd.Context(), "", req); err != nil {
 			return fmt.Errorf("failed to create account: %w", err)
 		}
 

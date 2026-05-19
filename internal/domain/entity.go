@@ -7,10 +7,11 @@ import (
 
 // Entity represents the core user/server identity without persistence concerns.
 type Entity struct {
-	ID        string  `json:"ccid"`
-	Alias     *string `json:"alias,omitempty"`
-	Domain    string  `json:"domain"`
-	TagString string  `json:"tag,omitempty"`
+	ID             string                  `json:"ccid"`
+	Alias          *string                 `json:"alias,omitempty"`
+	Domain         string                  `json:"domain"`
+	TagString      string                  `json:"tag,omitempty"`
+	SignedDocument *concrnt.SignedDocument `json:"-"`
 }
 
 func (e *Entity) Tag() tags.Tags {
@@ -19,6 +20,10 @@ func (e *Entity) Tag() tags.Tags {
 
 func (e *Entity) CCKV() string {
 	return concrnt.ComposeCCURI("cckv", e.ID, "")
+}
+
+func (e *Entity) CCKVWithHint() string {
+	return "cckv://" + e.ID + "@" + e.Domain
 }
 
 // EntityMeta is auxiliary metadata associated with an Entity.

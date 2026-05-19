@@ -101,13 +101,7 @@ func (s *AuthMiddleware) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFun
 				goto skipCheckAuthorization
 			}
 
-			issParsed, err := concrnt.ParseCCURI(claims.Issuer)
-			if err != nil {
-				span.RecordError(errors.Wrap(err, "failed to parse issuer as CCURI"))
-				goto skipCheckAuthorization
-			}
-
-			requester, err := s.record.GetEntity(ctx, concrnt.CCURI{Owner: issParsed.Owner, Hint: issParsed.Hint}.String())
+			requester, err := s.record.GetEntity(ctx, claims.Issuer)
 			if err != nil {
 				span.RecordError(errors.Wrap(err, "AuthMiddleware.IdentifyIdentity: s.entity.Get failed"))
 				goto skipCheckAuthorization

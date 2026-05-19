@@ -52,7 +52,10 @@ func (r *ResidenceRepository) GetMeta(ctx context.Context, ccid string) (*domain
 	var meta models.EntityMeta
 	err := r.db.Where("id = ?", ccid).Take(&meta).Error
 	if err != nil {
-		return nil, domain.NotFoundError{Resource: ccid}
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			return nil, domain.NotFoundError{Resource: ccid}
+		}
+		return nil, err
 	}
 
 	return &domain.EntityMeta{

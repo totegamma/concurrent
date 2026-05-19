@@ -30,22 +30,25 @@ type CCURI struct {
 }
 
 func (c CCURI) String() string {
+	result := c.Raw
 	switch c.Scheme {
 	case "cckv":
 		if c.Hint != nil {
-			return fmt.Sprintf("cckv://%s@%s/%s", c.Owner, *c.Hint, c.Key)
+			result = fmt.Sprintf("cckv://%s@%s/%s", c.Owner, *c.Hint, c.Key)
+		} else {
+			result = fmt.Sprintf("cckv://%s/%s", c.Owner, c.Key)
 		}
-		return fmt.Sprintf("cckv://%s/%s", c.Owner, c.Key)
 	case "ccfs":
 		if c.Hint != nil {
-			return fmt.Sprintf("ccfs://%s@%s/%s", c.Owner, *c.Hint, c.CDID)
+			result = fmt.Sprintf("ccfs://%s@%s/%s", c.Owner, *c.Hint, c.CDID)
+		} else {
+			result = fmt.Sprintf("ccfs://%s/%s", c.Owner, c.CDID)
 		}
-		return fmt.Sprintf("ccfs://%s/%s", c.Owner, c.CDID)
-	case "http", "https":
-		return c.Raw
-	default:
-		return ""
 	}
+	if c.Key == "" {
+		result = strings.TrimSuffix(result, "/")
+	}
+	return result
 }
 
 func ParseCCURI(escaped string) (*CCURI, error) {

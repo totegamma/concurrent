@@ -105,19 +105,17 @@ func NewRecordUsecase(
 }
 
 func GetReferrerFromReferences(sd concrnt.SignedDocument, requesterID string) *string {
-	requesterCCKV := concrnt.ComposeCCURI("cckv", requesterID, "")
+	requesterCCKV := concrnt.CCURI{Scheme: "cckv", Owner: requesterID}.String()
 	entityRef, ok := sd.References[requesterCCKV]
 	if ok {
-		jsonBytes, err := json.Marshal(entityRef)
-		if err != nil {
-			return nil
-		}
 		var entity concrnt.Document[schemas.Entity]
-		err = json.Unmarshal(jsonBytes, &entity)
+		err := json.Unmarshal([]byte(entityRef.Document), &entity)
 		if err != nil {
 			return nil
 		}
 		return &entity.Value.Domain
+	} else {
+		slog.Info("no reference found for requester in commit references", slog.String("requester_cckv", requesterCCKV))
 	}
 	return nil
 }
@@ -509,7 +507,6 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 				destinations = append(destinations, *targetDoc.Distributes...)
 			}
 			for _, dest := range destinations {
-				dest := dest
 				remoteSD := concrnt.SignedDocument{
 					Document: sd.Document,
 					Proof:    sd.Proof,
@@ -558,7 +555,6 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 				}
 
 				for _, dest := range destinations {
-					dest := dest
 					remoteSD := concrnt.SignedDocument{
 						Document: sd.Document,
 						Proof:    sd.Proof,
@@ -609,7 +605,6 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 		}
 
 		for _, dest := range destinations {
-			dest := dest
 			postProcesses = append(postProcesses,
 				func(ctx context.Context) error {
 					host, err := uc.client.ResolveResourceHost(ctx, dest)
@@ -651,7 +646,6 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 			destinations = append(destinations, associatedURI)
 
 			for _, dest := range destinations {
-				dest := dest
 				postProcesses = append(postProcesses,
 					func(ctx context.Context) error {
 						host, err := uc.client.ResolveResourceHost(ctx, dest)
@@ -1028,7 +1022,6 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 		}
 
 		for _, channel := range distributions {
-			channel := channel
 			remoteSD := concrnt.SignedDocument{
 				Document: sd.Document,
 				Proof:    sd.Proof,

@@ -167,11 +167,10 @@ func main() {
 	serverRepo := postgres.NewServerRepository(&domainConfig, db, cl)
 	serverUC := usecase.NewServerUsecase(serverRepo, &domainConfig, softwareInfo, moduleManager)
 
-	entityRepo := postgres.NewEntityRepository(db, cl, domainConfig)
-	entityUC := usecase.NewEntityUsecase(entityRepo, &domainConfig)
-
+	residenceRepo := postgres.NewResidenceRepository(db, cl, domainConfig)
 	recordRepo := postgres.NewRecordRepository(db)
-	recordUC := usecase.NewRecordUsecase(recordRepo, &domainConfig, cl, entityUC, signal, policy)
+	recordUC := usecase.NewRecordUsecase(recordRepo, residenceRepo, &domainConfig, cl, signal, policy)
+	residenceUC := usecase.NewResidenceUsecase(residenceRepo, recordUC, &domainConfig)
 
 	chunklineRepo := postgres.NewChunklineRepository(db)
 	chunklineGateway := gateway.NewChunklineGateway(cl)
@@ -196,7 +195,7 @@ func main() {
 		notificationReactor.Start(context.Background())
 	}
 
-	authMiddleware := middleware.NewAuthMiddleware(domainConfig, cl, serverUC, entityRepo)
+	authMiddleware := middleware.NewAuthMiddleware(domainConfig, cl, serverUC, recordUC)
 
 	meta := conf.Meta
 	meta["captchaSiteKey"] = conf.Integrations.CaptchaSitekey
@@ -209,10 +208,10 @@ func main() {
 
 	apiHandler := rest.NewHandler(
 		domainConfig,
+		residenceUC,
 		recordUC,
 		chunklineUC,
 		serverUC,
-		entityUC,
 		notificationUC,
 		abuseUC,
 		signal,

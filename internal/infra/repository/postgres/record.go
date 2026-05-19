@@ -55,6 +55,40 @@ func getRecordTx(ctx context.Context, tx usecase.RepositoryTx) (*gorm.DB, error)
 	return recordTx.tx.WithContext(ctx), nil
 }
 
+func (r *RecordRepository) CreateEntity(
+	ctx context.Context,
+	tx usecase.RepositoryTx,
+	ccid string,
+	alias *string,
+	domain string,
+	documentID string,
+) error {
+	ctx, span := tracer.Start(ctx, "Repository.Record.CreateEntity")
+	defer span.End()
+
+	db, err := getRecordTx(ctx, tx)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	modelEntity := models.Entity{
+		ID:         ccid,
+		Alias:      alias,
+		Domain:     domain,
+		DocumentID: documentID,
+	}
+
+	if err := db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "id"}},
+		DoUpdates: clause.AssignmentColumns([]string{"alias", "domain", "document_id"}),
+	}).Create(&modelEntity).Error; err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (r *RecordRepository) CreateCommitLog(ctx context.Context, tx usecase.RepositoryTx, id string, ip string, document string, proof any) error {
 	ctx, span := tracer.Start(ctx, "Repository.Record.CreateCommitLog")
 	defer span.End()

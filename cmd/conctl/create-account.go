@@ -41,10 +41,12 @@ var createAccountCmd = &cobra.Command{
 			return err
 		}
 
-		entityRepo := postgres.NewEntityRepository(op.DB, op.Client, op.GlobalConfig)
-		entityUC := usecase.NewEntityUsecase(entityRepo, &op.GlobalConfig)
+		residenceRepo := postgres.NewResidenceRepository(op.DB, op.Client, op.GlobalConfig)
+		recordRepo := postgres.NewRecordRepository(op.DB)
+		recordUC := usecase.NewRecordUsecase(recordRepo, residenceRepo, &op.GlobalConfig, op.Client, signal, policy)
+		residenceUC := usecase.NewResidenceUsecase(residenceRepo, recordUC, &op.GlobalConfig)
 
-		if err := entityUC.Register(cmd.Context(), req); err != nil {
+		if err := residenceUC.Register(cmd.Context(), "", req); err != nil {
 			return fmt.Errorf("failed to create account: %w", err)
 		}
 

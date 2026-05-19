@@ -26,20 +26,20 @@ type AuthMiddleware struct {
 	config domain.Config
 	client *client.Client
 	server *usecase.ServerUsecase
-	entity usecase.EntityRepository
+	record *usecase.RecordUsecase
 }
 
 func NewAuthMiddleware(
 	config domain.Config,
 	client *client.Client,
 	server *usecase.ServerUsecase,
-	entity usecase.EntityRepository,
+	record *usecase.RecordUsecase,
 ) *AuthMiddleware {
 	return &AuthMiddleware{
 		config: config,
 		client: client,
 		server: server,
-		entity: entity,
+		record: record,
 	}
 }
 
@@ -107,7 +107,7 @@ func (s *AuthMiddleware) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFun
 				goto skipCheckAuthorization
 			}
 
-			requester, err := s.entity.Get(ctx, issParsed.Owner, issParsed.Hint)
+			requester, err := s.record.GetEntity(ctx, concrnt.CCURI{Owner: issParsed.Owner, Hint: issParsed.Hint}.String())
 			if err != nil {
 				span.RecordError(errors.Wrap(err, "AuthMiddleware.IdentifyIdentity: s.entity.Get failed"))
 				goto skipCheckAuthorization

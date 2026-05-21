@@ -224,7 +224,7 @@ func (r *RecordRepository) CreateRecord(
 
 	err = db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "uri"}},
-		DoUpdates: clause.Assignments(map[string]any{"record_id": documentID}),
+		DoUpdates: clause.Assignments(map[string]any{"record_id": documentID, "parent_id": pid, "clean_on_update": cleanOnUpdate}),
 	}).Create(&rk).Error
 	if err != nil {
 		span.RecordError(err)
@@ -478,9 +478,8 @@ func (r *RecordRepository) GetSignedDocument(ctx context.Context, uri string) (*
 		var cckv *string = nil
 		var recordKey models.RecordKey
 		err = r.db.WithContext(ctx).
-			Preload("Record").
 			Where("record_id = ?", commitLog.ID).
-			Take(&models.RecordKey{}).Error
+			Take(&recordKey).Error
 		if err == nil {
 			cckv = &recordKey.URI
 		}
@@ -1009,7 +1008,7 @@ func (r *RecordRepository) GetAllCommitLogs(ctx context.Context, owner string) (
 	err := r.db.WithContext(ctx).
 		Joins("JOIN commit_owners co ON co.commit_log_id = commit_logs.id").
 		Where("co.owner = ?", owner).
-		Order("commit_logs.created_at ASC").
+		Order("commit_logs.c_date ASC").
 		Find(&commitLogs).Error
 	if err != nil {
 		span.RecordError(err)

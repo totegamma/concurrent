@@ -59,11 +59,11 @@ type Ack struct {
 }
 
 type Association struct {
-	TargetID int64     `json:"targetID" gorm:"type:text"`
-	Target   RecordKey `json:"-" gorm:"foreignKey:TargetID;references:ID;constraint:OnDelete:CASCADE;"`
-
 	DocumentID string    `json:"id" gorm:"primaryKey;type:text"`
 	Document   CommitLog `json:"-" gorm:"foreignKey:DocumentID;references:ID;constraint:OnDelete:CASCADE;"`
+
+	TargetID int64     `json:"targetID" gorm:"type:bigint;index"`
+	Target   RecordKey `json:"-" gorm:"foreignKey:TargetID;references:ID;constraint:OnDelete:CASCADE;"`
 
 	Owner  string `json:"owner" gorm:"type:text"`
 	Author string `json:"author" gorm:"type:text"`
@@ -77,7 +77,7 @@ type Association struct {
 }
 
 type Server struct {
-	ID          string    `json:"fqdn" gorm:"type:text"` // FQDN
+	ID          string    `json:"fqdn" gorm:"type:text;primaryKey"` // FQDN
 	CSID        string    `json:"csid" gorm:"type:text"`
 	Tag         string    `json:"tag" gorm:"type:text"`
 	Layer       string    `json:"layer" gorm:"type:text"`
@@ -88,8 +88,8 @@ type Server struct {
 }
 
 type Entity struct {
-	ID     string  `json:"ccid" gorm:"type:text"`
-	Alias  *string `json:"alias,omitempty" gorm:"type:text"`
+	ID     string  `json:"ccid" gorm:"type:text;primaryKey"`
+	Alias  *string `json:"alias,omitempty" gorm:"type:text;index"`
 	Domain string  `json:"domain" gorm:"type:text"`
 	Tag    string  `json:"tag" gorm:"type:text;"`
 
@@ -101,7 +101,7 @@ type Entity struct {
 }
 
 type EntityMeta struct {
-	ID      string    `json:"ccid" gorm:"type:text"`
+	ID      string    `json:"ccid" gorm:"type:text;primaryKey"`
 	Inviter *string   `json:"inviter" gorm:"type:text"`
 	Info    string    `json:"info" gorm:"type:jsonb;default:'null'"`
 	CDate   time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`

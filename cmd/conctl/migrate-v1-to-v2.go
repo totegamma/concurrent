@@ -454,7 +454,7 @@ func convertRecord(
 						},
 						Author:    v1msg.Signer,
 						Schema:    schemas.ReferenceURL,
-						CreatedAt: time.Now(),
+						CreatedAt: v1msg.SignedAt,
 					}
 					docBytes, err := json.Marshal(distDoc)
 					if err != nil {
@@ -601,7 +601,7 @@ func convertRecord(
 						},
 						Author:    v1ass.Signer,
 						Schema:    schemas.ReferenceURL,
-						CreatedAt: time.Now(),
+						CreatedAt: v1ass.SignedAt,
 					}
 					docBytes, err := json.Marshal(distDoc)
 					if err != nil {

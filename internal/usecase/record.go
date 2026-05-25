@@ -917,7 +917,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 	}
 
 	if isLocal {
-		uniqueKey := targetURI.Owner + parsed.Author + *parsed.Associate
+		uniqueKey := *parsed.Associate + parsed.Author + parsed.Schema
 		if parsed.AssociationVariant != nil {
 			uniqueKey += *parsed.AssociationVariant
 		}

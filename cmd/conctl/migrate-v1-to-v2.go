@@ -400,6 +400,7 @@ func convertRecord(
 			if hasSubprofile {
 				key = fmt.Sprintf("cckv://%s/concrnt.world/profiles/%s/posts/m%s", v1msg.Signer, subprofileID, cdidBase)
 			}
+			keyTable["m"+cdidBase] = key
 
 			distributes := convertTimelines(v1msg.Timelines)
 
@@ -415,74 +416,79 @@ func convertRecord(
 				Policy:      pol,
 			}
 
-			v0id = "m" + cdidBase
+			lines := ""
 
-			if v1Author.Domain != fromFQDN {
+			serializedDoc, err := json.Marshal(v2doc)
+			if err != nil {
+				fmt.Println("failed to serialize v2 document: ", err)
+				return "", err
+			}
 
-				serializedDoc, err := json.Marshal(v2doc)
+			sd := concrnt.SignedDocument{
+				Document: string(serializedDoc),
+				Proof: concrnt.Proof{
+					Type: "none",
+				},
+			}
+
+			if v1Author.Domain == fromFQDN {
+				line, err := json.Marshal(sd)
 				if err != nil {
-					fmt.Println("failed to serialize v2 document: ", err)
+					fmt.Println("failed to serialize signed document: ", err)
 					return "", err
 				}
+				lines += string(line) + "\n"
+			}
 
-				sd := concrnt.SignedDocument{
-					Document: string(serializedDoc),
+			for _, timeline := range distributes {
+
+				hash := concrnt.GetHash(serializedDoc)
+				hash10 := [10]byte{}
+				copy(hash10[:], hash[:10])
+				documentID := cdidv2.New(hash10, v1msg.SignedAt).String()
+
+				distKey := timeline + "/" + documentID
+
+				authorURI := fmt.Sprintf("cckv://%s", v1msg.Signer)
+				domainURI := fmt.Sprintf("cckv://%s", destFQDN)
+				if !strings.HasPrefix(distKey, authorURI) && !strings.HasPrefix(distKey, domainURI) {
+					continue // skip distributing to author's own timeline
+				}
+
+				distDoc := concrnt.Document[schemas.Reference]{
+					Key: distKey,
+					Value: schemas.Reference{
+						Href: key,
+					},
+					Author:    v1msg.Signer,
+					Schema:    schemas.ReferenceURL,
+					CreatedAt: v1msg.SignedAt,
+				}
+				docBytes, err := json.Marshal(distDoc)
+				if err != nil {
+					return "", err
+				}
+				distSD := concrnt.SignedDocument{
+					Document: string(docBytes),
 					Proof: concrnt.Proof{
-						Type: "none",
+						Type: "document-reference",
+						Href: &key,
+					},
+					References: map[string]concrnt.SignedDocument{
+						key: sd,
 					},
 				}
 
-				lines := ""
-				for _, timeline := range distributes {
-
-					hash := concrnt.GetHash(serializedDoc)
-					hash10 := [10]byte{}
-					copy(hash10[:], hash[:10])
-					documentID := cdidv2.New(hash10, v1msg.SignedAt).String()
-
-					distKey := timeline + "/" + documentID
-
-					authorURI := fmt.Sprintf("cckv://%s", v1msg.Signer)
-					if strings.HasPrefix(distKey, authorURI) {
-						continue // skip distributing to author's own timeline
-					}
-
-					distDoc := concrnt.Document[schemas.Reference]{
-						Key: distKey,
-						Value: schemas.Reference{
-							Href: key,
-						},
-						Author:    v1msg.Signer,
-						Schema:    schemas.ReferenceURL,
-						CreatedAt: v1msg.SignedAt,
-					}
-					docBytes, err := json.Marshal(distDoc)
-					if err != nil {
-						return "", err
-					}
-					distSD := concrnt.SignedDocument{
-						Document: string(docBytes),
-						Proof: concrnt.Proof{
-							Type: "document-reference",
-							Href: &key,
-						},
-						References: map[string]concrnt.SignedDocument{
-							key: sd,
-						},
-					}
-
-					lineBytes, err := json.Marshal(distSD)
-					if err != nil {
-						return "", err
-					}
-
-					lines += string(lineBytes) + "\n"
-
+				lineBytes, err := json.Marshal(distSD)
+				if err != nil {
+					return "", err
 				}
 
-				return lines, nil
+				lines += string(lineBytes) + "\n"
 
 			}
+
+			return lines, nil
 		}
 	case "profile":
 		{
@@ -846,9 +852,20 @@ func transferRecords(db *gorm.DB, dest_db *gorm.DB) {
 		}
 	}
 
+	var latestCommit core.CommitLog
+	db.Order("id desc").First(&latestCommit)
+	fmt.Println("latest commit ID in source database: ", latestCommit.ID)
+
+	startCommitID := lastKey
+	lastCommitID := latestCommit.ID
+
 	pageSize := 512
 
 	for {
+
+		progress := float64(lastKey-startCommitID) / float64(lastCommitID-startCommitID) * 100
+		fmt.Printf("progress: %.2f%%\n", progress)
+
 		var commits []core.CommitLog
 		db.Where("id > ?", lastKey).
 			Order("id asc").

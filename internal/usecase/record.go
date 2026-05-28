@@ -788,7 +788,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 		},
 	}
 
-	if parsed.Distributes != nil {
+	if mode == domain.CommitModeExecute && parsed.Distributes != nil {
 		requesterSD, err := uc.GetSigned(ctx, requester.CCKVWithHint())
 		if err != nil {
 			span.RecordError(err)
@@ -839,9 +839,6 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 					if host == uc.config.FQDN {
 						_, err = uc.Commit(ctx, ip, distSD, mode)
 						return err
-					}
-					if mode != domain.CommitModeExecute {
-						return nil
 					}
 					dest, err := concrnt.ParseCCURI(destURI)
 					if err != nil {
@@ -930,62 +927,60 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 		}
 
 		created = true
+		if mode == domain.CommitModeExecute {
+			for _, destURI := range distributionsFromPtr(parsed.Distributes) {
+				key, err := url.JoinPath(destURI, documentID)
+				if err != nil {
+					slog.Error("failed to join path for distribution", slog.String("destination", destURI), slog.String("document_id", documentID), slog.String("error", err.Error()))
+					span.RecordError(err)
+					continue
+				}
 
-		for _, destURI := range distributionsFromPtr(parsed.Distributes) {
-			key, err := url.JoinPath(destURI, documentID)
-			if err != nil {
-				slog.Error("failed to join path for distribution", slog.String("destination", destURI), slog.String("document_id", documentID), slog.String("error", err.Error()))
-				span.RecordError(err)
-				continue
-			}
+				distDoc := concrnt.Document[schemas.Reference]{
+					Key: key,
+					Value: schemas.Reference{
+						Href: ccfs,
+					},
+					Author:    parsed.Author,
+					Schema:    schemas.ReferenceURL,
+					CreatedAt: time.Now(),
+				}
+				docBytes, err := json.Marshal(distDoc)
+				if err != nil {
+					span.RecordError(err)
+					return nil, err
+				}
+				distSD := concrnt.SignedDocument{
+					Document: string(docBytes),
+					Proof: concrnt.Proof{
+						Type: "document-reference",
+						Href: &ccfs,
+					},
+					References: map[string]concrnt.SignedDocument{
+						requester.CCKV(): *requesterSD,
+						ccfs:             sd,
+					},
+				}
 
-			distDoc := concrnt.Document[schemas.Reference]{
-				Key: key,
-				Value: schemas.Reference{
-					Href: ccfs,
-				},
-				Author:    parsed.Author,
-				Schema:    schemas.ReferenceURL,
-				CreatedAt: time.Now(),
+				destURI := destURI
+				postProcesses = append(postProcesses,
+					func(ctx context.Context) error {
+						host, err := uc.client.ResolveResourceHost(ctx, destURI)
+						if err != nil {
+							return err
+						}
+						if host == uc.config.FQDN {
+							_, err = uc.Commit(ctx, ip, distSD, mode)
+							return err
+						}
+						dest, err := concrnt.ParseCCURI(destURI)
+						if err != nil {
+							return err
+						}
+						return uc.client.Commit(ctx, dest.Owner, distSD)
+					},
+				)
 			}
-			docBytes, err := json.Marshal(distDoc)
-			if err != nil {
-				span.RecordError(err)
-				return nil, err
-			}
-			distSD := concrnt.SignedDocument{
-				Document: string(docBytes),
-				Proof: concrnt.Proof{
-					Type: "document-reference",
-					Href: &ccfs,
-				},
-				References: map[string]concrnt.SignedDocument{
-					requester.CCKV(): *requesterSD,
-					ccfs:             sd,
-				},
-			}
-
-			destURI := destURI
-			postProcesses = append(postProcesses,
-				func(ctx context.Context) error {
-					host, err := uc.client.ResolveResourceHost(ctx, destURI)
-					if err != nil {
-						return err
-					}
-					if host == uc.config.FQDN {
-						_, err = uc.Commit(ctx, ip, distSD, mode)
-						return err
-					}
-					if mode != domain.CommitModeExecute {
-						return nil
-					}
-					dest, err := concrnt.ParseCCURI(destURI)
-					if err != nil {
-						return err
-					}
-					return uc.client.Commit(ctx, dest.Owner, distSD)
-				},
-			)
 		}
 	}
 

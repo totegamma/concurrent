@@ -1269,7 +1269,7 @@ func (uc *RecordUsecase) GetEntity(ctx context.Context, uri string) (*domain.Ent
 			return nil, err
 		}
 
-		if parsed.Hint == nil {
+		if parsed.Hint == nil || *parsed.Hint == uc.config.FQDN {
 			return nil, domain.NotFoundError{Resource: uri}
 		}
 

@@ -23,7 +23,6 @@ import (
 )
 
 var WritePublicPolicyURL = "https://policy.concrnt.world/t/write-public.json"
-var keyTable = make(map[string]string) // v0id -> v2key
 
 var entityCache = make(map[string]core.Entity)
 
@@ -42,6 +41,29 @@ var (
 type MigrationInfo struct {
 	Name   string `json:"name" gorm:"type:text;primaryKey"`
 	Seeker string `json:"seeker" gorm:"type:text"`
+}
+
+type MigrationTable struct {
+	V1ID string `json:"v1_id" gorm:"primaryKey"`
+	V2ID string `json:"v2_id"`
+}
+
+func SaveMigrationTable(db *gorm.DB, v1id string, v2id string) error {
+	table := MigrationTable{
+		V1ID: v1id,
+		V2ID: v2id,
+	}
+	result := db.Save(&table)
+	return result.Error
+}
+
+func ResolveMigrationTable(db *gorm.DB, v1id string) (string, error) {
+	var table MigrationTable
+	result := db.First(&table, "v1_id = ?", v1id)
+	if result.Error != nil {
+		return "", result.Error
+	}
+	return table.V2ID, nil
 }
 
 func LoadMigrationInfo(db *gorm.DB, name string) (*MigrationInfo, error) {
@@ -356,6 +378,7 @@ func transferEntities(db *gorm.DB, dest_db *gorm.DB) {
 
 func convertRecord(
 	db *gorm.DB,
+	destDB *gorm.DB,
 	commit core.CommitLog) (string, error) {
 	var v1doc core.DocumentBase[any]
 	err := json.Unmarshal([]byte(commit.Document), &v1doc)
@@ -382,8 +405,6 @@ func convertRecord(
 
 	var v2doc *concrnt.Document[any]
 
-	var v0id string
-
 	switch v1doc.Type {
 	case "message":
 		{
@@ -400,7 +421,7 @@ func convertRecord(
 			if hasSubprofile {
 				key = fmt.Sprintf("cckv://%s/concrnt.world/profiles/%s/posts/m%s", v1msg.Signer, subprofileID, cdidBase)
 			}
-			keyTable["m"+cdidBase] = key
+			SaveMigrationTable(destDB, "m"+cdidBase, key)
 
 			distributes := convertTimelines(v1msg.Timelines)
 
@@ -439,6 +460,40 @@ func convertRecord(
 				}
 				lines += string(line) + "\n"
 			}
+
+			mappingDoc := concrnt.Document[schemas.Reference]{
+				Key: fmt.Sprintf("cckv://%s/concrnt.world/v0/m%s", v1msg.Signer, cdidBase),
+				Value: schemas.Reference{
+					Href: key,
+				},
+				Author:    v1msg.Signer,
+				Schema:    schemas.ReferenceURL,
+				CreatedAt: v1msg.SignedAt,
+			}
+
+			mappingBytes, err := json.Marshal(mappingDoc)
+			if err != nil {
+				fmt.Println("failed to serialize mapping document: ", err)
+				return "", err
+			}
+
+			mappingSD := concrnt.SignedDocument{
+				Document: string(mappingBytes),
+				Proof: concrnt.Proof{
+					Type: "document-reference",
+					Href: &key,
+				},
+				References: map[string]concrnt.SignedDocument{
+					key: sd,
+				},
+			}
+
+			line, err := json.Marshal(mappingSD)
+			if err != nil {
+				fmt.Println("failed to serialize mapping signed document: ", err)
+				return "", err
+			}
+			lines += string(line) + "\n"
 
 			for _, timeline := range distributes {
 
@@ -501,16 +556,16 @@ func convertRecord(
 
 			key := fmt.Sprintf("cckv://%s/concrnt.world/profiles/main", v1prof.Signer)
 
+			v1id := "p" + cdidBase
 			if v1prof.SemanticID != "" {
-				v0id = v1prof.SemanticID
+				v1id = v1prof.SemanticID
 			} else if v1prof.ID != "" {
-				v0id = v1prof.ID
-			} else {
-				v0id = "p" + cdidBase
+				v1id = v1prof.ID
 			}
+			SaveMigrationTable(destDB, v1id, key)
 
 			if v1prof.SemanticID != "world.concrnt.p" {
-				key = fmt.Sprintf("cckv://%s/concrnt.world/profiles/%s", v1prof.Signer, v0id)
+				key = fmt.Sprintf("cckv://%s/concrnt.world/profiles/%s", v1prof.Signer, v1id)
 			}
 
 			v2doc = &concrnt.Document[any]{
@@ -531,23 +586,7 @@ func convertRecord(
 				return "", err
 			}
 
-			ownerEntity, err := getEntity(db, v1ass.Owner)
-			if err != nil {
-				fmt.Printf("failed to get owner entity for association document with commit id %d: %s\n", commit.ID, err)
-				return "", err
-			}
-			if ownerEntity.Domain != fromFQDN {
-				// fmt.Printf("skipping association document with owner from different domain: %s\n", v1ass.Owner)
-				//continue
-				return "", nil
-			}
-
-			target, ok := keyTable[v1ass.Target]
-			if !ok {
-				fmt.Printf("skipping association document with unknown target ID: %s\n", v1ass.Target)
-				//continue
-				return "", nil
-			}
+			associateKey := fmt.Sprintf("cckv://%s/concrnt.world/v0/%s", v1ass.Signer, v1ass.Target)
 
 			distributes := convertTimelines(v1ass.Timelines)
 			pol := convertPolicy(v1ass.Policy, v1ass.PolicyParams, v1ass.PolicyDefaults)
@@ -565,79 +604,87 @@ func convertRecord(
 				Distributes: &distributes,
 				Policy:      pol,
 
-				Associate:          &target,
+				Associate:          &associateKey,
 				AssociationVariant: variant,
 			}
 
-			if v1Author.Domain != fromFQDN {
+			lines := ""
 
-				serializedDoc, err := json.Marshal(v2doc)
+			serializedDoc, err := json.Marshal(v2doc)
+			if err != nil {
+				fmt.Println("failed to serialize v2 document: ", err)
+				return "", err
+			}
+
+			hash := concrnt.GetHash(serializedDoc)
+			hash10 := [10]byte{}
+			copy(hash10[:], hash[:10])
+			documentID := cdidv2.New(hash10, v1ass.SignedAt).String()
+
+			ccfs := concrnt.ComposeCCURI("ccfs", v1ass.Signer, documentID)
+
+			SaveMigrationTable(destDB, "a"+cdidBase, ccfs)
+
+			sd := concrnt.SignedDocument{
+				Document: string(serializedDoc),
+				Proof: concrnt.Proof{
+					Type: "none",
+				},
+			}
+
+			if v1Author.Domain == fromFQDN {
+				line, err := json.Marshal(sd)
 				if err != nil {
-					fmt.Println("failed to serialize v2 document: ", err)
+					fmt.Println("failed to serialize signed document: ", err)
 					return "", err
 				}
+				lines += string(line) + "\n"
+			}
 
-				sd := concrnt.SignedDocument{
-					Document: string(serializedDoc),
+			for _, timeline := range distributes {
+
+				distKey := timeline + "/" + documentID
+				authorURI := fmt.Sprintf("cckv://%s", v1ass.Signer)
+				domainURI := fmt.Sprintf("cckv://%s", destFQDN)
+				if !strings.HasPrefix(distKey, authorURI) && !strings.HasPrefix(distKey, domainURI) {
+					continue
+				}
+
+				distDoc := concrnt.Document[schemas.Reference]{
+					Key: distKey,
+					Value: schemas.Reference{
+						Href: ccfs,
+					},
+					Author:    v1ass.Signer,
+					Schema:    schemas.ReferenceURL,
+					CreatedAt: v1ass.SignedAt,
+				}
+				docBytes, err := json.Marshal(distDoc)
+				if err != nil {
+					return "", err
+				}
+				distSD := concrnt.SignedDocument{
+					Document: string(docBytes),
 					Proof: concrnt.Proof{
-						Type: "none",
+						Type: "document-reference",
+						Href: &ccfs,
+					},
+					References: map[string]concrnt.SignedDocument{
+						ccfs: sd,
 					},
 				}
 
-				lines := ""
-				for _, timeline := range distributes {
-
-					hash := concrnt.GetHash(serializedDoc)
-					hash10 := [10]byte{}
-					copy(hash10[:], hash[:10])
-					documentID := cdidv2.New(hash10, v1ass.SignedAt).String()
-
-					ccfs := concrnt.ComposeCCURI("ccfs", v1ass.Signer, documentID)
-
-					distKey := timeline + "/" + documentID
-					authorURI := fmt.Sprintf("cckv://%s", v1ass.Signer)
-					if strings.HasPrefix(distKey, authorURI) {
-						continue // skip distributing to author's own timeline
-					}
-
-					distDoc := concrnt.Document[schemas.Reference]{
-						Key: distKey,
-						Value: schemas.Reference{
-							Href: ccfs,
-						},
-						Author:    v1ass.Signer,
-						Schema:    schemas.ReferenceURL,
-						CreatedAt: v1ass.SignedAt,
-					}
-					docBytes, err := json.Marshal(distDoc)
-					if err != nil {
-						return "", err
-					}
-					distSD := concrnt.SignedDocument{
-						Document: string(docBytes),
-						Proof: concrnt.Proof{
-							Type: "document-reference",
-							Href: &ccfs,
-						},
-						References: map[string]concrnt.SignedDocument{
-							ccfs: sd,
-						},
-					}
-
-					lineBytes, err := json.Marshal(distSD)
-					if err != nil {
-						return "", err
-					}
-
-					lines += string(lineBytes) + "\n"
-
+				lineBytes, err := json.Marshal(distSD)
+				if err != nil {
+					return "", err
 				}
 
-				return lines, nil
+				lines += string(lineBytes) + "\n"
 
 			}
 
-			v0id = "a" + cdidBase
+			return lines, nil
+
 		}
 	case "timeline":
 		{
@@ -692,11 +739,12 @@ func convertRecord(
 				Policy:    pol,
 			}
 
+			v1id := "t" + cdidBase
 			if v1tl.ID != "" {
-				v0id = id
-			} else {
-				v0id = "t" + cdidBase
+				v1id = id
 			}
+
+			SaveMigrationTable(destDB, v1id, key)
 		}
 	case "subscription":
 		// {"owner":"con1khzfsjl2prkfa2c7ckfsyk7hk9nd84872hvve8","signer":"con1khzfsjl2prkfa2c7ckfsyk7hk9nd84872hvve8","type":"subscription","schema":"https://schema.concrnt.world/s/list.json","body":{"name":"Home"},"signedAt":"2025-06-03T15:03:41.221Z","indexable":false}
@@ -724,7 +772,11 @@ func convertRecord(
 				CreatedAt: v1sub.SignedAt,
 			}
 
-			v0id = "s" + cdidBase
+			v1id := "s" + cdidBase
+			if v1sub.ID != "" {
+				v1id = id
+			}
+			SaveMigrationTable(destDB, v1id, key)
 		}
 	case "subscribe":
 		// {"signer":"con1t0tey8uxhkqkd4wcp4hd4jedt7f0vfhk29xdd2","type":"subscribe","target":"tv9x2a976tp31yt6s06b9p2axz4@ariake.concrnt.net","subscription":"sqaspcetf6xaf5hdg067y1rga3g","signedAt":"2025-05-13T08:26:16.746Z","keyID":"cck1x9ee0xf4s7qrjze4n85malrdkreqtujfzq8jqv"}
@@ -785,10 +837,9 @@ func convertRecord(
 				return "", nil
 			}
 
-			targetKey, ok := keyTable[v1del.Target]
-			if !ok {
+			targetKey, err := ResolveMigrationTable(destDB, v1del.Target)
+			if err != nil {
 				fmt.Printf("skipping delete document with unknown target ID: %s\n", v1del.Target)
-				//continue
 				return "", nil
 			}
 
@@ -827,10 +878,6 @@ func convertRecord(
 	if err != nil {
 		fmt.Println("failed to serialize signed document: ", err)
 		return "", err
-	}
-
-	if v0id != "" {
-		keyTable[v0id] = v2doc.Key
 	}
 
 	return string(line), nil
@@ -881,7 +928,7 @@ func transferRecords(db *gorm.DB, dest_db *gorm.DB) {
 
 		for _, commit := range commits {
 
-			lines, err := convertRecord(db, commit)
+			lines, err := convertRecord(db, dest_db, commit)
 			if err != nil {
 				fmt.Printf("failed to convert record with commit id %d: %s\n", commit.ID, err)
 				continue
@@ -937,7 +984,7 @@ var migrateV1toV2Cmd = &cobra.Command{
 				return
 			}
 
-			lines, err := convertRecord(fromDB, commitLog)
+			lines, err := convertRecord(fromDB, destDB, commitLog)
 			if err != nil {
 				fmt.Printf("failed to convert record with commit id %d: %s\n", commitLog.ID, err)
 				return
@@ -952,7 +999,7 @@ var migrateV1toV2Cmd = &cobra.Command{
 			}
 
 		} else {
-			destDB.AutoMigrate(&MigrationInfo{})
+			destDB.AutoMigrate(&MigrationInfo{}, &MigrationTable{})
 
 			transferMetas(fromDB, destDB)
 			transferEntities(fromDB, destDB)

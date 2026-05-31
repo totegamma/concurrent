@@ -106,6 +106,7 @@ type Event struct {
 	URI         string                    `json:"uri"`
 	Association *string                   `json:"association,omitempty"`
 	References  map[string]SignedDocument `json:"documents,omitempty"`
+	Prefixes    []string                  `json:"prefixes,omitempty"`
 }
 
 type RealtimeRequest struct {

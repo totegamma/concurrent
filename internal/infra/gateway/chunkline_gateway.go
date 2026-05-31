@@ -20,8 +20,9 @@ import (
 )
 
 const (
-	chunklineManifestCacheTTL = int32(24 * 60 * 60)
-	chunklineNegativeCacheTTL = int32(60 * 60)
+	chunklineManifestCacheTTL = int32(24 * 60 * 60) // 1 day
+	chunklineNegativeCacheTTL = int32(60 * 60)      // 1 hour
+	chunklineIteratorCacheTTL = int32(24 * 60 * 60) // 1 day
 )
 
 type ChunklineGateway struct {
@@ -102,9 +103,6 @@ func (r *resolver) ResolveTimelines(ctx context.Context, timelines []string) (ma
 
 func (r *resolver) getCachedManifest(timeline string) (chunkline.Manifest, bool, error) {
 	var manifest chunkline.Manifest
-	if r.mc == nil {
-		return manifest, false, nil
-	}
 
 	item, err := r.mc.Get(chunklineCacheKey("manifest", timeline))
 	if errors.Is(err, memcache.ErrCacheMiss) {
@@ -123,9 +121,6 @@ func (r *resolver) getCachedManifest(timeline string) (chunkline.Manifest, bool,
 }
 
 func (r *resolver) setCachedManifest(timeline string, manifest chunkline.Manifest) error {
-	if r.mc == nil {
-		return nil
-	}
 
 	value, err := json.Marshal(manifest)
 	if err != nil {
@@ -140,9 +135,6 @@ func (r *resolver) setCachedManifest(timeline string, manifest chunkline.Manifes
 }
 
 func (r *resolver) isNegativeCached(timeline string) (bool, error) {
-	if r.mc == nil {
-		return false, nil
-	}
 
 	_, err := r.mc.Get(chunklineCacheKey("negative", timeline))
 	if errors.Is(err, memcache.ErrCacheMiss) {
@@ -156,9 +148,6 @@ func (r *resolver) isNegativeCached(timeline string) (bool, error) {
 }
 
 func (r *resolver) setNegativeCache(timeline string) error {
-	if r.mc == nil {
-		return nil
-	}
 
 	return r.mc.Set(&memcache.Item{
 		Key:        chunklineCacheKey("negative", timeline),
@@ -170,6 +159,11 @@ func (r *resolver) setNegativeCache(timeline string) error {
 func chunklineCacheKey(kind string, timeline string) string {
 	sum := sha256.Sum256([]byte(timeline))
 	return fmt.Sprintf("chunkline:%s:%x", kind, sum)
+}
+
+func chunklineIteratorCacheKey(timeline string, chunkID int64) string {
+	sum := sha256.Sum256([]byte(timeline))
+	return fmt.Sprintf("chunkline:iterator:%x:%d", sum, chunkID)
 }
 
 func (r *resolver) GetRemovedItems(ctx context.Context, timelines []string) (map[string][]string, error) {
@@ -184,10 +178,35 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 	ctx, span := tracer.Start(ctx, "ChunklineResolver.LookupChunkItrs")
 	defer span.End()
 
+	if len(timelines) == 0 {
+		return make(map[string]string), nil
+	}
+
 	manifests, err := r.ResolveTimelines(ctx, timelines)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
+	}
+
+	keys := make([]string, 0, len(timelines))
+	for _, tl := range timelines {
+		manifest, ok := manifests[tl]
+		if !ok {
+			continue
+		}
+
+		queryChunk := manifest.Time2Chunk(until)
+		if manifest.LastChunk != nil && queryChunk > *manifest.LastChunk {
+			queryChunk = *manifest.LastChunk
+		}
+
+		key := chunklineIteratorCacheKey(tl, queryChunk)
+		keys = append(keys, key)
+	}
+
+	cacheItems, err := r.mc.GetMulti(keys)
+	if err != nil {
+		span.RecordError(fmt.Errorf("failed to read chunkline iterator cache: %w", err))
 	}
 
 	results := make(map[string]string)
@@ -200,7 +219,7 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 			continue
 		}
 
-		if manifest.Descending.Iterator == "" {
+		if manifest.Descending == nil || manifest.Descending.Iterator == "" {
 			err := fmt.Errorf("timeline %s does not support descending iteration", tl)
 			span.RecordError(err)
 			continue
@@ -214,6 +233,12 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 		if manifest.FirstChunk != nil && queryChunk < *manifest.FirstChunk {
 			err := fmt.Errorf("query chunk %d is before first chunk %d for timeline %s", queryChunk, *manifest.FirstChunk, tl)
 			span.RecordError(err)
+			continue
+		}
+
+		if item := cacheItems[chunklineIteratorCacheKey(tl, queryChunk)]; item != nil {
+			iterator := strings.TrimSpace(string(item.Value))
+			results[tl] = iterator
 			continue
 		}
 
@@ -266,7 +291,16 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 			continue
 		}
 
-		results[tl] = strings.TrimSpace(string(bytes))
+		itr := strings.TrimSpace(string(bytes))
+		results[tl] = itr
+
+		if err := r.mc.Set(&memcache.Item{
+			Key:        chunklineIteratorCacheKey(tl, queryChunk),
+			Value:      []byte(itr),
+			Expiration: chunklineIteratorCacheTTL,
+		}); err != nil {
+			span.RecordError(fmt.Errorf("failed to write chunkline iterator cache for timeline %s: %w", tl, err))
+		}
 	}
 	return results, nil
 }

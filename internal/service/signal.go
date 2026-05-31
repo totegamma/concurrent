@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
-	"sync"
-	"sync/atomic"
 
 	"github.com/redis/go-redis/v9"
 
@@ -13,17 +11,12 @@ import (
 )
 
 type SignalService struct {
-	rdb         *redis.Client
-	currentSubs map[int64][]string
-
-	mu sync.RWMutex
-	id atomic.Int64
+	rdb *redis.Client
 }
 
 func NewSignalService(redisClient *redis.Client) *SignalService {
 	return &SignalService{
-		rdb:         redisClient,
-		currentSubs: make(map[int64][]string),
+		rdb: redisClient,
 	}
 }
 
@@ -45,98 +38,77 @@ func (s *SignalService) Publish(ctx context.Context, channel string, event concr
 	return nil
 }
 
-func (s *SignalService) Realtime(ctx context.Context, request <-chan []string, response chan<- concrnt.Event) {
-
-	var cancel context.CancelFunc
-	events := make(chan concrnt.Event)
-
-	for {
-		select {
-		case prefixes := <-request:
-			if cancel != nil {
-				cancel()
-			}
-
-			patterns := make([]string, len(prefixes))
-			for i, prefix := range prefixes {
-				patterns[i] = prefix + "*"
-			}
-
-			var subctx context.Context
-			subctx, cancel = context.WithCancel(ctx)
-			go s.subscribe(subctx, patterns, events)
-
-		case event := <-events:
-			response <- event
-
-		case <-ctx.Done():
-			if cancel != nil {
-				cancel()
-			}
-			return
-		}
-	}
-}
-
-func (s *SignalService) subscribe(ctx context.Context, patterns []string, event chan<- concrnt.Event) error {
-
-	if len(patterns) == 0 {
-		return nil
+func (s *SignalService) Subscribe(ctx context.Context, prefixes []string) (<-chan concrnt.Event, error) {
+	if len(prefixes) == 0 {
+		ch := make(chan concrnt.Event)
+		close(ch)
+		return ch, nil
 	}
 
-	id := func() int64 {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-
-		id := s.id.Add(1)
-		s.currentSubs[id] = patterns
-
-		return id
-	}()
-
-	defer func() {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-
-		delete(s.currentSubs, id)
-	}()
+	patterns := make([]string, len(prefixes))
+	for i, prefix := range prefixes {
+		patterns[i] = prefix + "*"
+	}
 
 	pubsub := s.rdb.PSubscribe(ctx, patterns...)
-	defer pubsub.Close()
+
+	if err := waitPSubscribe(ctx, pubsub, patterns); err != nil {
+		pubsub.Close()
+		return nil, err
+	}
 
 	psch := pubsub.Channel()
+	events := make(chan concrnt.Event)
 
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case msg := <-psch:
-			var item concrnt.Event
-			err := json.Unmarshal([]byte(msg.Payload), &item)
-			if err != nil {
-				slog.Error("failed to unmarshal event", slog.String("error", err.Error()))
-				continue
+	go func() {
+		defer close(events)
+		defer pubsub.Close()
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			case msg, ok := <-psch:
+				if !ok {
+					return
+				}
+				var item concrnt.Event
+				err := json.Unmarshal([]byte(msg.Payload), &item)
+				if err != nil {
+					slog.Error("failed to unmarshal event", slog.String("error", err.Error()))
+					continue
+				}
+				select {
+				case events <- item:
+				case <-ctx.Done():
+					return
+				}
 			}
-			event <- item
 		}
-	}
+	}()
+
+	return events, nil
 }
 
-func (s *SignalService) GetCurrentSubscriptions() []string {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
+func waitPSubscribe(ctx context.Context, pubsub *redis.PubSub, patterns []string) error {
+	waiting := make(map[string]struct{}, len(patterns))
+	for _, pattern := range patterns {
+		waiting[pattern] = struct{}{}
+	}
 
-	uniquePatterns := make(map[string]struct{})
-	for _, patterns := range s.currentSubs {
-		for _, pattern := range patterns {
-			uniquePatterns[pattern] = struct{}{}
+	for len(waiting) > 0 {
+		msg, err := pubsub.Receive(ctx)
+		if err != nil {
+			return err
 		}
+
+		sub, ok := msg.(*redis.Subscription)
+		if !ok || sub.Kind != "psubscribe" {
+			continue
+		}
+
+		delete(waiting, sub.Channel)
 	}
 
-	patterns := make([]string, 0, len(uniquePatterns))
-	for pattern := range uniquePatterns {
-		patterns = append(patterns, pattern)
-	}
-
-	return patterns
+	return nil
 }

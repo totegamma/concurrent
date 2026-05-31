@@ -34,7 +34,7 @@ type Handler struct {
 	server    *usecase.ServerUsecase
 	notify    *usecase.NotificationUsecase
 	abuse     *usecase.AbuseUsecase
-	signal    *service.SignalService
+	subscribe *usecase.SubscriptionUsecase
 	mm        *service.ModuleManager
 }
 
@@ -46,7 +46,7 @@ func NewHandler(
 	server *usecase.ServerUsecase,
 	notify *usecase.NotificationUsecase,
 	abuse *usecase.AbuseUsecase,
-	signal *service.SignalService,
+	subscribe *usecase.SubscriptionUsecase,
 	mm *service.ModuleManager,
 ) *Handler {
 	return &Handler{
@@ -57,7 +57,7 @@ func NewHandler(
 		server:    server,
 		notify:    notify,
 		abuse:     abuse,
-		signal:    signal,
+		subscribe: subscribe,
 		mm:        mm,
 	}
 }
@@ -571,7 +571,7 @@ func (h *Handler) handleAssociationCounts(c echo.Context) error {
 }
 
 func (h *Handler) handleCurrentSubs(c echo.Context) error {
-	subs := h.signal.GetCurrentSubscriptions()
+	subs := h.subscribe.GetCurrentSubscriptions()
 	return presenter.OK(c, subs)
 }
 
@@ -604,7 +604,7 @@ func (h *Handler) handleRealtime(c echo.Context) error {
 	output := make(chan concrnt.Event)
 	defer close(output)
 
-	go h.signal.Realtime(ctx, input, output)
+	go h.subscribe.Realtime(ctx, input, output)
 
 	quit := make(chan struct{})
 
@@ -636,7 +636,7 @@ func (h *Handler) handleRealtime(c echo.Context) error {
 			}
 
 			switch req.Type {
-			case "listen":
+			case "listen", "subscribe": // listen is for backward compatibility
 				input <- req.Prefixes
 				slog.DebugContext(
 					ctx, fmt.Sprintf("Socket subscribe: %s", req.Prefixes),

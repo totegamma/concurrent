@@ -180,13 +180,14 @@ func main() {
 	notificationUC := usecase.NewNotificationUsecase(notificationRepo)
 
 	subscriber := worker.NewSubscriber(&domainConfig, cl, signal)
+	subscriptionUC := usecase.NewSubscriptionUsecase(signal, subscriber)
 	subscriber.Start(context.Background())
 
 	abuseRepo := postgres.NewAbuseRepository(db)
 	abuseUC := usecase.NewAbuseUsecase(abuseRepo)
 
 	if conf.Integrations.VapidPublicKey != "" && conf.Integrations.VapidPrivateKey != "" {
-		notificationReactor := worker.NewNotificationReactor(notificationUC, signal, webpush.Options{
+		notificationReactor := worker.NewNotificationReactor(notificationUC, subscriptionUC, webpush.Options{
 			Subscriber:      "mailto:admin@" + domainConfig.FQDN,
 			VAPIDPublicKey:  conf.Integrations.VapidPublicKey,
 			VAPIDPrivateKey: conf.Integrations.VapidPrivateKey,
@@ -214,7 +215,7 @@ func main() {
 		serverUC,
 		notificationUC,
 		abuseUC,
-		signal,
+		subscriptionUC,
 		moduleManager,
 	)
 	api := e.Group("", authMiddleware.IdentifyIdentity, authMiddleware.IdentifyIdentity)

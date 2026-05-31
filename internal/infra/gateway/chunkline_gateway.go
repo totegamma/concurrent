@@ -23,6 +23,7 @@ const (
 	chunklineManifestCacheTTL = int32(24 * 60 * 60) // 1 day
 	chunklineNegativeCacheTTL = int32(60 * 60)      // 1 hour
 	chunklineIteratorCacheTTL = int32(24 * 60 * 60) // 1 day
+	chunklineBodyCacheTTL     = int32(24 * 60 * 60) // 1 day
 )
 
 type ChunklineGateway struct {
@@ -164,6 +165,11 @@ func chunklineCacheKey(kind string, timeline string) string {
 func chunklineIteratorCacheKey(timeline string, chunkID int64) string {
 	sum := sha256.Sum256([]byte(timeline))
 	return fmt.Sprintf("chunkline:iterator:%x:%d", sum, chunkID)
+}
+
+func chunklineBodyCacheKey(timeline string, chunkID int64) string {
+	sum := sha256.Sum256([]byte(timeline))
+	return fmt.Sprintf("chunkline:body:%x:%d", sum, chunkID)
 }
 
 func (r *resolver) GetRemovedItems(ctx context.Context, timelines []string) (map[string][]string, error) {
@@ -320,8 +326,45 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 		return nil, err
 	}
 
+	keys := make([]string, 0, len(query))
+	for tl, itr := range query {
+		chunkID, err := strconv.ParseInt(itr, 10, 64)
+		if err != nil {
+			span.RecordError(fmt.Errorf("invalid chunk ID %s for timeline %s: %w", itr, tl, err))
+			continue
+		}
+
+		key := chunklineBodyCacheKey(tl, chunkID)
+		keys = append(keys, key)
+	}
+
+	cacheItems, err := r.mc.GetMulti(keys)
+	if err != nil {
+		span.RecordError(fmt.Errorf("failed to read chunkline body cache: %w", err))
+	}
+
 	result := make(map[string]chunkline.BodyChunk)
 	for tl, itr := range query {
+
+		chunkID, err := strconv.ParseInt(itr, 10, 64)
+		if err != nil {
+			span.RecordError(fmt.Errorf("invalid chunk ID %s for timeline %s: %w", itr, tl, err))
+			continue
+		}
+
+		if item := cacheItems[chunklineBodyCacheKey(tl, chunkID)]; item != nil {
+			items, err := DecodeBodyCache(item.Value)
+			if err != nil {
+				span.RecordError(fmt.Errorf("failed to decode chunkline body cache for timeline %s: %w", tl, err))
+				_ = r.mc.Delete(chunklineBodyCacheKey(tl, chunkID))
+			}
+			result[tl] = chunkline.BodyChunk{
+				URI:     tl,
+				ChunkID: chunkID,
+				Items:   items,
+			}
+			continue
+		}
 
 		manifest, ok := manifests[tl]
 		if !ok {
@@ -330,7 +373,7 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 			continue
 		}
 
-		if manifest.Descending.Body == "" {
+		if manifest.Descending == nil || manifest.Descending.Body == "" {
 			err := fmt.Errorf("timeline %s does not support descending body retrieval", tl)
 			span.RecordError(err)
 			continue
@@ -385,18 +428,64 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 			continue
 		}
 
-		chunkID, err := strconv.ParseInt(itr, 10, 64)
-		if err != nil {
-			span.RecordError(fmt.Errorf("invalid chunk ID %s for timeline %s: %w", itr, tl, err))
-			continue
-		}
-
 		result[tl] = chunkline.BodyChunk{
 			URI:     tl,
 			ChunkID: chunkID,
 			Items:   items,
 		}
 
+		// TODO: 最新Chunkは、realtime接続があるものだけをキャッシュするようにする
+		cacheBody, err := EncodeBodyCache(items)
+		if err != nil {
+			span.RecordError(fmt.Errorf("failed to encode chunkline body cache for timeline %s: %w", tl, err))
+			continue
+		}
+
+		if err := r.mc.Set(&memcache.Item{
+			Key:        chunklineBodyCacheKey(tl, chunkID),
+			Value:      cacheBody,
+			Expiration: chunklineBodyCacheTTL,
+		}); err != nil {
+			span.RecordError(fmt.Errorf("failed to write chunkline body cache for timeline %s: %w", tl, err))
+		}
+
 	}
 	return result, nil
+}
+
+func EncodeBodyCache(items []chunkline.BodyItem) ([]byte, error) {
+	if len(items) == 0 {
+		return []byte{}, nil
+	}
+	body, err := json.Marshal(items)
+	if err != nil {
+		return nil, err
+	}
+	if len(body) < 2 {
+		return nil, fmt.Errorf("invalid chunkline body JSON")
+	}
+	return []byte("," + string(body[1:len(body)-1])), nil
+}
+
+func DecodeBodyCache(body []byte) ([]chunkline.BodyItem, error) {
+	if len(body) == 0 {
+		return []chunkline.BodyItem{}, nil
+	}
+	if body[0] != ',' {
+		return nil, fmt.Errorf("invalid chunkline body cache")
+	}
+	if len(body) == 1 {
+		return []chunkline.BodyItem{}, nil
+	}
+	// Tolerate a trailing comma that may appear if a prepend was performed
+	// onto a previously-empty (",") cache entry.
+	end := len(body)
+	if body[end-1] == ',' {
+		end--
+	}
+	cacheStr := "[" + string(body[1:end]) + "]"
+
+	var items []chunkline.BodyItem
+	err := json.Unmarshal([]byte(cacheStr), &items)
+	return items, err
 }

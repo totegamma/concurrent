@@ -719,6 +719,10 @@ func convertRecord(
 				tlid = tlid + "@" + owner
 			}
 
+			if strings.HasPrefix(tlid, "world.concrnt.t-ap") {
+				return "", nil // skip old activitypub timelines
+			}
+
 			key := convertTimeline(tlid)
 			//fmt.Println("converted timeline key: ", key)
 

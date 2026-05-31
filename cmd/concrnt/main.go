@@ -173,7 +173,7 @@ func main() {
 	residenceUC := usecase.NewResidenceUsecase(residenceRepo, recordUC, &domainConfig)
 
 	chunklineRepo := postgres.NewChunklineRepository(db)
-	chunklineGateway := gateway.NewChunklineGateway(cl)
+	chunklineGateway := gateway.NewChunklineGateway(cl, mc)
 	chunklineUC := usecase.NewChunklineUsecase(chunklineRepo, chunklineGateway)
 
 	notificationRepo := postgres.NewNotificationRepository(db)

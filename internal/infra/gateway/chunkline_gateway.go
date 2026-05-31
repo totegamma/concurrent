@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -12,26 +13,32 @@ import (
 	"strings"
 	"time"
 
-	"github.com/patrickmn/go-cache"
+	"github.com/bradfitz/gomemcache/memcache"
 
 	"github.com/concrnt/concrnt/chunkline"
 	"github.com/concrnt/concrnt/client"
 )
 
+const (
+	chunklineManifestCacheTTL = int32(24 * 60 * 60)
+	chunklineNegativeCacheTTL = int32(60 * 60)
+)
+
 type ChunklineGateway struct {
 	client   *client.Client
-	cache    *cache.Cache
 	resolver *chunkline.Client
 }
 
-func NewChunklineGateway(cl *client.Client) *ChunklineGateway {
+func NewChunklineGateway(
+	cl *client.Client,
+	mc *memcache.Client,
+) *ChunklineGateway {
 	r := &resolver{
 		client: cl,
-		cache:  cache.New(10*time.Minute, 15*time.Minute),
+		mc:     mc,
 	}
 	return &ChunklineGateway{
 		client:   cl,
-		cache:    r.cache,
 		resolver: chunkline.NewClient(r),
 	}
 }
@@ -43,7 +50,7 @@ func (g *ChunklineGateway) QueryDescending(ctx context.Context, uris []string, u
 // resolver implements chunkline resolver callbacks.
 type resolver struct {
 	client *client.Client
-	cache  *cache.Cache
+	mc     *memcache.Client
 }
 
 func (r *resolver) ResolveTimelines(ctx context.Context, timelines []string) (map[string]chunkline.Manifest, error) {
@@ -54,25 +61,115 @@ func (r *resolver) ResolveTimelines(ctx context.Context, timelines []string) (ma
 	remaining := []string{}
 
 	for _, tl := range timelines {
-		if cached, found := r.cache.Get(tl); found {
-			result[tl] = cached.(chunkline.Manifest)
+		cached, found, err := r.getCachedManifest(tl)
+		if err != nil {
+			span.RecordError(fmt.Errorf("failed to read chunkline manifest cache for %s: %w", tl, err))
+		}
+		if found {
+			result[tl] = cached
 		} else {
 			remaining = append(remaining, tl)
 		}
 	}
 
 	for _, tl := range remaining {
+		negativeCached, err := r.isNegativeCached(tl)
+		if err != nil {
+			span.RecordError(fmt.Errorf("failed to read chunkline negative cache for %s: %w", tl, err))
+		}
+		if negativeCached {
+			span.AddEvent(fmt.Sprintf("Skipping timeline %s due to negative cache", tl))
+			continue
+		}
+
 		var manifest chunkline.Manifest
-		err := r.client.GetResource(ctx, tl, "application/chunkline+json", nil, &manifest)
+		err = r.client.GetResource(ctx, tl, "application/chunkline+json", nil, &manifest)
 		if err != nil {
 			span.RecordError(errors.Join(fmt.Errorf("failed to fetch chunkline manifest for %s", tl), err))
+			if cacheErr := r.setNegativeCache(tl); cacheErr != nil {
+				span.RecordError(fmt.Errorf("failed to write chunkline negative cache for %s: %w", tl, cacheErr))
+			}
 			continue
 		}
 		result[tl] = manifest
-		r.cache.Set(tl, manifest, cache.DefaultExpiration)
+		if err := r.setCachedManifest(tl, manifest); err != nil {
+			span.RecordError(fmt.Errorf("failed to write chunkline manifest cache for %s: %w", tl, err))
+		}
 	}
 	return result, nil
 
+}
+
+func (r *resolver) getCachedManifest(timeline string) (chunkline.Manifest, bool, error) {
+	var manifest chunkline.Manifest
+	if r.mc == nil {
+		return manifest, false, nil
+	}
+
+	item, err := r.mc.Get(chunklineCacheKey("manifest", timeline))
+	if errors.Is(err, memcache.ErrCacheMiss) {
+		return manifest, false, nil
+	}
+	if err != nil {
+		return manifest, false, err
+	}
+
+	if err := json.Unmarshal(item.Value, &manifest); err != nil {
+		_ = r.mc.Delete(chunklineCacheKey("manifest", timeline))
+		return manifest, false, err
+	}
+
+	return manifest, true, nil
+}
+
+func (r *resolver) setCachedManifest(timeline string, manifest chunkline.Manifest) error {
+	if r.mc == nil {
+		return nil
+	}
+
+	value, err := json.Marshal(manifest)
+	if err != nil {
+		return err
+	}
+
+	return r.mc.Set(&memcache.Item{
+		Key:        chunklineCacheKey("manifest", timeline),
+		Value:      value,
+		Expiration: chunklineManifestCacheTTL,
+	})
+}
+
+func (r *resolver) isNegativeCached(timeline string) (bool, error) {
+	if r.mc == nil {
+		return false, nil
+	}
+
+	_, err := r.mc.Get(chunklineCacheKey("negative", timeline))
+	if errors.Is(err, memcache.ErrCacheMiss) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+
+	return true, nil
+}
+
+func (r *resolver) setNegativeCache(timeline string) error {
+	if r.mc == nil {
+		return nil
+	}
+
+	return r.mc.Set(&memcache.Item{
+		Key:        chunklineCacheKey("negative", timeline),
+		Value:      []byte("1"),
+		Expiration: chunklineNegativeCacheTTL,
+	})
+}
+
+func chunklineCacheKey(kind string, timeline string) string {
+	sum := sha256.Sum256([]byte(timeline))
+	return fmt.Sprintf("chunkline:%s:%x", kind, sum)
 }
 
 func (r *resolver) GetRemovedItems(ctx context.Context, timelines []string) (map[string][]string, error) {

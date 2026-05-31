@@ -636,7 +636,7 @@ func (h *Handler) handleRealtime(c echo.Context) error {
 			}
 
 			switch req.Type {
-			case "listen":
+			case "listen", "subscribe": // listen is for backward compatibility
 				input <- req.Prefixes
 				slog.DebugContext(
 					ctx, fmt.Sprintf("Socket subscribe: %s", req.Prefixes),

@@ -11,12 +11,12 @@ import (
 	"github.com/concrnt/concrnt/internal/worker"
 )
 
-type SubscriptionSignalRepository interface {
+type Subscriptable interface {
 	Subscribe(ctx context.Context, prefixes []string) (<-chan concrnt.Event, error)
 }
 
 type SubscriptionUsecase struct {
-	signal     SubscriptionSignalRepository
+	signal     Subscriptable
 	subscriber *worker.Subscriber
 
 	mu                          sync.RWMutex
@@ -26,7 +26,7 @@ type SubscriptionUsecase struct {
 }
 
 func NewSubscriptionUsecase(
-	signal SubscriptionSignalRepository,
+	signal Subscriptable,
 	subscriber *worker.Subscriber,
 ) *SubscriptionUsecase {
 	return &SubscriptionUsecase{

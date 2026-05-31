@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"log/slog"
-	"sort"
 
 	"github.com/redis/go-redis/v9"
 
@@ -40,8 +39,6 @@ func (s *SignalService) Publish(ctx context.Context, channel string, event concr
 }
 
 func (s *SignalService) Subscribe(ctx context.Context, prefixes []string) (<-chan concrnt.Event, error) {
-	prefixes = uniqueStrings(prefixes)
-
 	if len(prefixes) == 0 {
 		ch := make(chan concrnt.Event)
 		close(ch)
@@ -114,19 +111,4 @@ func waitPSubscribe(ctx context.Context, pubsub *redis.PubSub, patterns []string
 	}
 
 	return nil
-}
-
-func uniqueStrings(values []string) []string {
-	unique := make(map[string]struct{}, len(values))
-	for _, value := range values {
-		unique[value] = struct{}{}
-	}
-
-	result := make([]string, 0, len(unique))
-	for value := range unique {
-		result = append(result, value)
-	}
-	sort.Strings(result)
-
-	return result
 }

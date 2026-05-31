@@ -35,7 +35,8 @@ type Subscriber struct {
 	Client        *client.Client
 	Signal        *service.SignalService
 
-	mu sync.RWMutex
+	mu                   sync.RWMutex
+	subscriptionRequests []string
 }
 
 func NewSubscriber(
@@ -61,12 +62,17 @@ func (s *Subscriber) keeperRoutine(ctx context.Context) {
 	defer ticker.Stop()
 
 	for range ticker.C {
-		s.reconcileSubscriptions(ctx)
+		s.ReconcileSubscriptions(ctx, s.getSubscriptionRequests())
 	}
 }
 
-func (s *Subscriber) reconcileSubscriptions(ctx context.Context) {
-	currentRequests := s.Signal.GetCurrentSubscriptionRequests()
+func (s *Subscriber) ReconcileSubscriptions(ctx context.Context, currentRequests []string) {
+	currentRequests = uniqueSortedStrings(currentRequests)
+
+	s.mu.Lock()
+	s.subscriptionRequests = cloneStrings(currentRequests)
+	s.mu.Unlock()
+
 	desired := make(map[string][]string)
 
 	for _, prefix := range currentRequests {
@@ -339,16 +345,16 @@ func (s *Subscriber) epochRoutine() {
 			slog.String("group", "realtime"),
 		)
 
-		s.reconcileSubscriptions(context.Background())
+		s.ReconcileSubscriptions(context.Background(), s.getSubscriptionRequests())
 
 		currentChunk = newChunk
 	}
 }
 
-func (s *Subscriber) GetCurrentSubscriptions() []string {
-	completed := make([]string, 0)
+func (s *Subscriber) GetLocalSubscriptions(prefixes []string) []string {
+	local := make([]string, 0)
 
-	for _, prefix := range s.Signal.GetLocalCurrentSubscriptions() {
+	for _, prefix := range prefixes {
 		host, err := s.Client.ResolveResourceHost(context.Background(), prefix)
 		if err != nil {
 			slog.Error(
@@ -360,9 +366,15 @@ func (s *Subscriber) GetCurrentSubscriptions() []string {
 		}
 
 		if host == s.Config.FQDN {
-			completed = append(completed, prefix)
+			local = append(local, prefix)
 		}
 	}
+
+	return uniqueSortedStrings(local)
+}
+
+func (s *Subscriber) GetRemoteSubscriptions() []string {
+	completed := make([]string, 0)
 
 	s.mu.RLock()
 	for _, state := range s.Subscriptions {
@@ -371,6 +383,13 @@ func (s *Subscriber) GetCurrentSubscriptions() []string {
 	s.mu.RUnlock()
 
 	return uniqueSortedStrings(completed)
+}
+
+func (s *Subscriber) getSubscriptionRequests() []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return cloneStrings(s.subscriptionRequests)
 }
 
 func (s *Subscriber) applyDesiredSubscriptions(desired map[string][]string) ([]string, []string) {

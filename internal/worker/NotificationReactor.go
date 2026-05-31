@@ -12,24 +12,30 @@ import (
 
 	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/internal/domain"
-	"github.com/concrnt/concrnt/internal/service"
-	"github.com/concrnt/concrnt/internal/usecase"
 )
 
+type NotificationUsecase interface {
+	List(ctx context.Context) ([]domain.NotificationSubscription, error)
+}
+
+type RealtimeUsecase interface {
+	Realtime(ctx context.Context, request <-chan []string, response chan<- concrnt.Event)
+}
+
 type NotificationReactor struct {
-	notification *usecase.NotificationUsecase
-	signal       *service.SignalService
+	notification NotificationUsecase
+	realtime     RealtimeUsecase
 	opts         webpush.Options
 }
 
 func NewNotificationReactor(
-	notification *usecase.NotificationUsecase,
-	signal *service.SignalService,
+	notification NotificationUsecase,
+	realtime RealtimeUsecase,
 	opts webpush.Options,
 ) *NotificationReactor {
 	return &NotificationReactor{
 		notification: notification,
-		signal:       signal,
+		realtime:     realtime,
 		opts:         opts,
 	}
 }
@@ -108,7 +114,7 @@ func (r *NotificationReactor) runWorker(ctx context.Context, sub domain.Notifica
 	request := make(chan []string)
 	realtime := make(chan concrnt.Event)
 
-	go r.signal.Realtime(ctx, request, realtime)
+	go r.realtime.Realtime(ctx, request, realtime)
 	select {
 	case request <- sub.Prefixes:
 	case <-ctx.Done():

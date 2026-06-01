@@ -98,6 +98,9 @@ func (uc *SubscriptionUsecase) GetCurrentSubscriptions() []string {
 
 func (uc *SubscriptionUsecase) subscribe(ctx context.Context, prefixes []string, event chan<- concrnt.Event) error {
 	prefixes = uniqueStrings(prefixes)
+	watchCtx, stopWatching := context.WithCancel(ctx)
+	defer stopWatching()
+	subscriptionChanges := uc.subscriber.WatchSubscriptionChanges(watchCtx)
 
 	id := uc.addSubscriptionRequest(prefixes)
 	defer func() {
@@ -118,7 +121,7 @@ func (uc *SubscriptionUsecase) subscribe(ctx context.Context, prefixes []string,
 
 	uc.setSubscriptionCompleted(id, prefixes)
 
-	if err := sendSubscribed(ctx, event, prefixes); err != nil {
+	if err := sendSubscribed(ctx, event, uc.completedSubscriptions(prefixes)); err != nil {
 		return err
 	}
 
@@ -126,6 +129,14 @@ func (uc *SubscriptionUsecase) subscribe(ctx context.Context, prefixes []string,
 		select {
 		case <-ctx.Done():
 			return nil
+		case _, ok := <-subscriptionChanges:
+			if !ok {
+				subscriptionChanges = nil
+				continue
+			}
+			if err := sendSubscribed(ctx, event, uc.completedSubscriptions(prefixes)); err != nil {
+				return err
+			}
 		case item, ok := <-events:
 			if !ok {
 				return nil
@@ -137,6 +148,22 @@ func (uc *SubscriptionUsecase) subscribe(ctx context.Context, prefixes []string,
 			}
 		}
 	}
+}
+
+func (uc *SubscriptionUsecase) completedSubscriptions(requested []string) []string {
+	completed := make(map[string]struct{})
+	for _, prefix := range uc.GetCurrentSubscriptions() {
+		completed[prefix] = struct{}{}
+	}
+
+	result := make([]string, 0, len(requested))
+	for _, prefix := range requested {
+		if _, ok := completed[prefix]; ok {
+			result = append(result, prefix)
+		}
+	}
+
+	return uniqueStrings(result)
 }
 
 func (uc *SubscriptionUsecase) addSubscriptionRequest(prefixes []string) int64 {

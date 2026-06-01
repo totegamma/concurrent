@@ -37,6 +37,7 @@ type Subscriber struct {
 
 	mu                   sync.RWMutex
 	subscriptionRequests []string
+	subscriptionWatchers map[chan struct{}]struct{}
 }
 
 func NewSubscriber(
@@ -385,6 +386,28 @@ func (s *Subscriber) GetRemoteSubscriptions() []string {
 	return uniqueSortedStrings(completed)
 }
 
+func (s *Subscriber) WatchSubscriptionChanges(ctx context.Context) <-chan struct{} {
+	ch := make(chan struct{}, 1)
+
+	s.mu.Lock()
+	if s.subscriptionWatchers == nil {
+		s.subscriptionWatchers = make(map[chan struct{}]struct{})
+	}
+	s.subscriptionWatchers[ch] = struct{}{}
+	s.mu.Unlock()
+
+	go func() {
+		<-ctx.Done()
+
+		s.mu.Lock()
+		delete(s.subscriptionWatchers, ch)
+		close(ch)
+		s.mu.Unlock()
+	}()
+
+	return ch
+}
+
 func (s *Subscriber) getSubscriptionRequests() []string {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
@@ -396,6 +419,7 @@ func (s *Subscriber) applyDesiredSubscriptions(desired map[string][]string) ([]s
 	changedRemotes := make([]string, 0)
 	closedRemotes := make([]string, 0)
 	closeStates := make([]*SubState, 0)
+	subscriptionsChanged := false
 
 	s.mu.Lock()
 	for host, prefixes := range desired {
@@ -411,7 +435,11 @@ func (s *Subscriber) applyDesiredSubscriptions(desired map[string][]string) ([]s
 
 		if !equalStringSlices(state.RequestedPrefixes, prefixes) {
 			state.RequestedPrefixes = cloneStrings(prefixes)
-			state.SubscribedPrefixes = intersectStrings(state.SubscribedPrefixes, state.RequestedPrefixes)
+			subscribedPrefixes := intersectStrings(state.SubscribedPrefixes, state.RequestedPrefixes)
+			if !equalStringSlices(state.SubscribedPrefixes, subscribedPrefixes) {
+				state.SubscribedPrefixes = subscribedPrefixes
+				subscriptionsChanged = true
+			}
 			changedRemotes = append(changedRemotes, host)
 			continue
 		}
@@ -428,7 +456,13 @@ func (s *Subscriber) applyDesiredSubscriptions(desired map[string][]string) ([]s
 
 		closeStates = append(closeStates, state)
 		closedRemotes = append(closedRemotes, host)
+		if len(state.SubscribedPrefixes) > 0 {
+			subscriptionsChanged = true
+		}
 		delete(s.Subscriptions, host)
+	}
+	if subscriptionsChanged {
+		s.notifySubscriptionWatchersLocked()
 	}
 	s.mu.Unlock()
 
@@ -456,7 +490,13 @@ func (s *Subscriber) setSubscribedPrefixes(domain string, prefixes []string) {
 		return
 	}
 
-	state.SubscribedPrefixes = intersectStrings(uniqueSortedStrings(prefixes), state.RequestedPrefixes)
+	subscribedPrefixes := intersectStrings(uniqueSortedStrings(prefixes), state.RequestedPrefixes)
+	if equalStringSlices(state.SubscribedPrefixes, subscribedPrefixes) {
+		return
+	}
+
+	state.SubscribedPrefixes = subscribedPrefixes
+	s.notifySubscriptionWatchersLocked()
 }
 
 func (s *Subscriber) removeSubscription(domain string) {
@@ -466,6 +506,9 @@ func (s *Subscriber) removeSubscription(domain string) {
 	if current, ok := s.Subscriptions[domain]; ok {
 		state = current
 		delete(s.Subscriptions, domain)
+		if len(state.SubscribedPrefixes) > 0 {
+			s.notifySubscriptionWatchersLocked()
+		}
 	}
 	s.mu.Unlock()
 
@@ -491,6 +534,18 @@ func (s *Subscriber) removeSubscriptionConnection(domain string, connection *web
 	}
 
 	delete(s.Subscriptions, domain)
+	if len(state.SubscribedPrefixes) > 0 {
+		s.notifySubscriptionWatchersLocked()
+	}
+}
+
+func (s *Subscriber) notifySubscriptionWatchersLocked() {
+	for ch := range s.subscriptionWatchers {
+		select {
+		case ch <- struct{}{}:
+		default:
+		}
+	}
 }
 
 func previewMessage(message []byte) string {

@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"context"
 	"testing"
 
 	"github.com/stretchr/testify/require"
@@ -46,4 +47,34 @@ func TestSubscriberSetSubscribedPrefixesIntersectsRequested(t *testing.T) {
 	subscriber.setSubscribedPrefixes("remote.example", []string{"cc://remote/b", "cc://remote/a"})
 
 	require.Equal(t, []string{"cc://remote/a"}, subscriber.Subscriptions["remote.example"].SubscribedPrefixes)
+}
+
+func TestSubscriberNotifiesWhenSubscribedPrefixesChange(t *testing.T) {
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	subscriber := &Subscriber{
+		Subscriptions: map[string]*SubState{
+			"remote.example": {
+				RequestedPrefixes: []string{"cc://remote/a"},
+			},
+		},
+	}
+	updates := subscriber.WatchSubscriptionChanges(ctx)
+
+	subscriber.setSubscribedPrefixes("remote.example", []string{"cc://remote/a"})
+
+	select {
+	case <-updates:
+	default:
+		t.Fatal("expected subscription change notification")
+	}
+
+	subscriber.setSubscribedPrefixes("remote.example", []string{"cc://remote/a"})
+
+	select {
+	case <-updates:
+		t.Fatal("unexpected duplicate subscription change notification")
+	default:
+	}
 }

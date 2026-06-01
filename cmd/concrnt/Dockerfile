@@ -7,10 +7,10 @@ COPY ./go.mod ./go.sum ./
 RUN go mod download && go mod verify
 COPY ./ ./
 RUN VERSION=${VERSION:-$(git describe)} \
-    BUILD_MACHINE=$(uname -srmo) \
-    BUILD_TIME=$(date) \
-    GO_VERSION=$(go version) \
-    go build -ldflags "-s -w -X main.version=${VERSION} -X \"main.buildMachine=${BUILD_MACHINE}\" -X \"main.buildTime=${BUILD_TIME}\" -X \"main.goVersion=${GO_VERSION}\"" -o concrnt ./cmd/concrnt
+ && BUILD_MACHINE=$(uname -srmo) \
+ && BUILD_TIME=$(date) \
+ && GO_VERSION=$(go version) \
+ && go build -ldflags "-s -w -X main.version=${VERSION} -X \"main.buildMachine=${BUILD_MACHINE}\" -X \"main.buildTime=${BUILD_TIME}\" -X \"main.goVersion=${GO_VERSION}\"" -o concrnt ./cmd/concrnt
 
 # ---------------------------------
 FROM golang:latest AS cmd-builder
@@ -22,10 +22,10 @@ COPY ./go.mod ./go.sum ./
 RUN go mod download && go mod verify
 COPY ./ ./
 RUN VERSION=${VERSION:-$(git describe)} \
-    BUILD_MACHINE=$(uname -srmo) \
-    BUILD_TIME=$(date) \
-    GO_VERSION=$(go version) \
-    go build -ldflags "-s -w -X main.version=${VERSION} -X \"main.buildMachine=${BUILD_MACHINE}\" -X \"main.buildTime=${BUILD_TIME}\" -X \"main.goVersion=${GO_VERSION}\"" -o conctl ./cmd/conctl
+ && BUILD_MACHINE=$(uname -srmo) \
+ && BUILD_TIME=$(date) \
+ && GO_VERSION=$(go version) \
+ && go build -ldflags "-s -w -X main.version=${VERSION} -X \"main.buildMachine=${BUILD_MACHINE}\" -X \"main.buildTime=${BUILD_TIME}\" -X \"main.goVersion=${GO_VERSION}\"" -o conctl ./cmd/conctl
 
 
 # ---------------------------------

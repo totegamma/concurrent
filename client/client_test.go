@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/concrnt/concrnt"
+	"github.com/patrickmn/go-cache"
 )
 
 func TestQuery(t *testing.T) {
@@ -130,9 +131,63 @@ func TestQueryEndpointMissing(t *testing.T) {
 	}
 }
 
+func TestQuerySkipsOfflineDomain(t *testing.T) {
+	t.Parallel()
+
+	const domain = "example.test"
+	cl := &Client{
+		client:     &http.Client{},
+		cache:      cache.New(10*time.Minute, 15*time.Minute),
+		lastFailed: map[string]time.Time{domain: time.Now()},
+		failCount:  make(map[string]int),
+	}
+	cl.cache.Set("server:"+domain, concrnt.WellKnownConcrnt{
+		Version: "2.0",
+		Domain:  domain,
+		CSID:    "ccs1example",
+		Layer:   "concrnt",
+		Endpoints: map[string]string{
+			"net.concrnt.core.query": "/query{?prefix}",
+		},
+	}, cache.DefaultExpiration)
+
+	_, err := cl.Query(context.Background(), domain, QueryParams{Prefix: "cckv://"})
+	if err == nil || err.Error() != "Domain is offline" {
+		t.Fatalf("Query returned error %v, want Domain is offline", err)
+	}
+}
+
+func TestTimeoutMarksDomainOffline(t *testing.T) {
+	t.Parallel()
+
+	const domain = "example.test"
+	cl := &Client{
+		lastFailed: make(map[string]time.Time),
+		failCount:  make(map[string]int),
+	}
+
+	cl.markOfflineIfTimeout(domain, "testing", timeoutError{})
+
+	if cl.IsOnline(domain) {
+		t.Fatal("domain is online after timeout")
+	}
+}
+
 func assertQueryParam(t *testing.T, got, want string) {
 	t.Helper()
 	if got != want {
 		t.Fatalf("got %q, want %q", got, want)
 	}
 }
+
+type timeoutError struct{}
+
+func (timeoutError) Error() string   { return "timeout" }
+func (timeoutError) Timeout() bool   { return true }
+func (timeoutError) Temporary() bool { return true }
+
+var _ interface {
+	error
+	Timeout() bool
+	Temporary() bool
+} = timeoutError{}

@@ -8,8 +8,11 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"math"
+	"net"
 	"net/http"
 	"net/url"
+	"sync"
 	"time"
 
 	"go.opentelemetry.io/otel"
@@ -32,6 +35,9 @@ const (
 type Client struct {
 	client          *http.Client
 	cache           *cache.Cache
+	lastFailed      map[string]time.Time
+	failCount       map[string]int
+	onlineMu        sync.RWMutex
 	userAgent       string
 	defaultResolver string
 	remappings      map[string]*url.URL
@@ -45,10 +51,13 @@ func New(defaultResolver string) *Client {
 	c := &Client{
 		client:          &httpClient,
 		cache:           cache.New(10*time.Minute, 15*time.Minute),
+		lastFailed:      make(map[string]time.Time),
+		failCount:       make(map[string]int),
 		defaultResolver: defaultResolver,
 		remappings:      make(map[string]*url.URL),
 	}
 	httpClient.Transport = c
+	go c.UpKeeper()
 	return c
 }
 
@@ -63,6 +72,92 @@ func (c *Client) AddHostRemapping(host string, target string) {
 		return
 	}
 	c.remappings[host] = parsed
+}
+
+func (c *Client) IsOnline(domain string) bool {
+	c.onlineMu.RLock()
+	defer c.onlineMu.RUnlock()
+
+	lastFailed, ok := c.lastFailed[domain]
+	if !ok {
+		return true
+	}
+	if lastFailed.IsZero() {
+		return true
+	}
+	return false
+}
+
+func (c *Client) UpKeeper() {
+	ctx := context.Background()
+	ticker := time.NewTicker(100 * time.Millisecond)
+	for range ticker.C {
+		c.onlineMu.RLock()
+		domains := make(map[string]time.Time, len(c.lastFailed))
+		for domain, lastFailed := range c.lastFailed {
+			domains[domain] = lastFailed
+		}
+		c.onlineMu.RUnlock()
+
+		for domain, lastFailed := range domains {
+			c.onlineMu.Lock()
+			if _, ok := c.failCount[domain]; !ok {
+				c.failCount[domain] = 0
+			}
+			failCount := c.failCount[domain]
+			c.onlineMu.Unlock()
+
+			// exponential backoff (max 10 minutes)
+			span := 0.5 * math.Pow(1.5, float64(min(failCount, maxFailCount)))
+			if time.Since(lastFailed) > time.Duration(span)*time.Second {
+				err := c.healthCheckDomain(ctx, domain)
+				if err != nil {
+					slog.Info(fmt.Sprintf("Domain %s is offline. Fail count: %d", domain, failCount))
+					c.onlineMu.Lock()
+					c.lastFailed[domain] = time.Now()
+					c.failCount[domain]++
+					c.onlineMu.Unlock()
+				} else {
+					slog.Info(fmt.Sprintf("Domain %s is back online :3", domain))
+					c.onlineMu.Lock()
+					delete(c.lastFailed, domain)
+					delete(c.failCount, domain)
+					c.onlineMu.Unlock()
+				}
+			}
+		}
+	}
+}
+
+func (c *Client) healthCheckDomain(ctx context.Context, domain string) error {
+	req, err := http.NewRequestWithContext(ctx, "GET", "https://"+domain+"/.well-known/concrnt", nil)
+	if err != nil {
+		return err
+	}
+	resp, err := c.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("failed to get well-known concrnt from %s: status code %d", domain, resp.StatusCode)
+	}
+
+	var wkc concrnt.WellKnownConcrnt
+	return json.NewDecoder(resp.Body).Decode(&wkc)
+}
+
+func (c *Client) markOffline(domain string) {
+	c.onlineMu.Lock()
+	defer c.onlineMu.Unlock()
+	c.lastFailed[domain] = time.Now()
+}
+
+func (c *Client) markOfflineIfTimeout(domain string, action string, err error) {
+	if netErr, ok := err.(net.Error); ok && netErr.Timeout() {
+		slog.Warn("Mark domain "+domain+" as offline while "+action, "error", err)
+		c.markOffline(domain)
+	}
 }
 
 type Options struct {
@@ -196,6 +291,10 @@ func (c *Client) GetServer(ctx context.Context, domainOrCSID string, hint *strin
 
 		domain := domainOrCSID
 
+		if !c.IsOnline(domain) {
+			return concrnt.WellKnownConcrnt{}, fmt.Errorf("Domain is offline")
+		}
+
 		url := "https://" + domain + "/.well-known/concrnt"
 		req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 		if err != nil {
@@ -205,6 +304,7 @@ func (c *Client) GetServer(ctx context.Context, domainOrCSID string, hint *strin
 		}
 		resp, err := c.client.Do(req)
 		if err != nil {
+			c.markOfflineIfTimeout(domain, "getting well-known concrnt", err)
 			err := errors.Join(fmt.Errorf("failed to perform request for well-known concrnt at %s", url), err)
 			span.RecordError(err)
 			return concrnt.WellKnownConcrnt{}, err
@@ -306,6 +406,17 @@ func (c *Client) GetResource(ctx context.Context, uri string, accept string, opt
 		endpoint = "https://" + info.Domain + path
 	}
 
+	endpointURL, err := url.Parse(endpoint)
+	if err != nil {
+		err := errors.Join(fmt.Errorf("failed to parse endpoint for resource %s", uri), err)
+		span.RecordError(err)
+		return err
+	}
+	domain := endpointURL.Hostname()
+	if domain != "" && !c.IsOnline(domain) {
+		return fmt.Errorf("Domain is offline")
+	}
+
 	req, err := http.NewRequestWithContext(ctx, "GET", endpoint, nil)
 	if err != nil {
 		err := errors.Join(fmt.Errorf("failed to create request for resource %s", uri), err)
@@ -317,6 +428,7 @@ func (c *Client) GetResource(ctx context.Context, uri string, accept string, opt
 	}
 	resp, err := c.client.Do(req)
 	if err != nil {
+		c.markOfflineIfTimeout(domain, "getting resource", err)
 		err := errors.Join(fmt.Errorf("failed to perform request for resource %s", uri), err)
 		span.RecordError(err)
 		return err
@@ -441,6 +553,9 @@ func (c *Client) Query(ctx context.Context, resolver string, params QueryParams)
 		span.RecordError(err)
 		return nil, err
 	}
+	if !c.IsOnline(server.Domain) {
+		return nil, fmt.Errorf("Domain is offline")
+	}
 	url := "https://" + server.Domain + path
 
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
@@ -453,6 +568,7 @@ func (c *Client) Query(ctx context.Context, resolver string, params QueryParams)
 
 	resp, err := c.client.Do(req)
 	if err != nil {
+		c.markOfflineIfTimeout(server.Domain, "querying", err)
 		err := errors.Join(fmt.Errorf("failed to perform query to %s", url), err)
 		span.RecordError(err)
 		return nil, err
@@ -518,6 +634,9 @@ func (c *Client) Commit(ctx context.Context, resolver string, sd concrnt.SignedD
 		span.RecordError(err)
 		return err
 	}
+	if !c.IsOnline(server.Domain) {
+		return fmt.Errorf("Domain is offline")
+	}
 	url := "https://" + server.Domain + path
 
 	body, err := json.Marshal(sd)
@@ -536,6 +655,7 @@ func (c *Client) Commit(ctx context.Context, resolver string, sd concrnt.SignedD
 
 	resp, err := c.client.Do(req)
 	if err != nil {
+		c.markOfflineIfTimeout(server.Domain, "committing", err)
 		err := errors.Join(fmt.Errorf("failed to perform request for commit to %s", url), err)
 		span.RecordError(err)
 		return err
@@ -577,11 +697,9 @@ func (c *Client) Realtime(ctx context.Context, fqdn string) (*websocket.Conn, er
 	}
 	domain := server.Domain
 
-	/*
-		if !c.IsOnline(domain) {
-			return nil, fmt.Errorf("Domain is offline")
-		}
-	*/
+	if !c.IsOnline(domain) {
+		return nil, fmt.Errorf("Domain is offline")
+	}
 
 	u := url.URL{Scheme: "wss", Host: domain, Path: path}
 	dialer := websocket.DefaultDialer
@@ -593,7 +711,7 @@ func (c *Client) Realtime(ctx context.Context, fqdn string) (*websocket.Conn, er
 	conn, _, err := dialer.Dial(u.String(), header)
 	if err != nil {
 		slog.Warn("Failed to connect to websocket. Mark domain "+domain+" as offline", "error", err)
-		//c.lastFailed[domain] = time.Now()
+		c.markOffline(domain)
 		span.RecordError(err)
 		return nil, err
 	}

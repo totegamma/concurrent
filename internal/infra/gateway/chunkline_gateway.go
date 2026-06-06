@@ -2,13 +2,9 @@ package gateway
 
 import (
 	"context"
-	"crypto/sha256"
 	"encoding/json"
 	"errors"
 	"fmt"
-	"io"
-	"net/http"
-	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -19,12 +15,9 @@ import (
 	"github.com/concrnt/concrnt/client"
 )
 
-const (
-	chunklineManifestCacheTTL = int32(24 * 60 * 60) // 1 day
-	chunklineNegativeCacheTTL = int32(60 * 60)      // 1 hour
-	chunklineIteratorCacheTTL = int32(24 * 60 * 60) // 1 day
-	chunklineBodyCacheTTL     = int32(24 * 60 * 60) // 1 day
-)
+type CurrentSubscriptionsProvider interface {
+	GetCurrentSubscriptions() []string
+}
 
 type ChunklineGateway struct {
 	client   *client.Client
@@ -34,10 +27,20 @@ type ChunklineGateway struct {
 func NewChunklineGateway(
 	cl *client.Client,
 	mc *memcache.Client,
+	currentSubscriptions CurrentSubscriptionsProvider,
+) *ChunklineGateway {
+	return NewChunklineGatewayWithCacheService(cl, NewChunklineCacheService(cl, mc), currentSubscriptions)
+}
+
+func NewChunklineGatewayWithCacheService(
+	cl *client.Client,
+	cache *ChunklineCacheService,
+	currentSubscriptions CurrentSubscriptionsProvider,
 ) *ChunklineGateway {
 	r := &resolver{
-		client: cl,
-		mc:     mc,
+		client:               cl,
+		cache:                cache,
+		currentSubscriptions: currentSubscriptions,
 	}
 	return &ChunklineGateway{
 		client:   cl,
@@ -51,8 +54,9 @@ func (g *ChunklineGateway) QueryDescending(ctx context.Context, uris []string, u
 
 // resolver implements chunkline resolver callbacks.
 type resolver struct {
-	client *client.Client
-	mc     *memcache.Client
+	client               *client.Client
+	cache                *ChunklineCacheService
+	currentSubscriptions CurrentSubscriptionsProvider
 }
 
 func (r *resolver) ResolveTimelines(ctx context.Context, timelines []string) (map[string]chunkline.Manifest, error) {
@@ -63,7 +67,7 @@ func (r *resolver) ResolveTimelines(ctx context.Context, timelines []string) (ma
 	remaining := []string{}
 
 	for _, tl := range timelines {
-		cached, found, err := r.getCachedManifest(tl)
+		cached, found, err := r.cache.getCachedManifest(tl)
 		if err != nil {
 			span.RecordError(fmt.Errorf("failed to read chunkline manifest cache for %s: %w", tl, err))
 		}
@@ -75,7 +79,7 @@ func (r *resolver) ResolveTimelines(ctx context.Context, timelines []string) (ma
 	}
 
 	for _, tl := range remaining {
-		negativeCached, err := r.isNegativeCached(tl)
+		negativeCached, err := r.cache.isNegativeCached(tl)
 		if err != nil {
 			span.RecordError(fmt.Errorf("failed to read chunkline negative cache for %s: %w", tl, err))
 		}
@@ -88,88 +92,18 @@ func (r *resolver) ResolveTimelines(ctx context.Context, timelines []string) (ma
 		err = r.client.GetResource(ctx, tl, "application/chunkline+json", nil, &manifest)
 		if err != nil {
 			span.RecordError(errors.Join(fmt.Errorf("failed to fetch chunkline manifest for %s", tl), err))
-			if cacheErr := r.setNegativeCache(tl); cacheErr != nil {
+			if cacheErr := r.cache.setNegativeCache(tl); cacheErr != nil {
 				span.RecordError(fmt.Errorf("failed to write chunkline negative cache for %s: %w", tl, cacheErr))
 			}
 			continue
 		}
 		result[tl] = manifest
-		if err := r.setCachedManifest(tl, manifest); err != nil {
+		if err := r.cache.setCachedManifest(tl, manifest); err != nil {
 			span.RecordError(fmt.Errorf("failed to write chunkline manifest cache for %s: %w", tl, err))
 		}
 	}
 	return result, nil
 
-}
-
-func (r *resolver) getCachedManifest(timeline string) (chunkline.Manifest, bool, error) {
-	var manifest chunkline.Manifest
-
-	item, err := r.mc.Get(chunklineCacheKey("manifest", timeline))
-	if errors.Is(err, memcache.ErrCacheMiss) {
-		return manifest, false, nil
-	}
-	if err != nil {
-		return manifest, false, err
-	}
-
-	if err := json.Unmarshal(item.Value, &manifest); err != nil {
-		_ = r.mc.Delete(chunklineCacheKey("manifest", timeline))
-		return manifest, false, err
-	}
-
-	return manifest, true, nil
-}
-
-func (r *resolver) setCachedManifest(timeline string, manifest chunkline.Manifest) error {
-
-	value, err := json.Marshal(manifest)
-	if err != nil {
-		return err
-	}
-
-	return r.mc.Set(&memcache.Item{
-		Key:        chunklineCacheKey("manifest", timeline),
-		Value:      value,
-		Expiration: chunklineManifestCacheTTL,
-	})
-}
-
-func (r *resolver) isNegativeCached(timeline string) (bool, error) {
-
-	_, err := r.mc.Get(chunklineCacheKey("negative", timeline))
-	if errors.Is(err, memcache.ErrCacheMiss) {
-		return false, nil
-	}
-	if err != nil {
-		return false, err
-	}
-
-	return true, nil
-}
-
-func (r *resolver) setNegativeCache(timeline string) error {
-
-	return r.mc.Set(&memcache.Item{
-		Key:        chunklineCacheKey("negative", timeline),
-		Value:      []byte("1"),
-		Expiration: chunklineNegativeCacheTTL,
-	})
-}
-
-func chunklineCacheKey(kind string, timeline string) string {
-	sum := sha256.Sum256([]byte(timeline))
-	return fmt.Sprintf("chunkline:%s:%x", kind, sum)
-}
-
-func chunklineIteratorCacheKey(timeline string, chunkID int64) string {
-	sum := sha256.Sum256([]byte(timeline))
-	return fmt.Sprintf("chunkline:iterator:%x:%d", sum, chunkID)
-}
-
-func chunklineBodyCacheKey(timeline string, chunkID int64) string {
-	sum := sha256.Sum256([]byte(timeline))
-	return fmt.Sprintf("chunkline:body:%x:%d", sum, chunkID)
 }
 
 func (r *resolver) GetRemovedItems(ctx context.Context, timelines []string) (map[string][]string, error) {
@@ -195,6 +129,7 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 	}
 
 	keys := make([]string, 0, len(timelines))
+	cacheable := make(map[string]bool, len(timelines))
 	for _, tl := range timelines {
 		manifest, ok := manifests[tl]
 		if !ok {
@@ -207,10 +142,13 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 		}
 
 		key := chunklineIteratorCacheKey(tl, queryChunk)
-		keys = append(keys, key)
+		if r.shouldCacheChunk(tl, manifest, queryChunk) {
+			keys = append(keys, key)
+			cacheable[key] = true
+		}
 	}
 
-	cacheItems, err := r.mc.GetMulti(keys)
+	cacheItems, err := r.cache.mc.GetMulti(keys)
 	if err != nil {
 		span.RecordError(fmt.Errorf("failed to read chunkline iterator cache: %w", err))
 	}
@@ -242,73 +180,46 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 			continue
 		}
 
-		if item := cacheItems[chunklineIteratorCacheKey(tl, queryChunk)]; item != nil {
-			iterator := strings.TrimSpace(string(item.Value))
-			results[tl] = iterator
-			continue
-		}
-
-		refPath := strings.ReplaceAll(manifest.Descending.Iterator, "{chunk}", fmt.Sprintf("%d", queryChunk))
-
-		ref, err := url.Parse(refPath)
-		if err != nil {
-			span.RecordError(fmt.Errorf("invalid iterator URI template for timeline %s: %w", tl, err))
-			continue
-		}
-
-		base, err := url.Parse(tl)
-		if err != nil {
-			span.RecordError(fmt.Errorf("invalid timeline URI %s: %w", tl, err))
-			continue
-		}
-
-		endpoint := base.ResolveReference(ref)
-		if endpoint.Scheme != "http" && endpoint.Scheme != "https" {
-			host, err := r.client.ResolveResourceHost(ctx, tl)
-			if err != nil {
-				span.RecordError(fmt.Errorf("failed to resolve host for timeline %s: %w", tl, err))
+		cacheKey := chunklineIteratorCacheKey(tl, queryChunk)
+		if cacheable[cacheKey] {
+			if item := cacheItems[cacheKey]; item != nil {
+				iterator := strings.TrimSpace(string(item.Value))
+				results[tl] = iterator
 				continue
 			}
-			endpoint.Scheme = "https"
-			endpoint.Host = host
 		}
 
-		req, err := http.NewRequestWithContext(ctx, "GET", endpoint.String(), nil)
+		itr, err := r.cache.fetchIterator(ctx, tl, manifest, queryChunk)
 		if err != nil {
-			span.RecordError(fmt.Errorf("failed to create request for timeline %s: %w", tl, err))
+			span.RecordError(fmt.Errorf("failed to fetch chunkline iterator for timeline %s: %w", tl, err))
 			continue
 		}
 
-		resp, err := r.client.GetClient().Do(req)
-		if err != nil {
-			span.RecordError(fmt.Errorf("HTTP request failed for timeline %s: %w", tl, err))
-			continue
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			span.RecordError(fmt.Errorf("non-200 response for timeline %s: %d", tl, resp.StatusCode))
-			continue
-		}
-
-		bytes, err := io.ReadAll(resp.Body)
-		if err != nil {
-			span.RecordError(fmt.Errorf("failed to read response body for timeline %s: %w", tl, err))
-			continue
-		}
-
-		itr := strings.TrimSpace(string(bytes))
 		results[tl] = itr
 
-		if err := r.mc.Set(&memcache.Item{
-			Key:        chunklineIteratorCacheKey(tl, queryChunk),
-			Value:      []byte(itr),
-			Expiration: chunklineIteratorCacheTTL,
-		}); err != nil {
-			span.RecordError(fmt.Errorf("failed to write chunkline iterator cache for timeline %s: %w", tl, err))
+		if r.shouldCacheChunk(tl, manifest, queryChunk) {
+			if err := r.cache.setIteratorCache(tl, queryChunk, itr); err != nil {
+				span.RecordError(fmt.Errorf("failed to write chunkline iterator cache for timeline %s: %w", tl, err))
+			}
 		}
 	}
 	return results, nil
+}
+
+func (r *resolver) shouldCacheChunk(timeline string, manifest chunkline.Manifest, chunkID int64) bool {
+	latestChunk := latestChunkID(manifest, time.Now())
+	if chunkID != latestChunk {
+		return true
+	}
+	if r.currentSubscriptions == nil {
+		return false
+	}
+	for _, current := range r.currentSubscriptions.GetCurrentSubscriptions() {
+		if current == timeline {
+			return true
+		}
+	}
+	return false
 }
 
 func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string) (map[string]chunkline.BodyChunk, error) {
@@ -327,6 +238,7 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 	}
 
 	keys := make([]string, 0, len(query))
+	cacheable := make(map[string]bool, len(query))
 	for tl, itr := range query {
 		chunkID, err := strconv.ParseInt(itr, 10, 64)
 		if err != nil {
@@ -334,11 +246,19 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 			continue
 		}
 
+		manifest, ok := manifests[tl]
+		if !ok {
+			continue
+		}
+
 		key := chunklineBodyCacheKey(tl, chunkID)
-		keys = append(keys, key)
+		if r.shouldCacheChunk(tl, manifest, chunkID) {
+			keys = append(keys, key)
+			cacheable[key] = true
+		}
 	}
 
-	cacheItems, err := r.mc.GetMulti(keys)
+	cacheItems, err := r.cache.mc.GetMulti(keys)
 	if err != nil {
 		span.RecordError(fmt.Errorf("failed to read chunkline body cache: %w", err))
 	}
@@ -352,18 +272,22 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 			continue
 		}
 
-		if item := cacheItems[chunklineBodyCacheKey(tl, chunkID)]; item != nil {
-			items, err := DecodeBodyCache(item.Value)
-			if err != nil {
-				span.RecordError(fmt.Errorf("failed to decode chunkline body cache for timeline %s: %w", tl, err))
-				_ = r.mc.Delete(chunklineBodyCacheKey(tl, chunkID))
+		cacheKey := chunklineBodyCacheKey(tl, chunkID)
+		if cacheable[cacheKey] {
+			if item := cacheItems[cacheKey]; item != nil {
+				items, err := DecodeBodyCache(item.Value)
+				if err != nil {
+					span.RecordError(fmt.Errorf("failed to decode chunkline body cache for timeline %s: %w", tl, err))
+					_ = r.cache.mc.Delete(chunklineBodyCacheKey(tl, chunkID))
+				} else {
+					result[tl] = chunkline.BodyChunk{
+						URI:     tl,
+						ChunkID: chunkID,
+						Items:   items,
+					}
+					continue
+				}
 			}
-			result[tl] = chunkline.BodyChunk{
-				URI:     tl,
-				ChunkID: chunkID,
-				Items:   items,
-			}
-			continue
 		}
 
 		manifest, ok := manifests[tl]
@@ -373,58 +297,9 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 			continue
 		}
 
-		if manifest.Descending == nil || manifest.Descending.Body == "" {
-			err := fmt.Errorf("timeline %s does not support descending body retrieval", tl)
-			span.RecordError(err)
-			continue
-		}
-
-		refPath := strings.ReplaceAll(manifest.Descending.Body, "{chunk}", itr)
-		ref, err := url.Parse(refPath)
+		items, err := r.cache.fetchChunkBody(ctx, tl, manifest, itr)
 		if err != nil {
-			span.RecordError(fmt.Errorf("invalid body URI template for timeline %s: %w", tl, err))
-			continue
-		}
-
-		base, err := url.Parse(tl)
-		if err != nil {
-			span.RecordError(fmt.Errorf("invalid timeline URI %s: %w", tl, err))
-			continue
-		}
-
-		endpoint := base.ResolveReference(ref)
-		if endpoint.Scheme != "http" && endpoint.Scheme != "https" {
-			host, err := r.client.ResolveResourceHost(ctx, tl)
-			if err != nil {
-				span.RecordError(fmt.Errorf("failed to resolve host for timeline %s: %w", tl, err))
-				continue
-			}
-			endpoint.Scheme = "https"
-			endpoint.Host = host
-		}
-
-		req, err := http.NewRequestWithContext(ctx, "GET", endpoint.String(), nil)
-		if err != nil {
-			span.RecordError(fmt.Errorf("failed to create request for timeline %s: %w", tl, err))
-			continue
-		}
-
-		resp, err := r.client.GetClient().Do(req)
-		if err != nil {
-			span.RecordError(fmt.Errorf("HTTP request failed for timeline %s: %w", tl, err))
-			continue
-		}
-		defer resp.Body.Close()
-
-		if resp.StatusCode != http.StatusOK {
-			span.RecordError(fmt.Errorf("non-200 response for timeline %s: %d", tl, resp.StatusCode))
-			continue
-		}
-
-		var items []chunkline.BodyItem
-		err = json.NewDecoder(resp.Body).Decode(&items)
-		if err != nil {
-			span.RecordError(fmt.Errorf("failed to decode chunk body for timeline %s: %w", tl, err))
+			span.RecordError(fmt.Errorf("failed to fetch chunkline body for timeline %s: %w", tl, err))
 			continue
 		}
 
@@ -434,18 +309,11 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 			Items:   items,
 		}
 
-		// TODO: 最新Chunkは、realtime接続があるものだけをキャッシュするようにする
-		cacheBody, err := EncodeBodyCache(items)
-		if err != nil {
-			span.RecordError(fmt.Errorf("failed to encode chunkline body cache for timeline %s: %w", tl, err))
+		if !r.shouldCacheChunk(tl, manifest, chunkID) {
 			continue
 		}
 
-		if err := r.mc.Set(&memcache.Item{
-			Key:        chunklineBodyCacheKey(tl, chunkID),
-			Value:      cacheBody,
-			Expiration: chunklineBodyCacheTTL,
-		}); err != nil {
+		if err := r.cache.setBodyCache(tl, chunkID, items); err != nil {
 			span.RecordError(fmt.Errorf("failed to write chunkline body cache for timeline %s: %w", tl, err))
 		}
 

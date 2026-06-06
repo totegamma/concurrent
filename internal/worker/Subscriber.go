@@ -20,13 +20,24 @@ import (
 var (
 	pingInterval      = 10 * time.Second
 	disconnectTimeout = 30 * time.Second
+	retainInterval    = 30 * time.Second
 )
 
 type SubState struct {
 	RequestedPrefixes  []string
+	RetainedPrefixes   []string
 	SubscribedPrefixes []string
 	Connection         *websocket.Conn
 	CancelFunc         context.CancelFunc
+	CacheMissCounts    map[string]int
+}
+
+type ChunklineCacheUpdater interface {
+	CacheCreatedEvent(ctx context.Context, event concrnt.Event) error
+	EnsureLatestCache(ctx context.Context, timeline string) error
+	LatestCacheExists(ctx context.Context, timeline string) (bool, error)
+	LatestChunkStaleForRetention(ctx context.Context, timeline string, now time.Time) (bool, error)
+	DeleteLatestCache(ctx context.Context, timeline string) error
 }
 
 type Subscriber struct {
@@ -34,6 +45,7 @@ type Subscriber struct {
 	Config        *domain.Config
 	Client        *client.Client
 	Signal        *service.SignalService
+	CacheUpdater  ChunklineCacheUpdater
 
 	mu                   sync.RWMutex
 	subscriptionRequests []string
@@ -44,17 +56,24 @@ func NewSubscriber(
 	config *domain.Config,
 	client *client.Client,
 	signal *service.SignalService,
+	cacheUpdater ...ChunklineCacheUpdater,
 ) *Subscriber {
+	var updater ChunklineCacheUpdater
+	if len(cacheUpdater) > 0 {
+		updater = cacheUpdater[0]
+	}
 	return &Subscriber{
 		Subscriptions: make(map[string]*SubState),
 		Config:        config,
 		Client:        client,
 		Signal:        signal,
+		CacheUpdater:  updater,
 	}
 }
 
 func (s *Subscriber) Start(ctx context.Context) {
 	go s.keeperRoutine(ctx)
+	go s.retainedCacheRoutine(ctx)
 	go s.epochRoutine()
 }
 
@@ -97,7 +116,7 @@ func (s *Subscriber) ReconcileSubscriptions(ctx context.Context, currentRequests
 	changedRemotes, closedRemotes := s.applyDesiredSubscriptions(desired)
 
 	for _, host := range changedRemotes {
-		prefixes := desired[host]
+		prefixes := s.getListeningPrefixes(host)
 		slog.Debug(
 			fmt.Sprintf("subscription updated: %s > %v", host, prefixes),
 			slog.String("module", "worker"),
@@ -105,6 +124,8 @@ func (s *Subscriber) ReconcileSubscriptions(ctx context.Context, currentRequests
 		)
 		s.subscribeRemote(ctx, host, prefixes)
 	}
+
+	s.ensureRequestedLatestCaches(ctx)
 
 	if len(closedRemotes) > 0 {
 		slog.Info(
@@ -124,7 +145,6 @@ func (s *Subscriber) subscribeRemote(ctx context.Context, domain string, prefixe
 		state = &SubState{}
 		s.Subscriptions[domain] = state
 	}
-	state.RequestedPrefixes = cloneStrings(prefixes)
 	if len(state.SubscribedPrefixes) > 0 {
 		state.SubscribedPrefixes = intersectStrings(state.SubscribedPrefixes, state.RequestedPrefixes)
 	}
@@ -261,7 +281,16 @@ func (s *Subscriber) subscribeRemote(ctx context.Context, domain string, prefixe
 						continue
 					}
 
-					// TODO: add cache update logic here
+					if s.CacheUpdater != nil {
+						if err := s.CacheUpdater.CacheCreatedEvent(ctx, event); err != nil {
+							slog.Error(
+								"fail to update chunkline cache",
+								slog.String("error", err.Error()),
+								slog.String("module", "worker"),
+								slog.String("group", "realtime"),
+							)
+						}
+					}
 				case <-pingTicker.C:
 					if err := c.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
 						slog.Error(
@@ -415,6 +444,159 @@ func (s *Subscriber) getSubscriptionRequests() []string {
 	return cloneStrings(s.subscriptionRequests)
 }
 
+func (s *Subscriber) getListeningPrefixes(domain string) []string {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	state, ok := s.Subscriptions[domain]
+	if !ok {
+		return nil
+	}
+	return effectivePrefixes(state)
+}
+
+func (s *Subscriber) ensureRequestedLatestCaches(ctx context.Context) {
+	if s.CacheUpdater == nil {
+		return
+	}
+
+	prefixes := make([]string, 0)
+	s.mu.RLock()
+	for _, state := range s.Subscriptions {
+		prefixes = append(prefixes, state.RequestedPrefixes...)
+	}
+	s.mu.RUnlock()
+
+	for _, prefix := range uniqueSortedStrings(prefixes) {
+		exists, err := s.CacheUpdater.LatestCacheExists(ctx, prefix)
+		if err != nil {
+			slog.Error(
+				"fail to inspect chunkline latest cache",
+				slog.String("error", err.Error()),
+				slog.String("module", "worker"),
+				slog.String("group", "realtime"),
+			)
+			continue
+		}
+		if exists {
+			continue
+		}
+		if err := s.CacheUpdater.EnsureLatestCache(ctx, prefix); err != nil {
+			slog.Error(
+				"fail to initialize chunkline latest cache",
+				slog.String("error", err.Error()),
+				slog.String("module", "worker"),
+				slog.String("group", "realtime"),
+			)
+		}
+	}
+}
+
+func (s *Subscriber) retainedCacheRoutine(ctx context.Context) {
+	ticker := time.NewTicker(retainInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+			s.cleanupRetainedSubscriptions(ctx)
+			s.ensureRequestedLatestCaches(ctx)
+		}
+	}
+}
+
+func (s *Subscriber) cleanupRetainedSubscriptions(ctx context.Context) {
+	if s.CacheUpdater == nil {
+		return
+	}
+
+	type releaseTarget struct {
+		host     string
+		prefixes []string
+	}
+
+	targets := make([]releaseTarget, 0)
+
+	s.mu.Lock()
+	for host, state := range s.Subscriptions {
+		if len(state.RequestedPrefixes) > 0 || len(state.RetainedPrefixes) == 0 {
+			continue
+		}
+
+		retained := cloneStrings(state.RetainedPrefixes)
+		remaining := make([]string, 0, len(retained))
+		release := make([]string, 0)
+		if state.CacheMissCounts == nil {
+			state.CacheMissCounts = make(map[string]int)
+		}
+
+		for _, prefix := range retained {
+			exists, err := s.CacheUpdater.LatestCacheExists(ctx, prefix)
+			if err != nil {
+				slog.Error(
+					"fail to inspect retained chunkline cache",
+					slog.String("error", err.Error()),
+					slog.String("module", "worker"),
+					slog.String("group", "realtime"),
+				)
+				remaining = append(remaining, prefix)
+				continue
+			}
+			if exists {
+				state.CacheMissCounts[prefix] = 0
+				remaining = append(remaining, prefix)
+				continue
+			}
+
+			state.CacheMissCounts[prefix]++
+			stale, err := s.CacheUpdater.LatestChunkStaleForRetention(ctx, prefix, time.Now())
+			if err != nil {
+				slog.Error(
+					"fail to inspect retained chunk age",
+					slog.String("error", err.Error()),
+					slog.String("module", "worker"),
+					slog.String("group", "realtime"),
+				)
+			}
+			if stale || state.CacheMissCounts[prefix] >= 2 {
+				release = append(release, prefix)
+				continue
+			}
+			remaining = append(remaining, prefix)
+		}
+
+		state.RetainedPrefixes = uniqueSortedStrings(remaining)
+		if len(release) > 0 {
+			targets = append(targets, releaseTarget{host: host, prefixes: release})
+		}
+	}
+	s.mu.Unlock()
+
+	for _, target := range targets {
+		for _, prefix := range target.prefixes {
+			if err := s.CacheUpdater.DeleteLatestCache(ctx, prefix); err != nil {
+				slog.Error(
+					"fail to delete retained chunkline cache",
+					slog.String("error", err.Error()),
+					slog.String("module", "worker"),
+					slog.String("group", "realtime"),
+				)
+			}
+		}
+	}
+
+	for _, target := range targets {
+		listening := s.getListeningPrefixes(target.host)
+		if len(listening) > 0 {
+			s.subscribeRemote(ctx, target.host, listening)
+			continue
+		}
+		s.removeSubscription(target.host)
+	}
+}
+
 func (s *Subscriber) applyDesiredSubscriptions(desired map[string][]string) ([]string, []string) {
 	changedRemotes := make([]string, 0)
 	closedRemotes := make([]string, 0)
@@ -433,14 +615,20 @@ func (s *Subscriber) applyDesiredSubscriptions(desired map[string][]string) ([]s
 			continue
 		}
 
+		oldListening := effectivePrefixes(state)
 		if !equalStringSlices(state.RequestedPrefixes, prefixes) {
 			state.RequestedPrefixes = cloneStrings(prefixes)
+			state.RetainedPrefixes = subtractStrings(state.RetainedPrefixes, prefixes)
 			subscribedPrefixes := intersectStrings(state.SubscribedPrefixes, state.RequestedPrefixes)
+			promotedRetained := intersectStrings(prefixes, oldListening)
+			subscribedPrefixes = uniqueSortedStrings(append(subscribedPrefixes, promotedRetained...))
 			if !equalStringSlices(state.SubscribedPrefixes, subscribedPrefixes) {
 				state.SubscribedPrefixes = subscribedPrefixes
 				subscriptionsChanged = true
 			}
-			changedRemotes = append(changedRemotes, host)
+			if !equalStringSlices(oldListening, effectivePrefixes(state)) {
+				changedRemotes = append(changedRemotes, host)
+			}
 			continue
 		}
 
@@ -451,6 +639,19 @@ func (s *Subscriber) applyDesiredSubscriptions(desired map[string][]string) ([]s
 
 	for host, state := range s.Subscriptions {
 		if _, ok := desired[host]; ok {
+			continue
+		}
+
+		if s.CacheUpdater != nil && state.Connection != nil && len(effectivePrefixes(state)) > 0 {
+			state.RetainedPrefixes = effectivePrefixes(state)
+			state.RequestedPrefixes = []string{}
+			if len(state.SubscribedPrefixes) > 0 {
+				state.SubscribedPrefixes = []string{}
+				subscriptionsChanged = true
+			}
+			if state.CacheMissCounts == nil {
+				state.CacheMissCounts = make(map[string]int)
+			}
 			continue
 		}
 
@@ -605,6 +806,22 @@ func intersectStrings(values []string, allowed []string) []string {
 	result := make([]string, 0, len(values))
 	for _, value := range values {
 		if slices.Contains(allowed, value) && !slices.Contains(result, value) {
+			result = append(result, value)
+		}
+	}
+	sort.Strings(result)
+
+	return result
+}
+
+func effectivePrefixes(state *SubState) []string {
+	return uniqueSortedStrings(append(cloneStrings(state.RequestedPrefixes), state.RetainedPrefixes...))
+}
+
+func subtractStrings(values []string, remove []string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if !slices.Contains(remove, value) && !slices.Contains(result, value) {
 			result = append(result, value)
 		}
 	}

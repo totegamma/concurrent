@@ -38,6 +38,38 @@ var (
 	oneShotID string
 )
 
+type ReplyMessageSchema struct {
+	ReplyToMessageId     string `json:"replyToMessageId"`
+	ReplyToMessageAuthor string `json:"replyToMessageAuthor"`
+	TargetURI            string `json:"targetURI,omitempty"`
+	Body                 string `json:"body"`
+	Emojis               any    `json:"emojis,omitempty"`
+	ProfileOverride      any    `json:"profileOverride,omitempty"`
+}
+
+type RerouteMessageSchema struct {
+	RerouteMessageId     string `json:"rerouteMessageId"`
+	RerouteMessageAuthor string `json:"rerouteMessageAuthor"`
+	TargetURI            string `json:"targetURI,omitempty"`
+	Body                 string `json:"body,omitempty"`
+	Emojis               any    `json:"emojis,omitempty"`
+	ProfileOverride      any    `json:"profileOverride,omitempty"`
+}
+
+type ReplyAssociationSchema struct {
+	TargetURI       string `json:"targetURI,omitempty"`
+	MessageId       string `json:"messageId,omitempty"`
+	MessageAuthor   string `json:"messageAuthor,omitempty"`
+	ProfileOverride any    `json:"profileOverride,omitempty"`
+}
+
+type RerouteAssociationSchema struct {
+	TargetURI       string `json:"targetURI,omitempty"`
+	MessageId       string `json:"messageId,omitempty"`
+	MessageAuthor   string `json:"messageAuthor,omitempty"`
+	ProfileOverride any    `json:"profileOverride,omitempty"`
+}
+
 type MigrationInfo struct {
 	Name   string `json:"name" gorm:"type:text;primaryKey"`
 	Seeker string `json:"seeker" gorm:"type:text"`
@@ -427,9 +459,32 @@ func convertRecord(
 
 			pol := convertPolicy(v1msg.Policy, v1msg.PolicyParams, v1msg.PolicyDefaults)
 
+			body := v1msg.Body
+
+			switch v1msg.Schema {
+			case "https://schema.concrnt.world/m/reply.json":
+				var replyDoc core.MessageDocument[ReplyMessageSchema]
+				err := json.Unmarshal([]byte(commit.Document), &replyDoc)
+				if err != nil {
+					fmt.Println("failed to unmarshal reply message document: ", err)
+					return "", err
+				}
+				replyDoc.Body.TargetURI = `cckv://` + replyDoc.Body.ReplyToMessageAuthor + `/concrnt.world/profiles/main/posts/` + replyDoc.Body.ReplyToMessageId
+				body = replyDoc.Body
+			case "https://schema.concrnt.world/m/reroute.json":
+				var rerouteDoc core.MessageDocument[RerouteMessageSchema]
+				err := json.Unmarshal([]byte(commit.Document), &rerouteDoc)
+				if err != nil {
+					fmt.Println("failed to unmarshal reroute message document: ", err)
+					return "", err
+				}
+				rerouteDoc.Body.TargetURI = `cckv://` + rerouteDoc.Body.RerouteMessageAuthor + `/concrnt.world/profiles/main/posts/` + rerouteDoc.Body.RerouteMessageId
+				body = rerouteDoc.Body
+			}
+
 			v2doc = &concrnt.Document[any]{
 				Key:         key,
-				Value:       v1msg.Body,
+				Value:       body,
 				Author:      v1msg.Signer,
 				Schema:      v1msg.Schema,
 				CreatedAt:   v1msg.SignedAt,
@@ -596,8 +651,30 @@ func convertRecord(
 				variant = &v1ass.Variant
 			}
 
+			body := v1ass.Body
+			switch v1ass.Schema {
+			case "https://schema.concrnt.world/a/reply.json":
+				var replyAssoc ReplyAssociationSchema
+				err := json.Unmarshal([]byte(commit.Document), &replyAssoc)
+				if err != nil {
+					fmt.Println("failed to unmarshal reply association document: ", err)
+					return "", err
+				}
+				replyAssoc.TargetURI = `cckv://` + replyAssoc.MessageAuthor + `/concrnt.world/profiles/main/posts/` + replyAssoc.MessageId
+				body = replyAssoc
+			case "https://schema.concrnt.world/a/reroute.json":
+				var rerouteAssoc RerouteAssociationSchema
+				err := json.Unmarshal([]byte(commit.Document), &rerouteAssoc)
+				if err != nil {
+					fmt.Println("failed to unmarshal reroute association document: ", err)
+					return "", err
+				}
+				rerouteAssoc.TargetURI = `cckv://` + rerouteAssoc.MessageAuthor + `/concrnt.world/profiles/main/posts/` + rerouteAssoc.MessageId
+				body = rerouteAssoc
+			}
+
 			v2doc = &concrnt.Document[any]{
-				Value:       v1ass.Body,
+				Value:       body,
 				Author:      v1ass.Signer,
 				Schema:      v1ass.Schema,
 				CreatedAt:   v1ass.SignedAt,

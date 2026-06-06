@@ -176,6 +176,10 @@ func (h *Handler) handleResolve(c echo.Context) error {
 		return presenter.BadRequestMessage(c, "invalid uri")
 	}
 
+	if uriString == "" {
+		return presenter.BadRequestMessage(c, "uri parameter is required")
+	}
+
 	uri, err := url.Parse(uriString)
 	if err != nil {
 		return presenter.BadRequestMessage(c, "invalid uri")

@@ -641,7 +641,13 @@ func convertRecord(
 				return "", err
 			}
 
-			associateKey := fmt.Sprintf("cckv://%s/concrnt.world/v0/%s", v1ass.Signer, v1ass.Target)
+			assOwner, err := getEntity(db, v1ass.Owner)
+			if err != nil {
+				fmt.Printf("failed to get association owner entity for commit id %d: %s\n", commit.ID, err)
+				return "", err
+			}
+
+			associateKey := fmt.Sprintf("cckv://%s/concrnt.world/v0/%s", v1ass.Owner, v1ass.Target)
 
 			distributes := convertTimelines(v1ass.Timelines)
 			pol := convertPolicy(v1ass.Policy, v1ass.PolicyParams, v1ass.PolicyDefaults)
@@ -687,29 +693,29 @@ func convertRecord(
 
 			lines := ""
 
-			serializedDoc, err := json.Marshal(v2doc)
+			serializedDocBytes, err := json.Marshal(v2doc)
 			if err != nil {
 				fmt.Println("failed to serialize v2 document: ", err)
 				return "", err
 			}
 
-			hash := concrnt.GetHash(serializedDoc)
-			hash10 := [10]byte{}
-			copy(hash10[:], hash[:10])
-			documentID := cdidv2.New(hash10, v1ass.SignedAt).String()
-
-			ccfs := concrnt.ComposeCCURI("ccfs", v1ass.Signer, documentID)
-
-			SaveMigrationTable(destDB, "a"+cdidBase, ccfs)
-
 			sd := concrnt.SignedDocument{
-				Document: string(serializedDoc),
+				Document: string(serializedDocBytes),
 				Proof: concrnt.Proof{
 					Type: "none",
 				},
 			}
 
-			if v1Author.Domain == fromFQDN {
+			hash := concrnt.GetHash([]byte(sd.Document))
+			hash10 := [10]byte{}
+			copy(hash10[:], hash[:10])
+			documentID := cdidv2.New(hash10, v1ass.SignedAt).String()
+
+			ccfs := concrnt.ComposeCCURI("ccfs", v1ass.Owner, documentID)
+
+			SaveMigrationTable(destDB, "a"+cdidBase, ccfs)
+
+			if assOwner.Domain == fromFQDN {
 				line, err := json.Marshal(sd)
 				if err != nil {
 					fmt.Println("failed to serialize signed document: ", err)

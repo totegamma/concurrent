@@ -41,7 +41,8 @@ func Forbidden(c echo.Context, msg string) error {
 	return c.JSON(http.StatusForbidden, errorResponse{Error: msg})
 }
 
-func Redirect(c echo.Context, location string) error {
+func Redirect(c echo.Context, location string, body any) error {
 	slog.Info("redirecting", slog.String("location", location))
-	return c.Redirect(http.StatusFound, location)
+	c.Response().Header().Set(echo.HeaderLocation, location)
+	return c.JSON(http.StatusFound, body)
 }

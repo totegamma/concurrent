@@ -1320,6 +1320,22 @@ func (uc *RecordUsecase) GetSigned(ctx context.Context, uri string) (*concrnt.Si
 			return nil, err
 		}
 
+		var doc concrnt.Document[schemas.Reference]
+		err = json.Unmarshal([]byte(sd.Document), &doc)
+		if err == nil && doc.Schema == schemas.ReferenceURL {
+
+			newLocation, err := uc.client.ResolveResourceURI(ctx, doc.Value.Href, nil)
+			if err != nil {
+				span.RecordError(err)
+				return nil, err
+			}
+
+			return nil, domain.RedirectError{
+				Location: newLocation,
+				Body:     sd,
+			}
+		}
+
 		err = uc.checkReadAccess(ctx, uri, *sd)
 		if err != nil {
 			return nil, err

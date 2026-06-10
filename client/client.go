@@ -327,6 +327,67 @@ func (c *Client) GetServer(ctx context.Context, domainOrCSID string, hint *strin
 	}
 }
 
+func (c *Client) ResolveResourceURI(ctx context.Context, uri string, opts *Options) (string, error) {
+	ctx, span := tracer.Start(ctx, "Client.ResolveResourceURI")
+	defer span.End()
+
+	parsed, err := concrnt.ParseCCURI(uri)
+	if err != nil {
+		err := errors.Join(fmt.Errorf("invalid cc uri %s", uri), err)
+		span.RecordError(err)
+		return "", err
+	}
+
+	endpoint := uri
+
+	if parsed.Scheme != "http" {
+		var info concrnt.WellKnownConcrnt
+		if opts.Resolver != "" {
+			info, err = c.GetServer(ctx, opts.Resolver, nil)
+			if err != nil {
+				err := errors.Join(fmt.Errorf("failed to get server for resolver %s", opts.Resolver), err)
+				span.RecordError(err)
+				return "", err
+			}
+		} else {
+			domain, err := c.resolveResolver(ctx, parsed.Owner)
+			if err != nil {
+				err := errors.Join(fmt.Errorf("failed to resolve default resolver for owner %s", parsed.Owner), err)
+				span.RecordError(err)
+				return "", err
+			}
+			info, err = c.GetServer(ctx, domain, nil)
+			if err != nil {
+				err := errors.Join(fmt.Errorf("failed to get server for default resolver %s", domain), err)
+				span.RecordError(err)
+				return "", err
+			}
+		}
+
+		desc, ok := info.Endpoints["net.concrnt.core.resolve"]
+		if !ok {
+			err := fmt.Errorf("resource endpoint not found in server %s", info.Domain)
+			span.RecordError(err)
+			return "", err
+		}
+
+		path, err := concrnt.RenderURITemplate(desc, map[string]string{
+			"owner": parsed.Owner,
+			"key":   parsed.Key,
+			"uri":   url.QueryEscape(uri),
+		})
+		if err != nil {
+			err := errors.Join(fmt.Errorf("failed to render resource endpoint template for server %s", info.Domain), err)
+			span.RecordError(err)
+			return "", err
+		}
+
+		endpoint = "https://" + info.Domain + path
+	}
+
+	return endpoint, nil
+}
+
 func (c *Client) GetResource(ctx context.Context, uri string, accept string, opts *Options, result any) error {
 	ctx, span := tracer.Start(ctx, "Client.GetResource")
 	defer span.End()

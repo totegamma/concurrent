@@ -52,6 +52,7 @@ func (e PermissionError) Is(target error) bool {
 
 type RedirectError struct {
 	Location string
+	Body     any
 }
 
 func (e RedirectError) Error() string {

@@ -2,7 +2,6 @@ package rest
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -23,7 +22,6 @@ import (
 	"github.com/concrnt/concrnt/internal/present/rest/presenter"
 	"github.com/concrnt/concrnt/internal/service"
 	"github.com/concrnt/concrnt/internal/usecase"
-	"github.com/concrnt/concrnt/schemas"
 )
 
 type Handler struct {
@@ -232,7 +230,7 @@ func (h *Handler) handleResolve(c echo.Context) error {
 		if err != nil {
 			if errors.Is(err, domain.ErrRedirect) {
 				redirectErr := err.(domain.RedirectError)
-				return presenter.Redirect(c, redirectErr.Location)
+				return presenter.Redirect(c, redirectErr.Location, nil)
 			}
 			if errors.Is(err, domain.ErrPermissionDenied) {
 				return presenter.Forbidden(c, "permission denied") // TODO: should be return NotFound
@@ -263,21 +261,14 @@ func (h *Handler) handleResolve(c echo.Context) error {
 			if errors.Is(err, domain.ErrNotFound) {
 				return presenter.NotFound(c, "resource not found")
 			}
+			if errors.Is(err, domain.ErrRedirect) {
+				redirectErr := err.(domain.RedirectError)
+				return presenter.Redirect(c, redirectErr.Location, redirectErr.Body)
+			}
 			if errors.Is(err, domain.ErrPermissionDenied) {
 				return presenter.Forbidden(c, "permission denied") // TODO: should be return NotFound
 			}
 			return presenter.InternalError(c, err)
-		}
-
-		var doc concrnt.Document[schemas.Reference]
-		err = json.Unmarshal([]byte(value.Document), &doc)
-		if err != nil {
-			return presenter.OK(c, value)
-		}
-
-		if doc.Schema == schemas.ReferenceURL {
-			c.Response().Header().Set("Location", "/resolve?uri="+url.PathEscape(doc.Value.Href))
-			return c.JSON(http.StatusFound, value)
 		}
 
 		return presenter.OK(c, value)

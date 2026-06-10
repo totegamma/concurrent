@@ -331,6 +331,10 @@ func (c *Client) ResolveResourceURI(ctx context.Context, uri string, opts *Optio
 	ctx, span := tracer.Start(ctx, "Client.ResolveResourceURI")
 	defer span.End()
 
+	if opts == nil {
+		opts = &Options{}
+	}
+
 	parsed, err := concrnt.ParseCCURI(uri)
 	if err != nil {
 		err := errors.Join(fmt.Errorf("invalid cc uri %s", uri), err)

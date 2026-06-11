@@ -215,6 +215,93 @@ func TestResolveTimelinesUsesBatchEndpoint(t *testing.T) {
 	require.Equal(t, manifests[timelines[1]].ChunkSize, got[timelines[1]].ChunkSize)
 }
 
+func TestLookupChunkItrsAndLoadChunkBodiesUseBatchEndpoint(t *testing.T) {
+	const domain = "example.test"
+	lastChunk := int64(100)
+	timelines := []string{"cckv://example.test/timeline/0", "cckv://example.test/timeline/1"}
+	manifests := map[string]chunkline.Manifest{
+		timelines[0]: {
+			Version:   "1.0",
+			ChunkSize: 600,
+			LastChunk: &lastChunk,
+			Descending: &chunkline.Endpoint{
+				Iterator: "/itr/{chunk}",
+				Body:     "/body/{chunk}",
+			},
+		},
+		timelines[1]: {
+			Version:   "1.0",
+			ChunkSize: 600,
+			LastChunk: &lastChunk,
+			Descending: &chunkline.Endpoint{
+				Iterator: "/itr/{chunk}",
+				Body:     "/body/{chunk}",
+			},
+		},
+	}
+
+	var batchHits atomic.Int64
+	var handler http.Handler
+	handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch {
+		case r.URL.Path == "/.well-known/concrnt":
+			wkc := concrnt.WellKnownConcrnt{
+				Version: "2.0",
+				Domain:  domain,
+				CSID:    "ccs1example",
+				Layer:   "concrnt",
+				Endpoints: map[string]string{
+					"net.concrnt.core.resolve": "/resolve?uri={uri}",
+					"net.concrnt.core.batch":   "/batch",
+				},
+			}
+			require.NoError(t, json.NewEncoder(w).Encode(wkc))
+		case r.URL.Path == "/resolve":
+			timeline, err := url.QueryUnescape(r.URL.Query().Get("uri"))
+			require.NoError(t, err)
+			manifest, ok := manifests[timeline]
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			require.NoError(t, json.NewEncoder(w).Encode(manifest))
+		case r.URL.Path == "/batch":
+			batchHits.Add(1)
+			serveGatewayTestBatch(t, handler, w, r)
+		case strings.HasPrefix(r.URL.Path, "/itr/"):
+			_, err := w.Write([]byte(r.URL.Path[len("/itr/"):]))
+			require.NoError(t, err)
+		case strings.HasPrefix(r.URL.Path, "/body/"):
+			require.NoError(t, json.NewEncoder(w).Encode([]chunkline.BodyItem{
+				{Timestamp: time.Unix(lastChunk*600, 0), Href: r.URL.Path},
+			}))
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	cl := client.New(domain)
+	cl.AddHostRemapping(domain, server.URL)
+	resolver := &resolver{
+		client: cl,
+		cache:  newChunklineCacheService(cl, newFakeMemcache()),
+	}
+
+	itrs, err := resolver.LookupChunkItrs(context.Background(), timelines, time.Unix(lastChunk*600, 0))
+	require.NoError(t, err)
+	require.Equal(t, "100", itrs[timelines[0]])
+	require.Equal(t, "100", itrs[timelines[1]])
+
+	bodies, err := resolver.LoadChunkBodies(context.Background(), itrs)
+	require.NoError(t, err)
+	require.Len(t, bodies[timelines[0]].Items, 1)
+	require.Len(t, bodies[timelines[1]].Items, 1)
+	require.Equal(t, int64(3), batchHits.Load())
+}
+
 func TestCacheCreatedEventPrependsLatestItemAndDeduplicates(t *testing.T) {
 	timeline, cl, mc := newChunklineTestServer(t, 100, []chunkline.BodyItem{
 		{Timestamp: time.Unix(100*600+1, 0), Href: "older"},

@@ -3,20 +3,30 @@ package client
 import (
 	"bufio"
 	"bytes"
+	"context"
+	"errors"
 	"fmt"
+	"io"
 	"mime"
 	"mime/multipart"
 	"net/http"
-	"net/http/httputil"
 )
 
 func DoBatchRequest(endpoint string, requests map[string]*http.Request) map[string]*http.Response {
+	responses, err := DoBatchRequestWithClient(context.Background(), http.DefaultClient, endpoint, requests)
+	if err != nil {
+		panic(err)
+	}
+	return responses
+}
 
+// DoBatchRequestWithClient sends application/http requests to a multipart batch endpoint.
+func DoBatchRequestWithClient(ctx context.Context, client *http.Client, endpoint string, requests map[string]*http.Request) (map[string]*http.Response, error) {
 	buffer := new(bytes.Buffer)
 	mw := multipart.NewWriter(buffer)
 	err := mw.SetBoundary("batch_boundary")
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	for key, req := range requests {
@@ -25,46 +35,48 @@ func DoBatchRequest(endpoint string, requests map[string]*http.Request) map[stri
 			"Content-ID":   {key},
 		})
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
 
 		req.Header.Set("User-Agent", "")
-		req.Write(pw)
+		if err := req.Write(pw); err != nil {
+			return nil, err
+		}
 	}
 
-	mw.Close()
+	if err := mw.Close(); err != nil {
+		return nil, err
+	}
 
-	batchReq, err := http.NewRequest("POST", endpoint, buffer)
+	batchReq, err := http.NewRequestWithContext(ctx, "POST", endpoint, buffer)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	batchReq.Header.Set("Content-Type", "multipart/mixed; boundary="+mw.Boundary())
 
-	// dump the batch request for debugging
-	dump, err := httputil.DumpRequestOut(batchReq, true)
-	if err != nil {
-		panic(err)
+	if client == nil {
+		client = http.DefaultClient
 	}
-	fmt.Println(string(dump))
-
-	// Send the batch request
-	client := &http.Client{}
 	batchResp, err := client.Do(batchReq)
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	defer batchResp.Body.Close()
 
-	fmt.Println("Response Status:", batchResp.Status)
-	fmt.Println("Response Headers:", batchResp.Header)
+	if batchResp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("batch request failed: status code %d", batchResp.StatusCode)
+	}
 
 	mediaType, params, err := mime.ParseMediaType(batchResp.Header.Get("Content-Type"))
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 
 	if mediaType != "multipart/mixed" {
-		panic("Expected multipart/mixed response")
+		return nil, fmt.Errorf("expected multipart/mixed response, got %s", mediaType)
+	}
+	if params["boundary"] == "" {
+		return nil, errors.New("missing multipart boundary")
 	}
 
 	responses := make(map[string]*http.Response)
@@ -72,28 +84,28 @@ func DoBatchRequest(endpoint string, requests map[string]*http.Request) map[stri
 	mr := multipart.NewReader(batchResp.Body, params["boundary"])
 	for {
 		part, err := mr.NextPart()
-		if err != nil {
+		if errors.Is(err, io.EOF) {
 			break
 		}
-
-		fmt.Println("Part Headers:", part.Header)
+		if err != nil {
+			return nil, err
+		}
 
 		contentID := part.Header.Get("Content-ID")
 
 		req, ok := requests[contentID]
 		if !ok {
-			fmt.Println("Unknown Content-ID:", contentID)
 			continue
 		}
 
 		reader := bufio.NewReader(part)
 		resp, err := http.ReadResponse(reader, req)
 		if err != nil {
-			panic(err)
+			return nil, err
 		}
 
 		responses[contentID] = resp
 	}
 
-	return responses
+	return responses, nil
 }

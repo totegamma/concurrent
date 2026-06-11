@@ -70,6 +70,7 @@ var Endpoints = map[string]string{
 	"net.concrnt.core.acknowledge-counts": "/acknowledge-counts{?from,to,context}",
 	"net.concrnt.core.realtime":           "/realtime",
 	"net.concrnt.core.abuse":              "/abuse",
+	"net.concrnt.core.batch":              "/batch",
 	"net.concrnt.world.register":          "/api/v2/register",
 	"net.concrnt.world.timeline.recent":   "/api/v2/timeline/recent{?uris,until,limit}",
 	"net.concrnt.world.subscribe":         "/subscribe/{owner}/{vendor_id}",
@@ -77,7 +78,7 @@ var Endpoints = map[string]string{
 	"net.concrnt.core.known-servers":      "/known-servers",
 }
 
-func (h *Handler) RegisterRoutes(e *echo.Group) {
+func (h *Handler) RegisterRoutes(app *echo.Echo, e *echo.Group) {
 
 	api := e.Group("", echomiddleware.CORS())
 	api.POST("/commit", h.handleCommit)
@@ -135,6 +136,8 @@ func (h *Handler) RegisterRoutes(e *echo.Group) {
 		return c.File("/etc/concrnt/static/register-template.json")
 	})
 	api.OPTIONS("/register-template", h.handleNop)
+
+	api.POST("/batch", batchHandler(app))
 
 }
 

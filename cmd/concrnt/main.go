@@ -230,7 +230,7 @@ func main() {
 		api.Use(captchaMiddleware)
 	}
 
-	apiHandler.RegisterRoutes(api)
+	apiHandler.RegisterRoutes(e, api)
 
 	proxy := rest.NewProxy(conf.Services, authMiddleware.IdentifyIdentity)
 	proxy.RegisterRoutes(e)

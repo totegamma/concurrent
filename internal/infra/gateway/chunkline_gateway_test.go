@@ -1,12 +1,20 @@
 package gateway
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
+	"errors"
+	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
+	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -140,6 +148,73 @@ func TestResolverWritesLatestCacheWithSubscriptionAndOldCacheWithoutSubscription
 	require.NoError(t, err)
 }
 
+func TestResolveTimelinesUsesBatchEndpoint(t *testing.T) {
+	const domain = "example.test"
+
+	manifests := map[string]chunkline.Manifest{
+		"cckv://example.test/timeline/0": {
+			Version:   "1.0",
+			ChunkSize: 600,
+		},
+		"cckv://example.test/timeline/1": {
+			Version:   "1.0",
+			ChunkSize: 300,
+		},
+	}
+
+	var batchHits atomic.Int64
+	var handler http.Handler
+	handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/concrnt":
+			wkc := concrnt.WellKnownConcrnt{
+				Version: "2.0",
+				Domain:  domain,
+				CSID:    "ccs1example",
+				Layer:   "concrnt",
+				Endpoints: map[string]string{
+					"net.concrnt.core.resolve": "/resolve?uri={uri}",
+					"net.concrnt.core.batch":   "/batch",
+				},
+			}
+			require.NoError(t, json.NewEncoder(w).Encode(wkc))
+		case "/resolve":
+			require.Equal(t, "application/chunkline+json", r.Header.Get("Accept"))
+
+			timeline, err := url.QueryUnescape(r.URL.Query().Get("uri"))
+			require.NoError(t, err)
+			manifest, ok := manifests[timeline]
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			require.NoError(t, json.NewEncoder(w).Encode(manifest))
+		case "/batch":
+			batchHits.Add(1)
+			serveGatewayTestBatch(t, handler, w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	server := httptest.NewServer(handler)
+	t.Cleanup(server.Close)
+
+	cl := client.New(domain)
+	cl.AddHostRemapping(domain, server.URL)
+	resolver := &resolver{
+		client: cl,
+		cache:  newChunklineCacheService(cl, newFakeMemcache()),
+	}
+
+	timelines := []string{"cckv://example.test/timeline/0", "cckv://example.test/timeline/1"}
+	got, err := resolver.ResolveTimelines(context.Background(), timelines)
+	require.NoError(t, err)
+	require.Equal(t, int64(1), batchHits.Load())
+	require.Equal(t, manifests[timelines[0]].ChunkSize, got[timelines[0]].ChunkSize)
+	require.Equal(t, manifests[timelines[1]].ChunkSize, got[timelines[1]].ChunkSize)
+}
+
 func TestCacheCreatedEventPrependsLatestItemAndDeduplicates(t *testing.T) {
 	timeline, cl, mc := newChunklineTestServer(t, 100, []chunkline.BodyItem{
 		{Timestamp: time.Unix(100*600+1, 0), Href: "older"},
@@ -201,6 +276,47 @@ func newChunklineTestServer(t *testing.T, lastChunk int64, body []chunkline.Body
 	})
 
 	return timeline, client.New(""), newFakeMemcache()
+}
+
+func serveGatewayTestBatch(t *testing.T, handler http.Handler, w http.ResponseWriter, r *http.Request) {
+	t.Helper()
+
+	mediaType, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	require.NoError(t, err)
+	require.True(t, strings.EqualFold(mediaType, "multipart/mixed"))
+
+	boundary := params["boundary"]
+	require.NotEmpty(t, boundary)
+
+	w.Header().Set("Content-Type", "multipart/mixed; boundary="+boundary)
+	mw := multipart.NewWriter(w)
+	require.NoError(t, mw.SetBoundary(boundary))
+	defer mw.Close()
+
+	mr := multipart.NewReader(r.Body, boundary)
+	for {
+		part, err := mr.NextPart()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		require.NoError(t, err)
+
+		contentID := part.Header.Get("Content-ID")
+		req, err := http.ReadRequest(bufio.NewReader(part))
+		require.NoError(t, err)
+
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, req)
+		resp := recorder.Result()
+
+		pw, err := mw.CreatePart(map[string][]string{
+			"Content-Type": {"application/http"},
+			"Content-ID":   {contentID},
+		})
+		require.NoError(t, err)
+		require.NoError(t, resp.Write(pw))
+		require.NoError(t, resp.Body.Close())
+	}
 }
 
 func mustEncodeBodyCache(t *testing.T, items []chunkline.BodyItem) []byte {

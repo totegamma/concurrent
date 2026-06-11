@@ -78,6 +78,7 @@ func (r *resolver) ResolveTimelines(ctx context.Context, timelines []string) (ma
 		}
 	}
 
+	fetchTargets := make([]string, 0, len(remaining))
 	for _, tl := range remaining {
 		negativeCached, err := r.cache.isNegativeCached(tl)
 		if err != nil {
@@ -88,6 +89,34 @@ func (r *resolver) ResolveTimelines(ctx context.Context, timelines []string) (ma
 			continue
 		}
 
+		fetchTargets = append(fetchTargets, tl)
+	}
+
+	if len(fetchTargets) == 0 {
+		return result, nil
+	}
+
+	manifests := make([]chunkline.Manifest, len(fetchTargets))
+	targets := make([]any, len(fetchTargets))
+	for i := range manifests {
+		targets[i] = &manifests[i]
+	}
+
+	err := r.client.GetResourceBatch(ctx, fetchTargets, "application/chunkline+json", nil, targets)
+	if err == nil {
+		for i, tl := range fetchTargets {
+			manifest := manifests[i]
+			result[tl] = manifest
+			if err := r.cache.setCachedManifest(tl, manifest); err != nil {
+				span.RecordError(fmt.Errorf("failed to write chunkline manifest cache for %s: %w", tl, err))
+			}
+		}
+		return result, nil
+	}
+
+	span.RecordError(errors.Join(fmt.Errorf("failed to fetch chunkline manifests batch"), err))
+
+	for _, tl := range fetchTargets {
 		var manifest chunkline.Manifest
 		err = r.client.GetResource(ctx, tl, "application/chunkline+json", nil, &manifest)
 		if err != nil {

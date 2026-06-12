@@ -78,6 +78,7 @@ func (r *resolver) ResolveTimelines(ctx context.Context, timelines []string) (ma
 		}
 	}
 
+	fetchTargets := make([]string, 0, len(remaining))
 	for _, tl := range remaining {
 		negativeCached, err := r.cache.isNegativeCached(tl)
 		if err != nil {
@@ -88,6 +89,34 @@ func (r *resolver) ResolveTimelines(ctx context.Context, timelines []string) (ma
 			continue
 		}
 
+		fetchTargets = append(fetchTargets, tl)
+	}
+
+	if len(fetchTargets) == 0 {
+		return result, nil
+	}
+
+	manifests := make([]chunkline.Manifest, len(fetchTargets))
+	targets := make([]any, len(fetchTargets))
+	for i := range manifests {
+		targets[i] = &manifests[i]
+	}
+
+	err := r.client.GetResourceBatch(ctx, fetchTargets, "application/chunkline+json", nil, targets)
+	if err == nil {
+		for i, tl := range fetchTargets {
+			manifest := manifests[i]
+			result[tl] = manifest
+			if err := r.cache.setCachedManifest(tl, manifest); err != nil {
+				span.RecordError(fmt.Errorf("failed to write chunkline manifest cache for %s: %w", tl, err))
+			}
+		}
+		return result, nil
+	}
+
+	span.RecordError(errors.Join(fmt.Errorf("failed to fetch chunkline manifests batch"), err))
+
+	for _, tl := range fetchTargets {
 		var manifest chunkline.Manifest
 		err = r.client.GetResource(ctx, tl, "application/chunkline+json", nil, &manifest)
 		if err != nil {
@@ -154,6 +183,9 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 	}
 
 	results := make(map[string]string)
+	fetchTasks := make([]chunklineBatchTask, 0)
+	fetchTaskChunk := make(map[string]int64, len(timelines))
+	fetchTaskManifest := make(map[string]chunkline.Manifest, len(timelines))
 	for _, tl := range timelines {
 
 		manifest, ok := manifests[tl]
@@ -189,14 +221,42 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 			}
 		}
 
-		itr, err := r.cache.fetchIterator(ctx, tl, manifest, queryChunk)
+		endpoint, err := r.cache.resolveEndpoint(ctx, tl, strings.ReplaceAll(manifest.Descending.Iterator, "{chunk}", fmt.Sprintf("%d", queryChunk)))
 		if err != nil {
+			span.RecordError(fmt.Errorf("failed to resolve chunkline iterator endpoint for timeline %s: %w", tl, err))
+			continue
+		}
+		timeline := tl
+		chunkID := queryChunk
+		manifestForFetch := manifest
+		fetchTasks = append(fetchTasks, chunklineBatchTask{
+			key:      timeline,
+			endpoint: endpoint,
+			fallback: func(ctx context.Context) ([]byte, error) {
+				itr, err := r.cache.fetchIterator(ctx, timeline, manifestForFetch, chunkID)
+				if err != nil {
+					return nil, err
+				}
+				return []byte(itr), nil
+			},
+		})
+		fetchTaskChunk[timeline] = queryChunk
+		fetchTaskManifest[timeline] = manifest
+	}
+
+	fetched, fetchErrs := r.fetchChunklineBatch(ctx, fetchTasks)
+	for _, task := range fetchTasks {
+		tl := task.key
+		if err := fetchErrs[tl]; err != nil {
 			span.RecordError(fmt.Errorf("failed to fetch chunkline iterator for timeline %s: %w", tl, err))
 			continue
 		}
 
+		itr := strings.TrimSpace(string(fetched[tl]))
 		results[tl] = itr
 
+		manifest := fetchTaskManifest[tl]
+		queryChunk := fetchTaskChunk[tl]
 		if r.shouldCacheChunk(tl, manifest, queryChunk) {
 			if err := r.cache.setIteratorCache(tl, queryChunk, itr); err != nil {
 				span.RecordError(fmt.Errorf("failed to write chunkline iterator cache for timeline %s: %w", tl, err))
@@ -264,6 +324,9 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 	}
 
 	result := make(map[string]chunkline.BodyChunk)
+	fetchTasks := make([]chunklineBatchTask, 0)
+	fetchTaskChunk := make(map[string]int64, len(query))
+	fetchTaskManifest := make(map[string]chunkline.Manifest, len(query))
 	for tl, itr := range query {
 
 		chunkID, err := strconv.ParseInt(itr, 10, 64)
@@ -297,18 +360,57 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 			continue
 		}
 
-		items, err := r.cache.fetchChunkBody(ctx, tl, manifest, itr)
+		if manifest.Descending == nil || manifest.Descending.Body == "" {
+			err := fmt.Errorf("timeline %s does not support descending body retrieval", tl)
+			span.RecordError(err)
+			continue
+		}
+
+		endpoint, err := r.cache.resolveEndpoint(ctx, tl, strings.ReplaceAll(manifest.Descending.Body, "{chunk}", itr))
 		if err != nil {
+			span.RecordError(fmt.Errorf("failed to resolve chunkline body endpoint for timeline %s: %w", tl, err))
+			continue
+		}
+		timeline := tl
+		iterator := itr
+		manifestForFetch := manifest
+		fetchTasks = append(fetchTasks, chunklineBatchTask{
+			key:      timeline,
+			endpoint: endpoint,
+			fallback: func(ctx context.Context) ([]byte, error) {
+				items, err := r.cache.fetchChunkBody(ctx, timeline, manifestForFetch, iterator)
+				if err != nil {
+					return nil, err
+				}
+				return json.Marshal(items)
+			},
+		})
+		fetchTaskChunk[timeline] = chunkID
+		fetchTaskManifest[timeline] = manifest
+	}
+
+	fetched, fetchErrs := r.fetchChunklineBatch(ctx, fetchTasks)
+	for _, task := range fetchTasks {
+		tl := task.key
+		if err := fetchErrs[tl]; err != nil {
 			span.RecordError(fmt.Errorf("failed to fetch chunkline body for timeline %s: %w", tl, err))
 			continue
 		}
 
+		var items []chunkline.BodyItem
+		if err := json.Unmarshal(fetched[tl], &items); err != nil {
+			span.RecordError(fmt.Errorf("failed to decode chunkline body for timeline %s: %w", tl, err))
+			continue
+		}
+
+		chunkID := fetchTaskChunk[tl]
 		result[tl] = chunkline.BodyChunk{
 			URI:     tl,
 			ChunkID: chunkID,
 			Items:   items,
 		}
 
+		manifest := fetchTaskManifest[tl]
 		if !r.shouldCacheChunk(tl, manifest, chunkID) {
 			continue
 		}

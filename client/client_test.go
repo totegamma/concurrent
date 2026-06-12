@@ -1,11 +1,18 @@
 package client
 
 import (
+	"bufio"
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
+	"mime"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
+	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -157,6 +164,167 @@ func TestQuerySkipsOfflineDomain(t *testing.T) {
 	}
 }
 
+func TestGetResourceBatchUsesBatchEndpoint(t *testing.T) {
+	t.Parallel()
+
+	const domain = "example.test"
+	uris := []string{
+		"cckv://example.test/concrnt.world/profiles/main",
+		"cckv://example.test/concrnt.world/profiles/sub",
+	}
+	resources := map[string]map[string]string{
+		uris[0]: {"name": "main"},
+		uris[1]: {"name": "sub"},
+	}
+
+	var batchHits atomic.Int64
+	var handler http.Handler
+	handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/concrnt":
+			wkc := concrnt.WellKnownConcrnt{
+				Version: "2.0",
+				Domain:  domain,
+				CSID:    "ccs1example",
+				Layer:   "concrnt",
+				Endpoints: map[string]string{
+					"net.concrnt.core.resolve": "/resolve?uri={uri}",
+					"net.concrnt.core.batch":   "/batch",
+				},
+			}
+			if err := json.NewEncoder(w).Encode(wkc); err != nil {
+				t.Fatalf("encode well-known: %v", err)
+			}
+		case "/resolve":
+			uriParam, err := url.QueryUnescape(r.URL.Query().Get("uri"))
+			if err != nil {
+				t.Fatalf("unescape uri: %v", err)
+			}
+			resource, ok := resources[uriParam]
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			if r.Header.Get("Accept") != "application/json" {
+				t.Fatalf("Accept = %q, want application/json", r.Header.Get("Accept"))
+			}
+			if err := json.NewEncoder(w).Encode(resource); err != nil {
+				t.Fatalf("encode resource: %v", err)
+			}
+		case "/batch":
+			batchHits.Add(1)
+			serveTestBatch(t, handler, w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	cl := New(domain)
+	cl.AddHostRemapping(domain, server.URL)
+
+	got := make([]map[string]string, len(uris))
+	results := []any{&got[0], &got[1]}
+	err := cl.GetResourceBatch(context.Background(), uris, "application/json", nil, results)
+	if err != nil {
+		t.Fatalf("GetResourceBatch returned error: %v", err)
+	}
+
+	if batchHits.Load() != 1 {
+		t.Fatalf("batch endpoint hit %d times, want 1", batchHits.Load())
+	}
+	for i, uri := range uris {
+		if got[i]["name"] != resources[uri]["name"] {
+			t.Fatalf("resource %d name = %q, want %q", i, got[i]["name"], resources[uri]["name"])
+		}
+	}
+}
+
+func TestGetResourceBatchFallsBackWhenBatchEndpointMissing(t *testing.T) {
+	t.Parallel()
+
+	const domain = "example.test"
+	uris := []string{
+		"cckv://example.test/item/0",
+		"cckv://example.test/item/1",
+		"cckv://example.test/item/2",
+		"cckv://example.test/item/3",
+		"cckv://example.test/item/4",
+		"cckv://example.test/item/5",
+		"cckv://example.test/item/6",
+	}
+
+	var current atomic.Int64
+	var maxConcurrent atomic.Int64
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/concrnt":
+			wkc := concrnt.WellKnownConcrnt{
+				Version: "2.0",
+				Domain:  domain,
+				CSID:    "ccs1example",
+				Layer:   "concrnt",
+				Endpoints: map[string]string{
+					"net.concrnt.core.resolve": "/resolve?uri={uri}",
+				},
+			}
+			if err := json.NewEncoder(w).Encode(wkc); err != nil {
+				t.Fatalf("encode well-known: %v", err)
+			}
+		case "/resolve":
+			now := current.Add(1)
+			for {
+				seen := maxConcurrent.Load()
+				if now <= seen || maxConcurrent.CompareAndSwap(seen, now) {
+					break
+				}
+			}
+			defer current.Add(-1)
+
+			time.Sleep(25 * time.Millisecond)
+
+			uriParam, err := url.QueryUnescape(r.URL.Query().Get("uri"))
+			if err != nil {
+				t.Fatalf("unescape uri: %v", err)
+			}
+			if err := json.NewEncoder(w).Encode(map[string]string{"uri": uriParam}); err != nil {
+				t.Fatalf("encode resource: %v", err)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	cl := New(domain)
+	cl.AddHostRemapping(domain, server.URL)
+
+	got := make([]map[string]string, len(uris))
+	results := make([]any, len(uris))
+	for i := range got {
+		results[i] = &got[i]
+	}
+
+	err := cl.GetResourceBatch(context.Background(), uris, "application/json", nil, results)
+	if err != nil {
+		t.Fatalf("GetResourceBatch returned error: %v", err)
+	}
+
+	if maxConcurrent.Load() <= 1 {
+		t.Fatalf("fallback max concurrency = %d, want > 1", maxConcurrent.Load())
+	}
+	if maxConcurrent.Load() > resourceBatchFallbackConcurrency {
+		t.Fatalf("fallback max concurrency = %d, want <= %d", maxConcurrent.Load(), resourceBatchFallbackConcurrency)
+	}
+	for i, uri := range uris {
+		if got[i]["uri"] != uri {
+			t.Fatalf("resource %d uri = %q, want %q", i, got[i]["uri"], uri)
+		}
+	}
+}
+
 func TestTimeoutMarksDomainOffline(t *testing.T) {
 	t.Parallel()
 
@@ -170,6 +338,62 @@ func TestTimeoutMarksDomainOffline(t *testing.T) {
 
 	if cl.IsOnline(domain) {
 		t.Fatal("domain is online after timeout")
+	}
+}
+
+func serveTestBatch(t *testing.T, handler http.Handler, w http.ResponseWriter, r *http.Request) {
+	t.Helper()
+
+	mediaType, params, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+	if err != nil {
+		t.Fatalf("parse batch content type: %v", err)
+	}
+	if !strings.EqualFold(mediaType, "multipart/mixed") {
+		t.Fatalf("batch content type = %q, want multipart/mixed", mediaType)
+	}
+	boundary := params["boundary"]
+	if boundary == "" {
+		t.Fatal("missing batch boundary")
+	}
+
+	w.Header().Set("Content-Type", "multipart/mixed; boundary="+boundary)
+	mw := multipart.NewWriter(w)
+	if err := mw.SetBoundary(boundary); err != nil {
+		t.Fatalf("set response boundary: %v", err)
+	}
+	defer mw.Close()
+
+	mr := multipart.NewReader(r.Body, boundary)
+	for {
+		part, err := mr.NextPart()
+		if errors.Is(err, io.EOF) {
+			break
+		}
+		if err != nil {
+			t.Fatalf("read batch part: %v", err)
+		}
+
+		contentID := part.Header.Get("Content-ID")
+		req, err := http.ReadRequest(bufio.NewReader(part))
+		if err != nil {
+			t.Fatalf("read batch request: %v", err)
+		}
+
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, req)
+		resp := recorder.Result()
+
+		pw, err := mw.CreatePart(map[string][]string{
+			"Content-Type": {"application/http"},
+			"Content-ID":   {contentID},
+		})
+		if err != nil {
+			t.Fatalf("create batch response part: %v", err)
+		}
+		if err := resp.Write(pw); err != nil {
+			t.Fatalf("write batch response: %v", err)
+		}
+		resp.Body.Close()
 	}
 }
 

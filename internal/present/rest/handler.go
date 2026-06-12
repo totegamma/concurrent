@@ -137,7 +137,7 @@ func (h *Handler) RegisterRoutes(app *echo.Echo, e *echo.Group) {
 	})
 	api.OPTIONS("/register-template", h.handleNop)
 
-	api.POST("/batch", batchHandler(app))
+	api.POST("/batch", batchHandler(app, h.chunklineItrBatchHandler()))
 
 }
 
@@ -349,6 +349,81 @@ func (h *Handler) handleChunklineItr(c echo.Context) error {
 	}
 
 	return c.String(http.StatusOK, strconv.FormatInt(results[uri], 10))
+}
+
+func (h *Handler) chunklineItrBatchHandler() batchCustomHandler {
+	return batchCustomHandler{
+		match: func(req *http.Request) bool {
+			if req.Method != http.MethodGet {
+				return false
+			}
+			_, ok := chunklineItrBatchChunk(req.URL.Path)
+			return ok
+		},
+		handle: func(req *http.Request, parts []batchRequestPart) map[string]*http.Response {
+			responses := make(map[string]*http.Response, len(parts))
+
+			type lookup struct {
+				contentID string
+				uri       string
+			}
+
+			lookupsByChunk := make(map[int64][]lookup)
+			for _, part := range parts {
+				chunk, ok := chunklineItrBatchChunk(part.request.URL.Path)
+				if !ok {
+					responses[part.contentID] = newBatchTextResponse(http.StatusNotFound, "not found")
+					continue
+				}
+
+				chunkID, err := strconv.ParseInt(chunk, 10, 64)
+				if err != nil {
+					responses[part.contentID] = newBatchTextResponse(http.StatusBadRequest, "invalid chunk id")
+					continue
+				}
+
+				uri := part.request.URL.Query().Get("uri")
+				lookupsByChunk[chunkID] = append(lookupsByChunk[chunkID], lookup{
+					contentID: part.contentID,
+					uri:       uri,
+				})
+			}
+
+			for chunkID, lookups := range lookupsByChunk {
+				uris := make([]string, 0, len(lookups))
+				for _, lookup := range lookups {
+					uris = append(uris, lookup.uri)
+				}
+
+				results, err := h.chunkline.LookupLocalItrs(req.Context(), uris, chunkID)
+				if err != nil {
+					for _, lookup := range lookups {
+						responses[lookup.contentID] = newBatchTextResponse(http.StatusInternalServerError, err.Error())
+					}
+					continue
+				}
+
+				for _, lookup := range lookups {
+					responses[lookup.contentID] = newBatchTextResponse(http.StatusOK, strconv.FormatInt(results[lookup.uri], 10))
+				}
+			}
+
+			return responses
+		},
+	}
+}
+
+func chunklineItrBatchChunk(path string) (string, bool) {
+	const prefix = "/chunkline/itr/"
+	if !strings.HasPrefix(path, prefix) {
+		return "", false
+	}
+
+	chunk := strings.TrimPrefix(path, prefix)
+	if chunk == "" || strings.Contains(chunk, "/") {
+		return "", false
+	}
+	return chunk, true
 }
 
 func (h *Handler) handleChunklineBody(c echo.Context) error {

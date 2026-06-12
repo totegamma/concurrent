@@ -22,12 +22,13 @@ type CommitLog struct {
 }
 
 type RecordKey struct {
-	ID            int64   `json:"id" gorm:"primaryKey;autoIncrement"`
-	ParentID      *int64  `json:"parentID" gorm:"index:idx_record_keys_parent_id_record_id,priority:1"`
-	URI           string  `json:"uri" gorm:"type:text;unique"`
-	RecordID      *string `json:"recordID" gorm:"type:text;uniqueIndex;index:idx_record_keys_parent_id_record_id,priority:2"`
-	Record        Record  `json:"record" gorm:"foreignKey:RecordID;references:DocumentID;constraint:OnDelete:CASCADE;"`
-	CleanOnUpdate bool    `json:"cleanOnUpdate" gorm:"type:boolean;not null;default:false"`
+	ID              int64      `json:"id" gorm:"primaryKey;autoIncrement"`
+	ParentID        *int64     `json:"parentID" gorm:"index:idx_record_keys_parent_id_record_id,priority:1;index:idx_record_keys_parent_created_at_record_id,priority:1,where:parent_id IS NOT NULL AND record_created_at IS NOT NULL"`
+	URI             string     `json:"uri" gorm:"type:text;unique"`
+	RecordID        *string    `json:"recordID" gorm:"type:text;uniqueIndex;index:idx_record_keys_parent_id_record_id,priority:2;index:idx_record_keys_parent_created_at_record_id,priority:3,where:parent_id IS NOT NULL AND record_created_at IS NOT NULL"`
+	Record          Record     `json:"record" gorm:"foreignKey:RecordID;references:DocumentID;constraint:OnDelete:CASCADE;"`
+	RecordCreatedAt *time.Time `json:"recordCreatedAt,omitempty" gorm:"type:timestamp with time zone;index:idx_record_keys_parent_created_at_record_id,priority:2,sort:desc,where:parent_id IS NOT NULL AND record_created_at IS NOT NULL"`
+	CleanOnUpdate   bool       `json:"cleanOnUpdate" gorm:"type:boolean;not null;default:false"`
 }
 
 type Record struct {

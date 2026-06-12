@@ -66,6 +66,8 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		require.NoError(t, db.Where("uri = ?", key).Take(&recordKey).Error)
 		require.NotNil(t, recordKey.RecordID)
 		require.Equal(t, "record-old", *recordKey.RecordID)
+		require.NotNil(t, recordKey.RecordCreatedAt)
+		require.True(t, recordKey.RecordCreatedAt.Equal(createdAt))
 
 		gotSD, err := repo.GetSignedDocument(ctx, key)
 		require.NoError(t, err)
@@ -88,6 +90,8 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		require.NoError(t, db.Where("uri = ?", key).Take(&recordKey).Error)
 		require.NotNil(t, recordKey.RecordID)
 		require.Equal(t, "record-new", *recordKey.RecordID)
+		require.NotNil(t, recordKey.RecordCreatedAt)
+		require.True(t, recordKey.RecordCreatedAt.Equal(newCreatedAt))
 
 		require.NoError(t, db.Where("id = ?", "record-old").Take(&commit).Error)
 		require.True(t, commit.GcCandidate)

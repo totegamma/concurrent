@@ -216,15 +216,16 @@ func (r *RecordRepository) CreateRecord(
 
 	// RecordKeyを作る
 	rk := models.RecordKey{
-		URI:           key,
-		ParentID:      pid,
-		RecordID:      &documentID,
-		CleanOnUpdate: cleanOnUpdate,
+		URI:             key,
+		ParentID:        pid,
+		RecordID:        &documentID,
+		RecordCreatedAt: &createdAt,
+		CleanOnUpdate:   cleanOnUpdate,
 	}
 
 	err = db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "uri"}},
-		DoUpdates: clause.Assignments(map[string]any{"record_id": documentID, "parent_id": pid, "clean_on_update": cleanOnUpdate}),
+		DoUpdates: clause.Assignments(map[string]any{"record_id": documentID, "parent_id": pid, "record_created_at": createdAt, "clean_on_update": cleanOnUpdate}),
 	}).Create(&rk).Error
 	if err != nil {
 		span.RecordError(err)

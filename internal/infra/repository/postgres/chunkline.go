@@ -37,14 +37,13 @@ func (r *ChunklineRepository) GetChunklineManifest(ctx context.Context, uri stri
 	firstCollectionMember := models.RecordKey{}
 	err = r.db.WithContext(ctx).
 		Model(&models.RecordKey{}).
-		Joins("JOIN records r ON r.document_id = record_keys.record_id").
 		Where("record_keys.parent_id = ?", recordKey.ID).
-		Order("r.created_at ASC").
+		Where("record_keys.record_created_at IS NOT NULL").
+		Order("record_keys.record_created_at ASC").
 		Limit(1).
-		Preload("Record").
 		Take(&firstCollectionMember).Error
 	if err == nil {
-		firstChunk = firstCollectionMember.Record.CreatedAt.Unix() / 600
+		firstChunk = firstCollectionMember.RecordCreatedAt.Unix() / 600
 	}
 
 	safeURI := url.QueryEscape(uri)
@@ -66,21 +65,26 @@ func (r *ChunklineRepository) LookupLocalItrs(ctx context.Context, uris []string
 	defer span.End()
 
 	type TimelineRow struct {
-		URI          string    `gorm:"column:uri"`
-		MaxCreatedAt time.Time `gorm:"column:max_created_at"`
+		URI          string     `gorm:"column:uri"`
+		MaxCreatedAt *time.Time `gorm:"column:max_created_at"`
 	}
 
 	var res []TimelineRow
 
 	cutoff := time.Unix((chunkID+1)*600, 0) // descending order
 
+	latestSubQuery := r.db.
+		Table("record_keys AS child").
+		Select("child.record_created_at").
+		Where("child.parent_id = parent.id").
+		Where("child.record_created_at <= ?", cutoff).
+		Order("child.record_created_at DESC").
+		Limit(1)
+
 	err := r.db.WithContext(ctx).
 		Table("record_keys AS parent").
-		Joins("JOIN record_keys AS child ON child.parent_id = parent.id").
-		Joins("JOIN records r ON r.document_id = child.record_id").
-		Select("parent.uri AS uri, MAX(r.created_at) AS max_created_at").
-		Where("parent.uri IN ? AND r.created_at <= ?", uris, cutoff).
-		Group("parent.uri").
+		Select("parent.uri AS uri, (?) AS max_created_at", latestSubQuery).
+		Where("parent.uri IN ?", uris).
 		Scan(&res).Error
 
 	if err != nil {
@@ -90,6 +94,9 @@ func (r *ChunklineRepository) LookupLocalItrs(ctx context.Context, uris []string
 
 	lookup := make(map[string]int64)
 	for _, row := range res {
+		if row.MaxCreatedAt == nil {
+			continue
+		}
 		lookup[row.URI] = row.MaxCreatedAt.Unix() / 600
 	}
 	return lookup, nil
@@ -110,10 +117,9 @@ func (r *ChunklineRepository) LoadLocalBody(ctx context.Context, uri string, chu
 
 	var members []models.RecordKey
 	err = r.db.WithContext(ctx).
-		Joins("JOIN records r ON r.document_id = record_keys.record_id").
 		Where("parent_id = ?", parentRecordKey.ID).
-		Where("r.created_at <= ?", chunkDate).
-		Order("r.created_at DESC").
+		Where("record_created_at <= ?", chunkDate).
+		Order("record_created_at DESC").
 		Limit(defaultChunkSize).
 		Preload("Record").
 		Preload("Record.Document").
@@ -125,11 +131,10 @@ func (r *ChunklineRepository) LoadLocalBody(ctx context.Context, uri string, chu
 
 	if len(members) == 0 || members[len(members)-1].Record.CreatedAt.After(prevChunkDate) {
 		err = r.db.WithContext(ctx).
-			Joins("JOIN records r ON r.document_id = record_keys.record_id").
 			Where("parent_id = ?", parentRecordKey.ID).
-			Where("r.created_at <= ?", chunkDate).
-			Where("r.created_at > ?", prevChunkDate).
-			Order("r.created_at DESC").
+			Where("record_created_at <= ?", chunkDate).
+			Where("record_created_at > ?", prevChunkDate).
+			Order("record_created_at DESC").
 			Preload("Record").
 			Preload("Record.Document").
 			Find(&members).Error

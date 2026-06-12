@@ -13,7 +13,17 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
-func batchHandler(app *echo.Echo) echo.HandlerFunc {
+type batchRequestPart struct {
+	contentID string
+	request   *http.Request
+}
+
+type batchCustomHandler struct {
+	match  func(*http.Request) bool
+	handle func(req *http.Request, parts []batchRequestPart) map[string]*http.Response
+}
+
+func batchHandler(app *echo.Echo, customHandlers ...batchCustomHandler) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		req := c.Request()
 		ct := req.Header.Get("Content-Type")
@@ -30,6 +40,7 @@ func batchHandler(app *echo.Echo) echo.HandlerFunc {
 
 		mr := multipart.NewReader(req.Body, boundary)
 
+		parts := make([]batchRequestPart, 0)
 		c.Response().Header().Set("Content-Type", "multipart/mixed; boundary="+boundary)
 		mw := multipart.NewWriter(c.Response().Writer)
 		mw.SetBoundary(boundary)
@@ -58,23 +69,61 @@ func batchHandler(app *echo.Echo) echo.HandlerFunc {
 				return echo.NewHTTPError(http.StatusBadRequest, "failed to parse part as HTTP request")
 			}
 
-			path := pr.URL.Path
-			fmt.Println("Processing request for path:", path)
+			parts = append(parts, batchRequestPart{
+				contentID: contentID,
+				request:   pr.WithContext(req.Context()),
+			})
+		}
 
+		responses := make(map[string]*http.Response, len(parts))
+		handlerParts := make([][]batchRequestPart, len(customHandlers))
+		defaultParts := make([]batchRequestPart, 0, len(parts))
+
+		for _, part := range parts {
+			handled := false
+			for i, handler := range customHandlers {
+				if handler.match(part.request) {
+					handlerParts[i] = append(handlerParts[i], part)
+					handled = true
+					break
+				}
+			}
+			if !handled {
+				defaultParts = append(defaultParts, part)
+			}
+		}
+
+		for i, parts := range handlerParts {
+			if len(parts) == 0 {
+				continue
+			}
+			for contentID, resp := range customHandlers[i].handle(req, parts) {
+				responses[contentID] = resp
+			}
+		}
+
+		for _, part := range defaultParts {
 			recorder := NewResponseRecorder()
+			app.ServeHTTP(recorder, part.request)
+			responses[part.contentID] = recorder.Result()
+		}
 
-			app.ServeHTTP(recorder, pr)
-
+		for _, part := range parts {
 			pw, err := mw.CreatePart(map[string][]string{
 				"Content-Type": {"application/http"},
-				"Content-ID":   {contentID},
+				"Content-ID":   {part.contentID},
 			})
 			if err != nil {
 				return echo.NewHTTPError(http.StatusInternalServerError, "failed to create multipart part")
 			}
 
-			result := recorder.Result()
-			result.Write(pw)
+			result, ok := responses[part.contentID]
+			if !ok {
+				result = newBatchTextResponse(http.StatusInternalServerError, "batch handler did not return a response")
+			}
+			if err := result.Write(pw); err != nil {
+				return echo.NewHTTPError(http.StatusInternalServerError, "failed to write multipart part")
+			}
 		}
 
 		return nil
@@ -90,7 +139,7 @@ type responseRecorder struct {
 func NewResponseRecorder() *responseRecorder {
 	return &responseRecorder{
 		header: make(http.Header),
-		status: 0,
+		status: http.StatusOK,
 	}
 }
 
@@ -109,7 +158,18 @@ func (r *responseRecorder) WriteHeader(statusCode int) {
 func (r *responseRecorder) Result() *http.Response {
 	return &http.Response{
 		StatusCode: r.status,
+		Status:     fmt.Sprintf("%d %s", r.status, http.StatusText(r.status)),
 		Header:     r.header,
 		Body:       io.NopCloser(&r.body),
+	}
+}
+
+func newBatchTextResponse(status int, body string) *http.Response {
+	return &http.Response{
+		StatusCode:    status,
+		Status:        fmt.Sprintf("%d %s", status, http.StatusText(status)),
+		Header:        http.Header{"Content-Type": {"text/plain; charset=UTF-8"}},
+		Body:          io.NopCloser(strings.NewReader(body)),
+		ContentLength: int64(len(body)),
 	}
 }

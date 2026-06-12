@@ -9,12 +9,12 @@ import (
 // Indexes:
 //   - PRIMARY KEY (commit_log_id, owner): de-duplicates owner rows for a commit;
 //     used by postgres.RecordRepository.CreateCommitOwners.
-//   - Note: postgres.RecordRepository.GetAllCommitLogs filters by owner, but this
-//     composite key is commit_log_id-first and is not an owner-leading lookup.
+//   - idx_commit_owners_owner_commit_log_id (owner, commit_log_id): owner-first
+//     dump lookup; used by postgres.RecordRepository.GetAllCommitLogs.
 type CommitOwner struct {
-	CommitLogID string    `json:"commit_log_id" gorm:"type:text;primaryKey"`
+	CommitLogID string    `json:"commit_log_id" gorm:"type:text;primaryKey;index:idx_commit_owners_owner_commit_log_id,priority:2"`
 	CommitLog   CommitLog `json:"-" gorm:"constraint:OnDelete:CASCADE;"`
-	Owner       string    `json:"owner" gorm:"type:text;primaryKey"`
+	Owner       string    `json:"owner" gorm:"type:text;primaryKey;index:idx_commit_owners_owner_commit_log_id,priority:1"`
 }
 
 // Indexes:
@@ -89,19 +89,24 @@ type Record struct {
 //   - idx_ack_from_to_context UNIQUE (from, to, context): idempotent ack state
 //     upsert; used by postgres.RecordRepository.saveAck and filtered by
 //     GetAcknowledgeRecords/GetAcknowledgeRecordCounts.
-//   - Note: ack list/count queries also filter valid and order/group by
-//     created_at/context; those are not covered by a dedicated index today.
+//   - idx_acks_from_valid_created_at (from, valid, created_at): from-filtered
+//     ack list/count lookup; used by postgres.RecordRepository.GetAcknowledge*.
+//   - idx_acks_to_valid_created_at (to, valid, created_at): to-filtered ack
+//     list/count lookup; used by postgres.RecordRepository.GetAcknowledge*.
+//   - idx_acks_context_valid_created_at (context, valid, created_at):
+//     context-filtered ack list/count lookup; used by
+//     postgres.RecordRepository.GetAcknowledge*.
 type Ack struct {
-	From    string `json:"from" gorm:"type:text;index:idx_ack_from_to_context,unique"`
-	To      string `json:"to" gorm:"type:text;index:idx_ack_from_to_context,unique"`
-	Context string `json:"schema" gorm:"type:text;index:idx_ack_from_to_context,unique"`
+	From    string `json:"from" gorm:"type:text;index:idx_ack_from_to_context,unique;index:idx_acks_from_valid_created_at,priority:1"`
+	To      string `json:"to" gorm:"type:text;index:idx_ack_from_to_context,unique;index:idx_acks_to_valid_created_at,priority:1"`
+	Context string `json:"schema" gorm:"type:text;index:idx_ack_from_to_context,unique;index:idx_acks_context_valid_created_at,priority:1"`
 
 	DocumentID string    `json:"id" gorm:"primaryKey;type:text"`
 	Document   CommitLog `json:"-" gorm:"foreignKey:DocumentID;references:ID;constraint:OnDelete:CASCADE;"`
 
-	Valid bool `json:"valid" gorm:"type:boolean;not null;default:true"`
+	Valid bool `json:"valid" gorm:"type:boolean;not null;default:true;index:idx_acks_from_valid_created_at,priority:2;index:idx_acks_to_valid_created_at,priority:2;index:idx_acks_context_valid_created_at,priority:2"`
 
-	CreatedAt time.Time `json:"createdAt" gorm:"type:timestamp with time zone;not null"` // user-provided creation time
+	CreatedAt time.Time `json:"createdAt" gorm:"type:timestamp with time zone;not null;index:idx_acks_from_valid_created_at,priority:3;index:idx_acks_to_valid_created_at,priority:3;index:idx_acks_context_valid_created_at,priority:3"` // user-provided creation time
 	CDate     time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 }
 
@@ -111,36 +116,41 @@ type Ack struct {
 //   - idx_associations_target_id (target_id): association lookup by target record
 //     key; used by postgres.RecordRepository.GetAssociatedRecords,
 //     GetAssociatedRecordCountsBySchema, and GetAssociatedRecordCountsByVariant.
+//   - idx_associations_target_schema_variant_author
+//     (target_id, schema, variant, author): target lookup with optional filters;
+//     used by postgres.RecordRepository.GetAssociatedRecords.
+//   - idx_associations_target_schema_variant_created_at
+//     (target_id, schema, variant, created_at): target/schema counts by variant
+//     and earliest association ordering; used by
+//     postgres.RecordRepository.GetAssociatedRecordCountsByVariant.
 //   - uni_associations_unique (unique): idempotency key for association writes;
 //     used by postgres.RecordRepository.CreateAssociation.
-//   - Note: association queries can additionally filter schema, variant, and
-//     author; those predicates are not covered by a composite index today.
 type Association struct {
 	DocumentID string    `json:"id" gorm:"primaryKey;type:text"`
 	Document   CommitLog `json:"-" gorm:"foreignKey:DocumentID;references:ID;constraint:OnDelete:CASCADE;"`
 
-	TargetID int64     `json:"targetID" gorm:"type:bigint;index"`
+	TargetID int64     `json:"targetID" gorm:"type:bigint;index:idx_associations_target_id;index:idx_associations_target_schema_variant_author,priority:1;index:idx_associations_target_schema_variant_created_at,priority:1"`
 	Target   RecordKey `json:"-" gorm:"foreignKey:TargetID;references:ID;constraint:OnDelete:CASCADE;"`
 
 	Owner  string `json:"owner" gorm:"type:text"`
-	Author string `json:"author" gorm:"type:text"`
+	Author string `json:"author" gorm:"type:text;index:idx_associations_target_schema_variant_author,priority:4"`
 
-	Schema  string  `json:"schema" gorm:"type:text"`
-	Variant *string `json:"variant" gorm:"type:text"`
+	Schema  string  `json:"schema" gorm:"type:text;index:idx_associations_target_schema_variant_author,priority:2;index:idx_associations_target_schema_variant_created_at,priority:2"`
+	Variant *string `json:"variant" gorm:"type:text;index:idx_associations_target_schema_variant_author,priority:3;index:idx_associations_target_schema_variant_created_at,priority:3"`
 	Unique  string  `json:"unique" gorm:"type:text;unique"`
 
-	CreatedAt time.Time `json:"createdAt" gorm:"type:timestamp with time zone;not null"` // user-provided creation time
+	CreatedAt time.Time `json:"createdAt" gorm:"type:timestamp with time zone;not null;index:idx_associations_target_schema_variant_created_at,priority:4"` // user-provided creation time
 	CDate     time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 }
 
 // Indexes:
 //   - PRIMARY KEY (id): FQDN lookup and upsert target; used by
 //     postgres.ServerRepository.GetAndCacheByFQDN and cache writes.
-//   - Note: postgres.ServerRepository.GetAndCacheByCSID filters by cs_id, but
-//     there is no cs_id index today.
+//   - idx_servers_cs_id (cs_id): CSID cache lookup; used by
+//     postgres.ServerRepository.GetAndCacheByCSID.
 type Server struct {
 	ID          string    `json:"fqdn" gorm:"type:text;primaryKey"` // FQDN
-	CSID        string    `json:"csid" gorm:"type:text"`
+	CSID        string    `json:"csid" gorm:"type:text;index:idx_servers_cs_id"`
 	Tag         string    `json:"tag" gorm:"type:text"`
 	Layer       string    `json:"layer" gorm:"type:text"`
 	WellKnown   string    `json:"wellKnown" gorm:"type:jsonb"`

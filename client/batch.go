@@ -103,6 +103,15 @@ func DoBatchRequestWithClient(ctx context.Context, client *http.Client, endpoint
 		if err != nil {
 			return nil, err
 		}
+		body, err := io.ReadAll(resp.Body)
+		if closeErr := resp.Body.Close(); err == nil {
+			err = closeErr
+		}
+		if err != nil {
+			return nil, err
+		}
+		resp.Body = io.NopCloser(bytes.NewReader(body))
+		resp.ContentLength = int64(len(body))
 
 		responses[contentID] = resp
 	}

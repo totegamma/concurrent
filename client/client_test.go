@@ -242,6 +242,76 @@ func TestGetResourceBatchUsesBatchEndpoint(t *testing.T) {
 	}
 }
 
+func TestGetResourceBatchDecodesLargeBatchResponse(t *testing.T) {
+	t.Parallel()
+
+	const domain = "example.test"
+	uris := []string{
+		"cckv://example.test/concrnt.world/profiles/main",
+		"cckv://example.test/concrnt.world/profiles/sub",
+	}
+	resources := map[string]map[string]string{
+		uris[0]: {"name": "main", "body": strings.Repeat("a", 4096)},
+		uris[1]: {"name": "sub", "body": strings.Repeat("b", 4096)},
+	}
+
+	var handler http.Handler
+	handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/concrnt":
+			wkc := concrnt.WellKnownConcrnt{
+				Version: "2.0",
+				Domain:  domain,
+				CSID:    "ccs1example",
+				Layer:   "concrnt",
+				Endpoints: map[string]string{
+					"net.concrnt.core.resolve": "/resolve?uri={uri}",
+					"net.concrnt.core.batch":   "/batch",
+				},
+			}
+			if err := json.NewEncoder(w).Encode(wkc); err != nil {
+				t.Fatalf("encode well-known: %v", err)
+			}
+		case "/resolve":
+			uriParam, err := url.QueryUnescape(r.URL.Query().Get("uri"))
+			if err != nil {
+				t.Fatalf("unescape uri: %v", err)
+			}
+			resource, ok := resources[uriParam]
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			if err := json.NewEncoder(w).Encode(resource); err != nil {
+				t.Fatalf("encode resource: %v", err)
+			}
+		case "/batch":
+			serveTestBatch(t, handler, w, r)
+		default:
+			http.NotFound(w, r)
+		}
+	})
+
+	server := httptest.NewServer(handler)
+	defer server.Close()
+
+	cl := New(domain)
+	cl.AddHostRemapping(domain, server.URL)
+
+	got := make([]map[string]string, len(uris))
+	results := []any{&got[0], &got[1]}
+	err := cl.GetResourceBatch(context.Background(), uris, "application/json", nil, results)
+	if err != nil {
+		t.Fatalf("GetResourceBatch returned error: %v", err)
+	}
+
+	for i, uri := range uris {
+		if got[i]["body"] != resources[uri]["body"] {
+			t.Fatalf("resource %d body length = %d, want %d", i, len(got[i]["body"]), len(resources[uri]["body"]))
+		}
+	}
+}
+
 func TestGetResourceBatchFallsBackWhenBatchEndpointMissing(t *testing.T) {
 	t.Parallel()
 

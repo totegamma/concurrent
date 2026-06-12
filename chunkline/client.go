@@ -88,7 +88,7 @@ func (s *Client) QueryDescending(ctx context.Context, uris []string, until time.
 		})
 	}
 
-	var result []BodyItemWithSource
+	result := make([]BodyItemWithSource, 0)
 	var uniq = make(map[string]bool)
 
 	var itrlimit = 1000

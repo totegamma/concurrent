@@ -157,10 +157,14 @@ func (r *responseRecorder) WriteHeader(statusCode int) {
 
 func (r *responseRecorder) Result() *http.Response {
 	return &http.Response{
-		StatusCode: r.status,
-		Status:     fmt.Sprintf("%d %s", r.status, http.StatusText(r.status)),
-		Header:     r.header,
-		Body:       io.NopCloser(&r.body),
+		StatusCode:    r.status,
+		Status:        fmt.Sprintf("%d %s", r.status, http.StatusText(r.status)),
+		Proto:         "HTTP/1.1",
+		ProtoMajor:    1,
+		ProtoMinor:    1,
+		Header:        r.header,
+		Body:          io.NopCloser(bytes.NewReader(r.body.Bytes())),
+		ContentLength: int64(r.body.Len()),
 	}
 }
 
@@ -168,6 +172,9 @@ func newBatchTextResponse(status int, body string) *http.Response {
 	return &http.Response{
 		StatusCode:    status,
 		Status:        fmt.Sprintf("%d %s", status, http.StatusText(status)),
+		Proto:         "HTTP/1.1",
+		ProtoMajor:    1,
+		ProtoMinor:    1,
 		Header:        http.Header{"Content-Type": {"text/plain; charset=UTF-8"}},
 		Body:          io.NopCloser(strings.NewReader(body)),
 		ContentLength: int64(len(body)),

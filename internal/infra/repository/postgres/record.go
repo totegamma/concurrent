@@ -286,31 +286,10 @@ func (r *RecordRepository) CreateAssociation(ctx context.Context, tx usecase.Rep
 	return err
 }
 
-func (r *RecordRepository) Acknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, ackContext string, valid bool, createdAt time.Time, resultURI string) (string, error) {
+func (r *RecordRepository) Acknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) error {
 	ctx, span := tracer.Start(ctx, "Repository.Record.Acknowledge")
 	defer span.End()
 
-	err := r.saveAck(ctx, tx, documentID, from, to, ackContext, valid, createdAt)
-	if err != nil {
-		span.RecordError(err)
-	}
-
-	return resultURI, err
-}
-
-func (r *RecordRepository) UnAcknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, ackContext string, valid bool, createdAt time.Time) error {
-	ctx, span := tracer.Start(ctx, "Repository.Record.Unacknowledge")
-	defer span.End()
-
-	err := r.saveAck(ctx, tx, documentID, from, to, ackContext, valid, createdAt)
-	if err != nil {
-		span.RecordError(err)
-	}
-
-	return err
-}
-
-func (r *RecordRepository) saveAck(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, ackContext string, valid bool, createdAt time.Time) error {
 	db, err := getRecordTx(ctx, tx)
 	if err != nil {
 		return err
@@ -319,16 +298,42 @@ func (r *RecordRepository) saveAck(ctx context.Context, tx usecase.RepositoryTx,
 	ack := models.Ack{
 		From:       from,
 		To:         to,
-		Context:    ackContext,
+		Schema:     schema,
 		DocumentID: documentID,
-		Valid:      valid,
+		Valid:      true,
 		CreatedAt:  createdAt,
 	}
 
 	return db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "context"}},
-		DoUpdates: clause.Assignments(map[string]any{"valid": valid, "document_id": documentID}),
+		DoUpdates: clause.Assignments(map[string]any{"valid": true, "document_id": documentID}),
 	}).Create(&ack).Error
+
+}
+
+func (r *RecordRepository) UnAcknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) error {
+	ctx, span := tracer.Start(ctx, "Repository.Record.Unacknowledge")
+	defer span.End()
+
+	db, err := getRecordTx(ctx, tx)
+	if err != nil {
+		return err
+	}
+
+	ack := models.Ack{
+		From:       from,
+		To:         to,
+		Schema:     schema,
+		DocumentID: documentID,
+		Valid:      false,
+		CreatedAt:  createdAt,
+	}
+
+	return db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "context"}},
+		DoUpdates: clause.Assignments(map[string]any{"valid": false, "document_id": documentID}),
+	}).Create(&ack).Error
+
 }
 
 func (r *RecordRepository) GetHierarchicalRecordPolicies(ctx context.Context, uri string) ([]concrnt.Policy, error) {

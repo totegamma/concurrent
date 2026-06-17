@@ -34,8 +34,8 @@ type RecordRepository interface {
 	CreateEntity(ctx context.Context, tx RepositoryTx, ccid string, alias *string, domain string, documentID string) error
 	CreateRecord(ctx context.Context, tx RepositoryTx, documentID string, key string, owner string, schema string, onUpdate *string, policies *string, distributions []string, redirect *string, createdAt time.Time) (string, error)
 	CreateAssociation(ctx context.Context, tx RepositoryTx, documentID string, targetURI string, owner string, author string, schema string, variant *string, unique string, createdAt time.Time) error
-	Acknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, ackContext string, valid bool, createdAt time.Time, resultURI string) (string, error)
-	UnAcknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, ackContext string, valid bool, createdAt time.Time) error
+	Acknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) error
+	UnAcknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) error
 	Delete(ctx context.Context, tx RepositoryTx, targetURI string) (string, error)
 
 	GetSignedDocument(ctx context.Context, uri string) (*concrnt.SignedDocument, error)
@@ -249,15 +249,53 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 
 	var applyCommit func(tx RepositoryTx) (*commitApplyResult, error)
 
-	// accept
-	switch doc.Schema {
-	// 特殊なスキーマの場合の処理
-	case schemas.EntityURL:
-		//return uc.saveEntity(ctx, tx, documentID, sd)
+	switch doc.Kind {
+	case "entity":
 		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
 			return uc.saveEntity(ctx, tx, documentID, sd)
 		}
-	case schemas.DeleteURL:
+
+	case "record":
+		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
+			return uc.createRecord(ctx, tx, documentID, ip, *requester, doc, sd, mode)
+		}
+
+	case "association":
+		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
+			return uc.createAssociation(ctx, tx, documentID, ip, *requester, doc, sd, mode)
+		}
+
+	case "ack":
+		if requester == nil {
+			err := errors.New("requester entity not found for ack operation")
+			span.RecordError(err)
+			return nil, err
+		}
+		referrer := GetReferrerFromReferences(sd, requester.CCKV())
+		targetUser, err := uc.GetEntity(ctx, concrnt.CCURI{Scheme: "cckv", Owner: *doc.Associate, Hint: referrer}.String())
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
+			return uc.acknowledge(ctx, tx, documentID, *requester, *targetUser, doc, sd, mode)
+		}
+
+	case "unack":
+		if requester == nil {
+			err := errors.New("requester entity not found for unack operation")
+			span.RecordError(err)
+			return nil, err
+		}
+		targetUser, err := uc.GetEntity(ctx, concrnt.CCURI{Scheme: "cckv", Owner: *doc.Associate}.String())
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
+			return uc.unacknowledge(ctx, tx, documentID, *requester, *targetUser, doc, sd, mode)
+		}
+	case "delete":
 		if requester == nil {
 			err := errors.New("requester entity not found for delete operation")
 			span.RecordError(err)
@@ -265,64 +303,6 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		}
 		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
 			return uc.deleteRecord(ctx, tx, *requester, sd, mode)
-		}
-	case schemas.AcknowledgeURL:
-		if requester == nil {
-			err := errors.New("requester entity not found for ack operation")
-			span.RecordError(err)
-			return nil, err
-		}
-		var ackDoc concrnt.Document[schemas.Acknowledge]
-		err := json.Unmarshal([]byte(sd.Document), &ackDoc)
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
-		referrer := GetReferrerFromReferences(sd, requester.CCKV())
-		targetUser, err := uc.GetEntity(ctx, concrnt.CCURI{Scheme: "cckv", Owner: *ackDoc.Associate, Hint: referrer}.String())
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
-		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
-			return uc.acknowledge(ctx, tx, documentID, *requester, *targetUser, ackDoc, sd, mode)
-		}
-	case schemas.UnAcknowledgeURL:
-		if requester == nil {
-			err := errors.New("requester entity not found for unack operation")
-			span.RecordError(err)
-			return nil, err
-		}
-		var ackDoc concrnt.Document[schemas.Acknowledge]
-		err := json.Unmarshal([]byte(sd.Document), &ackDoc)
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
-		targetUser, err := uc.GetEntity(ctx, concrnt.CCURI{Scheme: "cckv", Owner: *ackDoc.Associate}.String())
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
-		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
-			return uc.unacknowledge(ctx, tx, documentID, *requester, *targetUser, ackDoc, sd, mode)
-		}
-	default:
-		if requester == nil {
-			err := errors.New("requester entity not found for record or associate operation")
-			slog.Error("requester entity not found for record or associate operation", slog.String("error", err.Error()))
-			span.RecordError(err)
-			return nil, err
-		}
-		// Associateフィールドがあれば通常Recordではない
-		if doc.Associate != nil {
-			applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
-				return uc.createAssociation(ctx, tx, documentID, ip, *requester, doc, sd, mode)
-			}
-		} else { // 通常Record
-			applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
-				return uc.createRecord(ctx, tx, documentID, ip, *requester, doc, sd, mode)
-			}
 		}
 	}
 
@@ -1100,7 +1080,7 @@ func (uc *RecordUsecase) localEntityOwners(ctx context.Context, candidates ...do
 	return owners
 }
 
-func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, documentID string, requester domain.Entity, targetUser domain.Entity, doc concrnt.Document[schemas.Acknowledge], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
+func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, documentID string, requester domain.Entity, targetUser domain.Entity, doc concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.Acknowledge")
 	defer span.End()
 
@@ -1116,8 +1096,7 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 			return nil, err
 		}
 
-		resultURI := concrnt.ComposeCCURI("ccfs", parsedAssociate.Owner, documentID)
-		_, err = uc.repo.Acknowledge(ctx, tx, documentID, doc.Author, parsedAssociate.Owner, doc.Value.Context, true, doc.CreatedAt, resultURI)
+		err = uc.repo.Acknowledge(ctx, tx, documentID, doc.Author, parsedAssociate.Owner, doc.Schema, doc.CreatedAt)
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
@@ -1157,7 +1136,7 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 	return &commitApplyResult{result: &sd, owners: owners, postProcesses: postProcesses}, nil
 }
 
-func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, documentID string, requester domain.Entity, targetUser domain.Entity, doc concrnt.Document[schemas.Acknowledge], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
+func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, documentID string, requester domain.Entity, targetUser domain.Entity, doc concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.UnAcknowledge")
 	defer span.End()
 
@@ -1173,7 +1152,7 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, doc
 			return nil, err
 		}
 
-		err = uc.repo.UnAcknowledge(ctx, tx, documentID, doc.Author, parsedAssociate.Owner, doc.Value.Context, false, doc.CreatedAt)
+		err = uc.repo.UnAcknowledge(ctx, tx, documentID, doc.Author, parsedAssociate.Owner, doc.Schema, doc.CreatedAt)
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
@@ -1409,12 +1388,12 @@ func policyDeleteAction(doc concrnt.Document[any]) string {
 	return "record:delete"
 }
 
-func (uc *RecordUsecase) GetAcknowledgeRecords(ctx context.Context, from, to, context string) ([]concrnt.SignedDocument, error) {
-	return uc.repo.GetAcknowledgeRecords(ctx, from, to, context)
+func (uc *RecordUsecase) GetAcknowledgeRecords(ctx context.Context, from, to, schema string) ([]concrnt.SignedDocument, error) {
+	return uc.repo.GetAcknowledgeRecords(ctx, from, to, schema)
 }
 
-func (uc *RecordUsecase) GetAcknowledgeRecordCounts(ctx context.Context, from, to, context string) (map[string]int64, error) {
-	return uc.repo.GetAcknowledgeRecordCounts(ctx, from, to, context)
+func (uc *RecordUsecase) GetAcknowledgeRecordCounts(ctx context.Context, from, to, schema string) (map[string]int64, error) {
+	return uc.repo.GetAcknowledgeRecordCounts(ctx, from, to, schema)
 }
 
 func (uc *RecordUsecase) GetAssociatedRecords(ctx context.Context, targetURI, schema, variant, author string) ([]concrnt.SignedDocument, error) {

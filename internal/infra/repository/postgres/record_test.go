@@ -31,6 +31,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		createdAt := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
 		distributions := []string{"cckv://con1channel/timeline"}
 		oldSD := repositorySignedDocument(t, concrnt.Document[map[string]string]{
+			Kind:        "record",
 			Key:         key,
 			Value:       map[string]string{"body": "old"},
 			Author:      "con1author",
@@ -76,6 +77,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 
 		newCreatedAt := time.Date(2026, 1, 3, 3, 4, 5, 0, time.UTC)
 		newSD := repositorySignedDocument(t, concrnt.Document[map[string]string]{
+			Kind:      "record",
 			Key:       key,
 			Value:     map[string]string{"body": "new"},
 			Author:    "con1author",
@@ -110,6 +112,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		targetURI := "cckv://con1target/timeline/post-2"
 		targetCreatedAt := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
 		targetSD := repositorySignedDocument(t, concrnt.Document[map[string]string]{
+			Kind:      "record",
 			Key:       targetURI,
 			Value:     map[string]string{"body": "target"},
 			Author:    "con1target",
@@ -118,7 +121,8 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		})
 
 		refSD := repositorySignedDocument(t, concrnt.Document[schemas.Reference]{
-			Key: "cckv://con1owner/timeline/ref-1",
+			Kind: "record",
+			Key:  "cckv://con1owner/timeline/ref-1",
 			Value: schemas.Reference{
 				Href: targetURI,
 			},
@@ -146,6 +150,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 	t.Run("create association and toggle ack", func(t *testing.T) {
 		variant := "reply"
 		associationSD := repositorySignedDocument(t, concrnt.Document[map[string]string]{
+			Kind:               "association",
 			Value:              map[string]string{"body": "comment"},
 			Author:             "con1author",
 			Schema:             "https://schema.example/comment.json",
@@ -167,37 +172,41 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		require.Equal(t, associationUnique, association.Unique)
 		requireCommitOwner(t, db, "association-record", "con1owner")
 
-		ackSD := repositorySignedDocument(t, concrnt.Document[schemas.Acknowledge]{
-			Value: schemas.Acknowledge{
-				Context: "like",
-			},
+		ackSchema := "https://schema.example/like.json"
+		ackSD := repositorySignedDocument(t, concrnt.Document[map[string]string]{
+			Kind:      "ack",
+			Value:     map[string]string{"context": "like"},
 			Author:    "con1author",
-			Schema:    schemas.AcknowledgeURL,
+			Schema:    ackSchema,
 			CreatedAt: time.Date(2026, 4, 5, 6, 7, 8, 0, time.UTC),
 			Associate: &key,
 		})
 		ackCreatedAt := time.Date(2026, 4, 5, 6, 7, 8, 0, time.UTC)
-		var resultURI string
 		withRepositoryTx(t, ctx, repo, "ack-on", "127.0.0.1", ackSD, []string{"con1author", "con1owner"}, func(tx usecase.RepositoryTx) error {
-			var err error
-			resultURI, err = repo.Acknowledge(ctx, tx, "ack-on", "con1author", "con1owner", "like", true, ackCreatedAt, "ccfs://con1owner/ack-on")
-			return err
+			return repo.Acknowledge(ctx, tx, "ack-on", "con1author", "con1owner", ackSchema, ackCreatedAt)
 		})
-		require.Equal(t, "ccfs://con1owner/ack-on", resultURI)
 
 		var ack models.Ack
-		require.NoError(t, db.Where(`"from" = ? AND "to" = ? AND context = ?`, "con1author", "con1owner", "like").Take(&ack).Error)
+		require.NoError(t, db.Where(`"from" = ? AND "to" = ? AND schema = ?`, "con1author", "con1owner", ackSchema).Take(&ack).Error)
 		require.True(t, ack.Valid)
 		require.Equal(t, "ack-on", ack.DocumentID)
 		requireCommitOwner(t, db, "ack-on", "con1author")
 		requireCommitOwner(t, db, "ack-on", "con1owner")
 
-		withRepositoryTx(t, ctx, repo, "ack-off", "127.0.0.1", ackSD, []string{"con1author", "con1owner"}, func(tx usecase.RepositoryTx) error {
-			return repo.UnAcknowledge(ctx, tx, "ack-off", "con1author", "con1owner", "like", false, ackCreatedAt)
+		unackSD := repositorySignedDocument(t, concrnt.Document[map[string]string]{
+			Kind:      "unack",
+			Value:     map[string]string{"context": "like"},
+			Author:    "con1author",
+			Schema:    ackSchema,
+			CreatedAt: ackCreatedAt,
+			Associate: &key,
+		})
+		withRepositoryTx(t, ctx, repo, "ack-off", "127.0.0.1", unackSD, []string{"con1author", "con1owner"}, func(tx usecase.RepositoryTx) error {
+			return repo.UnAcknowledge(ctx, tx, "ack-off", "con1author", "con1owner", ackSchema, ackCreatedAt)
 		})
 
 		var unack models.Ack
-		require.NoError(t, db.Where(`"from" = ? AND "to" = ? AND context = ?`, "con1author", "con1owner", "like").Take(&unack).Error)
+		require.NoError(t, db.Where(`"from" = ? AND "to" = ? AND schema = ?`, "con1author", "con1owner", ackSchema).Take(&unack).Error)
 		require.False(t, unack.Valid)
 		require.Equal(t, "ack-off", unack.DocumentID)
 		requireCommitOwner(t, db, "ack-off", "con1author")
@@ -207,6 +216,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 	t.Run("rollback removes commit and record", func(t *testing.T) {
 		rollbackKey := "cckv://con1owner/timeline/rollback"
 		rollbackSD := repositorySignedDocument(t, concrnt.Document[map[string]string]{
+			Kind:      "record",
 			Key:       rollbackKey,
 			Value:     map[string]string{"body": "rollback"},
 			Author:    "con1author",
@@ -232,6 +242,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 	t.Run("delete keeps delete commit", func(t *testing.T) {
 		deleteKey := "cckv://con1owner/timeline/delete-target"
 		deleteTargetSD := repositorySignedDocument(t, concrnt.Document[map[string]string]{
+			Kind:      "record",
 			Key:       deleteKey,
 			Value:     map[string]string{"body": "delete target"},
 			Author:    "con1author",
@@ -244,9 +255,9 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		})
 
 		deleteSD := repositorySignedDocument(t, concrnt.Document[schemas.Delete]{
+			Kind:      "delete",
 			Value:     schemas.Delete(deleteKey),
 			Author:    "con1author",
-			Schema:    schemas.DeleteURL,
 			CreatedAt: time.Date(2026, 6, 8, 8, 9, 10, 0, time.UTC),
 		})
 		withRepositoryTx(t, ctx, repo, "delete-commit", "127.0.0.1", deleteSD, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {

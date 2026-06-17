@@ -305,7 +305,7 @@ func (r *RecordRepository) Acknowledge(ctx context.Context, tx usecase.Repositor
 	}
 
 	return db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "context"}},
+		Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "schema"}},
 		DoUpdates: clause.Assignments(map[string]any{"valid": true, "document_id": documentID}),
 	}).Create(&ack).Error
 
@@ -330,7 +330,7 @@ func (r *RecordRepository) UnAcknowledge(ctx context.Context, tx usecase.Reposit
 	}
 
 	return db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "context"}},
+		Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "schema"}},
 		DoUpdates: clause.Assignments(map[string]any{"valid": false, "document_id": documentID}),
 	}).Create(&ack).Error
 

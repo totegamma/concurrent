@@ -44,8 +44,8 @@ type RecordRepository interface {
 
 	GetDistributions(ctx context.Context, uri string) ([]string, error)
 
-	GetAcknowledgeRecords(ctx context.Context, from, to, context string) ([]concrnt.SignedDocument, error)
-	GetAcknowledgeRecordCounts(ctx context.Context, from, to, context string) (map[string]int64, error)
+	GetAcknowledgeRecords(ctx context.Context, from, to, schema string) ([]concrnt.SignedDocument, error)
+	GetAcknowledgeRecordCounts(ctx context.Context, from, to, schema string) (map[string]int64, error)
 	GetAssociatedRecords(ctx context.Context, targetURI, schema, variant, author string) ([]concrnt.SignedDocument, error)
 	GetAssociatedRecordCountsBySchema(ctx context.Context, targetURI string) (map[string]int64, error)
 	GetAssociatedRecordCountsByVariant(ctx context.Context, targetURI, schema string) (*utils.OrderedKVMap[int64], error)
@@ -272,7 +272,11 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 			return nil, err
 		}
 		referrer := GetReferrerFromReferences(sd, requester.CCKV())
-		targetUser, err := uc.GetEntity(ctx, concrnt.CCURI{Scheme: "cckv", Owner: *doc.Associate, Hint: referrer}.String())
+		targetUserID := *doc.Associate
+		if referrer != nil {
+			targetUserID = targetUserID + "@" + *referrer
+		}
+		targetUser, err := uc.GetEntity(ctx, targetUserID)
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
@@ -287,7 +291,12 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 			span.RecordError(err)
 			return nil, err
 		}
-		targetUser, err := uc.GetEntity(ctx, concrnt.CCURI{Scheme: "cckv", Owner: *doc.Associate}.String())
+		referrer := GetReferrerFromReferences(sd, requester.CCKV())
+		targetUserID := *doc.Associate
+		if referrer != nil {
+			targetUserID = targetUserID + "@" + *referrer
+		}
+		targetUser, err := uc.GetEntity(ctx, targetUserID)
 		if err != nil {
 			span.RecordError(err)
 			return nil, err

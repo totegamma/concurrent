@@ -916,7 +916,7 @@ func (r *RecordRepository) QueryByParent(
 	return sds, nil
 }
 
-func (r *RecordRepository) GetAcknowledgeRecords(ctx context.Context, from, to, context string) ([]concrnt.SignedDocument, error) {
+func (r *RecordRepository) GetAcknowledgeRecords(ctx context.Context, from, to, schema string) ([]concrnt.SignedDocument, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.GetAcknowledgeRecords")
 	defer span.End()
 
@@ -931,11 +931,11 @@ func (r *RecordRepository) GetAcknowledgeRecords(ctx context.Context, from, to, 
 	if to != "" {
 		query = query.Where("acks.to = ?", to)
 	}
-	if context != "" {
-		query = query.Where("acks.context = ?", context)
+	if schema != "" {
+		query = query.Where("acks.schema = ?", schema)
 	}
 
-	if from != "" || to != "" || context != "" {
+	if from != "" || to != "" || schema != "" {
 		query = query.Where("acks.valid = ?", true)
 	}
 
@@ -966,20 +966,20 @@ func (r *RecordRepository) GetAcknowledgeRecords(ctx context.Context, from, to, 
 	return result, nil
 }
 
-func (r *RecordRepository) GetAcknowledgeRecordCounts(ctx context.Context, from, to, context string) (map[string]int64, error) {
+func (r *RecordRepository) GetAcknowledgeRecordCounts(ctx context.Context, from, to, schema string) (map[string]int64, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.GetAcknowledgeRecordCounts")
 	defer span.End()
 
 	type result struct {
-		Context string
-		Count   int64
+		Schema string
+		Count  int64
 	}
 
 	var results []result
 
 	query := r.db.WithContext(ctx).
 		Model(&models.Ack{}).
-		Select("context, COUNT(*) AS count").
+		Select("schema, COUNT(*) AS count").
 		Where("valid = ?", true)
 
 	if from != "" {
@@ -988,11 +988,11 @@ func (r *RecordRepository) GetAcknowledgeRecordCounts(ctx context.Context, from,
 	if to != "" {
 		query = query.Where("acks.to = ?", to)
 	}
-	if context != "" {
-		query = query.Where("acks.context = ?", context)
+	if schema != "" {
+		query = query.Where("acks.schema = ?", schema)
 	}
 
-	err := query.Group("context").Scan(&results).Error
+	err := query.Group("schema").Scan(&results).Error
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -1000,7 +1000,7 @@ func (r *RecordRepository) GetAcknowledgeRecordCounts(ctx context.Context, from,
 
 	counts := make(map[string]int64)
 	for _, r := range results {
-		counts[r.Context] = r.Count
+		counts[r.Schema] = r.Count
 	}
 
 	return counts, nil

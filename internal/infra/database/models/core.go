@@ -86,27 +86,27 @@ type Record struct {
 // Indexes:
 //   - PRIMARY KEY (document_id): one ack state per commit document and commit-log
 //     foreign-key target.
-//   - idx_ack_from_to_context UNIQUE (from, to, context): idempotent ack state
+//   - idx_ack_from_to_schema UNIQUE (from, to, schema): idempotent ack state
 //     upsert; used by postgres.RecordRepository.saveAck and filtered by
 //     GetAcknowledgeRecords/GetAcknowledgeRecordCounts.
 //   - idx_acks_from_valid_created_at (from, valid, created_at): from-filtered
 //     ack list/count lookup; used by postgres.RecordRepository.GetAcknowledge*.
 //   - idx_acks_to_valid_created_at (to, valid, created_at): to-filtered ack
 //     list/count lookup; used by postgres.RecordRepository.GetAcknowledge*.
-//   - idx_acks_context_valid_created_at (context, valid, created_at):
-//     context-filtered ack list/count lookup; used by
+//   - idx_acks_schema_valid_created_at (schema, valid, created_at):
+//     schema-filtered ack list/count lookup; used by
 //     postgres.RecordRepository.GetAcknowledge*.
 type Ack struct {
-	From    string `json:"from" gorm:"type:text;index:idx_ack_from_to_context,unique;index:idx_acks_from_valid_created_at,priority:1"`
-	To      string `json:"to" gorm:"type:text;index:idx_ack_from_to_context,unique;index:idx_acks_to_valid_created_at,priority:1"`
-	Context string `json:"schema" gorm:"type:text;index:idx_ack_from_to_context,unique;index:idx_acks_context_valid_created_at,priority:1"`
+	From   string `json:"from" gorm:"type:text;index:idx_ack_from_to_schema,unique;index:idx_acks_from_valid_created_at,priority:1"`
+	To     string `json:"to" gorm:"type:text;index:idx_ack_from_to_schema,unique;index:idx_acks_to_valid_created_at,priority:1"`
+	Schema string `json:"schema" gorm:"type:text;index:idx_ack_from_to_schema,unique;index:idx_acks_schema_valid_created_at,priority:1"`
 
 	DocumentID string    `json:"id" gorm:"primaryKey;type:text"`
 	Document   CommitLog `json:"-" gorm:"foreignKey:DocumentID;references:ID;constraint:OnDelete:CASCADE;"`
 
-	Valid bool `json:"valid" gorm:"type:boolean;not null;default:true;index:idx_acks_from_valid_created_at,priority:2;index:idx_acks_to_valid_created_at,priority:2;index:idx_acks_context_valid_created_at,priority:2"`
+	Valid bool `json:"valid" gorm:"type:boolean;not null;default:true;index:idx_acks_from_valid_created_at,priority:2;index:idx_acks_to_valid_created_at,priority:2;index:idx_acks_schema_valid_created_at,priority:2"`
 
-	CreatedAt time.Time `json:"createdAt" gorm:"type:timestamp with time zone;not null;index:idx_acks_from_valid_created_at,priority:3;index:idx_acks_to_valid_created_at,priority:3;index:idx_acks_context_valid_created_at,priority:3"` // user-provided creation time
+	CreatedAt time.Time `json:"createdAt" gorm:"type:timestamp with time zone;not null;index:idx_acks_from_valid_created_at,priority:3;index:idx_acks_to_valid_created_at,priority:3;index:idx_acks_schema_valid_created_at,priority:3"` // user-provided creation time
 	CDate     time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 }
 

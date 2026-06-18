@@ -44,6 +44,8 @@ type Policy struct {
 }
 
 type Document[T any] struct {
+	Kind string `json:"kind"` // entity / record / association / delete / ack / unack
+
 	// CIP-1
 	Key   string `json:"key"`
 	Value T      `json:"value"`

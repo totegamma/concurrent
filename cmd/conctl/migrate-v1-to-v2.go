@@ -362,11 +362,12 @@ func transferEntities(db *gorm.DB, dest_db *gorm.DB) {
 
 		v2doc := &concrnt.Document[any]{
 			Kind: "entity",
-			Key: key,
+			Key:  key,
 			Value: map[string]any{
 				"domain": domain,
 			},
 			Author: entity.ID,
+			Schema: schemas.EntityURL,
 		}
 
 		serializedDoc, err := json.Marshal(v2doc)
@@ -519,7 +520,7 @@ func convertRecord(
 
 			mappingDoc := concrnt.Document[schemas.Reference]{
 				Kind: "record",
-				Key: fmt.Sprintf("cckv://%s/concrnt.world/v0/m%s", v1msg.Signer, cdidBase),
+				Key:  fmt.Sprintf("cckv://%s/concrnt.world/v0/m%s", v1msg.Signer, cdidBase),
 				Value: schemas.Reference{
 					Href: key,
 				},
@@ -569,7 +570,7 @@ func convertRecord(
 
 				distDoc := concrnt.Document[schemas.Reference]{
 					Kind: "record",
-					Key: distKey,
+					Key:  distKey,
 					Value: schemas.Reference{
 						Href: key,
 					},
@@ -627,7 +628,7 @@ func convertRecord(
 			}
 
 			v2doc = &concrnt.Document[any]{
-				Kind:	 "record",
+				Kind:      "record",
 				Key:       key,
 				Value:     v1prof.Body,
 				Author:    v1prof.Signer,
@@ -684,7 +685,7 @@ func convertRecord(
 			}
 
 			v2doc = &concrnt.Document[any]{
-				Kind:		"association",
+				Kind:        "association",
 				Value:       body,
 				Author:      v1ass.Signer,
 				Schema:      v1ass.Schema,
@@ -740,7 +741,7 @@ func convertRecord(
 
 				distDoc := concrnt.Document[schemas.Reference]{
 					Kind: "record",
-					Key: distKey,
+					Key:  distKey,
 					Value: schemas.Reference{
 						Href: ccfs,
 					},
@@ -824,7 +825,7 @@ func convertRecord(
 			}
 
 			v2doc = &concrnt.Document[any]{
-				Kind: "record",
+				Kind:      "record",
 				Key:       key,
 				Value:     v1tl.Body,
 				Author:    v1tl.Signer,
@@ -859,7 +860,7 @@ func convertRecord(
 			key := fmt.Sprintf("cckv://%s/concrnt.world/profiles/main/lists/%s", v1sub.Signer, id)
 
 			v2doc = &concrnt.Document[any]{
-				Kind: "record",
+				Kind:      "record",
 				Key:       key,
 				Value:     v1sub.Body,
 				Author:    v1sub.Signer,
@@ -891,7 +892,7 @@ func convertRecord(
 
 			v2doc = &concrnt.Document[any]{
 				Kind: "record",
-				Key: key,
+				Key:  key,
 				Value: schemas.Reference{
 					Href: target,
 				},
@@ -917,7 +918,7 @@ func convertRecord(
 		key := fmt.Sprintf("cckv://%s/concrnt.world/profiles/main/lists/%s/%s", v1unsub.Signer, v1unsub.Subscription, targetHash.String())
 
 		v2doc = &concrnt.Document[any]{
-			Kind: "delete",
+			Kind:      "delete",
 			Value:     key,
 			Author:    v1unsub.Signer,
 			CreatedAt: v1unsub.SignedAt,
@@ -940,7 +941,7 @@ func convertRecord(
 			}
 
 			v2doc = &concrnt.Document[any]{
-				Kind: "delete",
+				Kind:      "delete",
 				Value:     targetKey,
 				Author:    v1del.Signer,
 				CreatedAt: v1del.SignedAt,

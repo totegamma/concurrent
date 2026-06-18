@@ -1374,21 +1374,21 @@ func (uc *RecordUsecase) checkReadAccess(ctx context.Context, uri string, sd con
 }
 
 func policyCreateAction(doc concrnt.Document[any]) string {
-	if doc.Associate != nil {
+	if doc.Kind == "association" {
 		return "association:create"
 	}
 	return "record:create"
 }
 
 func policyReadAction(doc concrnt.Document[any]) string {
-	if doc.Associate != nil {
+	if doc.Kind == "association" {
 		return "association:read"
 	}
 	return "record:read"
 }
 
 func policyDeleteAction(doc concrnt.Document[any]) string {
-	if doc.Associate != nil {
+	if doc.Kind == "association" {
 		return "association:delete"
 	}
 	return "record:delete"

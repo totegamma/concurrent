@@ -121,7 +121,8 @@ func buildCreateAccountRequest(
 	createdAt = createdAt.UTC()
 
 	document := concrnt.Document[schemas.Entity]{
-		Key: concrnt.ComposeCCURI("cckv", identity.CCID, ""),
+		Kind: "entity",
+		Key:  concrnt.ComposeCCURI("cckv", identity.CCID, ""),
 		Value: schemas.Entity{
 			Domain: fqdn,
 			Alias:  alias,

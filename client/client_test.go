@@ -31,7 +31,7 @@ func TestQuery(t *testing.T) {
 	want := []concrnt.SignedDocument{
 		{
 			CCKV:     &cckv,
-			Document: `{"key":"cckv://con1example/concrnt.world/profiles/main","value":{"username":"tester"},"author":"con1example","schema":"https://schema.concrnt.world/p/main.json","createdAt":"2026-05-16T00:00:00Z"}`,
+			Document: `{"kind":"record","key":"cckv://con1example/concrnt.world/profiles/main","value":{"username":"tester"},"author":"con1example","schema":"https://schema.concrnt.world/p/main.json","createdAt":"2026-05-16T00:00:00Z"}`,
 			Proof:    concrnt.Proof{Type: concrnt.ProofTypeNone},
 		},
 	}

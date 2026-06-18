@@ -51,6 +51,7 @@ func TestGlobalPolicyViaPolicyService(t *testing.T) {
 			key:           "cckv://con1localrequester/timeline/post-1",
 			expectAllowed: true,
 			self: concrnt.Document[any]{
+				Kind:   "record",
 				Key:    "cckv://con1localrequester/timeline/post-1",
 				Author: localRequester.ID,
 			},
@@ -63,6 +64,7 @@ func TestGlobalPolicyViaPolicyService(t *testing.T) {
 			key:           "cckv://local.example/shared/post-1",
 			expectAllowed: true,
 			self: concrnt.Document[any]{
+				Kind:   "record",
 				Key:    "cckv://local.example/shared/post-1",
 				Author: localRequester.ID,
 			},
@@ -75,6 +77,7 @@ func TestGlobalPolicyViaPolicyService(t *testing.T) {
 			key:           "cckv://con1remote/remote/post-1",
 			expectAllowed: false,
 			self: concrnt.Document[any]{
+				Kind:   "record",
 				Key:    "cckv://con1remote/remote/post-1",
 				Author: remoteRequester.ID,
 			},
@@ -87,6 +90,7 @@ func TestGlobalPolicyViaPolicyService(t *testing.T) {
 			key:           "cckv://con1otherlocal/timeline/post-1",
 			expectAllowed: false,
 			self: concrnt.Document[any]{
+				Kind:   "record",
 				Key:    "cckv://con1otherlocal/timeline/post-1",
 				Author: localRequester.ID,
 			},
@@ -99,6 +103,7 @@ func TestGlobalPolicyViaPolicyService(t *testing.T) {
 			key:           "cckv://con1localrequester/timeline/post-1",
 			expectAllowed: true,
 			self: concrnt.Document[any]{
+				Kind:   "record",
 				Key:    "cckv://con1localrequester/timeline/post-1",
 				Author: localRequester.ID,
 			},
@@ -111,6 +116,7 @@ func TestGlobalPolicyViaPolicyService(t *testing.T) {
 			key:           "cckv://con1localrequester/timeline/post-1",
 			expectAllowed: true,
 			self: concrnt.Document[any]{
+				Kind:   "record",
 				Key:    "cckv://con1localrequester/timeline/post-1",
 				Author: otherLocalRequester.ID,
 			},
@@ -123,6 +129,7 @@ func TestGlobalPolicyViaPolicyService(t *testing.T) {
 			key:           "cckv://con1localrequester/timeline/post-1",
 			expectAllowed: true,
 			self: concrnt.Document[any]{
+				Kind:   "record",
 				Key:    "cckv://con1localrequester/timeline/post-1",
 				Author: otherLocalRequester.ID,
 			},
@@ -135,6 +142,7 @@ func TestGlobalPolicyViaPolicyService(t *testing.T) {
 			key:           "cckv://con1otherlocal/timeline/post-1",
 			expectAllowed: true,
 			self: concrnt.Document[any]{
+				Kind:   "record",
 				Key:    "cckv://con1otherlocal/timeline/post-1",
 				Author: localRequester.ID,
 			},
@@ -147,6 +155,7 @@ func TestGlobalPolicyViaPolicyService(t *testing.T) {
 			key:           "cckv://con1otherlocal/timeline/post-1",
 			expectAllowed: false,
 			self: concrnt.Document[any]{
+				Kind:   "record",
 				Key:    "cckv://con1otherlocal/timeline/post-1",
 				Author: otherLocalRequester.ID,
 			},
@@ -159,6 +168,7 @@ func TestGlobalPolicyViaPolicyService(t *testing.T) {
 			key:           "cckv://con1localrequester/timeline/post-1",
 			expectAllowed: true,
 			self: concrnt.Document[any]{
+				Kind:   "record",
 				Key:    "cckv://con1localrequester/timeline/post-1",
 				Author: otherLocalRequester.ID,
 			},
@@ -171,6 +181,7 @@ func TestGlobalPolicyViaPolicyService(t *testing.T) {
 			key:           "cckv://con1otherlocal/timeline/post-1",
 			expectAllowed: true,
 			self: concrnt.Document[any]{
+				Kind:   "record",
 				Key:    "cckv://con1otherlocal/timeline/post-1",
 				Author: localRequester.ID,
 			},
@@ -183,6 +194,7 @@ func TestGlobalPolicyViaPolicyService(t *testing.T) {
 			key:           "cckv://con1otherlocal/timeline/post-1",
 			expectAllowed: false,
 			self: concrnt.Document[any]{
+				Kind:   "record",
 				Key:    "cckv://con1otherlocal/timeline/post-1",
 				Author: otherLocalRequester.ID,
 			},
@@ -195,6 +207,7 @@ func TestGlobalPolicyViaPolicyService(t *testing.T) {
 			key:           "cckv://con1otherlocal/timeline/post-1",
 			expectAllowed: true,
 			self: concrnt.Document[any]{
+				Kind:      "association",
 				Author:    localRequester.ID,
 				Associate: ptr("cckv://con1otherlocal/timeline/post-1"),
 			},
@@ -207,6 +220,7 @@ func TestGlobalPolicyViaPolicyService(t *testing.T) {
 			key:           "ccfs://con1otherlocal/assoc-1",
 			expectAllowed: true,
 			self: concrnt.Document[any]{
+				Kind:      "association",
 				Author:    otherLocalRequester.ID,
 				Associate: ptr("cckv://con1otherlocal/timeline/post-1"),
 			},
@@ -219,6 +233,7 @@ func TestGlobalPolicyViaPolicyService(t *testing.T) {
 			key:           "ccfs://con1localrequester/assoc-1",
 			expectAllowed: true,
 			self: concrnt.Document[any]{
+				Kind:      "association",
 				Author:    otherLocalRequester.ID,
 				Associate: ptr("cckv://con1localrequester/timeline/post-1"),
 			},
@@ -231,6 +246,7 @@ func TestGlobalPolicyViaPolicyService(t *testing.T) {
 			key:           "ccfs://con1otherlocal/assoc-1",
 			expectAllowed: true,
 			self: concrnt.Document[any]{
+				Kind:      "association",
 				Author:    localRequester.ID,
 				Associate: ptr("cckv://con1otherlocal/timeline/post-1"),
 			},
@@ -243,6 +259,7 @@ func TestGlobalPolicyViaPolicyService(t *testing.T) {
 			key:           "ccfs://con1otherlocal/assoc-1",
 			expectAllowed: false,
 			self: concrnt.Document[any]{
+				Kind:      "association",
 				Author:    otherLocalRequester.ID,
 				Associate: ptr("cckv://con1otherlocal/timeline/post-1"),
 			},
@@ -286,6 +303,7 @@ func TestGlobalPolicyAllowsRemoteCreateWhenDescendantPolicyAllows(t *testing.T) 
 		Domain: "remote.example",
 	}
 	self := concrnt.Document[any]{
+		Kind:   "record",
 		Key:    "cckv://con1localrequester/open/post-1",
 		Author: remoteRequester.ID,
 	}
@@ -334,6 +352,7 @@ func TestGlobalPolicyDeniesRemoteCreateWithoutDescendantPolicyAllow(t *testing.T
 		Domain: "remote.example",
 	}
 	self := concrnt.Document[any]{
+		Kind:   "record",
 		Key:    "cckv://con1localrequester/open/post-1",
 		Author: remoteRequester.ID,
 	}

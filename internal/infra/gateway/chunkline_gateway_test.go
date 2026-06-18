@@ -416,6 +416,7 @@ func mustEncodeBodyCache(t *testing.T, items []chunkline.BodyItem) []byte {
 
 func createdChunklineEvent(timeline string, uri string, createdAt time.Time) concrnt.Event {
 	doc := concrnt.Document[json.RawMessage]{
+		Kind:      "record",
 		Schema:    "application/test",
 		CreatedAt: createdAt,
 	}

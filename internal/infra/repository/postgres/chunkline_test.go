@@ -55,6 +55,7 @@ func createChunklineRecord(t *testing.T, ctx context.Context, repo usecase.Recor
 	t.Helper()
 
 	sd := repositorySignedDocument(t, concrnt.Document[map[string]string]{
+		Kind:      "record",
 		Key:       key,
 		Value:     map[string]string{"body": id},
 		Author:    "con1author",

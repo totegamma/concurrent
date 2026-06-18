@@ -850,6 +850,15 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 		return nil, err
 	}
 
+	sd.CCKV = &parsed.Key
+	ccfs := concrnt.CCURI{
+		Scheme: "ccfs",
+		Owner:  parsedKey.Owner,
+		CDID:   documentID,
+	}.String()
+
+	sd.CCFS = &ccfs
+
 	return &commitApplyResult{result: &sd, owners: owners, postProcesses: postProcesses}, nil
 }
 
@@ -890,7 +899,11 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 		return nil, err
 	}
 
-	ccfs := concrnt.ComposeCCURI("ccfs", targetURI.Owner, documentID)
+	ccfs := concrnt.CCURI{
+		Scheme: "ccfs",
+		Owner:  targetURI.Owner,
+		CDID:   documentID,
+	}.String()
 
 	isLocal, err := uc.IsLocalEntityByCCID(ctx, targetURI.Owner)
 	if err != nil {
@@ -1050,6 +1063,8 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 		owners = append(owners, targetURI.Owner)
 	}
 
+	sd.CCFS = &ccfs
+
 	return &commitApplyResult{result: &sd, owners: owners, postProcesses: postProcesses}, nil
 }
 
@@ -1148,6 +1163,15 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 	if uc.IsLocalEntity(ctx, &targetUser) && !slices.Contains(owners, targetUser.ID) {
 		owners = append(owners, targetUser.ID)
 	}
+
+	ccfs := concrnt.CCURI{
+		Scheme: "ccfs",
+		Owner:  targetUser.ID,
+		CDID:   documentID,
+	}.String()
+
+	sd.CCFS = &ccfs
+
 	return &commitApplyResult{result: &sd, owners: owners, postProcesses: postProcesses}, nil
 }
 
@@ -1203,6 +1227,15 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, doc
 	if uc.IsLocalEntity(ctx, &targetUser) && !slices.Contains(owners, targetUser.ID) {
 		owners = append(owners, targetUser.ID)
 	}
+
+	ccfs := concrnt.CCURI{
+		Scheme: "ccfs",
+		Owner:  targetUser.ID,
+		CDID:   documentID,
+	}.String()
+
+	sd.CCFS = &ccfs
+
 	return &commitApplyResult{result: &sd, owners: owners, postProcesses: postProcesses}, nil
 }
 

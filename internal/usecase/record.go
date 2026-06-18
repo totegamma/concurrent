@@ -304,6 +304,10 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
 			return uc.deleteRecord(ctx, tx, *requester, sd, mode)
 		}
+	default:
+		err := errors.New("unsupported document kind: " + doc.Kind)
+		span.RecordError(err)
+		return nil, err
 	}
 
 	tx, err := uc.repo.BeginTx(ctx)
@@ -784,7 +788,8 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 			}
 
 			distDoc := concrnt.Document[schemas.Reference]{
-				Key: key,
+				Kind: "record",
+				Key:  key,
 				Value: schemas.Reference{
 					Href: resultURI,
 				},
@@ -917,7 +922,8 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 				}
 
 				distDoc := concrnt.Document[schemas.Reference]{
-					Key: key,
+					Kind: "record",
+					Key:  key,
 					Value: schemas.Reference{
 						Href: ccfs,
 					},

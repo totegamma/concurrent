@@ -522,7 +522,8 @@ func convertRecord(
 				Kind: "record",
 				Key:  fmt.Sprintf("cckv://%s/concrnt.world/v0/m%s", v1msg.Signer, cdidBase),
 				Value: schemas.Reference{
-					Href: key,
+					Href:   key,
+					Schema: &v1msg.Schema,
 				},
 				Author:    v1msg.Signer,
 				Schema:    schemas.ReferenceURL,
@@ -572,7 +573,8 @@ func convertRecord(
 					Kind: "record",
 					Key:  distKey,
 					Value: schemas.Reference{
-						Href: key,
+						Href:   key,
+						Schema: &v1msg.Schema,
 					},
 					Author:    v1msg.Signer,
 					Schema:    schemas.ReferenceURL,
@@ -743,7 +745,8 @@ func convertRecord(
 					Kind: "record",
 					Key:  distKey,
 					Value: schemas.Reference{
-						Href: ccfs,
+						Href:   ccfs,
+						Schema: &v1ass.Schema,
 					},
 					Author:    v1ass.Signer,
 					Schema:    schemas.ReferenceURL,
@@ -890,11 +893,17 @@ func convertRecord(
 
 			key := fmt.Sprintf("cckv://%s/concrnt.world/profiles/main/lists/%s/%s", v1sub.Signer, v1sub.Subscription, targetHash.String())
 
+			schema := "https://schema.concrnt.world/t/community.json"
+			if strings.HasPrefix(v1sub.Target, "world") {
+				schema = "https://schema.concrnt.world/t/user.json"
+			}
+
 			v2doc = &concrnt.Document[any]{
 				Kind: "record",
 				Key:  key,
 				Value: schemas.Reference{
-					Href: target,
+					Href:   target,
+					Schema: &schema,
 				},
 				Author:    v1sub.Signer,
 				Schema:    schemas.ReferenceURL,

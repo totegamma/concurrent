@@ -39,14 +39,10 @@ func TestRecordRepositoryWrites(t *testing.T) {
 			CreatedAt:   createdAt,
 			Distributes: &distributions,
 		})
-		var resultURI string
 		onUpdate := "delete"
 		withRepositoryTx(t, ctx, repo, "record-old", "127.0.0.1", oldSD, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
-			var err error
-			resultURI, err = repo.CreateRecord(ctx, tx, "record-old", key, "con1owner", "https://schema.example/post.json", &onUpdate, nil, distributions, nil, createdAt)
-			return err
+			return repo.CreateRecord(ctx, tx, "record-old", key, "con1owner", "https://schema.example/post.json", &onUpdate, nil, distributions, nil, createdAt)
 		})
-		require.Equal(t, key, resultURI)
 
 		var commit models.CommitLog
 		require.NoError(t, db.Where("id = ?", "record-old").Take(&commit).Error)
@@ -85,8 +81,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 			CreatedAt: newCreatedAt,
 		})
 		withRepositoryTx(t, ctx, repo, "record-new", "127.0.0.1", newSD, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
-			_, err := repo.CreateRecord(ctx, tx, "record-new", key, "con1owner", "https://schema.example/post.v2.json", &onUpdate, nil, []string{}, nil, newCreatedAt)
-			return err
+			return repo.CreateRecord(ctx, tx, "record-new", key, "con1owner", "https://schema.example/post.v2.json", &onUpdate, nil, []string{}, nil, newCreatedAt)
 		})
 
 		require.NoError(t, db.Where("uri = ?", key).Take(&recordKey).Error)
@@ -135,8 +130,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		}
 
 		withRepositoryTx(t, ctx, repo, "reference-record", "127.0.0.1", refSD, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
-			_, err := repo.CreateRecord(ctx, tx, "reference-record", "cckv://con1owner/timeline/ref-1", "con1owner", "https://schema.example/target.json", nil, nil, []string{}, &targetURI, targetCreatedAt)
-			return err
+			return repo.CreateRecord(ctx, tx, "reference-record", "cckv://con1owner/timeline/ref-1", "con1owner", "https://schema.example/target.json", nil, nil, []string{}, &targetURI, targetCreatedAt)
 		})
 
 		var record models.Record
@@ -228,7 +222,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, repo.CreateCommitLog(ctx, tx, "rollback-record", "127.0.0.1", rollbackSD.Document, rollbackSD.Proof))
 		require.NoError(t, repo.CreateCommitOwners(ctx, tx, "rollback-record", []string{"con1owner"}))
-		_, err = repo.CreateRecord(ctx, tx, "rollback-record", rollbackKey, "con1owner", "https://schema.example/post.json", nil, nil, []string{}, nil, time.Date(2026, 5, 6, 7, 8, 9, 0, time.UTC))
+		err = repo.CreateRecord(ctx, tx, "rollback-record", rollbackKey, "con1owner", "https://schema.example/post.json", nil, nil, []string{}, nil, time.Date(2026, 5, 6, 7, 8, 9, 0, time.UTC))
 		require.NoError(t, err)
 		require.NoError(t, tx.Rollback(ctx))
 
@@ -239,7 +233,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		require.Zero(t, count)
 	})
 
-	t.Run("delete keeps delete commit", func(t *testing.T) {
+	t.Run("delete removes record payload and keeps commits", func(t *testing.T) {
 		deleteKey := "cckv://con1owner/timeline/delete-target"
 		deleteTargetSD := repositorySignedDocument(t, concrnt.Document[map[string]string]{
 			Kind:      "record",
@@ -250,8 +244,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 			CreatedAt: time.Date(2026, 6, 7, 8, 9, 10, 0, time.UTC),
 		})
 		withRepositoryTx(t, ctx, repo, "delete-target", "127.0.0.1", deleteTargetSD, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
-			_, err := repo.CreateRecord(ctx, tx, "delete-target", deleteKey, "con1owner", "https://schema.example/post.json", nil, nil, []string{}, nil, time.Date(2026, 6, 7, 8, 9, 10, 0, time.UTC))
-			return err
+			return repo.CreateRecord(ctx, tx, "delete-target", deleteKey, "con1owner", "https://schema.example/post.json", nil, nil, []string{}, nil, time.Date(2026, 6, 7, 8, 9, 10, 0, time.UTC))
 		})
 
 		deleteSD := repositorySignedDocument(t, concrnt.Document[schemas.Delete]{
@@ -261,15 +254,14 @@ func TestRecordRepositoryWrites(t *testing.T) {
 			CreatedAt: time.Date(2026, 6, 8, 8, 9, 10, 0, time.UTC),
 		})
 		withRepositoryTx(t, ctx, repo, "delete-commit", "127.0.0.1", deleteSD, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
-			_, err := repo.Delete(ctx, tx, deleteKey)
-			return err
+			return repo.DeleteRecordByKey(ctx, tx, deleteKey)
 		})
 
 		var count int64
 		require.NoError(t, db.Model(&models.Record{}).Where("document_id = ?", "delete-target").Count(&count).Error)
 		require.Zero(t, count)
 		require.NoError(t, db.Model(&models.CommitLog{}).Where("id = ?", "delete-target").Count(&count).Error)
-		require.Zero(t, count)
+		require.EqualValues(t, 1, count)
 
 		var commit models.CommitLog
 		require.NoError(t, db.Where("id = ?", "delete-commit").Take(&commit).Error)
@@ -315,10 +307,28 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		err = repo.CreateCommitOwners(ctx, fakeRecordTx{}, "invalid", []string{"con1owner"})
 		require.Error(t, err)
 
-		_, err = repo.CreateRecord(ctx, nil, "invalid", key, "con1owner", "https://schema.example/post.json", nil, nil, []string{}, nil, time.Now())
+		err = repo.CreateRecord(ctx, nil, "invalid", key, "con1owner", "https://schema.example/post.json", nil, nil, []string{}, nil, time.Now())
 		require.Error(t, err)
 
-		_, err = repo.CreateRecord(ctx, fakeRecordTx{}, "invalid", key, "con1owner", "https://schema.example/post.json", nil, nil, []string{}, nil, time.Now())
+		err = repo.CreateRecord(ctx, fakeRecordTx{}, "invalid", key, "con1owner", "https://schema.example/post.json", nil, nil, []string{}, nil, time.Now())
+		require.Error(t, err)
+
+		err = repo.DeleteRecordByKey(ctx, nil, key)
+		require.Error(t, err)
+
+		err = repo.DeleteRecordByKey(ctx, fakeRecordTx{}, key)
+		require.Error(t, err)
+
+		err = repo.DeleteRecordByDocumentID(ctx, nil, "invalid")
+		require.Error(t, err)
+
+		err = repo.DeleteRecordByDocumentID(ctx, fakeRecordTx{}, "invalid")
+		require.Error(t, err)
+
+		err = repo.DeleteAssociation(ctx, nil, "invalid")
+		require.Error(t, err)
+
+		err = repo.DeleteAssociation(ctx, fakeRecordTx{}, "invalid")
 		require.Error(t, err)
 	})
 }

@@ -161,14 +161,14 @@ func (r *RecordRepository) CreateRecord(
 	distributions []string,
 	redirect *string,
 	createdAt time.Time,
-) (string, error) {
+) error {
 	ctx, span := tracer.Start(ctx, "Repository.Record.CreateRecord")
 	defer span.End()
 
 	db, err := getRecordTx(ctx, tx)
 	if err != nil {
 		span.RecordError(err)
-		return "", err
+		return err
 	}
 
 	record := models.Record{
@@ -185,7 +185,7 @@ func (r *RecordRepository) CreateRecord(
 		DoNothing: true,
 	}).Create(&record).Error; err != nil {
 		span.RecordError(err)
-		return "", err
+		return err
 	}
 
 	// update RecordKey
@@ -195,14 +195,14 @@ func (r *RecordRepository) CreateRecord(
 		Take(&oldRecordKey).Error
 	if err != nil && err != gorm.ErrRecordNotFound {
 		span.RecordError(err)
-		return "", err
+		return err
 	}
 
 	// ParentのRecordKeyを探す
 	parentRK, err := getOrCreateParentRecordKey(ctx, db, key)
 	if err != nil {
 		span.RecordError(err)
-		return "", err
+		return err
 	}
 
 	var pid *int64
@@ -229,7 +229,7 @@ func (r *RecordRepository) CreateRecord(
 	}).Create(&rk).Error
 	if err != nil {
 		span.RecordError(err)
-		return "", err
+		return err
 	}
 
 	// 古いRecordKeyが指していたCommitのGCフラグを立て、Recordは消す
@@ -238,15 +238,15 @@ func (r *RecordRepository) CreateRecord(
 			Where("id = ?", oldRecordKey.RecordID).
 			Update("gc_candidate", true).Error; err != nil {
 			span.RecordError(err)
-			return "", err
+			return err
 		}
 		if err := db.Delete(&models.Record{}, "document_id = ?", oldRecordKey.RecordID).Error; err != nil {
 			span.RecordError(err)
-			return "", err
+			return err
 		}
 	}
 
-	return key, nil
+	return nil
 
 }
 

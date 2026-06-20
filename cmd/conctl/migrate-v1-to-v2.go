@@ -161,7 +161,7 @@ func convertTimeline(timeline string) string {
 
 func commit(body string) error {
 
-	request, err := http.NewRequest("POST", fmt.Sprintf("https://%s/repository", destFQDN), strings.NewReader(body))
+	request, err := http.NewRequest("POST", fmt.Sprintf("https://%s/api/v2/repository", destFQDN), strings.NewReader(body))
 	if err != nil {
 		fmt.Println("failed to create request: ", err)
 		return err

@@ -8,6 +8,7 @@ import (
 	"sync"
 	"testing"
 
+	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/chunkline"
 	"github.com/concrnt/concrnt/client"
 	"github.com/concrnt/concrnt/internal/domain"
@@ -71,14 +72,17 @@ func TestBatchHandlerAggregatesChunklineItrRequests(t *testing.T) {
 	t.Cleanup(server.Close)
 
 	requests := map[string]*http.Request{}
-	req0, err := http.NewRequest("GET", server.URL+"/chunkline/itr/100?uri=cckv://example.test/timeline/0", nil)
+	req0, err := http.NewRequest("GET", server.URL+apiPrefix+"/chunkline/itr/100?uri=cckv://example.test/timeline/0", nil)
 	require.NoError(t, err)
 	requests["0"] = req0
-	req1, err := http.NewRequest("GET", server.URL+"/chunkline/itr/100?uri=cckv://example.test/timeline/1", nil)
+	req1, err := http.NewRequest("GET", server.URL+apiPrefix+"/chunkline/itr/100?uri=cckv://example.test/timeline/1", nil)
 	require.NoError(t, err)
 	requests["1"] = req1
 
-	responses, err := client.DoBatchRequestWithClient(context.Background(), server.Client(), server.URL+"/batch", requests)
+	batchPath, err := concrnt.RenderURITemplate(Endpoints["net.concrnt.core.batch"], map[string]string{})
+	require.NoError(t, err)
+
+	responses, err := client.DoBatchRequestWithClient(context.Background(), server.Client(), server.URL+batchPath, requests)
 	require.NoError(t, err)
 
 	require.Len(t, responses, 2)

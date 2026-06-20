@@ -53,8 +53,8 @@ func (r *ChunklineRepository) GetChunklineManifest(ctx context.Context, uri stri
 		ChunkSize:  600,
 		FirstChunk: &firstChunk,
 		Descending: &chunkline.Endpoint{
-			Iterator: "/chunkline/itr/{chunk}?uri=" + safeURI,
-			Body:     "/chunkline/body/{chunk}?uri=" + safeURI,
+			Iterator: "/api/v2/chunkline/itr/{chunk}?uri=" + safeURI,
+			Body:     "/api/v2/chunkline/body/{chunk}?uri=" + safeURI,
 		},
 		// Metadata: recordKey.Record.Value,
 	}, nil

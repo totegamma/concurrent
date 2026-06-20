@@ -404,7 +404,7 @@ func (h *Handler) chunklineItrBatchHandler() batchCustomHandler {
 }
 
 func chunklineItrBatchChunk(path string) (string, bool) {
-	const prefix = "/chunkline/itr/"
+	prefix := apiPrefix + "/chunkline/itr/"
 	if !strings.HasPrefix(path, prefix) {
 		return "", false
 	}

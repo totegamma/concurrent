@@ -39,7 +39,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 			CreatedAt:   createdAt,
 			Distributes: &distributions,
 		})
-		onUpdate := "delete"
+		onUpdate := "forget"
 		withRepositoryTx(t, ctx, repo, "record-old", "127.0.0.1", oldSD, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
 			return repo.CreateRecord(ctx, tx, "record-old", key, "con1owner", "https://schema.example/post.json", &onUpdate, nil, distributions, nil, createdAt)
 		})

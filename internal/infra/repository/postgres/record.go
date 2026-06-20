@@ -211,7 +211,7 @@ func (r *RecordRepository) CreateRecord(
 	}
 	cleanOnUpdate := false
 	if onUpdate != nil {
-		cleanOnUpdate = *onUpdate == "delete"
+		cleanOnUpdate = *onUpdate == "forget"
 	}
 
 	// RecordKeyを作る

@@ -56,7 +56,7 @@ type Document[T any] struct {
 
 	CreatedAt time.Time `json:"createdAt"`
 
-	OnUpdate *string `json:"onUpdate,omitempty"` // delete, retain(default)
+	OnUpdate *string `json:"onUpdate,omitempty"` // forget, retain(default)
 
 	// CIP-5
 	Distributes *[]string `json:"distributes,omitempty"`

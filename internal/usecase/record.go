@@ -36,7 +36,9 @@ type RecordRepository interface {
 	CreateAssociation(ctx context.Context, tx RepositoryTx, documentID string, targetURI string, owner string, author string, schema string, variant *string, unique string, createdAt time.Time) error
 	Acknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) error
 	UnAcknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) error
-	Delete(ctx context.Context, tx RepositoryTx, targetURI string) (string, error)
+	DeleteRecordByKey(ctx context.Context, tx RepositoryTx, targetURI string) error
+	DeleteRecordByDocumentID(ctx context.Context, tx RepositoryTx, documentID string) error
+	DeleteAssociation(ctx context.Context, tx RepositoryTx, documentID string) error
 
 	GetSignedDocument(ctx context.Context, uri string) (*concrnt.SignedDocument, error)
 	GetHierarchicalRecordPolicies(ctx context.Context, uri string) ([]concrnt.Policy, error)
@@ -554,8 +556,55 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 			return nil, err
 		}
 
-		_, err = uc.repo.Delete(ctx, tx, targetURI)
-		if err != nil {
+		switch targetDoc.Kind {
+		case "record":
+
+			parsedURI, err := concrnt.ParseCCURI(targetURI)
+			if err != nil {
+				span.RecordError(err)
+				return nil, err
+			}
+
+			switch parsedURI.Scheme {
+			case "cckv":
+				err = uc.repo.DeleteRecordByKey(ctx, tx, targetURI)
+				if err != nil {
+					span.RecordError(err)
+					return nil, err
+				}
+			case "ccfs":
+				err = uc.repo.DeleteRecordByDocumentID(ctx, tx, parsedURI.CDID)
+				if err != nil {
+					span.RecordError(err)
+					return nil, err
+				}
+			default:
+				err := errors.New("unsupported document scheme for delete record: " + parsedURI.Scheme)
+				span.RecordError(err)
+				return nil, err
+			}
+
+		case "association":
+
+			parsedURI, err := concrnt.ParseCCURI(targetURI)
+			if err != nil {
+				span.RecordError(err)
+				return nil, err
+			}
+
+			if parsedURI.Scheme != "ccfs" {
+				err := errors.New("unsupported document scheme for delete association: " + parsedURI.Scheme)
+				span.RecordError(err)
+				return nil, err
+			}
+
+			err = uc.repo.DeleteAssociation(ctx, tx, parsedURI.CDID)
+			if err != nil {
+				span.RecordError(err)
+				return nil, err
+			}
+		default:
+			err := errors.New("unsupported document kind for delete: " + targetDoc.Kind)
 			span.RecordError(err)
 			return nil, err
 		}

@@ -510,55 +510,44 @@ func (r *RecordRepository) GetSignedDocument(ctx context.Context, uri string) (*
 	}
 }
 
-func (r *RecordRepository) Delete(ctx context.Context, tx usecase.RepositoryTx, targetURI string) (string, error) {
-	ctx, span := tracer.Start(ctx, "Repository.Record.Delete")
+func (r *RecordRepository) DeleteRecordByKey(ctx context.Context, tx usecase.RepositoryTx, targetURI string) error {
+	ctx, span := tracer.Start(ctx, "Repository.Record.DeleteRecordByKey")
 	defer span.End()
 
 	db, err := getRecordTx(ctx, tx)
 	if err != nil {
 		span.RecordError(err)
-		return "", err
+		return err
 	}
 
-	parsed, err := concrnt.ParseCCURI(targetURI)
+	q := db.Model(&models.RecordKey{}).Select("record_id").Where("uri = ?", targetURI)
+	return db.Where("document_id = (?)", q).Delete(&models.Record{}).Error
+}
+
+func (r *RecordRepository) DeleteRecordByDocumentID(ctx context.Context, tx usecase.RepositoryTx, documentID string) error {
+	ctx, span := tracer.Start(ctx, "Repository.Record.DeleteRecordByDocumentID")
+	defer span.End()
+
+	db, err := getRecordTx(ctx, tx)
 	if err != nil {
 		span.RecordError(err)
-		return "", err
+		return err
 	}
 
-	switch parsed.Scheme {
-	case "cckv":
-		var recordKey models.RecordKey
-		err = db.Preload("Record").
-			Preload("Record.Document").
-			Where("uri = ?", targetURI).
-			Take(&recordKey).Error
-		if err != nil {
-			span.RecordError(err)
-			return "", err
-		}
+	return db.Delete(&models.Record{}, "document_id = ?", documentID).Error
+}
 
-		id := recordKey.Record.DocumentID
-		err = db.Delete(&models.CommitLog{}, "id = ?", id).Error
-		if err != nil {
-			span.RecordError(err)
-			return "", err
-		}
+func (r *RecordRepository) DeleteAssociation(ctx context.Context, tx usecase.RepositoryTx, documentID string) error {
+	ctx, span := tracer.Start(ctx, "Repository.Record.DeleteAssociation")
+	defer span.End()
 
-		return targetURI, nil
-
-	case "ccfs":
-		err = db.Delete(&models.CommitLog{}, "id = ?", parsed.CDID).Error
-		if err != nil {
-			span.RecordError(err)
-			return "", err
-		}
-		return targetURI, nil
-	default:
-		err := fmt.Errorf("unsupported uri scheme: %s", parsed.Scheme)
+	db, err := getRecordTx(ctx, tx)
+	if err != nil {
 		span.RecordError(err)
-		return "", err
+		return err
 	}
+
+	return db.Delete(&models.Association{}, "document_id = ?", documentID).Error
 }
 
 func getOrCreateParentRecordKey(ctx context.Context, db *gorm.DB, uri string) (*models.RecordKey, error) {

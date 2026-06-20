@@ -69,3 +69,27 @@ func (e RedirectError) Is(target error) bool {
 }
 
 var ErrRedirect = RedirectError{}
+
+type ValidationError struct {
+	Field   string
+	Message string
+}
+
+func (e ValidationError) Error() string {
+	if e.Field == "" {
+		return fmt.Sprintf("validation error: %s", e.Message)
+	}
+	return fmt.Sprintf("validation error on field '%s': %s", e.Field, e.Message)
+}
+
+// Is enables errors.Is matching on ValidationError.
+func (e ValidationError) Is(target error) bool {
+	_, ok := target.(ValidationError)
+	if ok {
+		return true
+	}
+	_, ok = target.(*ValidationError)
+	return ok
+}
+
+var ErrValidation = ValidationError{}

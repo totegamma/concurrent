@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"net/http"
 	"os"
 
 	"github.com/SherClockHolmes/webpush-go"
@@ -235,6 +236,21 @@ func main() {
 	proxy := rest.NewProxy(conf.Services, authMiddleware.IdentifyIdentity)
 	proxy.RegisterRoutes(e)
 
+	e.GET("/tos", func(c echo.Context) (err error) {
+		return c.File("/etc/concrnt/static/tos.txt")
+	})
+	e.OPTIONS("/tos", handleNop)
+
+	e.GET("/code-of-conduct", func(c echo.Context) (err error) {
+		return c.File("/etc/concrnt/static/code-of-conduct.txt")
+	})
+	e.OPTIONS("/code-of-conduct", handleNop)
+
+	e.GET("/register-template", func(c echo.Context) (err error) {
+		return c.File("/etc/concrnt/static/register-template.json")
+	})
+	e.OPTIONS("/register-template", handleNop)
+
 	e.GET("/health", func(c echo.Context) (err error) {
 		// ctx := c.Request().Context()
 
@@ -255,4 +271,8 @@ func main() {
 
 	e.Logger.Fatal(e.Start(":8000"))
 
+}
+
+func handleNop(c echo.Context) error {
+	return c.NoContent(http.StatusOK)
 }

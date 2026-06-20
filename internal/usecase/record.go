@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net"
@@ -13,7 +14,6 @@ import (
 	"time"
 
 	"github.com/patrickmn/go-cache"
-	"github.com/pkg/errors"
 	"github.com/zeebo/xxh3"
 
 	"github.com/concrnt/concrnt"
@@ -137,36 +137,41 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 	switch sd.Proof.Type {
 	case concrnt.ProofTypeEcrecover:
 		if sd.Proof.Signature == nil {
-			err := errors.New("[sub] signature is required for ecrecover proof")
+			err := domain.ValidationError{Field: "proof.signature", Message: "signature is required for ecrecover proof"}
 			span.RecordError(err)
 			return nil, err
 		}
 		signatureBytes, err := hex.DecodeString(*sd.Proof.Signature)
 		if err != nil {
 			span.RecordError(err)
-			return nil, err
+			return nil, errors.Join(domain.ValidationError{Field: "proof.signature", Message: "invalid signature format"}, err)
 		}
 		err = concrnt.VerifySignature([]byte(sd.Document), signatureBytes, doc.Author)
 		if err != nil {
 			span.RecordError(err)
-			return nil, err
+			return nil, errors.Join(domain.ValidationError{Field: "proof.signature", Message: "signature verification failed"}, err)
 		}
 	case concrnt.ProofTypeDocumentReference:
 		if sd.Proof.Href == nil {
-			err := errors.New("href is required for document-reference proof")
+			err := domain.ValidationError{Field: "proof.href", Message: "href is required for document-reference proof"}
+			span.RecordError(err)
+			return nil, err
+		}
+		if doc.Schema != schemas.ReferenceURL {
+			err := domain.ValidationError{Field: "doc.schema", Message: "document-reference proof is only allowed for reference documents"}
 			span.RecordError(err)
 			return nil, err
 		}
 		// TODO: 参照先のドキュメントの検証
 	case concrnt.ProofTypeSubkey:
 		if sd.Proof.Signature == nil {
-			err := errors.New("[sub] signature is required for subkey proof")
+			err := domain.ValidationError{Field: "proof.signature", Message: "signature is required for subkey proof"}
 			span.RecordError(err)
 			return nil, err
 		}
 
 		if sd.Proof.Key == nil {
-			err := errors.New("[sub] key is required for subkey proof")
+			err := domain.ValidationError{Field: "proof.key", Message: "key is required for subkey proof"}
 			span.RecordError(err)
 			return nil, err
 		}
@@ -175,31 +180,31 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		err := uc.client.GetRecord(ctx, *sd.Proof.Key, nil, &subKeyDoc)
 		if err != nil {
 			span.RecordError(err)
-			return nil, err
+			return nil, errors.Join(domain.ValidationError{Field: "proof.key", Message: "failed to fetch subkey document"}, err)
 		}
 
 		signatureBytes, err := hex.DecodeString(*sd.Proof.Signature)
 		if err != nil {
 			span.RecordError(err)
-			return nil, err
+			return nil, errors.Join(domain.ValidationError{Field: "proof.signature", Message: "invalid signature format"}, err)
 		}
 
 		err = concrnt.VerifySignature([]byte(sd.Document), signatureBytes, subKeyDoc.Value.CKID)
 		if err != nil {
 			span.RecordError(err)
-			return nil, err
+			return nil, errors.Join(domain.ValidationError{Field: "proof.signature", Message: "signature verification failed"}, err)
 		}
 	case concrnt.ProofTypeNone:
 		serviceAccountType, ok := ctx.Value(interop.ServiceAccountTypeCtxKey).(string)
 		if !ok || serviceAccountType != "system" {
-			err := errors.New("none proof type is only allowed for system service accounts")
+			err := domain.ValidationError{Field: "proof.type", Message: "none proof type is only allowed for system service accounts"}
 			slog.Error("Unauthorized commit with none proof", "error", err.Error())
 			span.RecordError(err)
 			return nil, err
 		}
 
 	default:
-		err := errors.New("unsupported proof type: " + sd.Proof.Type)
+		err := domain.ValidationError{Field: "proof.type", Message: "unsupported proof type: " + sd.Proof.Type}
 		span.RecordError(err)
 		return nil, err
 	}

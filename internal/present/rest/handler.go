@@ -60,27 +60,29 @@ func NewHandler(
 	}
 }
 
+const apiPrefix = "/api/v2"
+
 var Endpoints = map[string]string{
-	"net.concrnt.core.commit":             "/commit",
-	"net.concrnt.core.resolve":            "/resolve?uri={uri}",
-	"net.concrnt.core.query":              "/query{?prefix,schema,since,until,limit,order,parent}",
-	"net.concrnt.core.associations":       "/associations{?uri,schema,variant,author}",
-	"net.concrnt.core.association-counts": "/association-counts{?uri,schema}",
-	"net.concrnt.core.acknowledges":       "/acknowledges{?from,to,schema}",
-	"net.concrnt.core.acknowledge-counts": "/acknowledge-counts{?from,to,schema}",
-	"net.concrnt.core.realtime":           "/realtime",
-	"net.concrnt.core.abuse":              "/abuse",
-	"net.concrnt.core.batch":              "/batch",
-	"net.concrnt.world.register":          "/api/v2/register",
-	"net.concrnt.world.timeline.recent":   "/api/v2/timeline/recent{?uris,until,limit}",
-	"net.concrnt.world.subscribe":         "/subscribe/{owner}/{vendor_id}",
-	"net.concrnt.world.repository":        "/repository",
-	"net.concrnt.core.known-servers":      "/known-servers",
+	"net.concrnt.core.commit":             apiPrefix + "/commit",
+	"net.concrnt.core.resolve":            apiPrefix + "/resolve?uri={uri}",
+	"net.concrnt.core.query":              apiPrefix + "/query{?prefix,schema,since,until,limit,order,parent}",
+	"net.concrnt.core.associations":       apiPrefix + "/associations{?uri,schema,variant,author}",
+	"net.concrnt.core.association-counts": apiPrefix + "/association-counts{?uri,schema}",
+	"net.concrnt.core.acknowledges":       apiPrefix + "/acknowledges{?from,to,schema}",
+	"net.concrnt.core.acknowledge-counts": apiPrefix + "/acknowledge-counts{?from,to,schema}",
+	"net.concrnt.core.realtime":           apiPrefix + "/realtime",
+	"net.concrnt.core.abuse":              apiPrefix + "/abuse",
+	"net.concrnt.core.batch":              apiPrefix + "/batch",
+	"net.concrnt.world.register":          apiPrefix + "/register",
+	"net.concrnt.world.timeline.recent":   apiPrefix + "/timeline/recent{?uris,until,limit}",
+	"net.concrnt.world.subscribe":         apiPrefix + "/subscribe/{owner}/{vendor_id}",
+	"net.concrnt.world.repository":        apiPrefix + "/repository",
+	"net.concrnt.core.known-servers":      apiPrefix + "/known-servers",
 }
 
 func (h *Handler) RegisterRoutes(app *echo.Echo, e *echo.Group) {
 
-	api := e.Group("", echomiddleware.CORS())
+	api := e.Group(apiPrefix, echomiddleware.CORS())
 	api.POST("/commit", h.handleCommit)
 	api.OPTIONS("/commit", h.handleNop)
 	api.GET("/resolve", h.handleResolve)
@@ -97,10 +99,10 @@ func (h *Handler) RegisterRoutes(app *echo.Echo, e *echo.Group) {
 	api.OPTIONS("/acknowledge-counts", h.handleNop)
 	api.GET("/realtime", h.handleRealtime)
 	api.OPTIONS("/realtime", h.handleNop)
-	api.POST("/api/v2/register", h.handleRegister)
-	api.OPTIONS("/api/v2/register", h.handleNop)
-	api.GET("/api/v2/timeline/recent", h.handleTimelineRecent)
-	api.OPTIONS("/api/v2/timeline/recent", h.handleNop)
+	api.POST("/register", h.handleRegister)
+	api.OPTIONS("/register", h.handleNop)
+	api.GET("/timeline/recent", h.handleTimelineRecent)
+	api.OPTIONS("/timeline/recent", h.handleNop)
 	api.POST("/subscribe/:owner/:vendor_id", h.handleSubscribeNotification)
 	api.OPTIONS("/subscribe/:owner/:vendor_id", h.handleNop)
 	api.GET("/subscribe/:owner/:vendor_id", h.handleGetNotification)
@@ -121,21 +123,6 @@ func (h *Handler) RegisterRoutes(app *echo.Echo, e *echo.Group) {
 	// internal
 	api.GET("/internal/signal/subscriptions", h.handleCurrentSubs)
 	api.OPTIONS("/internal/signal/subscriptions", h.handleNop)
-
-	api.GET("/tos", func(c echo.Context) (err error) {
-		return c.File("/etc/concrnt/static/tos.txt")
-	})
-	api.OPTIONS("/tos", h.handleNop)
-
-	api.GET("/code-of-conduct", func(c echo.Context) (err error) {
-		return c.File("/etc/concrnt/static/code-of-conduct.txt")
-	})
-	api.OPTIONS("/code-of-conduct", h.handleNop)
-
-	api.GET("/register-template", func(c echo.Context) (err error) {
-		return c.File("/etc/concrnt/static/register-template.json")
-	})
-	api.OPTIONS("/register-template", h.handleNop)
 
 	api.POST("/batch", batchHandler(app, h.chunklineItrBatchHandler()))
 
@@ -160,6 +147,9 @@ func (h *Handler) handleCommit(c echo.Context) error {
 	if err != nil {
 		if errors.Is(err, domain.ErrPermissionDenied) {
 			return presenter.Forbidden(c, "permission denied")
+		}
+		if errors.Is(err, domain.ErrValidation) {
+			return presenter.BadRequest(c, err)
 		}
 		return presenter.InternalError(c, err)
 	}

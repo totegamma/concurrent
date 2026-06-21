@@ -174,14 +174,13 @@ func main() {
 	residenceUC := usecase.NewResidenceUsecase(residenceRepo, recordUC, &domainConfig)
 
 	chunklineRepo := postgres.NewChunklineRepository(db)
-	chunklineCache := gateway.NewChunklineCacheService(cl, mc)
 
 	notificationRepo := postgres.NewNotificationRepository(db)
 	notificationUC := usecase.NewNotificationUsecase(notificationRepo)
 
-	subscriber := worker.NewSubscriber(&domainConfig, cl, signal, chunklineCache)
+	subscriber := worker.NewSubscriber(&domainConfig, cl, signal)
 	subscriptionUC := usecase.NewSubscriptionUsecase(signal, subscriber)
-	chunklineGateway := gateway.NewChunklineGatewayWithCacheService(cl, chunklineCache, subscriptionUC)
+	chunklineGateway := gateway.NewChunklineGateway(cl)
 	chunklineUC := usecase.NewChunklineUsecase(chunklineRepo, chunklineGateway)
 	subscriber.Start(context.Background())
 

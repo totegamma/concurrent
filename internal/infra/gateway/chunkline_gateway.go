@@ -43,7 +43,6 @@ type resolver struct {
 	mc     *memcache.Client
 }
 
-
 func manifestCacheKey(timeline string) string {
 	return "chunkline_manifest:" + timeline
 }
@@ -52,10 +51,9 @@ func itrCacheKey(timeline string, chunkID int64) string {
 	return fmt.Sprintf("chunkline_itr:%s:%d", timeline, chunkID)
 }
 
-func bodyCacheKey(timeline string, chunkID int64) string {
-	return fmt.Sprintf("chunkline_body:%s:%d", timeline, chunkID)
+func bodyCacheKey(timeline string, chunkID string) string {
+	return fmt.Sprintf("chunkline_body:%s:%s", timeline, chunkID)
 }
-
 
 func (r *resolver) ResolveTimelines(ctx context.Context, timelines []string) (map[string]chunkline.Manifest, error) {
 	ctx, span := tracer.Start(ctx, "ChunklineResolver.ResolveTimelines")
@@ -138,12 +136,7 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 		return nil, err
 	}
 
-	type ItrQuery struct {
-		Manifest chunkline.Manifest
-		ChunkID  int64
-	}
-
-	queries := make(map[string]ItrQuery)
+	queries := make(map[string]int64)
 	keys := make([]string, 0, len(timelines))
 
 	for _, tl := range timelines {
@@ -171,10 +164,7 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 			continue
 		}
 
-		queries[tl] = ItrQuery {
-			Manifest: manifest,
-			ChunkID:  queryChunk,
-		}
+		queries[tl] = queryChunk
 		keys = append(keys, itrCacheKey(tl, queryChunk))
 	}
 
@@ -187,15 +177,30 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 
 	requestsByDomain := make(map[string]map[string]string) // domain -> timeline -> query path
 
-	for tl, query := range queries {
-		cacheKey := itrCacheKey(tl, query.ChunkID)
+	remainings := make(map[string]int64)
+
+	for tl, chunkID := range queries {
+		cacheKey := itrCacheKey(tl, chunkID)
 		if item, found := cachedItems[cacheKey]; found {
 			results[tl] = string(item.Value)
 			continue
 		}
 
-		relPath, err := concrnt.RenderURITemplate(query.Manifest.Descending.Iterator, map[string]string{
-			"chunk": fmt.Sprintf("%d", query.ChunkID),
+		manifest, ok := manifests[tl]
+		if !ok {
+			err := fmt.Errorf("missing chunkline manifest for timeline %s", tl)
+			span.RecordError(err)
+			continue
+		}
+
+		if manifest.Descending.Iterator == "" {
+			err := fmt.Errorf("timeline %s does not support descending iteration", tl)
+			span.RecordError(err)
+			continue
+		}
+
+		relPath, err := concrnt.RenderURITemplate(manifest.Descending.Iterator, map[string]string{
+			"chunk": fmt.Sprintf("%d", chunkID),
 		})
 		if err != nil {
 			span.RecordError(fmt.Errorf("failed to render iterator URI for timeline %s: %w", tl, err))
@@ -230,6 +235,7 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 			requestsByDomain[domain] = make(map[string]string)
 		}
 		requestsByDomain[domain][tl] = endpoint.String()
+		remainings[tl] = chunkID
 	}
 
 	if len(requestsByDomain) == 0 {
@@ -242,7 +248,7 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 		return results, nil // return what we have from cache
 	}
 
-	for tl, endpoint := range queries {
+	for tl, chunkID := range remainings {
 		resp, ok := responces[tl]
 		if !ok {
 			err := fmt.Errorf("missing response for timeline %s", tl)
@@ -266,7 +272,7 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 		results[tl] = iterator
 
 		cacheItem := &memcache.Item{
-			Key:        itrCacheKey(tl, endpoint.ChunkID),
+			Key:        itrCacheKey(tl, chunkID),
 			Value:      []byte(iterator),
 			Expiration: int32(time.Minute.Seconds()),
 		}
@@ -294,8 +300,35 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 		return nil, err
 	}
 
-	result := make(map[string]chunkline.BodyChunk)
+	keys := make([]string, 0, len(query))
+
 	for tl, itr := range query {
+		cacheKey := bodyCacheKey(tl, itr)
+		keys = append(keys, cacheKey)
+	}
+
+	results := make(map[string]chunkline.BodyChunk)
+
+	cachedItems, err := r.mc.GetMulti(keys)
+	if err != nil && !errors.Is(err, memcache.ErrCacheMiss) {
+		span.RecordError(fmt.Errorf("failed to get chunk bodies from cache: %w", err))
+	}
+
+	requestsByDomain := make(map[string]map[string]string) // domain -> timeline -> query path
+
+	remaining := make(map[string]string)
+
+	for tl, itr := range query {
+		cacheKey := bodyCacheKey(tl, itr)
+		if item, found := cachedItems[cacheKey]; found {
+			var bodyChunk chunkline.BodyChunk
+			err := json.Unmarshal(item.Value, &bodyChunk)
+			if err != nil {
+				span.RecordError(fmt.Errorf("failed to unmarshal cached body chunk for %s: %w", tl, err))
+				continue
+			}
+			results[tl] = bodyChunk
+		}
 
 		manifest, ok := manifests[tl]
 		if !ok {
@@ -334,21 +367,35 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 			endpoint.Host = host
 		}
 
-		req, err := http.NewRequestWithContext(ctx, "GET", endpoint.String(), nil)
-		if err != nil {
-			span.RecordError(fmt.Errorf("failed to create request for timeline %s: %w", tl, err))
-			continue
+		domain := endpoint.Host
+		if _, exists := requestsByDomain[domain]; !exists {
+			requestsByDomain[domain] = make(map[string]string)
 		}
+		requestsByDomain[domain][tl] = endpoint.String()
+		remaining[tl] = itr
+	}
 
-		resp, err := r.client.GetClient().Do(req)
-		if err != nil {
-			span.RecordError(fmt.Errorf("HTTP request failed for timeline %s: %w", tl, err))
+	if len(requestsByDomain) == 0 {
+		return results, nil // all results were cached
+	}
+
+	responses, err := r.client.BatchGet(ctx, requestsByDomain)
+	if err != nil {
+		span.RecordError(fmt.Errorf("batch request for chunk bodies failed: %w", err))
+		return results, nil // return what we have from cache
+	}
+
+	for tl, itr := range remaining {
+		resp, ok := responses[tl]
+		if !ok {
+			err := fmt.Errorf("missing response for timeline %s", tl)
+			span.RecordError(err)
 			continue
 		}
-		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			span.RecordError(fmt.Errorf("non-200 response for timeline %s: %d", tl, resp.StatusCode))
+			err := fmt.Errorf("non-200 response for timeline %s: %d", tl, resp.StatusCode)
+			span.RecordError(err)
 			continue
 		}
 
@@ -365,12 +412,29 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 			continue
 		}
 
-		result[tl] = chunkline.BodyChunk{
+		bodyChunk := chunkline.BodyChunk{
 			URI:     tl,
 			ChunkID: chunkID,
 			Items:   items,
 		}
+		results[tl] = bodyChunk
 
+		bytes, err := json.Marshal(bodyChunk)
+		if err != nil {
+			span.RecordError(fmt.Errorf("failed to marshal body chunk for caching for %s: %w", tl, err))
+			continue
+		}
+
+		cacheItem := &memcache.Item{
+			Key:        bodyCacheKey(tl, itr),
+			Value:      bytes,
+			Expiration: int32(time.Minute.Seconds()),
+		}
+		err = r.mc.Set(cacheItem)
+		if err != nil {
+			span.RecordError(fmt.Errorf("failed to set body chunk in cache for %s: %w", tl, err))
+		}
 	}
-	return result, nil
+
+	return results, nil
 }

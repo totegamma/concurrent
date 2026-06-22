@@ -824,7 +824,7 @@ func (c *Client) BatchGet(ctx context.Context, requests map[string]map[string]st
 				}
 				requests[key] = req
 			}
-			
+
 			responces, err := DoBatchRequestWithClient(ctx, c.client, endpoint, requests)
 			if err != nil {
 				err := errors.Join(fmt.Errorf("failed to perform batch get to %s", endpoint), err)
@@ -857,4 +857,3 @@ func (c *Client) BatchGet(ctx context.Context, requests map[string]map[string]st
 
 	return responses, nil
 }
-

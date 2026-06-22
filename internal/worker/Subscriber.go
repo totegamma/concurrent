@@ -73,9 +73,14 @@ func (s *Subscriber) RegisterClient(client SubscribeClient) string {
 	return id
 }
 
-func (s *Subscriber) CurrentSubscriptions() []string {
+func (s *Subscriber) CurrentSubscriptions(except ...SubscribeClient) []string {
 	subscriptionSet := make(map[string]bool)
+
 	for _, client := range s.Clients {
+		if slices.Contains(except, client) {
+			continue
+		}
+
 		for _, prefix := range client.CurrentSubscriptions() {
 			subscriptionSet[prefix] = true
 		}

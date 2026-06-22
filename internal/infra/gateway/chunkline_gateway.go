@@ -313,7 +313,7 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 		return results, nil // return what we have from cache
 	}
 
-	currentSubscriptions := r.subscriber.CurrentSubscriptions()
+	currentSubscriptions := r.subscriber.CurrentSubscriptions(r)
 
 	for tl, chunkID := range remainings {
 		resp, ok := responces[tl]
@@ -463,7 +463,7 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 		return results, nil // return what we have from cache
 	}
 
-	currentSubscriptions := r.subscriber.CurrentSubscriptions()
+	currentSubscriptions := r.subscriber.CurrentSubscriptions(r)
 
 	for tl, itr := range remaining {
 		resp, ok := responses[tl]
@@ -529,7 +529,7 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 }
 
 func (r *resolver) CurrentSubscriptions() []string {
-	ongoing := r.subscriber.CurrentSubscriptions()
+	ongoing := r.subscriber.CurrentSubscriptions(r)
 
 	timelines, err := r.ResolveTimelines(context.Background(), ongoing)
 	if err != nil {

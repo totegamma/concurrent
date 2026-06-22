@@ -22,6 +22,12 @@ import (
 	"github.com/concrnt/concrnt/internal/worker"
 )
 
+const (
+	manifestCacheTTL = 60 * 60 * 24 * 7 // 7 days
+	itrCacheTTL      = 60 * 60 * 24 * 2 // 2 days
+	bodyCacheTTL     = 60 * 60 * 24 * 2 // 2 days
+)
+
 type ChunklineGateway struct {
 	resolver   *chunkline.Client
 	subscriber *worker.Subscriber
@@ -103,7 +109,7 @@ func (r *resolver) resolveTimeline(ctx context.Context, timeline string) (chunkl
 		cacheItem := &memcache.Item{
 			Key:        cacheKey,
 			Value:      bytes,
-			Expiration: int32(time.Hour.Seconds()),
+			Expiration: manifestCacheTTL,
 		}
 		err = r.mc.Set(cacheItem)
 		if err != nil {
@@ -165,7 +171,7 @@ func (r *resolver) ResolveTimelines(ctx context.Context, timelines []string) (ma
 		cacheItem := &memcache.Item{
 			Key:        manifestCacheKey(tl),
 			Value:      bytes,
-			Expiration: int32(time.Hour.Seconds()),
+			Expiration: manifestCacheTTL,
 		}
 		err = r.mc.Set(cacheItem)
 		if err != nil {
@@ -343,7 +349,7 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 		cacheItem := &memcache.Item{
 			Key:        itrCacheKey(tl, chunkID),
 			Value:      []byte(iterator),
-			Expiration: int32(time.Hour.Seconds()),
+			Expiration: itrCacheTTL,
 		}
 		err = r.mc.Set(cacheItem)
 		if err != nil {
@@ -391,6 +397,9 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 		cacheKey := bodyCacheKey(tl, itr)
 		if item, found := cachedItems[cacheKey]; found {
 			var bodyChunk chunkline.BodyChunk
+			cacheStr := string(item.Value)
+			cacheStr = cacheStr[1:]
+			cacheStr = "[" + cacheStr + "]"
 			err := json.Unmarshal(item.Value, &bodyChunk)
 			if err != nil {
 				span.RecordError(fmt.Errorf("failed to unmarshal cached body chunk for %s: %w", tl, err))
@@ -504,10 +513,11 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 			}
 		}
 
+		cacheStr := "," + string(bytes[1:len(bytes)-1])
 		cacheItem := &memcache.Item{
 			Key:        bodyCacheKey(tl, itr),
-			Value:      bytes,
-			Expiration: int32(time.Hour.Seconds()),
+			Value:      []byte(cacheStr),
+			Expiration: bodyCacheTTL,
 		}
 		err = r.mc.Set(cacheItem)
 		if err != nil {

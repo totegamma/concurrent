@@ -14,6 +14,7 @@ import (
 
 	"github.com/bradfitz/gomemcache/memcache"
 
+	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/chunkline"
 	"github.com/concrnt/concrnt/client"
 )
@@ -42,13 +43,27 @@ type resolver struct {
 	mc     *memcache.Client
 }
 
+
+func manifestCacheKey(timeline string) string {
+	return "chunkline_manifest:" + timeline
+}
+
+func itrCacheKey(timeline string, chunkID int64) string {
+	return fmt.Sprintf("chunkline_itr:%s:%d", timeline, chunkID)
+}
+
+func bodyCacheKey(timeline string, chunkID int64) string {
+	return fmt.Sprintf("chunkline_body:%s:%d", timeline, chunkID)
+}
+
+
 func (r *resolver) ResolveTimelines(ctx context.Context, timelines []string) (map[string]chunkline.Manifest, error) {
 	ctx, span := tracer.Start(ctx, "ChunklineResolver.ResolveTimelines")
 	defer span.End()
 
 	keys := make([]string, len(timelines))
 	for i, tl := range timelines {
-		keys[i] = "chunkline_manifest:" + tl
+		keys[i] = manifestCacheKey(tl)
 	}
 
 	cacheItems, err := r.mc.GetMulti(keys)
@@ -91,7 +106,7 @@ func (r *resolver) ResolveTimelines(ctx context.Context, timelines []string) (ma
 		}
 
 		cacheItem := &memcache.Item{
-			Key:        "chunkline_manifest:" + tl,
+			Key:        manifestCacheKey(tl),
 			Value:      bytes,
 			Expiration: int32(time.Hour.Seconds()),
 		}
@@ -123,9 +138,15 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 		return nil, err
 	}
 
-	results := make(map[string]string)
-	for _, tl := range timelines {
+	type ItrQuery struct {
+		Manifest chunkline.Manifest
+		ChunkID  int64
+	}
 
+	queries := make(map[string]ItrQuery)
+	keys := make([]string, 0, len(timelines))
+
+	for _, tl := range timelines {
 		manifest, ok := manifests[tl]
 		if !ok {
 			err := fmt.Errorf("missing chunkline manifest for timeline %s", tl)
@@ -150,9 +171,38 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 			continue
 		}
 
-		refPath := strings.ReplaceAll(manifest.Descending.Iterator, "{chunk}", fmt.Sprintf("%d", queryChunk))
+		queries[tl] = ItrQuery {
+			Manifest: manifest,
+			ChunkID:  queryChunk,
+		}
+		keys = append(keys, itrCacheKey(tl, queryChunk))
+	}
 
-		ref, err := url.Parse(refPath)
+	cachedItems, err := r.mc.GetMulti(keys)
+	if err != nil && !errors.Is(err, memcache.ErrCacheMiss) {
+		span.RecordError(fmt.Errorf("failed to get iterators from cache: %w", err))
+	}
+
+	results := make(map[string]string)
+
+	requestsByDomain := make(map[string]map[string]string) // domain -> timeline -> query path
+
+	for tl, query := range queries {
+		cacheKey := itrCacheKey(tl, query.ChunkID)
+		if item, found := cachedItems[cacheKey]; found {
+			results[tl] = string(item.Value)
+			continue
+		}
+
+		relPath, err := concrnt.RenderURITemplate(query.Manifest.Descending.Iterator, map[string]string{
+			"chunk": fmt.Sprintf("%d", query.ChunkID),
+		})
+		if err != nil {
+			span.RecordError(fmt.Errorf("failed to render iterator URI for timeline %s: %w", tl, err))
+			continue
+		}
+
+		rel, err := url.Parse(relPath)
 		if err != nil {
 			span.RecordError(fmt.Errorf("invalid iterator URI template for timeline %s: %w", tl, err))
 			continue
@@ -164,7 +214,7 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 			continue
 		}
 
-		endpoint := base.ResolveReference(ref)
+		endpoint := base.ResolveReference(rel)
 		if endpoint.Scheme != "http" && endpoint.Scheme != "https" {
 			host, err := r.client.ResolveResourceHost(ctx, tl)
 			if err != nil {
@@ -175,21 +225,34 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 			endpoint.Host = host
 		}
 
-		req, err := http.NewRequestWithContext(ctx, "GET", endpoint.String(), nil)
-		if err != nil {
-			span.RecordError(fmt.Errorf("failed to create request for timeline %s: %w", tl, err))
-			continue
+		domain := endpoint.Host
+		if _, exists := requestsByDomain[domain]; !exists {
+			requestsByDomain[domain] = make(map[string]string)
 		}
+		requestsByDomain[domain][tl] = endpoint.String()
+	}
 
-		resp, err := r.client.GetClient().Do(req)
-		if err != nil {
-			span.RecordError(fmt.Errorf("HTTP request failed for timeline %s: %w", tl, err))
+	if len(requestsByDomain) == 0 {
+		return results, nil // all results were cached
+	}
+
+	responces, err := r.client.BatchGet(ctx, requestsByDomain)
+	if err != nil {
+		span.RecordError(fmt.Errorf("batch request for iterators failed: %w", err))
+		return results, nil // return what we have from cache
+	}
+
+	for tl, endpoint := range queries {
+		resp, ok := responces[tl]
+		if !ok {
+			err := fmt.Errorf("missing response for timeline %s", tl)
+			span.RecordError(err)
 			continue
 		}
-		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			span.RecordError(fmt.Errorf("non-200 response for timeline %s: %d", tl, resp.StatusCode))
+			err := fmt.Errorf("non-200 response for timeline %s: %d", tl, resp.StatusCode)
+			span.RecordError(err)
 			continue
 		}
 
@@ -199,8 +262,20 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 			continue
 		}
 
-		results[tl] = strings.TrimSpace(string(bytes))
+		iterator := strings.TrimSpace(string(bytes))
+		results[tl] = iterator
+
+		cacheItem := &memcache.Item{
+			Key:        itrCacheKey(tl, endpoint.ChunkID),
+			Value:      []byte(iterator),
+			Expiration: int32(time.Minute.Seconds()),
+		}
+		err = r.mc.Set(cacheItem)
+		if err != nil {
+			span.RecordError(fmt.Errorf("failed to set iterator in cache for %s: %w", tl, err))
+		}
 	}
+
 	return results, nil
 }
 

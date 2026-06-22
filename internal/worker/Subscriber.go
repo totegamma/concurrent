@@ -72,6 +72,22 @@ func (s *Subscriber) RegisterClient(client SubscribeClient) string {
 	return id
 }
 
+func (s *Subscriber) CurrentSubscriptions() []string {
+	subscriptionSet := make(map[string]bool)
+	for _, client := range s.Clients {
+		for _, prefix := range client.CurrentSubscriptions() {
+			subscriptionSet[prefix] = true
+		}
+	}
+
+	subscriptions := make([]string, 0, len(subscriptionSet))
+	for prefix := range subscriptionSet {
+		subscriptions = append(subscriptions, prefix)
+	}
+
+	return subscriptions
+}
+
 func (s *Subscriber) keeperRoutine(ctx context.Context) {
 	ticker := time.NewTicker(time.Second * 10)
 	defer ticker.Stop()

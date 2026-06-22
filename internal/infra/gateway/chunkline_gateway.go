@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"slices"
 	"strconv"
 	"strings"
 	"time"
@@ -17,19 +18,28 @@ import (
 	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/chunkline"
 	"github.com/concrnt/concrnt/client"
+	"github.com/concrnt/concrnt/internal/worker"
 )
 
 type ChunklineGateway struct {
-	resolver *chunkline.Client
+	resolver   *chunkline.Client
+	subscriber *worker.Subscriber
 }
 
-func NewChunklineGateway(cl *client.Client, mc *memcache.Client) *ChunklineGateway {
+func NewChunklineGateway(
+	cl *client.Client,
+	mc *memcache.Client,
+	subscriber *worker.Subscriber,
+) *ChunklineGateway {
 	r := &resolver{
-		client: cl,
-		mc:     mc,
+		client:     cl,
+		mc:         mc,
+		subscriber: subscriber,
 	}
+	subscriber.RegisterClient(r)
 	return &ChunklineGateway{
-		resolver: chunkline.NewClient(r),
+		resolver:   chunkline.NewClient(r),
+		subscriber: subscriber,
 	}
 }
 
@@ -39,8 +49,9 @@ func (g *ChunklineGateway) QueryDescending(ctx context.Context, uris []string, u
 
 // resolver implements chunkline resolver callbacks.
 type resolver struct {
-	client *client.Client
-	mc     *memcache.Client
+	client     *client.Client
+	mc         *memcache.Client
+	subscriber *worker.Subscriber
 }
 
 func manifestCacheKey(timeline string) string {
@@ -248,6 +259,8 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 		return results, nil // return what we have from cache
 	}
 
+	currentSubscriptions := r.subscriber.CurrentSubscriptions()
+
 	for tl, chunkID := range remainings {
 		resp, ok := responces[tl]
 		if !ok {
@@ -271,10 +284,18 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 		iterator := strings.TrimSpace(string(bytes))
 		results[tl] = iterator
 
+		// もしキャッシュ対象が最新チャンクであれば、現在の購読状態を確認し、購読中でなければキャッシュを保存しない
+		if chunkID == manifests[tl].Time2Chunk(time.Now()) {
+			isSubscribed := slices.Contains(currentSubscriptions, tl)
+			if !isSubscribed {
+				continue // skip caching if not subscribed to the latest chunk
+			}
+		}
+
 		cacheItem := &memcache.Item{
 			Key:        itrCacheKey(tl, chunkID),
 			Value:      []byte(iterator),
-			Expiration: int32(time.Minute.Seconds()),
+			Expiration: int32(time.Hour.Seconds()),
 		}
 		err = r.mc.Set(cacheItem)
 		if err != nil {
@@ -385,6 +406,8 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 		return results, nil // return what we have from cache
 	}
 
+	currentSubscriptions := r.subscriber.CurrentSubscriptions()
+
 	for tl, itr := range remaining {
 		resp, ok := responses[tl]
 		if !ok {
@@ -425,10 +448,18 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 			continue
 		}
 
+		// もしキャッシュ対象が最新チャンクであれば、現在の購読状態を確認し、購読中でなければキャッシュを保存しない
+		if chunkID == manifests[tl].Time2Chunk(time.Now()) {
+			isSubscribed := slices.Contains(currentSubscriptions, tl)
+			if !isSubscribed {
+				continue // skip caching if not subscribed to the latest chunk
+			}
+		}
+
 		cacheItem := &memcache.Item{
 			Key:        bodyCacheKey(tl, itr),
 			Value:      bytes,
-			Expiration: int32(time.Minute.Seconds()),
+			Expiration: int32(time.Hour.Seconds()),
 		}
 		err = r.mc.Set(cacheItem)
 		if err != nil {
@@ -437,4 +468,50 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 	}
 
 	return results, nil
+}
+
+func (r *resolver) CurrentSubscriptions() []string {
+	ongoing := r.subscriber.CurrentSubscriptions()
+
+	timelines, err := r.ResolveTimelines(context.Background(), ongoing)
+	if err != nil {
+		return ongoing // fallback to raw URIs if manifest resolution fails
+	}
+
+	keep := []string{}
+	for _, tl := range ongoing {
+		manifest, ok := timelines[tl]
+		if !ok {
+			continue
+		}
+
+		currentChunk := manifest.Time2Chunk(time.Now())
+
+		// bodyの最新チャンクのキャッシュが存在する場合は、残しておかないとキャッシュが古いままになってしまう
+		latestChunkKey := bodyCacheKey(tl, fmt.Sprintf("%d", currentChunk))
+		_, err := r.mc.Get(latestChunkKey)
+		if err == nil {
+			keep = append(keep, tl)
+			continue
+		}
+
+		// 最新チャンク-1がなければ、確定で終了して良い
+		prevChunkKey := bodyCacheKey(tl, fmt.Sprintf("%d", currentChunk-1))
+		_, err = r.mc.Get(prevChunkKey)
+		if err != nil {
+			continue
+		}
+
+		// 前チャンクがあり最新がまだ作成されてない場合、現在チャンクの80%が経過するまでは待機しておく
+		now := time.Now()
+		currentChunkStart := manifest.Chunk2Time(currentChunk)
+		currentChunkEnd := manifest.Chunk2Time(currentChunk + 1)
+		currentChunkDuration := currentChunkEnd.Sub(currentChunkStart)
+		if now.Before(currentChunkStart.Add(currentChunkDuration * 8 / 10)) {
+			keep = append(keep, tl)
+			continue
+		}
+	}
+
+	return keep
 }

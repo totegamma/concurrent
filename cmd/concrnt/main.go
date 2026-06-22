@@ -181,7 +181,7 @@ func main() {
 
 	subscriber := worker.NewSubscriber(&domainConfig, cl, redisPubsub)
 	subscriptionUC := usecase.NewSubscriptionUsecase(subscriber, redisPubsub)
-	chunklineGateway := gateway.NewChunklineGateway(cl, mc)
+	chunklineGateway := gateway.NewChunklineGateway(cl, mc, subscriber)
 	chunklineUC := usecase.NewChunklineUsecase(chunklineRepo, chunklineGateway)
 	subscriber.Start(context.Background())
 

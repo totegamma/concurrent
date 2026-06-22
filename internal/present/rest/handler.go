@@ -121,8 +121,8 @@ func (h *Handler) RegisterRoutes(app *echo.Echo, e *echo.Group) {
 	api.OPTIONS("/chunkline/body/:chunk", h.handleNop)
 
 	// internal
-	api.GET("/internal/signal/subscriptions", h.handleCurrentSubs)
-	api.OPTIONS("/internal/signal/subscriptions", h.handleNop)
+	// api.GET("/internal/signal/subscriptions", h.handleCurrentSubs)
+	// api.OPTIONS("/internal/signal/subscriptions", h.handleNop)
 
 	api.POST("/batch", batchHandler(app, h.chunklineItrBatchHandler()))
 
@@ -631,11 +631,6 @@ func (h *Handler) handleAssociationCounts(c echo.Context) error {
 		return presenter.OK(c, counts)
 	}
 
-}
-
-func (h *Handler) handleCurrentSubs(c echo.Context) error {
-	subs := h.subscribe.GetCurrentSubscriptions()
-	return presenter.OK(c, subs)
 }
 
 var upgrader = websocket.Upgrader{

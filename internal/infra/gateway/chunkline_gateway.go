@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"slices"
@@ -30,13 +31,16 @@ func NewChunklineGateway(
 	cl *client.Client,
 	mc *memcache.Client,
 	subscriber *worker.Subscriber,
+	pubsub worker.PubSub,
 ) *ChunklineGateway {
 	r := &resolver{
 		client:     cl,
 		mc:         mc,
 		subscriber: subscriber,
+		pubsub:     pubsub,
 	}
 	subscriber.RegisterClient(r)
+	go r.cacheUpdater()
 	return &ChunklineGateway{
 		resolver:   chunkline.NewClient(r),
 		subscriber: subscriber,
@@ -52,6 +56,7 @@ type resolver struct {
 	client     *client.Client
 	mc         *memcache.Client
 	subscriber *worker.Subscriber
+	pubsub     worker.PubSub
 }
 
 func manifestCacheKey(timeline string) string {
@@ -64,6 +69,49 @@ func itrCacheKey(timeline string, chunkID int64) string {
 
 func bodyCacheKey(timeline string, chunkID string) string {
 	return fmt.Sprintf("chunkline_body:%s:%s", timeline, chunkID)
+}
+
+func (r *resolver) resolveTimeline(ctx context.Context, timeline string) (chunkline.Manifest, error) {
+	ctx, span := tracer.Start(ctx, "ChunklineResolver.resolveTimeline")
+	defer span.End()
+
+	cacheKey := manifestCacheKey(timeline)
+	item, err := r.mc.Get(cacheKey)
+	if err == nil {
+		var manifest chunkline.Manifest
+		err := json.Unmarshal(item.Value, &manifest)
+		if err != nil {
+			span.RecordError(fmt.Errorf("failed to unmarshal cached manifest for %s: %w", timeline, err))
+		} else {
+			return manifest, nil
+		}
+	} else if !errors.Is(err, memcache.ErrCacheMiss) {
+		span.RecordError(fmt.Errorf("failed to get manifest from cache for %s: %w", timeline, err))
+	}
+
+	var manifest chunkline.Manifest
+	err = r.client.GetResource(ctx, timeline, "application/chunkline+json", nil, &manifest)
+	if err != nil {
+		span.RecordError(fmt.Errorf("failed to fetch chunkline manifest for %s: %w", timeline, err))
+		return chunkline.Manifest{}, err
+	}
+
+	bytes, err := json.Marshal(manifest)
+	if err != nil {
+		span.RecordError(fmt.Errorf("failed to marshal manifest for caching for %s: %w", timeline, err))
+	} else {
+		cacheItem := &memcache.Item{
+			Key:        cacheKey,
+			Value:      bytes,
+			Expiration: int32(time.Hour.Seconds()),
+		}
+		err = r.mc.Set(cacheItem)
+		if err != nil {
+			span.RecordError(fmt.Errorf("failed to set manifest in cache for %s: %w", timeline, err))
+		}
+	}
+
+	return manifest, nil
 }
 
 func (r *resolver) ResolveTimelines(ctx context.Context, timelines []string) (map[string]chunkline.Manifest, error) {
@@ -514,4 +562,55 @@ func (r *resolver) CurrentSubscriptions() []string {
 	}
 
 	return keep
+}
+
+func (r *resolver) cacheUpdater() {
+
+	ctx := context.Background()
+
+	events := make(chan concrnt.Event)
+
+	go r.pubsub.SubscribeAll(ctx, events)
+
+	for event := range events {
+		if event.Type != "created" {
+			continue
+		}
+
+		timeline := event.Source
+		manifest, err := r.resolveTimeline(ctx, timeline)
+		if err != nil {
+			slog.Error("failed to resolve timeline for caching", slog.String("timeline", timeline), slog.String("error", err.Error()))
+			continue
+		}
+
+		epoch := manifest.Time2Chunk(event.Timestamp)
+		itrKey := itrCacheKey(timeline, epoch)
+		bodyKey := bodyCacheKey(timeline, strconv.FormatInt(epoch, 10))
+
+		// update iterator cache
+		err = r.mc.Replace(&memcache.Item{Key: itrKey, Value: []byte(strconv.FormatInt(epoch, 10))})
+		if err != nil {
+			slog.Error("failed to replace iterator in cache", slog.String("timeline", timeline), slog.String("error", err.Error()))
+			continue
+		}
+
+		// update body cache
+		bodyItem := chunkline.BodyItem{
+			Timestamp: event.Timestamp,
+			Href:      event.URI,
+		}
+
+		serializedItem, err := json.Marshal(bodyItem)
+		if err != nil {
+			slog.Error("failed to marshal body item for caching", slog.String("timeline", timeline), slog.String("error", err.Error()))
+			continue
+		}
+
+		err = r.mc.Prepend(&memcache.Item{Key: bodyKey, Value: serializedItem})
+		if err != nil {
+			slog.Error("failed to prepend body item in cache", slog.String("timeline", timeline), slog.String("error", err.Error()))
+			continue
+		}
+	}
 }

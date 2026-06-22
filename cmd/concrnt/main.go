@@ -157,7 +157,7 @@ func main() {
 
 	moduleManager := service.NewModuleManager(rest.Endpoints, conf.Services)
 
-	redisPubsub := pubsub.NewReidsPubsub(redis)
+	redisPubsub := pubsub.NewRedisPubsub(redis)
 	policy := service.NewPolicyService(
 		GetGlobalPolicy(),
 		service.GlobalParameters{

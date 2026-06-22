@@ -33,6 +33,7 @@ type SubState struct {
 type PubSub interface {
 	Publish(ctx context.Context, channel string, event concrnt.Event) error
 	Subscribe(ctx context.Context, prefixes []string, response chan<- concrnt.Event) error
+	SubscribeAll(ctx context.Context, response chan<- concrnt.Event) error
 }
 
 type Subscriber struct {

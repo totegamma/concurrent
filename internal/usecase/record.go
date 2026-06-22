@@ -898,6 +898,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 				Type:       "created",
 				URI:        resultURI,
 				References: map[string]concrnt.SignedDocument{resultURI: sd},
+				Timestamp:  createdAt,
 			})
 		},
 	}

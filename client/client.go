@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"math"
 	"net"
 	"net/http"
@@ -94,9 +95,7 @@ func (c *Client) UpKeeper() {
 	for range ticker.C {
 		c.onlineMu.RLock()
 		domains := make(map[string]time.Time, len(c.lastFailed))
-		for domain, lastFailed := range c.lastFailed {
-			domains[domain] = lastFailed
-		}
+		maps.Copy(domains, c.lastFailed)
 		c.onlineMu.RUnlock()
 
 		for domain, lastFailed := range domains {
@@ -313,6 +312,7 @@ func (c *Client) GetServer(ctx context.Context, domainOrCSID string, hint *strin
 		if resp.StatusCode != http.StatusOK {
 			err := errors.Join(fmt.Errorf("failed to get well-known concrnt from %s", url), err)
 			span.RecordError(err)
+			c.markOffline(domain)
 			return concrnt.WellKnownConcrnt{}, err
 		}
 		var wkc concrnt.WellKnownConcrnt

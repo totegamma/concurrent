@@ -12,26 +12,22 @@ import (
 	"strings"
 	"time"
 
-	"github.com/patrickmn/go-cache"
+	"github.com/bradfitz/gomemcache/memcache"
 
 	"github.com/concrnt/concrnt/chunkline"
 	"github.com/concrnt/concrnt/client"
 )
 
 type ChunklineGateway struct {
-	client   *client.Client
-	cache    *cache.Cache
 	resolver *chunkline.Client
 }
 
-func NewChunklineGateway(cl *client.Client) *ChunklineGateway {
+func NewChunklineGateway(cl *client.Client, mc *memcache.Client) *ChunklineGateway {
 	r := &resolver{
 		client: cl,
-		cache:  cache.New(10*time.Minute, 15*time.Minute),
+		mc:     mc,
 	}
 	return &ChunklineGateway{
-		client:   cl,
-		cache:    r.cache,
 		resolver: chunkline.NewClient(r),
 	}
 }
@@ -43,19 +39,37 @@ func (g *ChunklineGateway) QueryDescending(ctx context.Context, uris []string, u
 // resolver implements chunkline resolver callbacks.
 type resolver struct {
 	client *client.Client
-	cache  *cache.Cache
+	mc     *memcache.Client
 }
 
 func (r *resolver) ResolveTimelines(ctx context.Context, timelines []string) (map[string]chunkline.Manifest, error) {
 	ctx, span := tracer.Start(ctx, "ChunklineResolver.ResolveTimelines")
 	defer span.End()
 
+	keys := make([]string, len(timelines))
+	for i, tl := range timelines {
+		keys[i] = "chunkline_manifest:" + tl
+	}
+
+	cacheItems, err := r.mc.GetMulti(keys)
+	if err != nil && !errors.Is(err, memcache.ErrCacheMiss) {
+		span.RecordError(fmt.Errorf("failed to get manifests from cache: %w", err))
+	}
+
 	result := make(map[string]chunkline.Manifest)
 	remaining := []string{}
 
-	for _, tl := range timelines {
-		if cached, found := r.cache.Get(tl); found {
-			result[tl] = cached.(chunkline.Manifest)
+	for i, tl := range timelines {
+		cacheKey := keys[i]
+		if item, found := cacheItems[cacheKey]; found {
+			var manifest chunkline.Manifest
+			err := json.Unmarshal(item.Value, &manifest)
+			if err != nil {
+				span.RecordError(fmt.Errorf("failed to unmarshal cached manifest for %s: %w", tl, err))
+				remaining = append(remaining, tl)
+				continue
+			}
+			result[tl] = manifest
 		} else {
 			remaining = append(remaining, tl)
 		}
@@ -65,12 +79,28 @@ func (r *resolver) ResolveTimelines(ctx context.Context, timelines []string) (ma
 		var manifest chunkline.Manifest
 		err := r.client.GetResource(ctx, tl, "application/chunkline+json", nil, &manifest)
 		if err != nil {
-			span.RecordError(errors.Join(fmt.Errorf("failed to fetch chunkline manifest for %s", tl), err))
+			span.RecordError(fmt.Errorf("failed to fetch chunkline manifest for %s: %w", tl, err))
 			continue
 		}
 		result[tl] = manifest
-		r.cache.Set(tl, manifest, cache.DefaultExpiration)
+
+		bytes, err := json.Marshal(manifest)
+		if err != nil {
+			span.RecordError(fmt.Errorf("failed to marshal manifest for caching for %s: %w", tl, err))
+			continue
+		}
+
+		cacheItem := &memcache.Item{
+			Key:        "chunkline_manifest:" + tl,
+			Value:      bytes,
+			Expiration: int32(time.Hour.Seconds()),
+		}
+		err = r.mc.Set(cacheItem)
+		if err != nil {
+			span.RecordError(fmt.Errorf("failed to set manifest in cache for %s: %w", tl, err))
+		}
 	}
+
 	return result, nil
 
 }

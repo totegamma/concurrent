@@ -396,16 +396,26 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 	for tl, itr := range query {
 		cacheKey := bodyCacheKey(tl, itr)
 		if item, found := cachedItems[cacheKey]; found {
-			var bodyChunk chunkline.BodyChunk
+			var bodyItems []chunkline.BodyItem
 			cacheStr := string(item.Value)
 			cacheStr = cacheStr[1:]
 			cacheStr = "[" + cacheStr + "]"
-			err := json.Unmarshal(item.Value, &bodyChunk)
+			err := json.Unmarshal([]byte(cacheStr), &bodyItems)
 			if err != nil {
 				span.RecordError(fmt.Errorf("failed to unmarshal cached body chunk for %s: %w", tl, err))
+				fmt.Printf("invalid cache format for key %s: %s\n", cacheKey, cacheStr)
 				continue
 			}
-			results[tl] = bodyChunk
+			chunkID, err := strconv.ParseInt(itr, 10, 64)
+			if err != nil {
+				span.RecordError(fmt.Errorf("invalid chunk ID %s for timeline %s: %w", itr, tl, err))
+				continue
+			}
+			results[tl] = chunkline.BodyChunk{
+				URI:     tl,
+				ChunkID: chunkID,
+				Items:   bodyItems,
+			}
 		}
 
 		manifest, ok := manifests[tl]
@@ -499,18 +509,18 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 		}
 		results[tl] = bodyChunk
 
-		bytes, err := json.Marshal(bodyChunk)
-		if err != nil {
-			span.RecordError(fmt.Errorf("failed to marshal body chunk for caching for %s: %w", tl, err))
-			continue
-		}
-
 		// もしキャッシュ対象が最新チャンクであれば、現在の購読状態を確認し、購読中でなければキャッシュを保存しない
 		if chunkID == manifests[tl].Time2Chunk(time.Now()) {
 			isSubscribed := slices.Contains(currentSubscriptions, tl)
 			if !isSubscribed {
 				continue // skip caching if not subscribed to the latest chunk
 			}
+		}
+
+		bytes, err := json.Marshal(items)
+		if err != nil {
+			span.RecordError(fmt.Errorf("failed to marshal body chunk for caching for %s: %w", tl, err))
+			continue
 		}
 
 		cacheStr := "," + string(bytes[1:len(bytes)-1])

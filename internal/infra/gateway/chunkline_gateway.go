@@ -593,6 +593,7 @@ func (r *resolver) cacheUpdater() {
 	go r.pubsub.SubscribeAll(ctx, events)
 
 	for event := range events {
+
 		if event.Type != "created" {
 			continue
 		}
@@ -626,8 +627,9 @@ func (r *resolver) cacheUpdater() {
 			slog.Error("failed to marshal body item for caching", slog.String("timeline", timeline), slog.String("error", err.Error()))
 			continue
 		}
+		val := "," + string(serializedItem)
 
-		err = r.mc.Prepend(&memcache.Item{Key: bodyKey, Value: serializedItem})
+		err = r.mc.Prepend(&memcache.Item{Key: bodyKey, Value: []byte(val)})
 		if err != nil {
 			slog.Error("failed to prepend body item in cache", slog.String("timeline", timeline), slog.String("error", err.Error()))
 			continue

@@ -3,7 +3,6 @@ package pubsub
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log/slog"
 
 	"github.com/redis/go-redis/v9"
@@ -43,8 +42,6 @@ func (s *RedisPubsub) Subscribe(ctx context.Context, prefixes []string, response
 	if len(prefixes) == 0 {
 		return nil
 	}
-
-	fmt.Println("Subscribing to prefixes:", prefixes)
 
 	patterns := make([]string, len(prefixes))
 	for i, prefix := range prefixes {

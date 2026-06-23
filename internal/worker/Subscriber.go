@@ -99,11 +99,6 @@ func (s *Subscriber) keeperRoutine(ctx context.Context) {
 	defer ticker.Stop()
 
 	for range ticker.C {
-
-		fmt.Println("Keeper routine ticked")
-		fmt.Println("Current clients: ", maps.Keys(s.Clients))
-		fmt.Println("Current subscriptions: ", maps.Keys(s.Subscriptions))
-
 		s.createInsufficientSubscriptions(ctx)
 		for domain := range s.Subscriptions {
 			if s.Subscriptions[domain].Connection == nil {
@@ -136,8 +131,6 @@ func (s *Subscriber) CollectCurrentSubscriptions() []string {
 }
 
 func (s *Subscriber) createInsufficientSubscriptions(ctx context.Context) {
-
-	fmt.Println("CreateInsufficientSubscriptions called")
 
 	currentSubscriptions := s.CollectCurrentSubscriptions()
 	changedRemotes := make([]string, 0)
@@ -175,8 +168,6 @@ func (s *Subscriber) createInsufficientSubscriptions(ctx context.Context) {
 			}
 		}
 	}
-
-	fmt.Println("Changed remotes: ", changedRemotes)
 
 	for _, host := range changedRemotes {
 		slog.Debug(

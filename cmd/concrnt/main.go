@@ -20,6 +20,7 @@ import (
 	"github.com/concrnt/concrnt/internal/infra/config"
 	"github.com/concrnt/concrnt/internal/infra/database"
 	"github.com/concrnt/concrnt/internal/infra/gateway"
+	"github.com/concrnt/concrnt/internal/infra/pubsub"
 	"github.com/concrnt/concrnt/internal/infra/repository/postgres"
 	"github.com/concrnt/concrnt/internal/present/rest"
 	"github.com/concrnt/concrnt/internal/present/rest/middleware"
@@ -156,7 +157,7 @@ func main() {
 
 	moduleManager := service.NewModuleManager(rest.Endpoints, conf.Services)
 
-	signal := service.NewSignalService(redis)
+	redisPubsub := pubsub.NewRedisPubsub(redis)
 	policy := service.NewPolicyService(
 		GetGlobalPolicy(),
 		service.GlobalParameters{
@@ -170,18 +171,17 @@ func main() {
 
 	residenceRepo := postgres.NewResidenceRepository(db, cl, domainConfig)
 	recordRepo := postgres.NewRecordRepository(db)
-	recordUC := usecase.NewRecordUsecase(recordRepo, residenceRepo, &domainConfig, cl, signal, policy)
+	recordUC := usecase.NewRecordUsecase(recordRepo, residenceRepo, &domainConfig, cl, redisPubsub, policy)
 	residenceUC := usecase.NewResidenceUsecase(residenceRepo, recordUC, &domainConfig)
 
 	chunklineRepo := postgres.NewChunklineRepository(db)
-	chunklineCache := gateway.NewChunklineCacheService(cl, mc)
 
 	notificationRepo := postgres.NewNotificationRepository(db)
 	notificationUC := usecase.NewNotificationUsecase(notificationRepo)
 
-	subscriber := worker.NewSubscriber(&domainConfig, cl, signal, chunklineCache)
-	subscriptionUC := usecase.NewSubscriptionUsecase(signal, subscriber)
-	chunklineGateway := gateway.NewChunklineGatewayWithCacheService(cl, chunklineCache, subscriptionUC)
+	subscriber := worker.NewSubscriber(&domainConfig, cl, redisPubsub)
+	subscriptionUC := usecase.NewSubscriptionUsecase(subscriber, redisPubsub)
+	chunklineGateway := gateway.NewChunklineGateway(cl, mc, subscriber, redisPubsub)
 	chunklineUC := usecase.NewChunklineUsecase(chunklineRepo, chunklineGateway)
 	subscriber.Start(context.Background())
 

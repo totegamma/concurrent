@@ -109,6 +109,7 @@ type Event struct {
 	Association *string                   `json:"association,omitempty"`
 	References  map[string]SignedDocument `json:"documents,omitempty"`
 	Prefixes    []string                  `json:"prefixes,omitempty"`
+	Timestamp   time.Time                 `json:"timestamp"`
 }
 
 type RealtimeRequest struct {

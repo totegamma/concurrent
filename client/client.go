@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"maps"
 	"math"
 	"net"
 	"net/http"
@@ -94,9 +95,7 @@ func (c *Client) UpKeeper() {
 	for range ticker.C {
 		c.onlineMu.RLock()
 		domains := make(map[string]time.Time, len(c.lastFailed))
-		for domain, lastFailed := range c.lastFailed {
-			domains[domain] = lastFailed
-		}
+		maps.Copy(domains, c.lastFailed)
 		c.onlineMu.RUnlock()
 
 		for domain, lastFailed := range domains {
@@ -313,6 +312,7 @@ func (c *Client) GetServer(ctx context.Context, domainOrCSID string, hint *strin
 		if resp.StatusCode != http.StatusOK {
 			err := errors.Join(fmt.Errorf("failed to get well-known concrnt from %s", url), err)
 			span.RecordError(err)
+			c.markOffline(domain)
 			return concrnt.WellKnownConcrnt{}, err
 		}
 		var wkc concrnt.WellKnownConcrnt
@@ -782,4 +782,78 @@ func (c *Client) Realtime(ctx context.Context, fqdn string) (*websocket.Conn, er
 	}
 
 	return conn, nil
+}
+
+// requests: map[requestID]map[key]url
+// -> map[key]http.Response
+func (c *Client) BatchGet(ctx context.Context, requests map[string]map[string]string) (map[string]*http.Response, error) {
+	ctx, span := tracer.Start(ctx, "Client.BatchGet")
+	defer span.End()
+
+	var responses = make(map[string]*http.Response)
+
+	for domain, reqs := range requests {
+		if !c.IsOnline(domain) {
+			return nil, fmt.Errorf("Domain %s is offline", domain)
+		}
+
+		info, err := c.GetServer(ctx, domain, nil)
+		if err != nil {
+			err := errors.Join(fmt.Errorf("failed to get server for domain %s", domain), err)
+			span.RecordError(err)
+			continue
+		}
+
+		desc, ok := info.Endpoints["net.concrnt.core.batch"]
+		if ok {
+			path, err := concrnt.RenderURITemplate(desc, map[string]string{})
+			if err != nil {
+				err := errors.Join(fmt.Errorf("failed to render batch endpoint template for server %s", info.Domain), err)
+				span.RecordError(err)
+				continue
+			}
+			endpoint := "https://" + info.Domain + path
+
+			requests := make(map[string]*http.Request)
+			for key, url := range reqs {
+				req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+				if err != nil {
+					err := errors.Join(fmt.Errorf("failed to create request for batch get to %s", url), err)
+					span.RecordError(err)
+					continue
+				}
+				requests[key] = req
+			}
+
+			responces, err := DoBatchRequestWithClient(ctx, c.client, endpoint, requests)
+			if err != nil {
+				err := errors.Join(fmt.Errorf("failed to perform batch get to %s", endpoint), err)
+				span.RecordError(err)
+				continue
+			}
+
+			maps.Copy(responses, responces)
+
+		} else {
+			// TODO: parallelize these requests
+			for key, url := range reqs {
+				req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+				if err != nil {
+					err := errors.Join(fmt.Errorf("failed to create request for get to %s", url), err)
+					span.RecordError(err)
+					continue
+				}
+				resp, err := c.client.Do(req)
+				if err != nil {
+					c.markOfflineIfTimeout(domain, "batch get", err)
+					err := errors.Join(fmt.Errorf("failed to perform get to %s", url), err)
+					span.RecordError(err)
+					continue
+				}
+				responses[key] = resp
+			}
+		}
+	}
+
+	return responses, nil
 }

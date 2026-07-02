@@ -130,6 +130,52 @@ func (s *Subscriber) CollectCurrentSubscriptions() []string {
 	return subscriptions
 }
 
+func (s *Subscriber) EnsureSubscriptions(ctx context.Context, subscriptions []string) {
+
+	changedRemotes := make([]string, 0)
+
+	for _, prefix := range subscriptions {
+		host, err := s.Client.ResolveResourceHost(ctx, prefix)
+		if err != nil {
+			slog.Error(
+				fmt.Sprintf("fail to resolve resource host for prefix %s: %v", prefix, err),
+				slog.String("module", "worker"),
+				slog.String("group", "realtime"),
+			)
+			continue
+		}
+
+		if host == s.Config.FQDN {
+			continue
+		}
+
+		if _, ok := s.Subscriptions[host]; !ok {
+			s.Subscriptions[host] = &SubState{
+				Prefixes: []string{prefix},
+			}
+			if !slices.Contains(changedRemotes, host) {
+				changedRemotes = append(changedRemotes, host)
+			}
+		} else {
+			if !slices.Contains(s.Subscriptions[host].Prefixes, prefix) {
+				s.Subscriptions[host].Prefixes = append(s.Subscriptions[host].Prefixes, prefix)
+				if !slices.Contains(changedRemotes, host) {
+					changedRemotes = append(changedRemotes, host)
+				}
+			}
+		}
+	}
+
+	for _, host := range changedRemotes {
+		slog.Debug(
+			fmt.Sprintf("subscription updated: %s > %v", host, s.Subscriptions[host].Prefixes),
+			slog.String("module", "worker"),
+			slog.String("group", "realtime"),
+		)
+		s.subscribeRemote(ctx, host, s.Subscriptions[host].Prefixes)
+	}
+}
+
 func (s *Subscriber) createInsufficientSubscriptions(ctx context.Context) {
 
 	currentSubscriptions := s.CollectCurrentSubscriptions()

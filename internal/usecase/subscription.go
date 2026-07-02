@@ -59,6 +59,7 @@ func (uc *SubscriptionUsecase) Realtime(ctx context.Context, request <-chan []st
 			if err != nil {
 				slog.Error("failed to subscribe", "subscriptions", newSubscriptions, "error", err)
 			}
+			uc.worker.EnsureSubscriptions(ctx, newSubscriptions)
 		}
 	}
 }

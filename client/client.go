@@ -16,6 +16,7 @@ import (
 	"sync"
 	"time"
 
+	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/propagation"
@@ -57,7 +58,7 @@ func New(defaultResolver string) *Client {
 		defaultResolver: defaultResolver,
 		remappings:      make(map[string]*url.URL),
 	}
-	httpClient.Transport = c
+	httpClient.Transport = otelhttp.NewTransport(c)
 	go c.UpKeeper()
 	return c
 }
@@ -401,7 +402,7 @@ func (c *Client) GetResource(ctx context.Context, uri string, accept string, opt
 	}
 
 	// ==== cache check =============
-	cacheKey := "resource:" + uri
+	cacheKey := "resource:" + uri + ":" + accept
 	if !opts.NoCache {
 		x, found := c.cache.Get(cacheKey)
 		if found {

@@ -26,6 +26,8 @@ var WritePublicPolicyURL = "https://policy.concrnt.world/t/write-public.json"
 
 var entityCache = make(map[string]core.Entity)
 
+var mappingCache = make(map[string]string)
+
 var (
 	fromDsn   string
 	fromFQDN  string
@@ -518,9 +520,10 @@ func convertRecord(
 				lines += string(line) + "\n"
 			}
 
+			mappingKey := fmt.Sprintf("cckv://%s/concrnt.world/v1/m%s", v1msg.Signer, cdidBase)
 			mappingDoc := concrnt.Document[schemas.Reference]{
 				Kind: "record",
-				Key:  fmt.Sprintf("cckv://%s/concrnt.world/v0/m%s", v1msg.Signer, cdidBase),
+				Key:  mappingKey,
 				Value: schemas.Reference{
 					Href:   key,
 					Schema: &v1msg.Schema,
@@ -529,6 +532,7 @@ func convertRecord(
 				Schema:    schemas.ReferenceURL,
 				CreatedAt: v1msg.SignedAt,
 			}
+			mappingCache[mappingKey] = key
 
 			mappingBytes, err := json.Marshal(mappingDoc)
 			if err != nil {
@@ -654,7 +658,7 @@ func convertRecord(
 				return "", err
 			}
 
-			associateKey := fmt.Sprintf("cckv://%s/concrnt.world/v0/%s", v1ass.Owner, v1ass.Target)
+			associateKey := fmt.Sprintf("cckv://%s/concrnt.world/v1/%s", v1ass.Owner, v1ass.Target)
 
 			distributes := convertTimelines(v1ass.Timelines)
 			pol := convertPolicy(v1ass.Policy, v1ass.PolicyParams, v1ass.PolicyDefaults)
@@ -730,6 +734,71 @@ func convertRecord(
 					return "", err
 				}
 				lines += string(line) + "\n"
+
+				mappingKey, ok := mappingCache[associateKey]
+				if !ok {
+					var recordKey models.RecordKey
+					err = destDB.
+						Preload("Record").
+						Preload("Record.Document").
+						Where("uri = ?", associateKey).
+						Take(&recordKey).Error
+					if err != nil {
+						fmt.Printf("failed to find record key for uri: %s, error: %s\n", associateKey, err)
+						return "", fmt.Errorf("failed to find record key for uri: %s, error: %w", associateKey, err)
+					}
+
+					if recordKey.RecordID == nil {
+						fmt.Printf("record key for uri: %s has no associated record\n", associateKey)
+						return "", fmt.Errorf("record key for uri: %s has no associated record", associateKey)
+					}
+
+					var reference concrnt.Document[schemas.Reference]
+					err = json.Unmarshal([]byte(recordKey.Record.Document.Document), &reference)
+					if err != nil {
+						fmt.Printf("failed to unmarshal record document for uri: %s, error: %s\n", associateKey, err)
+						return "", fmt.Errorf("failed to unmarshal record document for uri: %s, error: %w", associateKey, err)
+					}
+
+					mappingKey = reference.Value.Href
+				}
+
+				assoc := &concrnt.Document[any]{
+					Kind:        "association",
+					Value:       body,
+					Author:      v1ass.Signer,
+					Schema:      v1ass.Schema,
+					CreatedAt:   v1ass.SignedAt,
+					Distributes: &distributes,
+					Policy:      pol,
+
+					Associate:          &mappingKey,
+					AssociationVariant: variant,
+				}
+
+				assocBytes, err := json.Marshal(assoc)
+				if err != nil {
+					fmt.Println("failed to serialize association document: ", err)
+					return "", err
+				}
+
+				assocSD := concrnt.SignedDocument{
+					Document: string(assocBytes),
+					Proof: concrnt.Proof{
+						Type: "none",
+					},
+					References: map[string]concrnt.SignedDocument{
+						mappingKey: sd,
+					},
+				}
+
+				assocLine, err := json.Marshal(assocSD)
+				if err != nil {
+					fmt.Println("failed to serialize association signed document: ", err)
+					return "", err
+				}
+				lines += string(assocLine) + "\n"
+
 			}
 
 			for _, timeline := range distributes {

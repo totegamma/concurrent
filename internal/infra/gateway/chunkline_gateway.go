@@ -533,6 +533,19 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 		if err != nil {
 			span.RecordError(fmt.Errorf("failed to set body chunk in cache for %s: %w", tl, err))
 		}
+
+		// もしキャッシュ対象が最新チャンクなのであれば、itrも更新する必要がある
+		if chunkID == manifests[tl].Time2Chunk(time.Now()) {
+			cacheItem := &memcache.Item{
+				Key:        itrCacheKey(tl, chunkID),
+				Value:      []byte(itr),
+				Expiration: itrCacheTTL,
+			}
+			err = r.mc.Set(cacheItem)
+			if err != nil {
+				span.RecordError(fmt.Errorf("failed to set iterator in cache for %s: %w", tl, err))
+			}
+		}
 	}
 
 	return results, nil

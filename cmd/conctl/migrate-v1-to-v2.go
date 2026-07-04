@@ -805,8 +805,9 @@ func convertRecord(
 
 				distKey := timeline + "/" + documentID
 				authorURI := fmt.Sprintf("cckv://%s", v1ass.Signer)
+				ownerURI := fmt.Sprintf("cckv://%s", v1ass.Owner)
 				domainURI := fmt.Sprintf("cckv://%s", destFQDN)
-				if !strings.HasPrefix(distKey, authorURI) && !strings.HasPrefix(distKey, domainURI) {
+				if !strings.HasPrefix(distKey, authorURI) && !strings.HasPrefix(distKey, domainURI) && !strings.HasPrefix(distKey, ownerURI) {
 					continue
 				}
 

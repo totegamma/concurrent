@@ -3,6 +3,7 @@ package client
 import (
 	"bytes"
 	"context"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -32,6 +33,11 @@ var tracer = otel.Tracer("client")
 const (
 	defaultTimeout = 3 * time.Second
 	maxFailCount   = 23 // max 10 minutes
+
+	// batchGetFallbackConcurrency bounds how many requests BatchGet's
+	// per-request fallback path (used when a server doesn't support the
+	// batch endpoint) issues concurrently.
+	batchGetFallbackConcurrency = 8
 )
 
 type Client struct {
@@ -163,6 +169,12 @@ func (c *Client) markOfflineIfTimeout(domain string, action string, err error) {
 type Options struct {
 	Resolver string
 	NoCache  bool
+
+	// SkipVerify skips the signed document's proof/signature verification
+	// performed by GetRecord. Only use this for cases where strict
+	// verification is unnecessary, e.g. resolving routing hints, where
+	// the final data is verified separately once actually used.
+	SkipVerify bool
 }
 
 type QueryParams struct {
@@ -216,7 +228,10 @@ func (c *Client) resolveResolver(ctx context.Context, resolver string) (string, 
 		err := c.GetRecord(
 			ctx,
 			concrnt.ComposeCCURI("cckv", resolver, ""),
-			&Options{Resolver: c.defaultResolver},
+			// This is only used to resolve a routing hint (which domain to
+			// talk to); the record's authenticity isn't load-bearing here,
+			// so strict signature verification is unnecessary.
+			&Options{Resolver: c.defaultResolver, SkipVerify: true},
 			&entity,
 		)
 		if err != nil {
@@ -538,6 +553,15 @@ func (c *Client) GetRecord(ctx context.Context, uri string, opts *Options, resul
 		return err
 	}
 
+	if opts == nil || !opts.SkipVerify {
+		err := c.verifySignedDocument(ctx, &sd, opts, maxVerifyDepth)
+		if err != nil {
+			err := errors.Join(fmt.Errorf("signature verification failed for resource %s", uri), err)
+			span.RecordError(err)
+			return err
+		}
+	}
+
 	err = json.Unmarshal([]byte(sd.Document), &result)
 	if err != nil {
 		err := errors.Join(fmt.Errorf("failed to decode document in signed document for resource %s", uri), err)
@@ -546,6 +570,162 @@ func (c *Client) GetRecord(ctx context.Context, uri string, opts *Options, resul
 	}
 
 	return nil
+}
+
+// maxVerifyDepth bounds how many linked documents (subkey / document-reference
+// proofs) VerifySignedDocument will follow, to protect against malicious,
+// arbitrarily deep proof chains.
+const maxVerifyDepth = 4
+
+// ErrSignatureVerificationFailed indicates a signed document's proof did not
+// verify.
+var ErrSignatureVerificationFailed = errors.New("signature verification failed")
+
+// VerifySignedDocument verifies a signed document's proof. For proofs that
+// reference another document (subkey, document-reference), the referenced
+// document is looked up (via References if present, otherwise fetched with
+// GetResource) and recursively verified.
+func (c *Client) VerifySignedDocument(ctx context.Context, sd *concrnt.SignedDocument, opts *Options) error {
+	return c.verifySignedDocument(ctx, sd, opts, maxVerifyDepth)
+}
+
+func (c *Client) verifySignedDocument(ctx context.Context, sd *concrnt.SignedDocument, opts *Options, depth int) error {
+	ctx, span := tracer.Start(ctx, "Client.verifySignedDocument")
+	defer span.End()
+
+	if depth <= 0 {
+		err := errors.New("proof chain is too deep")
+		span.RecordError(err)
+		return err
+	}
+
+	var doc concrnt.Document[any]
+	err := json.Unmarshal([]byte(sd.Document), &doc)
+	if err != nil {
+		err := errors.Join(errors.New("failed to decode document for signature verification"), err)
+		span.RecordError(err)
+		return err
+	}
+
+	switch sd.Proof.Type {
+	case concrnt.ProofTypeEcrecover:
+		if sd.Proof.Signature == nil {
+			err := errors.New("signature is required for ecrecover proof")
+			span.RecordError(err)
+			return err
+		}
+		signatureBytes, err := hex.DecodeString(*sd.Proof.Signature)
+		if err != nil {
+			err := errors.Join(errors.New("invalid signature format"), err)
+			span.RecordError(err)
+			return err
+		}
+		err = concrnt.VerifySignature([]byte(sd.Document), signatureBytes, doc.Author)
+		if err != nil {
+			span.RecordError(err)
+			return errors.Join(ErrSignatureVerificationFailed, err)
+		}
+		return nil
+
+	case concrnt.ProofTypeSubkey:
+		if sd.Proof.Signature == nil {
+			err := errors.New("signature is required for subkey proof")
+			span.RecordError(err)
+			return err
+		}
+		if sd.Proof.Key == nil {
+			err := errors.New("key is required for subkey proof")
+			span.RecordError(err)
+			return err
+		}
+
+		var subKeySD concrnt.SignedDocument
+		err := c.GetResource(ctx, *sd.Proof.Key, "application/json", opts, &subKeySD)
+		if err != nil {
+			err := errors.Join(fmt.Errorf("failed to fetch subkey document %s", *sd.Proof.Key), err)
+			span.RecordError(err)
+			return err
+		}
+
+		err = c.verifySignedDocument(ctx, &subKeySD, opts, depth-1)
+		if err != nil {
+			err := errors.Join(errors.New("subkey document failed verification"), err)
+			span.RecordError(err)
+			return err
+		}
+
+		var subKeyDoc concrnt.Document[schemas.Subkey]
+		err = json.Unmarshal([]byte(subKeySD.Document), &subKeyDoc)
+		if err != nil {
+			err := errors.Join(errors.New("failed to decode subkey document"), err)
+			span.RecordError(err)
+			return err
+		}
+
+		if subKeyDoc.Author != doc.Author {
+			err := errors.New("subkey document author does not match signed document author")
+			span.RecordError(err)
+			return err
+		}
+
+		signatureBytes, err := hex.DecodeString(*sd.Proof.Signature)
+		if err != nil {
+			err := errors.Join(errors.New("invalid signature format"), err)
+			span.RecordError(err)
+			return err
+		}
+
+		err = concrnt.VerifySignature([]byte(sd.Document), signatureBytes, subKeyDoc.Value.CKID)
+		if err != nil {
+			span.RecordError(err)
+			return errors.Join(ErrSignatureVerificationFailed, err)
+		}
+		return nil
+
+	case concrnt.ProofTypeDocumentReference:
+		if sd.Proof.Href == nil {
+			err := errors.New("href is required for document-reference proof")
+			span.RecordError(err)
+			return err
+		}
+
+		targetSD, ok := sd.References[*sd.Proof.Href]
+		if !ok {
+			err := c.GetResource(ctx, *sd.Proof.Href, "application/json", opts, &targetSD)
+			if err != nil {
+				err := errors.Join(fmt.Errorf("failed to fetch referenced document %s", *sd.Proof.Href), err)
+				span.RecordError(err)
+				return err
+			}
+		}
+
+		err = c.verifySignedDocument(ctx, &targetSD, opts, depth-1)
+		if err != nil {
+			err := errors.Join(errors.New("referenced document failed verification"), err)
+			span.RecordError(err)
+			return err
+		}
+
+		var targetDoc concrnt.Document[any]
+		err = json.Unmarshal([]byte(targetSD.Document), &targetDoc)
+		if err != nil {
+			err := errors.Join(errors.New("failed to decode referenced document"), err)
+			span.RecordError(err)
+			return err
+		}
+
+		if targetDoc.Author != doc.Author {
+			err := errors.New("referenced document author does not match signed document author")
+			span.RecordError(err)
+			return err
+		}
+		return nil
+
+	default:
+		err := fmt.Errorf("unsupported or unverifiable proof type: %s", sd.Proof.Type)
+		span.RecordError(err)
+		return err
+	}
 }
 
 func (c *Client) Query(ctx context.Context, resolver string, params QueryParams) ([]concrnt.SignedDocument, error) {
@@ -836,23 +1016,37 @@ func (c *Client) BatchGet(ctx context.Context, requests map[string]map[string]st
 			maps.Copy(responses, responces)
 
 		} else {
-			// TODO: parallelize these requests
+			var mu sync.Mutex
+			var wg sync.WaitGroup
+			sem := make(chan struct{}, batchGetFallbackConcurrency)
+
 			for key, url := range reqs {
-				req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-				if err != nil {
-					err := errors.Join(fmt.Errorf("failed to create request for get to %s", url), err)
-					span.RecordError(err)
-					continue
-				}
-				resp, err := c.client.Do(req)
-				if err != nil {
-					c.markOfflineIfTimeout(domain, "batch get", err)
-					err := errors.Join(fmt.Errorf("failed to perform get to %s", url), err)
-					span.RecordError(err)
-					continue
-				}
-				responses[key] = resp
+				wg.Add(1)
+				sem <- struct{}{}
+				go func(key, url string) {
+					defer wg.Done()
+					defer func() { <-sem }()
+
+					req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+					if err != nil {
+						err := errors.Join(fmt.Errorf("failed to create request for get to %s", url), err)
+						span.RecordError(err)
+						return
+					}
+					resp, err := c.client.Do(req)
+					if err != nil {
+						c.markOfflineIfTimeout(domain, "batch get", err)
+						err := errors.Join(fmt.Errorf("failed to perform get to %s", url), err)
+						span.RecordError(err)
+						return
+					}
+					mu.Lock()
+					responses[key] = resp
+					mu.Unlock()
+				}(key, url)
 			}
+
+			wg.Wait()
 		}
 	}
 

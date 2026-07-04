@@ -162,7 +162,47 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 			span.RecordError(err)
 			return nil, err
 		}
-		// TODO: 参照先のドキュメントの検証
+
+		var refDoc concrnt.Document[schemas.Reference]
+		err := json.Unmarshal([]byte(sd.Document), &refDoc)
+		if err != nil {
+			span.RecordError(err)
+			return nil, errors.Join(domain.ValidationError{Field: "value.href", Message: "invalid reference document"}, err)
+		}
+		if refDoc.Value.Href != *sd.Proof.Href {
+			err := domain.ValidationError{Field: "proof.href", Message: "proof href does not match reference document href"}
+			span.RecordError(err)
+			return nil, err
+		}
+
+		var targetSD concrnt.SignedDocument
+		if existing, ok := sd.References[*sd.Proof.Href]; ok {
+			targetSD = existing
+		} else {
+			err := uc.client.GetResource(ctx, *sd.Proof.Href, "application/json", nil, &targetSD)
+			if err != nil {
+				span.RecordError(err)
+				return nil, errors.Join(domain.ValidationError{Field: "proof.href", Message: "failed to fetch referenced document"}, err)
+			}
+		}
+
+		err = uc.client.VerifySignedDocument(ctx, &targetSD, nil)
+		if err != nil {
+			span.RecordError(err)
+			return nil, errors.Join(domain.ValidationError{Field: "proof.href", Message: "referenced document failed signature verification"}, err)
+		}
+
+		var targetDoc concrnt.Document[any]
+		err = json.Unmarshal([]byte(targetSD.Document), &targetDoc)
+		if err != nil {
+			span.RecordError(err)
+			return nil, errors.Join(domain.ValidationError{Field: "proof.href", Message: "invalid referenced document"}, err)
+		}
+		if targetDoc.Author != doc.Author {
+			err := domain.ValidationError{Field: "proof.href", Message: "referenced document author does not match reference document author"}
+			span.RecordError(err)
+			return nil, err
+		}
 	case concrnt.ProofTypeSubkey:
 		if sd.Proof.Signature == nil {
 			err := domain.ValidationError{Field: "proof.signature", Message: "signature is required for subkey proof"}
@@ -1025,7 +1065,10 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 			}
 			targetSD = &sd
 
-			// TODO: 署名検証
+			if err := uc.client.VerifySignedDocument(ctx, targetSD, nil); err != nil {
+				span.RecordError(err)
+				return nil, errors.Join(errors.New("target document failed signature verification"), err)
+			}
 
 			var targetDoc concrnt.Document[any]
 			err = json.Unmarshal([]byte(targetSD.Document), &targetDoc)

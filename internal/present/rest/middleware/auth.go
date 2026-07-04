@@ -147,12 +147,18 @@ func (s *AuthMiddleware) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFun
 
 			} else { // login as subkey
 
+				// GetRecord verifies the subkey document's signature (and
+				// caches it) by default, so no additional strict-mode
+				// handling is needed here.
 				var subKeyDoc concrnt.Document[schemas.Subkey]
-				// TODO 署名を確認するstrictオプションが必要
-				// TODO キーのキャッシュが必須
 				err := s.client.GetRecord(ctx, keyID, nil, &subKeyDoc)
 				if err != nil {
 					span.RecordError(err)
+					goto skipCheckAuthorization
+				}
+
+				if subKeyDoc.Author != ccid {
+					span.RecordError(fmt.Errorf("subkey document author does not match issuer"))
 					goto skipCheckAuthorization
 				}
 

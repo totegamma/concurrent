@@ -3,6 +3,8 @@ package client
 import (
 	"bufio"
 	"context"
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"io"
@@ -19,6 +21,200 @@ import (
 	"github.com/concrnt/concrnt"
 	"github.com/patrickmn/go-cache"
 )
+
+type testRecordValue struct {
+	Foo string `json:"foo"`
+}
+
+// newTestIdentity generates a fresh secp256k1 key pair and its CCID, for
+// building signed documents in tests.
+func newTestIdentity(t *testing.T) (ccid string, privKeyHex string) {
+	t.Helper()
+
+	priv := make([]byte, 32)
+	if _, err := rand.Read(priv); err != nil {
+		t.Fatalf("generate private key: %v", err)
+	}
+	privKeyHex = hex.EncodeToString(priv)
+
+	ccid, err := concrnt.PrivKeyToAddr(privKeyHex, "con")
+	if err != nil {
+		t.Fatalf("derive ccid: %v", err)
+	}
+	return ccid, privKeyHex
+}
+
+// newSignedRecord builds an ecrecover-proof signed document authored by ccid.
+func newSignedRecord(t *testing.T, ccid, privKeyHex, key, foo string) concrnt.SignedDocument {
+	t.Helper()
+
+	doc := concrnt.Document[testRecordValue]{
+		Kind:      "record",
+		Key:       key,
+		Value:     testRecordValue{Foo: foo},
+		Author:    ccid,
+		Schema:    "https://schema.concrnt.test/example.json",
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	docBytes, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatalf("marshal document: %v", err)
+	}
+
+	sigBytes, err := concrnt.SignBytes(docBytes, privKeyHex)
+	if err != nil {
+		t.Fatalf("sign document: %v", err)
+	}
+	signature := hex.EncodeToString(sigBytes)
+
+	return concrnt.SignedDocument{
+		Document: string(docBytes),
+		Proof: concrnt.Proof{
+			Type:      concrnt.ProofTypeEcrecover,
+			Signature: &signature,
+		},
+	}
+}
+
+// newResolveTestServer returns a test client and server serving sd at the
+// resolve endpoint for the given uri.
+func newResolveTestServer(t *testing.T, domain string, resources map[string]concrnt.SignedDocument) *Client {
+	t.Helper()
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/concrnt":
+			wkc := concrnt.WellKnownConcrnt{
+				Version: "2.0",
+				Domain:  domain,
+				CSID:    "ccs1example",
+				Layer:   "concrnt",
+				Endpoints: map[string]string{
+					"net.concrnt.core.resolve": "/resolve?uri={uri}",
+				},
+			}
+			if err := json.NewEncoder(w).Encode(wkc); err != nil {
+				t.Fatalf("encode well-known: %v", err)
+			}
+		case "/resolve":
+			uriParam, err := url.QueryUnescape(r.URL.Query().Get("uri"))
+			if err != nil {
+				t.Fatalf("unescape uri: %v", err)
+			}
+			sd, ok := resources[uriParam]
+			if !ok {
+				http.NotFound(w, r)
+				return
+			}
+			if err := json.NewEncoder(w).Encode(sd); err != nil {
+				t.Fatalf("encode resource: %v", err)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(server.Close)
+
+	cl := New(domain)
+	cl.AddHostRemapping(domain, server.URL)
+	return cl
+}
+
+func TestGetRecordVerifiesValidSignature(t *testing.T) {
+	t.Parallel()
+
+	const domain = "example.test"
+	ccid, priv := newTestIdentity(t)
+	uri := "cckv://" + ccid + "/example"
+	sd := newSignedRecord(t, ccid, priv, uri, "bar")
+
+	cl := newResolveTestServer(t, domain, map[string]concrnt.SignedDocument{uri: sd})
+
+	var got concrnt.Document[testRecordValue]
+	err := cl.GetRecord(context.Background(), uri, &Options{Resolver: domain}, &got)
+	if err != nil {
+		t.Fatalf("GetRecord returned error: %v", err)
+	}
+	if got.Value.Foo != "bar" {
+		t.Fatalf("GetRecord decoded Foo = %q, want %q", got.Value.Foo, "bar")
+	}
+}
+
+func TestGetRecordRejectsTamperedDocument(t *testing.T) {
+	t.Parallel()
+
+	const domain = "example.test"
+	ccid, priv := newTestIdentity(t)
+	uri := "cckv://" + ccid + "/example"
+	sd := newSignedRecord(t, ccid, priv, uri, "bar")
+
+	// tamper with the document after signing, keeping the original signature
+	tampered := strings.Replace(sd.Document, "bar", "evil", 1)
+	if tampered == sd.Document {
+		t.Fatal("tampering did not change the document")
+	}
+	sd.Document = tampered
+
+	cl := newResolveTestServer(t, domain, map[string]concrnt.SignedDocument{uri: sd})
+
+	var got testRecordValue
+	err := cl.GetRecord(context.Background(), uri, &Options{Resolver: domain}, &got)
+	if err == nil {
+		t.Fatal("GetRecord returned nil error for tampered document")
+	}
+	if !errors.Is(err, ErrSignatureVerificationFailed) {
+		t.Fatalf("GetRecord returned error %v, want ErrSignatureVerificationFailed", err)
+	}
+}
+
+func TestGetRecordSkipVerifyBypassesSignatureCheck(t *testing.T) {
+	t.Parallel()
+
+	const domain = "example.test"
+	ccid, priv := newTestIdentity(t)
+	uri := "cckv://" + ccid + "/example"
+	sd := newSignedRecord(t, ccid, priv, uri, "bar")
+	sd.Document = strings.Replace(sd.Document, "bar", "evil", 1)
+
+	cl := newResolveTestServer(t, domain, map[string]concrnt.SignedDocument{uri: sd})
+
+	var got concrnt.Document[testRecordValue]
+	err := cl.GetRecord(context.Background(), uri, &Options{Resolver: domain, SkipVerify: true}, &got)
+	if err != nil {
+		t.Fatalf("GetRecord with SkipVerify returned error: %v", err)
+	}
+	if got.Value.Foo != "evil" {
+		t.Fatalf("GetRecord decoded Foo = %q, want %q", got.Value.Foo, "evil")
+	}
+}
+
+func TestVerifySignedDocumentRejectsNoneProof(t *testing.T) {
+	t.Parallel()
+
+	ccid, _ := newTestIdentity(t)
+	doc := concrnt.Document[testRecordValue]{
+		Kind:      "record",
+		Key:       "cckv://" + ccid + "/example",
+		Value:     testRecordValue{Foo: "bar"},
+		Author:    ccid,
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	docBytes, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatalf("marshal document: %v", err)
+	}
+
+	sd := concrnt.SignedDocument{
+		Document: string(docBytes),
+		Proof:    concrnt.Proof{Type: concrnt.ProofTypeNone},
+	}
+
+	cl := New("example.test")
+	err = cl.VerifySignedDocument(context.Background(), &sd, nil)
+	if err == nil {
+		t.Fatal("VerifySignedDocument returned nil error for none proof")
+	}
+}
 
 func TestQuery(t *testing.T) {
 	t.Parallel()

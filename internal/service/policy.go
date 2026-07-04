@@ -108,12 +108,39 @@ func (s *PolicyService) resolvePolicyStack(ctx context.Context, stack []concrnt.
 			continue
 		}
 
+		insertEntries := func(entries []concrnt.PolicyEntry) {
+			if i == 0 {
+				if prepend == nil {
+					// generate parent url
+					split := strings.Split(layer.Source, "/")
+					if len(split) == 0 {
+						span.AddEvent("invalid policy source format", trace.WithAttributes(attribute.String("source", layer.Source)))
+						return
+					}
+
+					parentURL := strings.Join(split[:len(split)-1], "/")
+
+					prepend = &concrnt.Policy{
+						Source:  parentURL,
+						Entries: entries,
+					}
+				} else {
+					prepend.Entries = append(prepend.Entries, entries...)
+				}
+			} else {
+				stack[i-1].Entries = append(stack[i-1].Entries, entries...)
+			}
+		}
+
 		for _, parent := range *layer.VirtualParents {
 			var doc concrnt.Document[any]
-			err := s.client.GetRecord(ctx, parent, &client.Options{NoCache: true}, &doc)
+			// The virtual-parent policy record itself is not sensitive data
+			// used for anything but building the evaluation stack, so
+			// strict signature verification is unnecessary here.
+			err := s.client.GetRecord(ctx, parent, &client.Options{NoCache: true, SkipVerify: true}, &doc)
 			if err != nil {
 				span.RecordError(err)
-				// TODO: insert a errored policy layer to indicate this error
+				insertEntries([]concrnt.PolicyEntry{{Errored: true}})
 				continue
 			}
 
@@ -122,28 +149,7 @@ func (s *PolicyService) resolvePolicyStack(ctx context.Context, stack []concrnt.
 				continue
 			}
 
-			if i == 0 {
-				if prepend == nil {
-					// generate parent url
-					split := strings.Split(layer.Source, "/")
-					if len(split) == 0 {
-						span.AddEvent("invalid policy source format", trace.WithAttributes(attribute.String("source", layer.Source)))
-						continue
-					}
-
-					parentURL := strings.Join(split[:len(split)-1], "/")
-
-					prepend = &concrnt.Policy{
-						Source:  parentURL,
-						Entries: doc.Policy.Entries,
-					}
-				} else {
-					prepend.Entries = append(prepend.Entries, doc.Policy.Entries...)
-				}
-			} else {
-				entries := doc.Policy.Entries
-				stack[i-1].Entries = append(stack[i-1].Entries, entries...)
-			}
+			insertEntries(doc.Policy.Entries)
 		}
 	}
 
@@ -156,6 +162,13 @@ func (s *PolicyService) resolvePolicyStack(ctx context.Context, stack []concrnt.
 	for _, layer := range stack {
 		policyLayer := []policy.EvaluationSet{}
 		for _, p := range layer.Entries {
+
+			if p.Errored {
+				policyLayer = append(policyLayer, policy.EvaluationSet{
+					Errored: true,
+				})
+				continue
+			}
 
 			if p.URL != nil {
 				pol, err := s.ResolvePolicyURL(ctx, *p.URL)

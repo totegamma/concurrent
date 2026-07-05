@@ -3,7 +3,6 @@ package client
 import (
 	"bytes"
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -554,7 +553,7 @@ func (c *Client) GetRecord(ctx context.Context, uri string, opts *Options, resul
 	}
 
 	if opts == nil || !opts.SkipVerify {
-		err := c.verifySignedDocument(ctx, &sd, opts, maxVerifyDepth)
+		err := sd.Verify(ctx, &optionsResolver{c: c, opts: opts}, nil)
 		if err != nil {
 			err := errors.Join(fmt.Errorf("signature verification failed for resource %s", uri), err)
 			span.RecordError(err)
@@ -572,160 +571,47 @@ func (c *Client) GetRecord(ctx context.Context, uri string, opts *Options, resul
 	return nil
 }
 
-// maxVerifyDepth bounds how many linked documents (subkey / document-reference
-// proofs) VerifySignedDocument will follow, to protect against malicious,
-// arbitrarily deep proof chains.
-const maxVerifyDepth = 4
-
 // ErrSignatureVerificationFailed indicates a signed document's proof did not
-// verify.
-var ErrSignatureVerificationFailed = errors.New("signature verification failed")
+// verify. Kept as an alias for backwards compatibility with callers that
+// referenced client.ErrSignatureVerificationFailed before verification moved
+// to concrnt.SignedDocument.Verify.
+var ErrSignatureVerificationFailed = concrnt.ErrSignatureVerificationFailed
+
+// ResolveSignedDocument fetches the signed document at uri, satisfying
+// concrnt.DocumentResolver so a *Client can be passed directly to
+// SignedDocument.Verify.
+func (c *Client) ResolveSignedDocument(ctx context.Context, uri string) (concrnt.SignedDocument, error) {
+	var sd concrnt.SignedDocument
+	err := c.GetResource(ctx, uri, "application/json", nil, &sd)
+	if err != nil {
+		return concrnt.SignedDocument{}, err
+	}
+	return sd, nil
+}
+
+// optionsResolver adapts a *Client plus per-call Options (e.g. a routing
+// Resolver hint) to concrnt.DocumentResolver, for verification paths that
+// need to honor the caller's Options while fetching referenced documents.
+type optionsResolver struct {
+	c    *Client
+	opts *Options
+}
+
+func (r *optionsResolver) ResolveSignedDocument(ctx context.Context, uri string) (concrnt.SignedDocument, error) {
+	var sd concrnt.SignedDocument
+	err := r.c.GetResource(ctx, uri, "application/json", r.opts, &sd)
+	if err != nil {
+		return concrnt.SignedDocument{}, err
+	}
+	return sd, nil
+}
 
 // VerifySignedDocument verifies a signed document's proof. For proofs that
 // reference another document (subkey, document-reference), the referenced
 // document is looked up (via References if present, otherwise fetched with
 // GetResource) and recursively verified.
 func (c *Client) VerifySignedDocument(ctx context.Context, sd *concrnt.SignedDocument, opts *Options) error {
-	return c.verifySignedDocument(ctx, sd, opts, maxVerifyDepth)
-}
-
-func (c *Client) verifySignedDocument(ctx context.Context, sd *concrnt.SignedDocument, opts *Options, depth int) error {
-	ctx, span := tracer.Start(ctx, "Client.verifySignedDocument")
-	defer span.End()
-
-	if depth <= 0 {
-		err := errors.New("proof chain is too deep")
-		span.RecordError(err)
-		return err
-	}
-
-	var doc concrnt.Document[any]
-	err := json.Unmarshal([]byte(sd.Document), &doc)
-	if err != nil {
-		err := errors.Join(errors.New("failed to decode document for signature verification"), err)
-		span.RecordError(err)
-		return err
-	}
-
-	switch sd.Proof.Type {
-	case concrnt.ProofTypeEcrecover:
-		if sd.Proof.Signature == nil {
-			err := errors.New("signature is required for ecrecover proof")
-			span.RecordError(err)
-			return err
-		}
-		signatureBytes, err := hex.DecodeString(*sd.Proof.Signature)
-		if err != nil {
-			err := errors.Join(errors.New("invalid signature format"), err)
-			span.RecordError(err)
-			return err
-		}
-		err = concrnt.VerifySignature([]byte(sd.Document), signatureBytes, doc.Author)
-		if err != nil {
-			span.RecordError(err)
-			return errors.Join(ErrSignatureVerificationFailed, err)
-		}
-		return nil
-
-	case concrnt.ProofTypeSubkey:
-		if sd.Proof.Signature == nil {
-			err := errors.New("signature is required for subkey proof")
-			span.RecordError(err)
-			return err
-		}
-		if sd.Proof.Key == nil {
-			err := errors.New("key is required for subkey proof")
-			span.RecordError(err)
-			return err
-		}
-
-		var subKeySD concrnt.SignedDocument
-		err := c.GetResource(ctx, *sd.Proof.Key, "application/json", opts, &subKeySD)
-		if err != nil {
-			err := errors.Join(fmt.Errorf("failed to fetch subkey document %s", *sd.Proof.Key), err)
-			span.RecordError(err)
-			return err
-		}
-
-		err = c.verifySignedDocument(ctx, &subKeySD, opts, depth-1)
-		if err != nil {
-			err := errors.Join(errors.New("subkey document failed verification"), err)
-			span.RecordError(err)
-			return err
-		}
-
-		var subKeyDoc concrnt.Document[schemas.Subkey]
-		err = json.Unmarshal([]byte(subKeySD.Document), &subKeyDoc)
-		if err != nil {
-			err := errors.Join(errors.New("failed to decode subkey document"), err)
-			span.RecordError(err)
-			return err
-		}
-
-		if subKeyDoc.Author != doc.Author {
-			err := errors.New("subkey document author does not match signed document author")
-			span.RecordError(err)
-			return err
-		}
-
-		signatureBytes, err := hex.DecodeString(*sd.Proof.Signature)
-		if err != nil {
-			err := errors.Join(errors.New("invalid signature format"), err)
-			span.RecordError(err)
-			return err
-		}
-
-		err = concrnt.VerifySignature([]byte(sd.Document), signatureBytes, subKeyDoc.Value.CKID)
-		if err != nil {
-			span.RecordError(err)
-			return errors.Join(ErrSignatureVerificationFailed, err)
-		}
-		return nil
-
-	case concrnt.ProofTypeDocumentReference:
-		if sd.Proof.Href == nil {
-			err := errors.New("href is required for document-reference proof")
-			span.RecordError(err)
-			return err
-		}
-
-		targetSD, ok := sd.References[*sd.Proof.Href]
-		if !ok {
-			err := c.GetResource(ctx, *sd.Proof.Href, "application/json", opts, &targetSD)
-			if err != nil {
-				err := errors.Join(fmt.Errorf("failed to fetch referenced document %s", *sd.Proof.Href), err)
-				span.RecordError(err)
-				return err
-			}
-		}
-
-		err = c.verifySignedDocument(ctx, &targetSD, opts, depth-1)
-		if err != nil {
-			err := errors.Join(errors.New("referenced document failed verification"), err)
-			span.RecordError(err)
-			return err
-		}
-
-		var targetDoc concrnt.Document[any]
-		err = json.Unmarshal([]byte(targetSD.Document), &targetDoc)
-		if err != nil {
-			err := errors.Join(errors.New("failed to decode referenced document"), err)
-			span.RecordError(err)
-			return err
-		}
-
-		if targetDoc.Author != doc.Author {
-			err := errors.New("referenced document author does not match signed document author")
-			span.RecordError(err)
-			return err
-		}
-		return nil
-
-	default:
-		err := fmt.Errorf("unsupported or unverifiable proof type: %s", sd.Proof.Type)
-		span.RecordError(err)
-		return err
-	}
+	return sd.Verify(ctx, &optionsResolver{c: c, opts: opts}, nil)
 }
 
 func (c *Client) Query(ctx context.Context, resolver string, params QueryParams) ([]concrnt.SignedDocument, error) {

@@ -33,6 +33,11 @@ type PolicyEntry struct {
 	URL      *string            `json:"url"`
 	Params   *map[string]any    `json:"params,omitempty"`
 	Defaults *map[string]string `json:"defaults,omitempty"`
+
+	// Errored marks a virtual-parent policy entry that couldn't be resolved
+	// (e.g. the referenced policy record failed to fetch), so evaluation can
+	// propagate the failure instead of silently treating it as no policy.
+	Errored bool `json:"errored,omitempty"`
 }
 
 type Policy struct {

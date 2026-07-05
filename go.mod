@@ -1,6 +1,6 @@
 module github.com/concrnt/concrnt
 
-go 1.26.0
+go 1.25.1
 
 require (
 	github.com/SherClockHolmes/webpush-go v1.3.0
@@ -34,8 +34,8 @@ require (
 	gorm.io/driver/postgres v1.6.0
 	gorm.io/gorm v1.31.1
 	gorm.io/plugin/opentelemetry v0.1.16
-	k8s.io/apimachinery v0.36.2
-	k8s.io/client-go v0.36.2
+	k8s.io/apimachinery v0.34.1
+	k8s.io/client-go v0.34.1
 )
 
 require (
@@ -187,7 +187,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	gorm.io/driver/clickhouse v0.7.0 // indirect
 	gorm.io/driver/mysql v1.5.7 // indirect
-	k8s.io/api v0.36.2 // indirect
+	k8s.io/api v0.34.1 // indirect
 	k8s.io/klog/v2 v2.140.0 // indirect
 	k8s.io/kube-openapi v0.0.0-20260317180543-43fb72c5454a // indirect
 	k8s.io/utils v0.0.0-20260210185600-b8788abfbbc2 // indirect

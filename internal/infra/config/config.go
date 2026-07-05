@@ -33,9 +33,11 @@ type Concrnt struct {
 }
 
 type Cluster struct {
-	Mode            string `yaml:"mode"`            // "" (standalone) or "kubernetes"
-	HeadlessService string `yaml:"headlessService"` // DNS name resolving to all replicas
-	InternalPort    int    `yaml:"internalPort"`    // replica-to-replica coordination port (default 8001)
+	// ElectorEndpoint is the leader-election / peer-discovery service (e.g.
+	// the k8s-elector sidecar). Empty means standalone: this instance is the
+	// one and only replica.
+	ElectorEndpoint string `yaml:"electorEndpoint"`
+	InternalPort    int    `yaml:"internalPort"` // replica-to-replica coordination port (default 8001)
 }
 
 type Backends struct {

@@ -167,23 +167,16 @@ func main() {
 		internalPort = 8001
 	}
 
+	clustered := clusterConf.ElectorEndpoint != ""
+
 	var elector cluster.Elector
 	var peerDiscovery cluster.Discovery
-	switch clusterConf.Mode {
-	case "":
+	if clustered {
+		httpElector := cluster.NewHTTPElector(clusterConf.ElectorEndpoint)
+		elector = httpElector
+		peerDiscovery = httpElector
+	} else {
 		elector = cluster.AlwaysLeader{}
-	case "kubernetes":
-		if clusterConf.HeadlessService == "" {
-			panic("cluster.headlessService must be set when cluster.mode is kubernetes")
-		}
-		kubeElector, err := cluster.NewKubeElector(internalPort)
-		if err != nil {
-			panic("failed to initialize kubernetes leader election: " + err.Error())
-		}
-		elector = kubeElector
-		peerDiscovery = cluster.NewDNSDiscovery(clusterConf.HeadlessService, internalPort)
-	default:
-		panic("unknown cluster.mode: " + clusterConf.Mode)
 	}
 
 	cl := client.New(domainConfig.FQDN)
@@ -218,7 +211,7 @@ func main() {
 	subscriber := worker.NewSubscriber(&domainConfig, cl, redisPubsub)
 
 	var ensurer usecase.SubscriptionEnsurer = subscriber
-	if clusterConf.Mode == "kubernetes" {
+	if clustered {
 		ensurer = cluster.NewRoutingEnsurer(elector, subscriber)
 	}
 	subscriptionUC := usecase.NewSubscriptionUsecase(ensurer, redisPubsub)
@@ -259,7 +252,7 @@ func main() {
 		}
 	})
 
-	if clusterConf.Mode == "kubernetes" {
+	if clustered {
 		internalHandler := rest.NewInternalHandler(subscriptionUC, subscriber, elector)
 		rest.StartInternalListener(ctx, fmt.Sprintf(":%d", internalPort), internalHandler)
 	}
@@ -363,7 +356,7 @@ func main() {
 	slog.Info("shutting down")
 	ready.Store(false)
 
-	if clusterConf.Mode == "kubernetes" {
+	if clustered {
 		// keep serving briefly so the endpoint controller stops routing to
 		// this pod before connections are closed
 		time.Sleep(3 * time.Second)

@@ -10,16 +10,15 @@ concrnt:
   layer: concrnt-mainnet
   debug: false
   # cluster enables running multiple replicas (e.g. on kubernetes).
-  # leave it out (or mode: "") for a single instance / docker compose.
+  # leave it out for a single instance / docker compose.
   # cluster:
-  #   # only "kubernetes" is supported: leader election via a coordination.k8s.io
-  #   # Lease decides which replica runs the singleton workers (federation
-  #   # subscriber, cache updater, push reactor). requires POD_NAME / POD_NAMESPACE /
-  #   # POD_IP env vars (downward API) and RBAC for leases.
-  #   mode: "kubernetes"
-  #   # headless service resolving to every replica, used by the leader to
-  #   # aggregate realtime subscription demand across the cluster
-  #   headlessService: "concrnt-headless"
+  #   # endpoint of a leader-election / peer-discovery service implementing
+  #   # GET /status -> {"isLeader": bool, "leaderUrl": string, "peers": [string]}.
+  #   # on kubernetes, run the bundled k8s-elector binary as a sidecar (it
+  #   # elects a leader via a coordination.k8s.io Lease and discovers peers
+  #   # via a headless service). other backends can implement the same
+  #   # protocol. empty = standalone (this instance is the only replica).
+  #   electorEndpoint: "http://127.0.0.1:8002"
   #   # replica-to-replica coordination port. do NOT expose this port outside
   #   # the cluster (default: 8001)
   #   internalPort: 8001

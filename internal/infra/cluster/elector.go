@@ -1,26 +1,26 @@
 // Package cluster provides the coordination primitives used to run multiple
 // replicas of concrnt: leader election (which replica runs the singleton
 // workers) and peer discovery (which replicas exist, for aggregating realtime
-// subscription demand). Outside Kubernetes, AlwaysLeader/NoPeers reproduce the
+// subscription demand).
+//
+// Both are obtained from an external elector service over a small HTTP
+// protocol (see HTTPElector), so concrnt itself has no dependency on any
+// particular orchestrator. On Kubernetes the cmd/k8s-elector sidecar
+// implements the protocol via a coordination.k8s.io Lease and headless-service
+// DNS; other backends (consul, etcd, redis, ...) can implement it too.
+// Without an elector endpoint configured, AlwaysLeader reproduces the
 // single-instance behavior.
 package cluster
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"log/slog"
-	"net"
-	"os"
-	"strconv"
+	"net/http"
 	"strings"
 	"sync/atomic"
 	"time"
-
-	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
-	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
-	"k8s.io/client-go/tools/leaderelection"
-	"k8s.io/client-go/tools/leaderelection/resourcelock"
 )
 
 // Elector decides which replica runs the singleton workers.
@@ -46,126 +46,161 @@ func (AlwaysLeader) IsLeader() bool { return true }
 
 func (AlwaysLeader) LeaderURL() (string, bool) { return "", false }
 
+// ElectorStatus is the response of the elector service's GET /status.
+type ElectorStatus struct {
+	IsLeader  bool     `json:"isLeader"`
+	LeaderURL string   `json:"leaderUrl"`
+	Peers     []string `json:"peers"`
+}
+
+type httpElectorState struct {
+	status    ElectorStatus
+	fetchedAt time.Time
+}
+
 const (
-	leaseName     = "concrnt-leader"
-	leaseDuration = 15 * time.Second
-	renewDeadline = 10 * time.Second
-	retryPeriod   = 2 * time.Second
+	electorPollInterval = 2 * time.Second
+	// electorFailureGrace must stay below the elector's lease duration: if the
+	// elector service dies it also stops renewing the lease, so dropping
+	// leadership locally before another replica can acquire it prevents two
+	// leaders from overlapping.
+	electorFailureGrace = 10 * time.Second
 )
 
-// KubeElector elects a leader via a coordination.k8s.io Lease. The lease
-// holder identity carries the pod IP so peers can derive LeaderURL without
-// extra API calls.
-type KubeElector struct {
-	clientset    *kubernetes.Clientset
-	namespace    string
-	identity     string
-	internalPort int
+// HTTPElector obtains leadership and peer discovery from an external elector
+// service (e.g. the cmd/k8s-elector sidecar) by polling GET /status. It
+// implements both Elector and Discovery.
+type HTTPElector struct {
+	endpoint string
+	client   *http.Client
 
-	elector atomic.Pointer[leaderelection.LeaderElector]
+	pollInterval time.Duration
+	failureGrace time.Duration
+
+	state atomic.Pointer[httpElectorState]
 }
 
-func NewKubeElector(internalPort int) (*KubeElector, error) {
-	cfg, err := rest.InClusterConfig()
-	if err != nil {
-		return nil, fmt.Errorf("failed to load in-cluster config: %w", err)
+func NewHTTPElector(endpoint string) *HTTPElector {
+	return &HTTPElector{
+		endpoint:     strings.TrimRight(endpoint, "/"),
+		client:       &http.Client{Timeout: 2 * time.Second},
+		pollInterval: electorPollInterval,
+		failureGrace: electorFailureGrace,
 	}
-
-	clientset, err := kubernetes.NewForConfig(cfg)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create kubernetes client: %w", err)
-	}
-
-	namespace := os.Getenv("POD_NAMESPACE")
-	if namespace == "" {
-		data, err := os.ReadFile("/var/run/secrets/kubernetes.io/serviceaccount/namespace")
-		if err != nil {
-			return nil, fmt.Errorf("POD_NAMESPACE is not set and namespace file is unreadable: %w", err)
-		}
-		namespace = strings.TrimSpace(string(data))
-	}
-
-	podName := os.Getenv("POD_NAME")
-	if podName == "" {
-		podName, _ = os.Hostname()
-	}
-
-	podIP := os.Getenv("POD_IP")
-	if podIP == "" {
-		return nil, fmt.Errorf("POD_IP is not set (expose it via the downward API)")
-	}
-
-	return &KubeElector{
-		clientset:    clientset,
-		namespace:    namespace,
-		identity:     podName + "|" + podIP,
-		internalPort: internalPort,
-	}, nil
 }
 
-func (e *KubeElector) Run(ctx context.Context, onLead func(ctx context.Context)) {
-	for ctx.Err() == nil {
-		lock := &resourcelock.LeaseLock{
-			LeaseMeta: metav1.ObjectMeta{
-				Name:      leaseName,
-				Namespace: e.namespace,
-			},
-			Client: e.clientset.CoordinationV1(),
-			LockConfig: resourcelock.ResourceLockConfig{
-				Identity: e.identity,
-			},
+func (e *HTTPElector) fetch(ctx context.Context) error {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, e.endpoint+"/status", nil)
+	if err != nil {
+		return err
+	}
+
+	resp, err := e.client.Do(req)
+	if err != nil {
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("unexpected status %d", resp.StatusCode)
+	}
+
+	var status ElectorStatus
+	if err := json.NewDecoder(resp.Body).Decode(&status); err != nil {
+		return err
+	}
+
+	e.state.Store(&httpElectorState{status: status, fetchedAt: time.Now()})
+	return nil
+}
+
+// current returns the last polled status, treating it as void once it is
+// older than the failure grace (fail-safe: an unreachable elector means we
+// must assume we are not the leader).
+func (e *HTTPElector) current() (ElectorStatus, bool) {
+	state := e.state.Load()
+	if state == nil {
+		return ElectorStatus{}, false
+	}
+	if time.Since(state.fetchedAt) > e.failureGrace {
+		return ElectorStatus{}, false
+	}
+	return state.status, true
+}
+
+func (e *HTTPElector) IsLeader() bool {
+	status, ok := e.current()
+	return ok && status.IsLeader
+}
+
+func (e *HTTPElector) LeaderURL() (string, bool) {
+	status, ok := e.current()
+	if !ok || status.LeaderURL == "" {
+		return "", false
+	}
+	return status.LeaderURL, true
+}
+
+func (e *HTTPElector) Peers(ctx context.Context) ([]string, error) {
+	status, ok := e.current()
+	if !ok {
+		return nil, fmt.Errorf("elector status unavailable")
+	}
+	return status.Peers, nil
+}
+
+func (e *HTTPElector) Run(ctx context.Context, onLead func(ctx context.Context)) {
+	ticker := time.NewTicker(e.pollInterval)
+	defer ticker.Stop()
+
+	var lead leadState
+	defer lead.stop()
+
+	for {
+		if err := e.fetch(ctx); err != nil && ctx.Err() == nil {
+			slog.Warn(
+				"failed to poll elector",
+				slog.String("endpoint", e.endpoint),
+				slog.String("error", err.Error()),
+				slog.String("module", "cluster"),
+			)
 		}
 
-		elector, err := leaderelection.NewLeaderElector(leaderelection.LeaderElectionConfig{
-			Lock:            lock,
-			LeaseDuration:   leaseDuration,
-			RenewDeadline:   renewDeadline,
-			RetryPeriod:     retryPeriod,
-			ReleaseOnCancel: true,
-			Callbacks: leaderelection.LeaderCallbacks{
-				OnStartedLeading: func(leadCtx context.Context) {
-					slog.Info("acquired cluster leadership", slog.String("identity", e.identity))
-					onLead(leadCtx)
-				},
-				OnStoppedLeading: func() {
-					slog.Info("lost cluster leadership", slog.String("identity", e.identity))
-				},
-				OnNewLeader: func(identity string) {
-					slog.Info("cluster leader observed", slog.String("leader", identity))
-				},
-			},
-		})
-		if err != nil {
-			slog.Error("failed to create leader elector", slog.String("error", err.Error()))
+		// IsLeader applies the failure grace, so a dead elector demotes us
+		leading := e.IsLeader()
+		if leading && !lead.active() {
+			slog.Info("acquired cluster leadership", slog.String("module", "cluster"))
+			lead.start(ctx, onLead)
+		} else if !leading && lead.active() {
+			slog.Info("lost cluster leadership", slog.String("module", "cluster"))
+			lead.stop()
+		}
+
+		select {
+		case <-ctx.Done():
 			return
+		case <-ticker.C:
 		}
-
-		e.elector.Store(elector)
-		// returns on ctx cancellation or when leadership is lost; loop to re-candidate
-		elector.Run(ctx)
 	}
 }
 
-func (e *KubeElector) IsLeader() bool {
-	elector := e.elector.Load()
-	if elector == nil {
-		return false
-	}
-	return elector.IsLeader()
+// leadState tracks the context handed to the singleton workers while this
+// replica is the leader.
+type leadState struct {
+	cancel context.CancelFunc
 }
 
-func (e *KubeElector) LeaderURL() (string, bool) {
-	elector := e.elector.Load()
-	if elector == nil {
-		return "", false
+func (l *leadState) active() bool { return l.cancel != nil }
+
+func (l *leadState) start(ctx context.Context, onLead func(ctx context.Context)) {
+	leadCtx, cancel := context.WithCancel(ctx)
+	l.cancel = cancel
+	go onLead(leadCtx)
+}
+
+func (l *leadState) stop() {
+	if l.cancel != nil {
+		l.cancel()
+		l.cancel = nil
 	}
-	leader := elector.GetLeader()
-	if leader == "" {
-		return "", false
-	}
-	_, ip, found := strings.Cut(leader, "|")
-	if !found || ip == "" {
-		return "", false
-	}
-	return "http://" + net.JoinHostPort(ip, strconv.Itoa(e.internalPort)), true
 }

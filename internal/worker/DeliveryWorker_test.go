@@ -229,3 +229,23 @@ func TestDeliveryWorker_ResolveError(t *testing.T) {
 		t.Fatal("did not expect any local/remote action when resolution fails")
 	}
 }
+
+func TestDeliveryWorker_LocalPublishMissingEvent(t *testing.T) {
+	client := &fakeDeliveryClient{resolveHost: testFQDN}
+	pubsub := &fakePubSub{}
+	committer := &fakeCommitter{}
+	w := newTestWorker(client, pubsub, committer)
+
+	job := domain.DeliveryJob{
+		ResolveURI: "cckv://owner/key",
+		Local:      domain.DeliveryLocalPublish,
+		Remote:     domain.DeliveryRemoteNone,
+	}
+
+	if err := w.handle(context.Background(), job); err == nil {
+		t.Fatal("expected an error for a local publish job with no Event, got nil")
+	}
+	if pubsub.published {
+		t.Fatal("did not expect Publish to be called without an Event")
+	}
+}

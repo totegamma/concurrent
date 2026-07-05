@@ -36,8 +36,9 @@ const (
 	defaultReclaimInterval = time.Minute
 	defaultStreamMaxLen    = 100_000
 
-	bookkeepingTimeout = 5 * time.Second
-	handlerTimeout     = 30 * time.Second
+	bookkeepingTimeout   = 5 * time.Second
+	handlerTimeout       = 30 * time.Second
+	groupCreateRetryWait = 2 * time.Second
 )
 
 // RedisDeliveryQueue is a Redis Streams-backed delivery queue: a consumer
@@ -141,10 +142,8 @@ func (q *RedisDeliveryQueue) enqueueRaw(ctx context.Context, job domain.Delivery
 // goroutine (recovers messages left pending by a crashed consumer). It
 // blocks until ctx is cancelled.
 func (q *RedisDeliveryQueue) Run(ctx context.Context, concurrency int, handler func(ctx context.Context, job domain.DeliveryJob) error) error {
-	if err := q.rdb.XGroupCreateMkStream(ctx, streamKey, groupName, "0").Err(); err != nil {
-		if !strings.Contains(err.Error(), "BUSYGROUP") {
-			return err
-		}
+	if err := q.ensureGroup(ctx); err != nil {
+		return err
 	}
 
 	var wg sync.WaitGroup
@@ -173,6 +172,24 @@ func (q *RedisDeliveryQueue) Run(ctx context.Context, concurrency int, handler f
 	<-ctx.Done()
 	wg.Wait()
 	return nil
+}
+
+// ensureGroup creates the consumer group, retrying on transient errors (e.g.
+// Redis not yet reachable at process startup) instead of giving up, so a
+// brief Redis outage during boot doesn't permanently disable delivery.
+func (q *RedisDeliveryQueue) ensureGroup(ctx context.Context) error {
+	for {
+		err := q.rdb.XGroupCreateMkStream(ctx, streamKey, groupName, "0").Err()
+		if err == nil || strings.Contains(err.Error(), "BUSYGROUP") {
+			return nil
+		}
+		slog.Error("delivery queue: failed to create consumer group, retrying", slog.String("error", err.Error()))
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(groupCreateRetryWait):
+		}
+	}
 }
 
 func (q *RedisDeliveryQueue) consumeLoop(ctx context.Context, consumer string, handler func(context.Context, domain.DeliveryJob) error) {
@@ -300,6 +317,14 @@ func (q *RedisDeliveryQueue) process(ctx context.Context, msg redis.XMessage, ha
 		return
 	}
 
+	if ctx.Err() != nil {
+		// The loop is shutting down: leave the message unacked/pending
+		// rather than counting this as a genuine attempt. It will be
+		// picked back up (via XAutoClaim) once claimMinIdle elapses,
+		// with its retry budget intact.
+		return
+	}
+
 	job.Attempt++
 	job.LastError = err.Error()
 
@@ -357,6 +382,8 @@ func (q *RedisDeliveryQueue) deadLetterRaw(payload string) {
 	defer cancel()
 	if err := q.rdb.XAdd(ctx, &redis.XAddArgs{
 		Stream: dlqStreamKey,
+		MaxLen: q.streamMaxLen,
+		Approx: true,
 		Values: map[string]interface{}{"payload": payload},
 	}).Err(); err != nil {
 		slog.Error("delivery queue: failed to write to DLQ", slog.String("error", err.Error()))

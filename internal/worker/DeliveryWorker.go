@@ -2,6 +2,7 @@ package worker
 
 import (
 	"context"
+	"fmt"
 	"log/slog"
 
 	"github.com/concrnt/concrnt"
@@ -80,8 +81,7 @@ func (w *DeliveryWorker) handle(ctx context.Context, job domain.DeliveryJob) err
 		switch job.Local {
 		case domain.DeliveryLocalPublish:
 			if job.Event == nil {
-				slog.Error("delivery worker: local publish job missing event", slog.String("jobId", job.ID))
-				return nil
+				return fmt.Errorf("delivery worker: local publish job %s missing event", job.ID)
 			}
 			return w.pubsub.Publish(ctx, job.ResolveURI, *job.Event)
 		case domain.DeliveryLocalCommit:

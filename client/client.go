@@ -163,6 +163,12 @@ func (c *Client) markOfflineIfTimeout(domain string, action string, err error) {
 type Options struct {
 	Resolver string
 	NoCache  bool
+
+	// SkipVerify skips the signed document's proof/signature verification
+	// performed by GetRecord. Only use this for cases where strict
+	// verification is unnecessary, e.g. resolving routing hints, where
+	// the final data is verified separately once actually used.
+	SkipVerify bool
 }
 
 type QueryParams struct {
@@ -216,7 +222,10 @@ func (c *Client) resolveResolver(ctx context.Context, resolver string) (string, 
 		err := c.GetRecord(
 			ctx,
 			concrnt.ComposeCCURI("cckv", resolver, ""),
-			&Options{Resolver: c.defaultResolver},
+			// This is only used to resolve a routing hint (which domain to
+			// talk to); the record's authenticity isn't load-bearing here,
+			// so strict signature verification is unnecessary.
+			&Options{Resolver: c.defaultResolver, SkipVerify: true},
 			&entity,
 		)
 		if err != nil {
@@ -538,6 +547,41 @@ func (c *Client) GetRecord(ctx context.Context, uri string, opts *Options, resul
 		return err
 	}
 
+	if opts == nil || !opts.SkipVerify {
+		// GetResource caches the raw (unverified) signed document, so cache
+		// hits would re-pay signature verification on every call — remember
+		// successful verifications separately, keyed by content hash so a
+		// re-fetched document can never ride an older entry's verification.
+		// Hot path: the auth middleware verifies the subkey document once
+		// per authenticated request.
+		verifiedKey := "verified:" + uri
+		proofBytes, err := json.Marshal(sd.Proof)
+		if err != nil {
+			span.RecordError(err)
+			return err
+		}
+		docHash := string(concrnt.GetHash(append([]byte(sd.Document), proofBytes...)))
+		useCache := opts == nil || !opts.NoCache
+		verified := false
+		if useCache {
+			if x, found := c.cache.Get(verifiedKey); found {
+				hash, ok := x.(string)
+				verified = ok && hash == docHash
+			}
+		}
+		if !verified {
+			err := sd.Verify(ctx, &optionsResolver{c: c, opts: opts}, nil)
+			if err != nil {
+				err := errors.Join(fmt.Errorf("signature verification failed for resource %s", uri), err)
+				span.RecordError(err)
+				return err
+			}
+			if useCache {
+				c.cache.Set(verifiedKey, docHash, cache.DefaultExpiration)
+			}
+		}
+	}
+
 	err = json.Unmarshal([]byte(sd.Document), &result)
 	if err != nil {
 		err := errors.Join(fmt.Errorf("failed to decode document in signed document for resource %s", uri), err)
@@ -546,6 +590,30 @@ func (c *Client) GetRecord(ctx context.Context, uri string, opts *Options, resul
 	}
 
 	return nil
+}
+
+// ResolveSignedDocument fetches the signed document at uri, satisfying
+// concrnt.DocumentResolver so a *Client can be passed directly to
+// SignedDocument.Verify.
+func (c *Client) ResolveSignedDocument(ctx context.Context, uri string) (concrnt.SignedDocument, error) {
+	return (&optionsResolver{c: c}).ResolveSignedDocument(ctx, uri)
+}
+
+// optionsResolver adapts a *Client plus per-call Options (e.g. a routing
+// Resolver hint) to concrnt.DocumentResolver, for verification paths that
+// need to honor the caller's Options while fetching referenced documents.
+type optionsResolver struct {
+	c    *Client
+	opts *Options
+}
+
+func (r *optionsResolver) ResolveSignedDocument(ctx context.Context, uri string) (concrnt.SignedDocument, error) {
+	var sd concrnt.SignedDocument
+	err := r.c.GetResource(ctx, uri, "application/json", r.opts, &sd)
+	if err != nil {
+		return concrnt.SignedDocument{}, err
+	}
+	return sd, nil
 }
 
 func (c *Client) Query(ctx context.Context, resolver string, params QueryParams) ([]concrnt.SignedDocument, error) {
@@ -836,23 +904,33 @@ func (c *Client) BatchGet(ctx context.Context, requests map[string]map[string]st
 			maps.Copy(responses, responces)
 
 		} else {
-			// TODO: parallelize these requests
-			for key, url := range reqs {
+			keys := make([]string, 0, len(reqs))
+			for key := range reqs {
+				keys = append(keys, key)
+			}
+
+			var mu sync.Mutex
+			runBounded(batchFallbackConcurrency, len(keys), func(i int) {
+				key := keys[i]
+				url := reqs[key]
+
 				req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 				if err != nil {
 					err := errors.Join(fmt.Errorf("failed to create request for get to %s", url), err)
 					span.RecordError(err)
-					continue
+					return
 				}
 				resp, err := c.client.Do(req)
 				if err != nil {
 					c.markOfflineIfTimeout(domain, "batch get", err)
 					err := errors.Join(fmt.Errorf("failed to perform get to %s", url), err)
 					span.RecordError(err)
-					continue
+					return
 				}
+				mu.Lock()
 				responses[key] = resp
-			}
+				mu.Unlock()
+			})
 		}
 	}
 

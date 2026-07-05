@@ -14,7 +14,32 @@ import (
 	"github.com/patrickmn/go-cache"
 )
 
-const resourceBatchFallbackConcurrency = 5
+// batchFallbackConcurrency bounds how many per-request fallback fetches
+// (used when a server doesn't support a batch endpoint) run concurrently.
+const batchFallbackConcurrency = 8
+
+// runBounded runs fn(i) for every i in [0, n) on at most limit goroutines,
+// returning once all calls have finished.
+func runBounded(limit, n int, fn func(i int)) {
+	var wg sync.WaitGroup
+	jobs := make(chan int)
+
+	for range min(limit, n) {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range jobs {
+				fn(i)
+			}
+		}()
+	}
+
+	for i := range n {
+		jobs <- i
+	}
+	close(jobs)
+	wg.Wait()
+}
 
 type resourceBatchItem struct {
 	index         int
@@ -211,33 +236,17 @@ func (c *Client) getResourceBatchGroup(ctx context.Context, batchEndpoint string
 }
 
 func (c *Client) getResourceBatchFallback(ctx context.Context, indexes []int, uris []string, accept string, opts *Options, results []any) error {
-	var wg sync.WaitGroup
-	jobs := make(chan int)
-	errs := make(chan error, len(indexes))
-
-	workerCount := min(resourceBatchFallbackConcurrency, len(indexes))
-	for range workerCount {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for index := range jobs {
-				if err := c.GetResource(ctx, uris[index], accept, opts, results[index]); err != nil {
-					errs <- err
-				}
-			}
-		}()
-	}
-
-	for _, index := range indexes {
-		jobs <- index
-	}
-	close(jobs)
-	wg.Wait()
-	close(errs)
-
+	var mu sync.Mutex
 	var err error
-	for e := range errs {
-		err = errors.Join(err, e)
-	}
+
+	runBounded(batchFallbackConcurrency, len(indexes), func(i int) {
+		index := indexes[i]
+		if e := c.GetResource(ctx, uris[index], accept, opts, results[index]); e != nil {
+			mu.Lock()
+			err = errors.Join(err, e)
+			mu.Unlock()
+		}
+	})
+
 	return err
 }

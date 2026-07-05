@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -106,6 +105,16 @@ func NewRecordUsecase(
 	}
 }
 
+// resolver returns uc.client as a DocumentResolver, or a nil interface when
+// the client itself is nil (offline tooling, tests) — assigning a typed nil
+// pointer directly would bypass Verify's nil-resolver guard and panic on use.
+func (uc *RecordUsecase) resolver() concrnt.DocumentResolver {
+	if uc.client == nil {
+		return nil
+	}
+	return uc.client
+}
+
 func GetReferrerFromReferences(sd concrnt.SignedDocument, requesterID string) *string {
 	requesterCCKV := concrnt.CCURI{Scheme: "cckv", Owner: requesterID}.String()
 	entityRef, ok := sd.References[requesterCCKV]
@@ -133,88 +142,42 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		return nil, err
 	}
 
-	// validate
-	switch sd.Proof.Type {
-	case concrnt.ProofTypeEcrecover:
-		if sd.Proof.Signature == nil {
-			err := domain.ValidationError{Field: "proof.signature", Message: "signature is required for ecrecover proof"}
-			span.RecordError(err)
-			return nil, err
-		}
-		signatureBytes, err := hex.DecodeString(*sd.Proof.Signature)
-		if err != nil {
-			span.RecordError(err)
-			return nil, errors.Join(domain.ValidationError{Field: "proof.signature", Message: "invalid signature format"}, err)
-		}
-		err = concrnt.VerifySignature([]byte(sd.Document), signatureBytes, doc.Author)
-		if err != nil {
-			span.RecordError(err)
-			return nil, errors.Join(domain.ValidationError{Field: "proof.signature", Message: "signature verification failed"}, err)
-		}
-	case concrnt.ProofTypeDocumentReference:
-		if sd.Proof.Href == nil {
-			err := domain.ValidationError{Field: "proof.href", Message: "href is required for document-reference proof"}
-			span.RecordError(err)
-			return nil, err
-		}
-		if doc.Schema != schemas.ReferenceURL {
-			err := domain.ValidationError{Field: "doc.schema", Message: "document-reference proof is only allowed for reference documents"}
-			span.RecordError(err)
-			return nil, err
-		}
-		// TODO: 参照先のドキュメントの検証
-	case concrnt.ProofTypeSubkey:
-		if sd.Proof.Signature == nil {
-			err := domain.ValidationError{Field: "proof.signature", Message: "signature is required for subkey proof"}
-			span.RecordError(err)
-			return nil, err
-		}
+	// none proofs are only trusted from system service accounts; that's an
+	// authorization decision, not proof authenticity, so it's computed here
+	// rather than inside SignedDocument.Verify. It's irrelevant (and thus
+	// harmless) for any other proof type.
+	serviceAccountType, _ := ctx.Value(interop.ServiceAccountTypeCtxKey).(string)
+	allowNone := serviceAccountType == "system"
 
-		if sd.Proof.Key == nil {
-			err := domain.ValidationError{Field: "proof.key", Message: "key is required for subkey proof"}
-			span.RecordError(err)
-			return nil, err
-		}
-
-		var subKeyDoc concrnt.Document[schemas.Subkey]
-		err := uc.client.GetRecord(ctx, *sd.Proof.Key, nil, &subKeyDoc)
-		if err != nil {
-			span.RecordError(err)
-			return nil, errors.Join(domain.ValidationError{Field: "proof.key", Message: "failed to fetch subkey document"}, err)
-		}
-
-		signatureBytes, err := hex.DecodeString(*sd.Proof.Signature)
-		if err != nil {
-			span.RecordError(err)
-			return nil, errors.Join(domain.ValidationError{Field: "proof.signature", Message: "invalid signature format"}, err)
-		}
-
-		err = concrnt.VerifySignature([]byte(sd.Document), signatureBytes, subKeyDoc.Value.CKID)
-		if err != nil {
-			span.RecordError(err)
-			return nil, errors.Join(domain.ValidationError{Field: "proof.signature", Message: "signature verification failed"}, err)
-		}
-	case concrnt.ProofTypeNone:
-		serviceAccountType, ok := ctx.Value(interop.ServiceAccountTypeCtxKey).(string)
-		if !ok || serviceAccountType != "system" {
-			err := domain.ValidationError{Field: "proof.type", Message: "none proof type is only allowed for system service accounts"}
-			slog.Error("Unauthorized commit with none proof", "error", err.Error())
-			span.RecordError(err)
-			return nil, err
-		}
-
-	default:
-		err := domain.ValidationError{Field: "proof.type", Message: "unsupported proof type: " + sd.Proof.Type}
+	// IgnoreReferences: proof-chain documents (e.g. subkey enact records)
+	// must come from their authoritative server, not from committer-supplied
+	// inline copies — otherwise a revoked subkey could be replayed forever.
+	if err := sd.Verify(ctx, uc.resolver(), &concrnt.VerifyOpts{AllowNoneProof: allowNone, IgnoreReferences: true}); err != nil {
 		span.RecordError(err)
-		return nil, err
+		if errors.Is(err, concrnt.ErrNoneProofNotAllowed) {
+			slog.Error("Unauthorized commit with none proof", "error", err.Error())
+			return nil, errors.Join(domain.ValidationError{Field: "proof.type", Message: "none proof type is only allowed for system service accounts"}, err)
+		}
+		if errors.Is(err, concrnt.ErrUnsupportedProofType) {
+			return nil, errors.Join(domain.ValidationError{Field: "proof.type", Message: "unsupported proof type: " + sd.Proof.Type}, err)
+		}
+		return nil, errors.Join(domain.ValidationError{Field: "proof", Message: "signature verification failed"}, err)
 	}
 
 	requesterID := doc.Author
 	referrer := GetReferrerFromReferences(sd, requesterID)
 
-	requester, err := uc.GetEntity(ctx, concrnt.CCURI{Scheme: "cckv", Owner: requesterID, Hint: referrer}.String())
-	if err != nil {
+	requester, requesterErr := uc.GetEntity(ctx, concrnt.CCURI{Scheme: "cckv", Owner: requesterID, Hint: referrer}.String())
+	if requesterErr != nil {
+		span.RecordError(requesterErr)
+	}
+
+	// Only "entity" commits (self-registration) may proceed without an
+	// already-resolvable requester entity.
+	if doc.Kind != "entity" && requester == nil {
+		err := errors.Join(fmt.Errorf("requester entity not found for %s operation", doc.Kind), requesterErr)
 		span.RecordError(err)
+		return nil, err
 	}
 
 	targetUserID := ""
@@ -273,11 +236,6 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		}
 
 	case "ack":
-		if requester == nil {
-			err := errors.New("requester entity not found for ack operation")
-			span.RecordError(err)
-			return nil, err
-		}
 		referrer := GetReferrerFromReferences(sd, requester.CCKV())
 		targetUserID := *doc.Associate
 		if referrer != nil {
@@ -293,11 +251,6 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		}
 
 	case "unack":
-		if requester == nil {
-			err := errors.New("requester entity not found for unack operation")
-			span.RecordError(err)
-			return nil, err
-		}
 		referrer := GetReferrerFromReferences(sd, requester.CCKV())
 		targetUserID := *doc.Associate
 		if referrer != nil {
@@ -312,11 +265,6 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 			return uc.unacknowledge(ctx, tx, documentID, ip, *requester, *targetUser, doc, sd, mode)
 		}
 	case "delete":
-		if requester == nil {
-			err := errors.New("requester entity not found for delete operation")
-			span.RecordError(err)
-			return nil, err
-		}
 		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
 			return uc.deleteRecord(ctx, tx, *requester, sd, mode)
 		}
@@ -1025,7 +973,13 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 			}
 			targetSD = &sd
 
-			// TODO: 署名検証
+			// Note: none-proof targets are deliberately rejected here — they
+			// carry no verifiable authorship, so a committer-supplied inline
+			// copy cannot be trusted.
+			if err := targetSD.Verify(ctx, uc.resolver(), &concrnt.VerifyOpts{IgnoreReferences: true}); err != nil {
+				span.RecordError(err)
+				return nil, errors.Join(errors.New("target document failed signature verification"), err)
+			}
 
 			var targetDoc concrnt.Document[any]
 			err = json.Unmarshal([]byte(targetSD.Document), &targetDoc)

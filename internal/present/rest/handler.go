@@ -157,6 +157,15 @@ func (h *Handler) handleCommit(c echo.Context) error {
 	return presenter.OK(c, result)
 }
 
+// permissionDenied returns a 403 when debug mode is enabled (to aid diagnosis),
+// or a 404 otherwise, to avoid leaking whether a resource exists.
+func (h *Handler) permissionDenied(c echo.Context) error {
+	if h.config.Debug {
+		return presenter.Forbidden(c, "permission denied")
+	}
+	return presenter.NotFound(c, "resource not found")
+}
+
 func (h *Handler) handleResolve(c echo.Context) error {
 	ctx, span := tracer.Start(c.Request().Context(), "Handler.handleResource")
 	defer span.End()
@@ -209,7 +218,7 @@ func (h *Handler) handleResolve(c echo.Context) error {
 			entity, err := h.record.GetSigned(ctx, uri.String())
 			if err != nil {
 				if errors.Is(err, domain.ErrPermissionDenied) {
-					return presenter.Forbidden(c, "permission denied") // TODO: should be return NotFound
+					return h.permissionDenied(c)
 				}
 				if errors.Is(err, domain.ErrNotFound) {
 					return presenter.NotFound(c, "resource not found")
@@ -226,7 +235,7 @@ func (h *Handler) handleResolve(c echo.Context) error {
 				return presenter.Redirect(c, redirectErr.Location, nil)
 			}
 			if errors.Is(err, domain.ErrPermissionDenied) {
-				return presenter.Forbidden(c, "permission denied") // TODO: should be return NotFound
+				return h.permissionDenied(c)
 			}
 			return presenter.InternalError(c, err)
 		}
@@ -243,7 +252,7 @@ func (h *Handler) handleResolve(c echo.Context) error {
 				return presenter.NotFound(c, "resource not found")
 			}
 			if errors.Is(err, domain.ErrPermissionDenied) {
-				return presenter.Forbidden(c, "permission denied") // TODO: should be return NotFound
+				return h.permissionDenied(c)
 			}
 			return presenter.InternalError(c, err)
 		}
@@ -259,7 +268,7 @@ func (h *Handler) handleResolve(c echo.Context) error {
 				return presenter.Redirect(c, redirectErr.Location, redirectErr.Body)
 			}
 			if errors.Is(err, domain.ErrPermissionDenied) {
-				return presenter.Forbidden(c, "permission denied") // TODO: should be return NotFound
+				return h.permissionDenied(c)
 			}
 			return presenter.InternalError(c, err)
 		}

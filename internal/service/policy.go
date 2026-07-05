@@ -108,12 +108,39 @@ func (s *PolicyService) resolvePolicyStack(ctx context.Context, stack []concrnt.
 			continue
 		}
 
+		insertEntries := func(entries []concrnt.PolicyEntry) {
+			if i == 0 {
+				if prepend == nil {
+					// generate parent url
+					split := strings.Split(layer.Source, "/")
+					if len(split) == 0 {
+						span.AddEvent("invalid policy source format", trace.WithAttributes(attribute.String("source", layer.Source)))
+						return
+					}
+
+					parentURL := strings.Join(split[:len(split)-1], "/")
+
+					prepend = &concrnt.Policy{
+						Source:  parentURL,
+						Entries: entries,
+					}
+				} else {
+					prepend.Entries = append(prepend.Entries, entries...)
+				}
+			} else {
+				stack[i-1].Entries = append(stack[i-1].Entries, entries...)
+			}
+		}
+
 		for _, parent := range *layer.VirtualParents {
 			var doc concrnt.Document[any]
-			err := s.client.GetRecord(ctx, parent, &client.Options{NoCache: true}, &doc)
+			// The virtual-parent policy record itself is not sensitive data
+			// used for anything but building the evaluation stack, so
+			// strict signature verification is unnecessary here.
+			err := s.client.GetRecord(ctx, parent, &client.Options{NoCache: true, SkipVerify: true}, &doc)
 			if err != nil {
 				span.RecordError(err)
-				// TODO: insert a errored policy layer to indicate this error
+				insertEntries([]concrnt.PolicyEntry{{Errored: true}})
 				continue
 			}
 
@@ -122,28 +149,7 @@ func (s *PolicyService) resolvePolicyStack(ctx context.Context, stack []concrnt.
 				continue
 			}
 
-			if i == 0 {
-				if prepend == nil {
-					// generate parent url
-					split := strings.Split(layer.Source, "/")
-					if len(split) == 0 {
-						span.AddEvent("invalid policy source format", trace.WithAttributes(attribute.String("source", layer.Source)))
-						continue
-					}
-
-					parentURL := strings.Join(split[:len(split)-1], "/")
-
-					prepend = &concrnt.Policy{
-						Source:  parentURL,
-						Entries: doc.Policy.Entries,
-					}
-				} else {
-					prepend.Entries = append(prepend.Entries, doc.Policy.Entries...)
-				}
-			} else {
-				entries := doc.Policy.Entries
-				stack[i-1].Entries = append(stack[i-1].Entries, entries...)
-			}
+			insertEntries(doc.Policy.Entries)
 		}
 	}
 
@@ -157,14 +163,17 @@ func (s *PolicyService) resolvePolicyStack(ctx context.Context, stack []concrnt.
 		policyLayer := []policy.EvaluationSet{}
 		for _, p := range layer.Entries {
 
+			if p.Errored {
+				policyLayer = append(policyLayer, erroredEvaluationSet(p))
+				continue
+			}
+
 			if p.URL != nil {
 				pol, err := s.ResolvePolicyURL(ctx, *p.URL)
 				if err != nil {
 					span.RecordError(err)
 					// mark this layer has errored policy
-					policyLayer = append(policyLayer, policy.EvaluationSet{
-						Errored: true,
-					})
+					policyLayer = append(policyLayer, erroredEvaluationSet(p))
 					continue
 				}
 
@@ -179,6 +188,18 @@ func (s *PolicyService) resolvePolicyStack(ctx context.Context, stack []concrnt.
 					}
 				}
 
+				// Entry-level defaults override the resolved policy's own,
+				// so the referencing document decides the fallback conclusion.
+				if defaults := entryDefaults(p); defaults != nil {
+					if pol.Defaults == nil {
+						pol.Defaults = defaults
+					} else {
+						for action, conclusion := range defaults {
+							pol.Defaults[action] = conclusion
+						}
+					}
+				}
+
 				policyLayer = append(policyLayer, policy.EvaluationSet{
 					Policy: pol,
 					Params: p.Params,
@@ -189,6 +210,31 @@ func (s *PolicyService) resolvePolicyStack(ctx context.Context, stack []concrnt.
 	}
 
 	return result, nil
+}
+
+// entryDefaults converts a policy entry's per-action default conclusions
+// (how the author wants evaluation to fall back when the referenced policy
+// can't be resolved or doesn't decide) into evaluator form.
+func entryDefaults(p concrnt.PolicyEntry) map[string]policy.Conclusion {
+	if p.Defaults == nil {
+		return nil
+	}
+	defaults := make(map[string]policy.Conclusion, len(*p.Defaults))
+	for action, conclusion := range *p.Defaults {
+		defaults[action] = policy.Conclusion(conclusion)
+	}
+	return defaults
+}
+
+// erroredEvaluationSet marks an unresolvable policy entry for evaluation:
+// EvaluateStack folds it to the entry's declared default conclusion (or
+// UNSET when the entry declares none), letting policy authors choose
+// fail-open vs fail-closed per action instead of erroring out entirely.
+func erroredEvaluationSet(p concrnt.PolicyEntry) policy.EvaluationSet {
+	return policy.EvaluationSet{
+		Errored: true,
+		Policy:  policy.Policy{Defaults: entryDefaults(p)},
+	}
 }
 
 func (s *PolicyService) Eval(ctx context.Context, req policy.RequestContext, stack []concrnt.Policy, action string, key string) error {

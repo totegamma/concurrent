@@ -33,6 +33,13 @@ type PolicyEntry struct {
 	URL      *string            `json:"url"`
 	Params   *map[string]any    `json:"params,omitempty"`
 	Defaults *map[string]string `json:"defaults,omitempty"`
+
+	// Errored marks a policy entry whose referenced policy couldn't be
+	// resolved (e.g. the record or URL failed to fetch), so evaluation falls
+	// back to the entry's Defaults instead of silently treating it as no
+	// policy. In-process marker only — kept off the wire so remote documents
+	// can't set it.
+	Errored bool `json:"-"`
 }
 
 type Policy struct {

@@ -67,6 +67,14 @@ type SignalService interface {
 	Publish(ctx context.Context, channel string, event concrnt.Event) error
 }
 
+// DeliveryQueue hands off federation delivery jobs to be executed
+// asynchronously (host resolution + local publish/commit or remote HTTP
+// commit). See internal/domain.DeliveryJob for the job shape and
+// internal/worker.DeliveryWorker for the consumer side.
+type DeliveryQueue interface {
+	Enqueue(ctx context.Context, job domain.DeliveryJob) error
+}
+
 type PolicyService interface {
 	Eval(ctx context.Context, req policy.RequestContext, stack []concrnt.Policy, action string, key string) error
 }
@@ -84,6 +92,7 @@ type RecordUsecase struct {
 	client    *client.Client
 	signal    SignalService
 	policy    PolicyService
+	delivery  DeliveryQueue
 	cache     *cache.Cache
 }
 
@@ -94,6 +103,7 @@ func NewRecordUsecase(
 	client *client.Client,
 	signal SignalService,
 	policy PolicyService,
+	delivery DeliveryQueue,
 ) *RecordUsecase {
 	return &RecordUsecase{
 		repo:      repo,
@@ -102,6 +112,7 @@ func NewRecordUsecase(
 		client:    client,
 		signal:    signal,
 		policy:    policy,
+		delivery:  delivery,
 		cache:     cache.New(10*time.Minute, 15*time.Minute),
 	}
 }
@@ -483,19 +494,13 @@ func (uc *RecordUsecase) createReferenceDistributionActions(ctx context.Context,
 		destURI := destURI
 		postProcesses = append(postProcesses,
 			func(ctx context.Context) error {
-				host, err := uc.client.ResolveResourceHost(ctx, destURI)
-				if err != nil {
-					return err
-				}
-				if host == uc.config.FQDN {
-					_, err = uc.Commit(ctx, ip, distSD, mode)
-					return err
-				}
-				dest, err := concrnt.ParseCCURI(destURI)
-				if err != nil {
-					return err
-				}
-				return uc.client.Commit(ctx, dest.Owner, distSD)
+				return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
+					ResolveURI: destURI,
+					Payload:    distSD,
+					Local:      domain.DeliveryLocalCommit,
+					Remote:     domain.DeliveryRemoteCommit,
+					IP:         ip,
+				})
 			},
 		)
 	}
@@ -631,17 +636,16 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 				postProcesses = append(
 					postProcesses,
 					func(ctx context.Context) error {
-						host, err := uc.client.ResolveResourceHost(ctx, dest)
-						if err != nil {
-							return err
-						}
-						if host == uc.config.FQDN {
-							return uc.signal.Publish(ctx, dest, concrnt.Event{
+						return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
+							ResolveURI: dest,
+							Payload:    remoteSD,
+							Local:      domain.DeliveryLocalPublish,
+							Remote:     domain.DeliveryRemoteCommit,
+							Event: &concrnt.Event{
 								Type: "deleted",
 								URI:  targetURI,
-							})
-						}
-						return uc.client.Commit(ctx, host, remoteSD)
+							},
+						})
 					},
 				)
 			}
@@ -679,17 +683,16 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 					}
 					postProcesses = append(postProcesses,
 						func(ctx context.Context) error {
-							host, err := uc.client.ResolveResourceHost(ctx, dest)
-							if err != nil {
-								return err
-							}
-							if host == uc.config.FQDN {
-								return uc.signal.Publish(ctx, dest, concrnt.Event{
+							return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
+								ResolveURI: dest,
+								Payload:    remoteSD,
+								Local:      domain.DeliveryLocalPublish,
+								Remote:     domain.DeliveryRemoteCommit,
+								Event: &concrnt.Event{
 									Type: "unassociated",
 									URI:  associatedURI,
-								})
-							}
-							return uc.client.Commit(ctx, host, remoteSD)
+								},
+							})
 						},
 					)
 				}
@@ -721,16 +724,14 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 		for _, dest := range destinations {
 			postProcesses = append(postProcesses,
 				func(ctx context.Context) error {
-					host, err := uc.client.ResolveResourceHost(ctx, dest)
-					if err != nil {
-						return err
-					}
-					if host != uc.config.FQDN {
-						return nil
-					}
-					return uc.signal.Publish(ctx, dest, concrnt.Event{
-						Type: "deleted",
-						URI:  targetURI,
+					return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
+						ResolveURI: dest,
+						Local:      domain.DeliveryLocalPublish,
+						Remote:     domain.DeliveryRemoteNone,
+						Event: &concrnt.Event{
+							Type: "deleted",
+							URI:  targetURI,
+						},
 					})
 				},
 			)
@@ -762,16 +763,14 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 			for _, dest := range destinations {
 				postProcesses = append(postProcesses,
 					func(ctx context.Context) error {
-						host, err := uc.client.ResolveResourceHost(ctx, dest)
-						if err != nil {
-							return err
-						}
-						if host != uc.config.FQDN {
-							return nil
-						}
-						return uc.signal.Publish(ctx, dest, concrnt.Event{
-							Type: "unassociated",
-							URI:  associatedURI,
+						return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
+							ResolveURI: dest,
+							Local:      domain.DeliveryLocalPublish,
+							Remote:     domain.DeliveryRemoteNone,
+							Event: &concrnt.Event{
+								Type: "unassociated",
+								URI:  associatedURI,
+							},
 						})
 					},
 				)
@@ -1044,6 +1043,11 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 			distributions = append(distributions, dists...)
 		}
 
+		remoteKind := domain.DeliveryRemoteNone
+		if created {
+			remoteKind = domain.DeliveryRemoteCommit
+		}
+
 		for _, channel := range distributions {
 			remoteSD := concrnt.SignedDocument{
 				Document: sd.Document,
@@ -1055,24 +1059,20 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 			}
 			postProcesses = append(postProcesses,
 				func(ctx context.Context) error {
-					host, err := uc.client.ResolveResourceHost(ctx, channel)
-					if err != nil {
-						return err
-					}
-					if host == uc.config.FQDN {
-						return uc.signal.Publish(ctx, channel, concrnt.Event{
+					return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
+						ResolveURI: channel,
+						Payload:    remoteSD,
+						Local:      domain.DeliveryLocalPublish,
+						Remote:     remoteKind,
+						Event: &concrnt.Event{
 							Type:        "associated",
 							URI:         target,
 							Association: &ccfs,
 							References: map[string]concrnt.SignedDocument{
 								ccfs: sd,
 							},
-						})
-					}
-					if !created {
-						return nil
-					}
-					return uc.client.Commit(ctx, host, remoteSD)
+						},
+					})
 				},
 			)
 		}
@@ -1177,7 +1177,12 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 		}
 		postProcesses = append(postProcesses,
 			func(ctx context.Context) error {
-				return uc.client.Commit(ctx, targetUser.Domain, distSD)
+				return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
+					Host:    targetUser.Domain,
+					Payload: distSD,
+					Local:   domain.DeliveryLocalNone,
+					Remote:  domain.DeliveryRemoteCommit,
+				})
 			},
 		)
 	}
@@ -1250,7 +1255,12 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, doc
 		}
 		postProcesses = append(postProcesses,
 			func(ctx context.Context) error {
-				return uc.client.Commit(ctx, targetUser.Domain, distSD)
+				return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
+					Host:    targetUser.Domain,
+					Payload: distSD,
+					Local:   domain.DeliveryLocalNone,
+					Remote:  domain.DeliveryRemoteCommit,
+				})
 			},
 		)
 	}

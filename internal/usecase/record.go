@@ -188,9 +188,9 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 	requesterID := doc.Author
 	referrer := GetReferrerFromReferences(sd, requesterID)
 
-	requester, err := uc.GetEntity(ctx, concrnt.CCURI{Scheme: "cckv", Owner: requesterID, Hint: referrer}.String())
-	if err != nil {
-		span.RecordError(err)
+	requester, requesterErr := uc.GetEntity(ctx, concrnt.CCURI{Scheme: "cckv", Owner: requesterID, Hint: referrer}.String())
+	if requesterErr != nil {
+		span.RecordError(requesterErr)
 	}
 
 	targetUserID := ""
@@ -239,18 +239,28 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		}
 
 	case "record":
+		if requester == nil {
+			err := errors.Join(errors.New("requester entity not found for record operation"), requesterErr)
+			span.RecordError(err)
+			return nil, err
+		}
 		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
 			return uc.createRecord(ctx, tx, documentID, ip, *requester, doc, sd, mode)
 		}
 
 	case "association":
+		if requester == nil {
+			err := errors.Join(errors.New("requester entity not found for association operation"), requesterErr)
+			span.RecordError(err)
+			return nil, err
+		}
 		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
 			return uc.createAssociation(ctx, tx, documentID, ip, *requester, doc, sd, mode)
 		}
 
 	case "ack":
 		if requester == nil {
-			err := errors.New("requester entity not found for ack operation")
+			err := errors.Join(errors.New("requester entity not found for ack operation"), requesterErr)
 			span.RecordError(err)
 			return nil, err
 		}
@@ -270,7 +280,7 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 
 	case "unack":
 		if requester == nil {
-			err := errors.New("requester entity not found for unack operation")
+			err := errors.Join(errors.New("requester entity not found for unack operation"), requesterErr)
 			span.RecordError(err)
 			return nil, err
 		}
@@ -289,7 +299,7 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		}
 	case "delete":
 		if requester == nil {
-			err := errors.New("requester entity not found for delete operation")
+			err := errors.Join(errors.New("requester entity not found for delete operation"), requesterErr)
 			span.RecordError(err)
 			return nil, err
 		}

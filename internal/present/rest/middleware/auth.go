@@ -137,6 +137,15 @@ func (s *AuthMiddleware) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFun
 			}
 			ccid := parsed.Owner
 
+			// The KeyID header is caller-supplied: the key it names must
+			// belong to the JWT's issuer, whose entity becomes the requester.
+			// Without this binding, a valid signature by one identity's key
+			// could authenticate as any other issuer.
+			if ccid != claims.Issuer {
+				span.RecordError(fmt.Errorf("key owner does not match jwt issuer"))
+				goto skipCheckAuthorization
+			}
+
 			if parsed.Key == "" { // login as raw key
 
 				err = jwt.Validate(token, ccid)
@@ -147,9 +156,10 @@ func (s *AuthMiddleware) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFun
 
 			} else { // login as subkey
 
-				// GetRecord verifies the subkey document's signature (and
-				// caches it) by default, so no additional strict-mode
-				// handling is needed here.
+				// GetRecord verifies the subkey document's signature by
+				// default and caches both the document and the verification
+				// result, so no additional strict-mode handling is needed
+				// here.
 				var subKeyDoc concrnt.Document[schemas.Subkey]
 				err := s.client.GetRecord(ctx, keyID, nil, &subKeyDoc)
 				if err != nil {

@@ -162,7 +162,7 @@ func TestGetRecordRejectsTamperedDocument(t *testing.T) {
 	if err == nil {
 		t.Fatal("GetRecord returned nil error for tampered document")
 	}
-	if !errors.Is(err, ErrSignatureVerificationFailed) {
+	if !errors.Is(err, concrnt.ErrSignatureVerificationFailed) {
 		t.Fatalf("GetRecord returned error %v, want ErrSignatureVerificationFailed", err)
 	}
 }
@@ -188,7 +188,7 @@ func TestGetRecordSkipVerifyBypassesSignatureCheck(t *testing.T) {
 	}
 }
 
-func TestVerifySignedDocumentRejectsNoneProof(t *testing.T) {
+func TestVerifyWithClientResolverRejectsNoneProof(t *testing.T) {
 	t.Parallel()
 
 	ccid, _ := newTestIdentity(t)
@@ -210,9 +210,9 @@ func TestVerifySignedDocumentRejectsNoneProof(t *testing.T) {
 	}
 
 	cl := New("example.test")
-	err = cl.VerifySignedDocument(context.Background(), &sd, nil)
+	err = sd.Verify(context.Background(), cl, nil)
 	if err == nil {
-		t.Fatal("VerifySignedDocument returned nil error for none proof")
+		t.Fatal("Verify returned nil error for none proof")
 	}
 }
 
@@ -581,8 +581,8 @@ func TestGetResourceBatchFallsBackWhenBatchEndpointMissing(t *testing.T) {
 	if maxConcurrent.Load() <= 1 {
 		t.Fatalf("fallback max concurrency = %d, want > 1", maxConcurrent.Load())
 	}
-	if maxConcurrent.Load() > resourceBatchFallbackConcurrency {
-		t.Fatalf("fallback max concurrency = %d, want <= %d", maxConcurrent.Load(), resourceBatchFallbackConcurrency)
+	if maxConcurrent.Load() > batchFallbackConcurrency {
+		t.Fatalf("fallback max concurrency = %d, want <= %d", maxConcurrent.Load(), batchFallbackConcurrency)
 	}
 	for i, uri := range uris {
 		if got[i]["uri"] != uri {

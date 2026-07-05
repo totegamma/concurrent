@@ -300,6 +300,58 @@ func TestVerifyPrefersInlineReferencesOverResolver(t *testing.T) {
 	}
 }
 
+// With IgnoreReferences set, inlined (submitter-supplied) copies of
+// referenced documents must not be trusted: the referenced document has to
+// come from the resolver, so a missing/failing resolver means verification
+// fails even when a valid copy is inlined. This is what lets authoritative
+// paths (commits) observe subkey revocation.
+func TestVerifyIgnoreReferencesFetchesViaResolver(t *testing.T) {
+	ownerCCID, ownerPriv := newTestIdentity(t)
+
+	targetURI := "cckv://" + ownerCCID + "/target"
+	targetSD := signDocument(t, Document[testRecordValue]{
+		Kind:      "record",
+		Key:       targetURI,
+		Value:     testRecordValue{Foo: "bar"},
+		Author:    ownerCCID,
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}, ownerPriv)
+
+	refDoc := Document[schemas.Reference]{
+		Kind:      "record",
+		Key:       "cckv://" + ownerCCID + "/ref",
+		Value:     schemas.Reference{Href: targetURI},
+		Author:    ownerCCID,
+		Schema:    schemas.ReferenceURL,
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	refDocBytes, err := json.Marshal(refDoc)
+	if err != nil {
+		t.Fatalf("marshal reference document: %v", err)
+	}
+	sd := SignedDocument{
+		Document:   string(refDocBytes),
+		Proof:      Proof{Type: ProofTypeDocumentReference, Href: &targetURI},
+		References: map[string]SignedDocument{targetURI: targetSD},
+	}
+	opts := &VerifyOpts{IgnoreReferences: true}
+
+	// inline copy present but no resolver: must fail
+	if err := sd.Verify(context.Background(), nil, opts); err == nil {
+		t.Fatal("Verify returned nil error with IgnoreReferences and no resolver")
+	}
+
+	// resolver that doesn't know the target (e.g. revoked/deleted): must fail
+	if err := sd.Verify(context.Background(), mapResolver{}, opts); err == nil {
+		t.Fatal("Verify returned nil error with IgnoreReferences and an empty resolver")
+	}
+
+	// resolver serving the authoritative copy: must succeed
+	if err := sd.Verify(context.Background(), mapResolver{targetURI: targetSD}, opts); err != nil {
+		t.Fatalf("Verify returned error with IgnoreReferences and a working resolver: %v", err)
+	}
+}
+
 func TestVerifyNoneProofRejectedByDefault(t *testing.T) {
 	ccid, _ := newTestIdentity(t)
 	doc := Document[testRecordValue]{
@@ -352,11 +404,15 @@ func TestVerifyNoneProofAllowedWhenOptedIn(t *testing.T) {
 func TestVerifyRejectsProofChainTooDeep(t *testing.T) {
 	uri := "cckv://con1loop000000000000000000000000000/doc"
 
-	doc := Document[testRecordValue]{
+	// A self-referencing Reference document: satisfies the document-reference
+	// proof's schema/href requirements at every level, so depth exhaustion
+	// (not those checks) is what ultimately fails verification.
+	doc := Document[schemas.Reference]{
 		Kind:   "record",
 		Key:    uri,
-		Value:  testRecordValue{Foo: "bar"},
+		Value:  schemas.Reference{Href: uri},
 		Author: "con1loop000000000000000000000000000",
+		Schema: schemas.ReferenceURL,
 	}
 	docBytes, err := json.Marshal(doc)
 	if err != nil {

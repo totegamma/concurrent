@@ -24,11 +24,27 @@ type VerifyOpts struct {
 	// Callers are responsible for any authorization checks (e.g. restricting
 	// none proofs to trusted system service accounts) before setting this.
 	AllowNoneProof bool
+
+	// IgnoreReferences makes Verify fetch referenced documents (subkey /
+	// document-reference proofs) via the resolver even when a copy is
+	// inlined in SignedDocument.References. Inlined copies are supplied by
+	// whoever submitted the document, so trusting them would let a revoked
+	// (deleted) subkey enact document be replayed forever; authoritative
+	// paths such as committing must set this.
+	IgnoreReferences bool
 }
 
 // ErrSignatureVerificationFailed indicates a signed document's proof did not
 // verify.
 var ErrSignatureVerificationFailed = errors.New("signature verification failed")
+
+// ErrNoneProofNotAllowed indicates a none-proof document was verified without
+// VerifyOpts.AllowNoneProof.
+var ErrNoneProofNotAllowed = errors.New("none proof type is not allowed")
+
+// ErrUnsupportedProofType indicates a proof type Verify doesn't know how to
+// check.
+var ErrUnsupportedProofType = errors.New("unsupported or unverifiable proof type")
 
 // maxVerifyDepth bounds how many linked documents (subkey / document-reference
 // proofs) Verify will follow, to protect against malicious, arbitrarily deep
@@ -37,15 +53,18 @@ const maxVerifyDepth = 4
 
 // Verify verifies a signed document's proof. For proofs that reference
 // another document (subkey, document-reference), the referenced document is
-// looked up (via References if present, otherwise via resolver) and
-// recursively verified.
+// looked up (via References if present and not disabled by
+// VerifyOpts.IgnoreReferences, otherwise via resolver) and recursively
+// verified.
 func (sd *SignedDocument) Verify(ctx context.Context, resolver DocumentResolver, opts *VerifyOpts) error {
 	return sd.verify(ctx, resolver, opts, maxVerifyDepth)
 }
 
-func (sd *SignedDocument) resolve(ctx context.Context, resolver DocumentResolver, uri string) (SignedDocument, error) {
-	if ref, ok := sd.References[uri]; ok {
-		return ref, nil
+func (sd *SignedDocument) resolve(ctx context.Context, resolver DocumentResolver, opts *VerifyOpts, uri string) (SignedDocument, error) {
+	if opts == nil || !opts.IgnoreReferences {
+		if ref, ok := sd.References[uri]; ok {
+			return ref, nil
+		}
 	}
 	if resolver == nil {
 		return SignedDocument{}, fmt.Errorf("no resolver available to fetch referenced document %s", uri)
@@ -87,7 +106,7 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 			return errors.New("key is required for subkey proof")
 		}
 
-		subKeySD, err := sd.resolve(ctx, resolver, *sd.Proof.Key)
+		subKeySD, err := sd.resolve(ctx, resolver, opts, *sd.Proof.Key)
 		if err != nil {
 			return errors.Join(fmt.Errorf("failed to fetch subkey document %s", *sd.Proof.Key), err)
 		}
@@ -119,11 +138,26 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 		return nil
 
 	case ProofTypeDocumentReference:
+		// CIP-4/CIP-6: a document-reference proof is only valid on the
+		// auto-generated Reference document (schema reference.json) whose
+		// href points back at the memberOf-referenced document.
 		if sd.Proof.Href == nil {
 			return errors.New("href is required for document-reference proof")
 		}
+		if doc.Schema != schemas.ReferenceURL {
+			return errors.New("document-reference proof is only allowed for reference documents")
+		}
 
-		targetSD, err := sd.resolve(ctx, resolver, *sd.Proof.Href)
+		var refDoc Document[schemas.Reference]
+		err = json.Unmarshal([]byte(sd.Document), &refDoc)
+		if err != nil {
+			return errors.Join(errors.New("invalid reference document"), err)
+		}
+		if refDoc.Value.Href != *sd.Proof.Href {
+			return errors.New("proof href does not match reference document href")
+		}
+
+		targetSD, err := sd.resolve(ctx, resolver, opts, *sd.Proof.Href)
 		if err != nil {
 			return errors.Join(fmt.Errorf("failed to fetch referenced document %s", *sd.Proof.Href), err)
 		}
@@ -146,11 +180,11 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 
 	case ProofTypeNone:
 		if opts == nil || !opts.AllowNoneProof {
-			return errors.New("none proof type is not allowed")
+			return ErrNoneProofNotAllowed
 		}
 		return nil
 
 	default:
-		return fmt.Errorf("unsupported or unverifiable proof type: %s", sd.Proof.Type)
+		return fmt.Errorf("%w: %s", ErrUnsupportedProofType, sd.Proof.Type)
 	}
 }

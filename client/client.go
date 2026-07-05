@@ -32,11 +32,6 @@ var tracer = otel.Tracer("client")
 const (
 	defaultTimeout = 3 * time.Second
 	maxFailCount   = 23 // max 10 minutes
-
-	// batchGetFallbackConcurrency bounds how many requests BatchGet's
-	// per-request fallback path (used when a server doesn't support the
-	// batch endpoint) issues concurrently.
-	batchGetFallbackConcurrency = 8
 )
 
 type Client struct {
@@ -553,11 +548,37 @@ func (c *Client) GetRecord(ctx context.Context, uri string, opts *Options, resul
 	}
 
 	if opts == nil || !opts.SkipVerify {
-		err := sd.Verify(ctx, &optionsResolver{c: c, opts: opts}, nil)
+		// GetResource caches the raw (unverified) signed document, so cache
+		// hits would re-pay signature verification on every call — remember
+		// successful verifications separately, keyed by content hash so a
+		// re-fetched document can never ride an older entry's verification.
+		// Hot path: the auth middleware verifies the subkey document once
+		// per authenticated request.
+		verifiedKey := "verified:" + uri
+		proofBytes, err := json.Marshal(sd.Proof)
 		if err != nil {
-			err := errors.Join(fmt.Errorf("signature verification failed for resource %s", uri), err)
 			span.RecordError(err)
 			return err
+		}
+		docHash := string(concrnt.GetHash(append([]byte(sd.Document), proofBytes...)))
+		useCache := opts == nil || !opts.NoCache
+		verified := false
+		if useCache {
+			if x, found := c.cache.Get(verifiedKey); found {
+				hash, ok := x.(string)
+				verified = ok && hash == docHash
+			}
+		}
+		if !verified {
+			err := sd.Verify(ctx, &optionsResolver{c: c, opts: opts}, nil)
+			if err != nil {
+				err := errors.Join(fmt.Errorf("signature verification failed for resource %s", uri), err)
+				span.RecordError(err)
+				return err
+			}
+			if useCache {
+				c.cache.Set(verifiedKey, docHash, cache.DefaultExpiration)
+			}
 		}
 	}
 
@@ -571,22 +592,11 @@ func (c *Client) GetRecord(ctx context.Context, uri string, opts *Options, resul
 	return nil
 }
 
-// ErrSignatureVerificationFailed indicates a signed document's proof did not
-// verify. Kept as an alias for backwards compatibility with callers that
-// referenced client.ErrSignatureVerificationFailed before verification moved
-// to concrnt.SignedDocument.Verify.
-var ErrSignatureVerificationFailed = concrnt.ErrSignatureVerificationFailed
-
 // ResolveSignedDocument fetches the signed document at uri, satisfying
 // concrnt.DocumentResolver so a *Client can be passed directly to
 // SignedDocument.Verify.
 func (c *Client) ResolveSignedDocument(ctx context.Context, uri string) (concrnt.SignedDocument, error) {
-	var sd concrnt.SignedDocument
-	err := c.GetResource(ctx, uri, "application/json", nil, &sd)
-	if err != nil {
-		return concrnt.SignedDocument{}, err
-	}
-	return sd, nil
+	return (&optionsResolver{c: c}).ResolveSignedDocument(ctx, uri)
 }
 
 // optionsResolver adapts a *Client plus per-call Options (e.g. a routing
@@ -604,14 +614,6 @@ func (r *optionsResolver) ResolveSignedDocument(ctx context.Context, uri string)
 		return concrnt.SignedDocument{}, err
 	}
 	return sd, nil
-}
-
-// VerifySignedDocument verifies a signed document's proof. For proofs that
-// reference another document (subkey, document-reference), the referenced
-// document is looked up (via References if present, otherwise fetched with
-// GetResource) and recursively verified.
-func (c *Client) VerifySignedDocument(ctx context.Context, sd *concrnt.SignedDocument, opts *Options) error {
-	return sd.Verify(ctx, &optionsResolver{c: c, opts: opts}, nil)
 }
 
 func (c *Client) Query(ctx context.Context, resolver string, params QueryParams) ([]concrnt.SignedDocument, error) {
@@ -902,37 +904,33 @@ func (c *Client) BatchGet(ctx context.Context, requests map[string]map[string]st
 			maps.Copy(responses, responces)
 
 		} else {
-			var mu sync.Mutex
-			var wg sync.WaitGroup
-			sem := make(chan struct{}, batchGetFallbackConcurrency)
-
-			for key, url := range reqs {
-				wg.Add(1)
-				sem <- struct{}{}
-				go func(key, url string) {
-					defer wg.Done()
-					defer func() { <-sem }()
-
-					req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
-					if err != nil {
-						err := errors.Join(fmt.Errorf("failed to create request for get to %s", url), err)
-						span.RecordError(err)
-						return
-					}
-					resp, err := c.client.Do(req)
-					if err != nil {
-						c.markOfflineIfTimeout(domain, "batch get", err)
-						err := errors.Join(fmt.Errorf("failed to perform get to %s", url), err)
-						span.RecordError(err)
-						return
-					}
-					mu.Lock()
-					responses[key] = resp
-					mu.Unlock()
-				}(key, url)
+			keys := make([]string, 0, len(reqs))
+			for key := range reqs {
+				keys = append(keys, key)
 			}
 
-			wg.Wait()
+			var mu sync.Mutex
+			runBounded(batchFallbackConcurrency, len(keys), func(i int) {
+				key := keys[i]
+				url := reqs[key]
+
+				req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+				if err != nil {
+					err := errors.Join(fmt.Errorf("failed to create request for get to %s", url), err)
+					span.RecordError(err)
+					return
+				}
+				resp, err := c.client.Do(req)
+				if err != nil {
+					c.markOfflineIfTimeout(domain, "batch get", err)
+					err := errors.Join(fmt.Errorf("failed to perform get to %s", url), err)
+					span.RecordError(err)
+					return
+				}
+				mu.Lock()
+				responses[key] = resp
+				mu.Unlock()
+			})
 		}
 	}
 

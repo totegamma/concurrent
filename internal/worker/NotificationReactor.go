@@ -2,10 +2,13 @@ package worker
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"io"
 	"log/slog"
 	"slices"
+	"strconv"
 	"time"
 
 	"github.com/SherClockHolmes/webpush-go"
@@ -22,20 +25,29 @@ type RealtimeUsecase interface {
 	Realtime(ctx context.Context, request <-chan []string, response chan<- concrnt.Event)
 }
 
+// NotificationDeduper claims a notification key so that the same push is sent
+// at most once across replicas (e.g. during a leadership handover).
+type NotificationDeduper interface {
+	Claim(ctx context.Context, key string, ttl time.Duration) (bool, error)
+}
+
 type NotificationReactor struct {
 	notification NotificationUsecase
 	realtime     RealtimeUsecase
+	dedup        NotificationDeduper
 	opts         webpush.Options
 }
 
 func NewNotificationReactor(
 	notification NotificationUsecase,
 	realtime RealtimeUsecase,
+	dedup NotificationDeduper,
 	opts webpush.Options,
 ) *NotificationReactor {
 	return &NotificationReactor{
 		notification: notification,
 		realtime:     realtime,
+		dedup:        dedup,
 		opts:         opts,
 	}
 }
@@ -130,6 +142,16 @@ func (r *NotificationReactor) runWorker(ctx context.Context, sub domain.Notifica
 				continue
 			}
 
+			if r.dedup != nil {
+				claimed, err := r.dedup.Claim(ctx, notificationDedupKey(event, sub), 5*time.Minute)
+				if err != nil {
+					// prefer a duplicate push over a lost one
+					slog.Warn("failed to claim notification, sending anyway", slog.String("error", err.Error()))
+				} else if !claimed {
+					continue
+				}
+			}
+
 			payload, err := json.Marshal(event)
 			if err != nil {
 				slog.Error("failed to encode notification payload", slog.String("error", err.Error()))
@@ -161,6 +183,15 @@ func (r *NotificationReactor) runWorker(ctx context.Context, sub domain.Notifica
 }
 
 const httpStatusCreated = 201
+
+func notificationDedupKey(event concrnt.Event, sub domain.NotificationSubscription) string {
+	sum := sha256.Sum256([]byte(
+		event.Source + "|" + event.URI + "|" + event.Type + "|" +
+			strconv.FormatInt(event.Timestamp.UnixNano(), 10) + "|" +
+			sub.VendorID + "|" + sub.Owner,
+	))
+	return "notification_dedup:" + hex.EncodeToString(sum[:])
+}
 
 func eventMatchesSchemas(event concrnt.Event, schemas []string) bool {
 	if len(schemas) == 0 {

@@ -3,10 +3,15 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"sync/atomic"
+	"syscall"
+	"time"
 
 	"github.com/SherClockHolmes/webpush-go"
 	"github.com/labstack/echo/v4"
@@ -17,6 +22,7 @@ import (
 
 	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/client"
+	"github.com/concrnt/concrnt/internal/infra/cluster"
 	"github.com/concrnt/concrnt/internal/infra/config"
 	"github.com/concrnt/concrnt/internal/infra/database"
 	"github.com/concrnt/concrnt/internal/infra/gateway"
@@ -63,6 +69,9 @@ func main() {
 	slogger := slog.New(lh)
 	slog.SetDefault(slogger)
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	fmt.Fprint(os.Stderr, concrnt.Banner)
 
 	configPath := os.Getenv("CONCRNT_CONFIG")
@@ -100,7 +109,7 @@ func main() {
 
 		skipper := otelecho.WithSkipper(
 			func(c echo.Context) bool {
-				return c.Path() == "/metrics" || c.Path() == "/health"
+				return c.Path() == "/metrics" || c.Path() == "/health" || c.Path() == "/ready"
 			},
 		)
 		e.Use(otelecho.Middleware(conf.Concrnt.FQDN, skipper))
@@ -116,7 +125,7 @@ func main() {
 
 	e.Use(echomiddleware.LoggerWithConfig(echomiddleware.LoggerConfig{
 		Skipper: func(c echo.Context) bool {
-			return c.Path() == "/metrics" || c.Path() == "/health" || c.Path() == "/.well-known/concrnt"
+			return c.Path() == "/metrics" || c.Path() == "/health" || c.Path() == "/ready" || c.Path() == "/.well-known/concrnt"
 		},
 		Format: `{"time":"${time_rfc3339_nano}",${custom},"remote_ip":"${remote_ip}",` +
 			`"host":"${host}","method":"${method}","uri":"${uri}","status":${status},` +
@@ -152,6 +161,31 @@ func main() {
 
 	redis := database.NewRedis(conf.Backends.RedisAddr, "", conf.Backends.RedisDB)
 
+	clusterConf := conf.Concrnt.Cluster
+	internalPort := clusterConf.InternalPort
+	if internalPort == 0 {
+		internalPort = 8001
+	}
+
+	var elector cluster.Elector
+	var peerDiscovery cluster.Discovery
+	switch clusterConf.Mode {
+	case "":
+		elector = cluster.AlwaysLeader{}
+	case "kubernetes":
+		if clusterConf.HeadlessService == "" {
+			panic("cluster.headlessService must be set when cluster.mode is kubernetes")
+		}
+		kubeElector, err := cluster.NewKubeElector(internalPort)
+		if err != nil {
+			panic("failed to initialize kubernetes leader election: " + err.Error())
+		}
+		elector = kubeElector
+		peerDiscovery = cluster.NewDNSDiscovery(clusterConf.HeadlessService, internalPort)
+	default:
+		panic("unknown cluster.mode: " + clusterConf.Mode)
+	}
+
 	cl := client.New(domainConfig.FQDN)
 	cl.AddHostRemapping(domainConfig.FQDN, conf.Backends.GatewayAddr)
 	cl.SetUserAgent("concrnt", version)
@@ -182,25 +216,52 @@ func main() {
 	notificationUC := usecase.NewNotificationUsecase(notificationRepo)
 
 	subscriber := worker.NewSubscriber(&domainConfig, cl, redisPubsub)
-	subscriptionUC := usecase.NewSubscriptionUsecase(subscriber, redisPubsub)
-	chunklineGateway := gateway.NewChunklineGateway(cl, mc, subscriber, redisPubsub)
-	chunklineUC := usecase.NewChunklineUsecase(chunklineRepo, chunklineGateway)
-	subscriber.Start(context.Background())
 
+	var ensurer usecase.SubscriptionEnsurer = subscriber
+	if clusterConf.Mode == "kubernetes" {
+		ensurer = cluster.NewRoutingEnsurer(elector, subscriber)
+	}
+	subscriptionUC := usecase.NewSubscriptionUsecase(ensurer, redisPubsub)
+	subscriber.RegisterClient(subscriptionUC)
+	if peerDiscovery != nil {
+		subscriber.RegisterClient(worker.NewPeerDemandClient(peerDiscovery))
+	}
+
+	chunklineGateway := gateway.NewChunklineGateway(cl, mc, subscriptionUC, redisPubsub)
+	chunklineUC := usecase.NewChunklineUsecase(chunklineRepo, chunklineGateway)
+
+	// the delivery queue is a redis-streams consumer group: safe (and useful)
+	// to run on every replica
 	deliveryWorker := worker.NewDeliveryWorker(&domainConfig, cl, redisPubsub, recordUC, deliveryQueue)
-	deliveryWorker.Start(context.Background())
+	deliveryWorker.Start(ctx)
 
 	abuseRepo := postgres.NewAbuseRepository(db)
 	abuseUC := usecase.NewAbuseUsecase(abuseRepo)
 
+	var notificationReactor *worker.NotificationReactor
 	if conf.Integrations.VapidPublicKey != "" && conf.Integrations.VapidPrivateKey != "" {
-		notificationReactor := worker.NewNotificationReactor(notificationUC, subscriptionUC, webpush.Options{
+		notificationReactor = worker.NewNotificationReactor(notificationUC, subscriptionUC, pubsub.NewRedisDeduper(redis), webpush.Options{
 			Subscriber:      "mailto:admin@" + domainConfig.FQDN,
 			VAPIDPublicKey:  conf.Integrations.VapidPublicKey,
 			VAPIDPrivateKey: conf.Integrations.VapidPrivateKey,
 			TTL:             30,
 		})
-		notificationReactor.Start(context.Background())
+	}
+
+	// singleton workers run only while this replica holds the leadership: the
+	// federation subscriber (one upstream websocket per remote host for the
+	// whole cluster), the chunkline cache updater, and the push reactor
+	go elector.Run(ctx, func(leadCtx context.Context) {
+		subscriber.Start(leadCtx)
+		chunklineGateway.StartWorker(leadCtx, subscriber)
+		if notificationReactor != nil {
+			notificationReactor.Start(leadCtx)
+		}
+	})
+
+	if clusterConf.Mode == "kubernetes" {
+		internalHandler := rest.NewInternalHandler(subscriptionUC, subscriber, elector)
+		rest.StartInternalListener(ctx, fmt.Sprintf(":%d", internalPort), internalHandler)
 	}
 
 	authMiddleware := middleware.NewAuthMiddleware(domainConfig, cl, serverUC, recordUC)
@@ -257,25 +318,67 @@ func main() {
 	e.OPTIONS("/register-template", handleNop)
 
 	e.GET("/health", func(c echo.Context) (err error) {
-		// ctx := c.Request().Context()
-
-		/*
-			err = sqlDB.Ping()
-			if err != nil {
-				return c.String(http.StatusInternalServerError, "db error")
-			}
-
-			err = rdb.Ping(ctx).Err()
-			if err != nil {
-				return c.String(http.StatusInternalServerError, "redis error")
-			}
-		*/
-
-		return c.String(200, "ok")
+		return c.String(http.StatusOK, "ok")
 	})
 
-	e.Logger.Fatal(e.Start(":8000"))
+	var ready atomic.Bool
+	ready.Store(true)
 
+	sqlDB, err := db.DB()
+	if err != nil {
+		panic("failed to get sql.DB: " + err.Error())
+	}
+
+	e.GET("/ready", func(c echo.Context) (err error) {
+		if !ready.Load() {
+			return c.String(http.StatusServiceUnavailable, "shutting down")
+		}
+
+		reqCtx := c.Request().Context()
+
+		if err := sqlDB.PingContext(reqCtx); err != nil {
+			return c.String(http.StatusServiceUnavailable, "db error")
+		}
+
+		if err := redis.Ping(reqCtx).Err(); err != nil {
+			return c.String(http.StatusServiceUnavailable, "redis error")
+		}
+
+		if err := mc.Ping(); err != nil {
+			return c.String(http.StatusServiceUnavailable, "memcached error")
+		}
+
+		return c.String(http.StatusOK, "ok")
+	})
+
+	go func() {
+		if err := e.Start(":8000"); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("server stopped unexpectedly", slog.String("error", err.Error()))
+			stop()
+		}
+	}()
+
+	<-ctx.Done()
+
+	slog.Info("shutting down")
+	ready.Store(false)
+
+	if clusterConf.Mode == "kubernetes" {
+		// keep serving briefly so the endpoint controller stops routing to
+		// this pod before connections are closed
+		time.Sleep(3 * time.Second)
+	}
+
+	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancelShutdown()
+
+	if err := e.Shutdown(shutdownCtx); err != nil {
+		slog.Error("failed to shut down gracefully", slog.String("error", err.Error()))
+	}
+
+	// Shutdown does not touch hijacked connections: this is what terminates
+	// the realtime websockets so clients reconnect to another replica
+	e.Close()
 }
 
 func handleNop(c echo.Context) error {

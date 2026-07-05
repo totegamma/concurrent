@@ -2,6 +2,8 @@ package gateway
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/hex"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -28,29 +30,43 @@ const (
 	bodyCacheTTL     = 60 * 60 * 24 * 2 // 2 days
 )
 
+// SubscriptionDemand reports the realtime subscription demand of this replica,
+// used to decide whether a latest chunk will be kept fresh by the cache
+// updater and is therefore safe to cache.
+type SubscriptionDemand interface {
+	CurrentSubscriptions() []string
+}
+
 type ChunklineGateway struct {
-	resolver   *chunkline.Client
-	subscriber *worker.Subscriber
+	resolver *chunkline.Client
+	r        *resolver
 }
 
 func NewChunklineGateway(
 	cl *client.Client,
 	mc *memcache.Client,
-	subscriber *worker.Subscriber,
+	demand SubscriptionDemand,
 	pubsub worker.PubSub,
 ) *ChunklineGateway {
 	r := &resolver{
-		client:     cl,
-		mc:         mc,
-		subscriber: subscriber,
-		pubsub:     pubsub,
+		client: cl,
+		mc:     mc,
+		demand: demand,
+		pubsub: pubsub,
 	}
-	subscriber.RegisterClient(r)
-	go r.cacheUpdater()
 	return &ChunklineGateway{
-		resolver:   chunkline.NewClient(r),
-		subscriber: subscriber,
+		resolver: chunkline.NewClient(r),
+		r:        r,
 	}
+}
+
+// StartWorker registers the resolver's cache keep-alive demand on the
+// subscriber and starts the cache updater. Run this only on the replica that
+// runs the singleton workers (the leader) — the cache updater writes to the
+// shared memcached, and concurrent updaters would prepend duplicate entries.
+func (g *ChunklineGateway) StartWorker(ctx context.Context, subscriber *worker.Subscriber) {
+	subscriber.RegisterClient(g.r)
+	go g.r.cacheUpdater(ctx)
 }
 
 func (g *ChunklineGateway) QueryDescending(ctx context.Context, uris []string, until time.Time, limit int) ([]chunkline.BodyItemWithSource, error) {
@@ -59,10 +75,10 @@ func (g *ChunklineGateway) QueryDescending(ctx context.Context, uris []string, u
 
 // resolver implements chunkline resolver callbacks.
 type resolver struct {
-	client     *client.Client
-	mc         *memcache.Client
-	subscriber *worker.Subscriber
-	pubsub     worker.PubSub
+	client *client.Client
+	mc     *memcache.Client
+	demand SubscriptionDemand
+	pubsub worker.PubSub
 }
 
 func manifestCacheKey(timeline string) string {
@@ -313,7 +329,7 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 		return results, nil // return what we have from cache
 	}
 
-	currentSubscriptions := r.subscriber.CurrentSubscriptions(r)
+	currentSubscriptions := r.demand.CurrentSubscriptions()
 
 	for tl, chunkID := range remainings {
 		resp, ok := responces[tl]
@@ -473,7 +489,7 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 		return results, nil // return what we have from cache
 	}
 
-	currentSubscriptions := r.subscriber.CurrentSubscriptions(r)
+	currentSubscriptions := r.demand.CurrentSubscriptions()
 
 	for tl, itr := range remaining {
 		resp, ok := responses[tl]
@@ -552,7 +568,7 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 }
 
 func (r *resolver) CurrentSubscriptions() []string {
-	ongoing := r.subscriber.CurrentSubscriptions(r)
+	ongoing := r.demand.CurrentSubscriptions()
 
 	timelines, err := r.ResolveTimelines(context.Background(), ongoing)
 	if err != nil {
@@ -597,15 +613,19 @@ func (r *resolver) CurrentSubscriptions() []string {
 	return keep
 }
 
-func (r *resolver) cacheUpdater() {
-
-	ctx := context.Background()
+func (r *resolver) cacheUpdater(ctx context.Context) {
 
 	events := make(chan concrnt.Event)
 
 	go r.pubsub.SubscribeAll(ctx, events)
 
-	for event := range events {
+	for {
+		var event concrnt.Event
+		select {
+		case <-ctx.Done():
+			return
+		case event = <-events:
+		}
 
 		if event.Type != "created" {
 			continue
@@ -621,6 +641,19 @@ func (r *resolver) cacheUpdater() {
 		epoch := manifest.Time2Chunk(event.Timestamp)
 		itrKey := itrCacheKey(timeline, epoch)
 		bodyKey := bodyCacheKey(timeline, strconv.FormatInt(epoch, 10))
+
+		// idempotency guard: the same event prepended twice (e.g. two cache
+		// updaters running during a leadership handover) would corrupt the
+		// cached chunk body, so claim the event before touching the cache
+		dedupKey := cacheDedupKey(event)
+		err = r.mc.Add(&memcache.Item{Key: dedupKey, Value: []byte{1}, Expiration: cacheDedupTTL})
+		if err != nil {
+			if errors.Is(err, memcache.ErrNotStored) {
+				continue // already handled
+			}
+			slog.Error("failed to claim event for caching", slog.String("timeline", timeline), slog.String("error", err.Error()))
+			continue
+		}
 
 		// update iterator cache
 		err = r.mc.Replace(&memcache.Item{Key: itrKey, Value: []byte(strconv.FormatInt(epoch, 10))})
@@ -648,4 +681,11 @@ func (r *resolver) cacheUpdater() {
 			continue
 		}
 	}
+}
+
+const cacheDedupTTL = 60 // seconds
+
+func cacheDedupKey(event concrnt.Event) string {
+	sum := sha256.Sum256([]byte(event.Source + "|" + event.URI + "|" + strconv.FormatInt(event.Timestamp.UnixNano(), 10)))
+	return "chunkline_dedup:" + hex.EncodeToString(sum[:])
 }

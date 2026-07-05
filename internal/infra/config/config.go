@@ -24,11 +24,18 @@ type Config struct {
 }
 
 type Concrnt struct {
-	FQDN         string `yaml:"fqdn"`
-	PrivateKey   string `yaml:"privatekey"`
-	Registration string `yaml:"registration"` // open, invite, close
-	Layer        string `yaml:"layer"`
-	Debug        bool   `yaml:"debug"`
+	FQDN         string  `yaml:"fqdn"`
+	PrivateKey   string  `yaml:"privatekey"`
+	Registration string  `yaml:"registration"` // open, invite, close
+	Layer        string  `yaml:"layer"`
+	Debug        bool    `yaml:"debug"`
+	Cluster      Cluster `yaml:"cluster"`
+}
+
+type Cluster struct {
+	Mode            string `yaml:"mode"`            // "" (standalone) or "kubernetes"
+	HeadlessService string `yaml:"headlessService"` // DNS name resolving to all replicas
+	InternalPort    int    `yaml:"internalPort"`    // replica-to-replica coordination port (default 8001)
 }
 
 type Backends struct {

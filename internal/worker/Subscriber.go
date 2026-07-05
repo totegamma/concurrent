@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"maps"
 	"slices"
+	"sync"
 	"time"
 
 	"github.com/concrnt/concrnt"
@@ -37,6 +38,7 @@ type PubSub interface {
 }
 
 type Subscriber struct {
+	mu            sync.Mutex
 	Subscriptions map[string]*SubState
 	Clients       map[string]SubscribeClient
 	Config        *domain.Config
@@ -64,7 +66,9 @@ func (s *Subscriber) Start(ctx context.Context) {
 
 func (s *Subscriber) RegisterClient(client SubscribeClient) string {
 	id := fmt.Sprintf("%p", client)
+	s.mu.Lock()
 	s.Clients[id] = client
+	s.mu.Unlock()
 	slog.Info(
 		fmt.Sprintf("client registered: %s", id),
 		slog.String("module", "worker"),
@@ -73,10 +77,22 @@ func (s *Subscriber) RegisterClient(client SubscribeClient) string {
 	return id
 }
 
+// snapshotClients copies the client list so CurrentSubscriptions() calls
+// (which may do I/O) run without holding the subscriber lock.
+func (s *Subscriber) snapshotClients() []SubscribeClient {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	clients := make([]SubscribeClient, 0, len(s.Clients))
+	for _, client := range s.Clients {
+		clients = append(clients, client)
+	}
+	return clients
+}
+
 func (s *Subscriber) CurrentSubscriptions(except ...SubscribeClient) []string {
 	subscriptionSet := make(map[string]bool)
 
-	for _, client := range s.Clients {
+	for _, client := range s.snapshotClients() {
 		if slices.Contains(except, client) {
 			continue
 		}
@@ -94,137 +110,138 @@ func (s *Subscriber) CurrentSubscriptions(except ...SubscribeClient) []string {
 	return subscriptions
 }
 
+func (s *Subscriber) CollectCurrentSubscriptions() []string {
+	return s.CurrentSubscriptions()
+}
+
 func (s *Subscriber) keeperRoutine(ctx context.Context) {
 	ticker := time.NewTicker(time.Second * 10)
 	defer ticker.Stop()
 
-	for range ticker.C {
-		s.createInsufficientSubscriptions(ctx)
-		for domain := range s.Subscriptions {
-			if s.Subscriptions[domain].Connection == nil {
-				slog.Info(
-					fmt.Sprintf("broken connection found: %s", domain),
-					slog.String("module", "worker"),
-					slog.String("group", "realtime"),
-				)
-				s.subscribeRemote(ctx, domain, s.Subscriptions[domain].Prefixes)
-			}
+	for {
+		select {
+		case <-ctx.Done():
+			s.closeAllSubscriptions()
+			return
+		case <-ticker.C:
+			s.createInsufficientSubscriptions(ctx)
+			s.repairBrokenSubscriptions(ctx)
+			s.deleteExcessSubscriptions(ctx)
 		}
-		s.deleteExcessSubscriptions()
 	}
 }
 
-func (s *Subscriber) CollectCurrentSubscriptions() []string {
-	subscriptionSet := make(map[string]bool)
-	for _, client := range s.Clients {
-		for _, prefix := range client.CurrentSubscriptions() {
-			subscriptionSet[prefix] = true
+func (s *Subscriber) repairBrokenSubscriptions(ctx context.Context) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for domain := range s.Subscriptions {
+		if s.Subscriptions[domain].Connection == nil {
+			slog.Info(
+				fmt.Sprintf("broken connection found: %s", domain),
+				slog.String("module", "worker"),
+				slog.String("group", "realtime"),
+			)
+			s.subscribeRemote(ctx, domain, s.Subscriptions[domain].Prefixes)
 		}
 	}
+}
 
-	subscriptions := make([]string, 0, len(subscriptionSet))
-	for prefix := range subscriptionSet {
-		subscriptions = append(subscriptions, prefix)
+func (s *Subscriber) closeAllSubscriptions() {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for domain, state := range s.Subscriptions {
+		if state.CancelFunc != nil {
+			state.CancelFunc()
+		}
+		if state.Connection != nil {
+			state.Connection.Close()
+		}
+		delete(s.Subscriptions, domain)
 	}
 
-	return subscriptions
+	slog.Info(
+		"all remote subscriptions closed",
+		slog.String("module", "worker"),
+		slog.String("group", "realtime"),
+	)
+}
+
+// resolvePrefixHosts maps each prefix to its remote host, dropping local and
+// unresolvable prefixes. Called without holding the lock (does network I/O).
+func (s *Subscriber) resolvePrefixHosts(ctx context.Context, prefixes []string) map[string][]string {
+	result := make(map[string][]string)
+	for _, prefix := range prefixes {
+		host, err := s.Client.ResolveResourceHost(ctx, prefix)
+		if err != nil {
+			slog.Error(
+				fmt.Sprintf("fail to resolve resource host for prefix %s: %v", prefix, err),
+				slog.String("module", "worker"),
+				slog.String("group", "realtime"),
+			)
+			continue
+		}
+
+		if host == s.Config.FQDN {
+			continue
+		}
+
+		if !slices.Contains(result[host], prefix) {
+			result[host] = append(result[host], prefix)
+		}
+	}
+	return result
 }
 
 func (s *Subscriber) EnsureSubscriptions(ctx context.Context, subscriptions []string) {
+	prefixesByHost := s.resolvePrefixHosts(ctx, subscriptions)
 
-	changedRemotes := make([]string, 0)
-
-	for _, prefix := range subscriptions {
-		host, err := s.Client.ResolveResourceHost(ctx, prefix)
-		if err != nil {
-			slog.Error(
-				fmt.Sprintf("fail to resolve resource host for prefix %s: %v", prefix, err),
-				slog.String("module", "worker"),
-				slog.String("group", "realtime"),
-			)
-			continue
-		}
-
-		if host == s.Config.FQDN {
-			continue
-		}
-
-		if _, ok := s.Subscriptions[host]; !ok {
-			s.Subscriptions[host] = &SubState{
-				Prefixes: []string{prefix},
-			}
-			if !slices.Contains(changedRemotes, host) {
-				changedRemotes = append(changedRemotes, host)
-			}
-		} else {
-			if !slices.Contains(s.Subscriptions[host].Prefixes, prefix) {
-				s.Subscriptions[host].Prefixes = append(s.Subscriptions[host].Prefixes, prefix)
-				if !slices.Contains(changedRemotes, host) {
-					changedRemotes = append(changedRemotes, host)
-				}
-			}
-		}
-	}
-
-	for _, host := range changedRemotes {
-		slog.Debug(
-			fmt.Sprintf("subscription updated: %s > %v", host, s.Subscriptions[host].Prefixes),
-			slog.String("module", "worker"),
-			slog.String("group", "realtime"),
-		)
-		s.subscribeRemote(ctx, host, s.Subscriptions[host].Prefixes)
-	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensureSubscriptionsLocked(ctx, prefixesByHost)
 }
 
 func (s *Subscriber) createInsufficientSubscriptions(ctx context.Context) {
-
 	currentSubscriptions := s.CollectCurrentSubscriptions()
-	changedRemotes := make([]string, 0)
+	prefixesByHost := s.resolvePrefixHosts(ctx, currentSubscriptions)
 
-	fmt.Printf("Current subscriptions: %v\n", currentSubscriptions)
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.ensureSubscriptionsLocked(ctx, prefixesByHost)
+}
 
-	for _, prefix := range currentSubscriptions {
-		host, err := s.Client.ResolveResourceHost(ctx, prefix)
-		if err != nil {
-			slog.Error(
-				fmt.Sprintf("fail to resolve resource host for prefix %s: %v", prefix, err),
-				slog.String("module", "worker"),
-				slog.String("group", "realtime"),
-			)
-			continue
-		}
-
-		if host == s.Config.FQDN {
-			continue
-		}
-
-		if _, ok := s.Subscriptions[host]; !ok {
+// caller must hold s.mu
+func (s *Subscriber) ensureSubscriptionsLocked(ctx context.Context, prefixesByHost map[string][]string) {
+	for host, prefixes := range prefixesByHost {
+		changed := false
+		state, ok := s.Subscriptions[host]
+		if !ok {
 			s.Subscriptions[host] = &SubState{
-				Prefixes: []string{prefix},
+				Prefixes: prefixes,
 			}
-			if !slices.Contains(changedRemotes, host) {
-				changedRemotes = append(changedRemotes, host)
-			}
+			changed = true
 		} else {
-			if !slices.Contains(s.Subscriptions[host].Prefixes, prefix) {
-				s.Subscriptions[host].Prefixes = append(s.Subscriptions[host].Prefixes, prefix)
-				if !slices.Contains(changedRemotes, host) {
-					changedRemotes = append(changedRemotes, host)
+			for _, prefix := range prefixes {
+				if !slices.Contains(state.Prefixes, prefix) {
+					state.Prefixes = append(state.Prefixes, prefix)
+					changed = true
 				}
 			}
 		}
-	}
 
-	for _, host := range changedRemotes {
-		slog.Debug(
-			fmt.Sprintf("subscription updated: %s > %v", host, s.Subscriptions[host].Prefixes),
-			slog.String("module", "worker"),
-			slog.String("group", "realtime"),
-		)
-		s.subscribeRemote(ctx, host, s.Subscriptions[host].Prefixes)
+		if changed {
+			slog.Debug(
+				fmt.Sprintf("subscription updated: %s > %v", host, s.Subscriptions[host].Prefixes),
+				slog.String("module", "worker"),
+				slog.String("group", "realtime"),
+			)
+			s.subscribeRemote(ctx, host, s.Subscriptions[host].Prefixes)
+		}
 	}
 }
 
+// caller must hold s.mu
 func (s *Subscriber) subscribeRemote(ctx context.Context, domain string, prefixes []string) {
 	state, ok := s.Subscriptions[domain]
 	if !ok {
@@ -259,7 +276,9 @@ func (s *Subscriber) subscribeRemote(ctx context.Context, domain string, prefixe
 				if c != nil {
 					c.Close()
 				}
+				s.mu.Lock()
 				delete(s.Subscriptions, domain)
+				s.mu.Unlock()
 				slog.Debug(
 					fmt.Sprintf("remote connection closed(listener): %s", domain),
 					slog.String("module", "worker"),
@@ -290,7 +309,11 @@ func (s *Subscriber) subscribeRemote(ctx context.Context, domain string, prefixe
 					)
 					break
 				}
-				messageChan <- message
+				select {
+				case messageChan <- message:
+				case <-ctx.Done():
+					return
+				}
 			}
 		}(workerCtx, c, messageChan)
 
@@ -302,7 +325,9 @@ func (s *Subscriber) subscribeRemote(ctx context.Context, domain string, prefixe
 					c.Close()
 				}
 				pingTicker.Stop()
+				s.mu.Lock()
 				delete(s.Subscriptions, domain)
+				s.mu.Unlock()
 				slog.Debug(
 					fmt.Sprintf("remote connection closed(relayer): %s", domain),
 					slog.String("module", "worker"),
@@ -328,7 +353,7 @@ func (s *Subscriber) subscribeRemote(ctx context.Context, domain string, prefixe
 					)
 
 					var event concrnt.Event
-					err = json.Unmarshal(message, &event)
+					err := json.Unmarshal(message, &event)
 					if err != nil {
 						slog.Error(
 							"fail to Unmarshall redis message",
@@ -385,6 +410,12 @@ func (s *Subscriber) subscribeRemote(ctx context.Context, domain string, prefixe
 			slog.String("group", "realtime"),
 		)
 
+		if state.CancelFunc != nil {
+			state.CancelFunc()
+		}
+		if state.Connection != nil {
+			state.Connection.Close()
+		}
 		delete(s.Subscriptions, domain)
 		return
 	}
@@ -396,8 +427,11 @@ func (s *Subscriber) subscribeRemote(ctx context.Context, domain string, prefixe
 
 }
 
-func (s *Subscriber) deleteExcessSubscriptions() {
+func (s *Subscriber) deleteExcessSubscriptions(ctx context.Context) {
 	currentSubs := s.CollectCurrentSubscriptions()
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	closeDomains := make(map[string]bool)
 	updatedDomains := make(map[string]bool)
@@ -434,13 +468,14 @@ func (s *Subscriber) deleteExcessSubscriptions() {
 	}
 
 	for domain := range updatedDomains {
-		s.subscribeRemote(context.Background(), domain, s.Subscriptions[domain].Prefixes)
+		s.subscribeRemote(ctx, domain, s.Subscriptions[domain].Prefixes)
 	}
 
-	slog.Info(
-		fmt.Sprintf("Subscriptions cleaned up: %v", maps.Keys(closeDomains)),
-		slog.String("module", "worker"),
-		slog.String("group", "realtime"),
-	)
-
+	if len(closeDomains) > 0 {
+		slog.Info(
+			fmt.Sprintf("Subscriptions cleaned up: %v", maps.Keys(closeDomains)),
+			slog.String("module", "worker"),
+			slog.String("group", "realtime"),
+		)
+	}
 }

@@ -71,6 +71,7 @@ func TestCommitUnresolvableRequesterReturnsError(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 
 	for _, kind := range []string{"record", "association"} {

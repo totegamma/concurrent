@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/concrnt/concrnt"
+	"github.com/concrnt/concrnt/internal/domain"
 	"github.com/concrnt/concrnt/internal/infra/repository/postgres"
 	"github.com/concrnt/concrnt/internal/usecase"
 	"github.com/concrnt/concrnt/policy"
@@ -28,6 +29,14 @@ func (nopSignal) Publish(context.Context, string, concrnt.Event) error {
 type nopPolicy struct{}
 
 func (nopPolicy) Eval(context.Context, policy.RequestContext, []concrnt.Policy, string, string) error {
+	return nil
+}
+
+// nopDelivery discards delivery jobs: account creation via conctl is a
+// local, one-shot operation with no federation distribution expected.
+type nopDelivery struct{}
+
+func (nopDelivery) Enqueue(context.Context, domain.DeliveryJob) error {
 	return nil
 }
 
@@ -58,7 +67,7 @@ var createAccountCmd = &cobra.Command{
 
 		residenceRepo := postgres.NewResidenceRepository(op.DB, op.Client, op.GlobalConfig)
 		recordRepo := postgres.NewRecordRepository(op.DB)
-		recordUC := usecase.NewRecordUsecase(recordRepo, residenceRepo, &op.GlobalConfig, op.Client, nopSignal{}, nopPolicy{})
+		recordUC := usecase.NewRecordUsecase(recordRepo, residenceRepo, &op.GlobalConfig, op.Client, nopSignal{}, nopPolicy{}, nopDelivery{})
 		residenceUC := usecase.NewResidenceUsecase(residenceRepo, recordUC, &op.GlobalConfig)
 
 		if err := residenceUC.Register(cmd.Context(), "", req); err != nil {

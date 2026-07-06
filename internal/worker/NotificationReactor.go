@@ -26,9 +26,13 @@ type RealtimeUsecase interface {
 }
 
 // NotificationDeduper claims a notification key so that the same push is sent
-// at most once across replicas (e.g. during a leadership handover).
+// at most once across replicas (e.g. during a leadership handover). A claim
+// whose send failed is released so an overlapping replica may still deliver
+// it; a crash between claim and send remains unrecoverable, which is
+// acceptable for best-effort push notifications.
 type NotificationDeduper interface {
 	Claim(ctx context.Context, key string, ttl time.Duration) (bool, error)
+	Release(ctx context.Context, key string) error
 }
 
 type NotificationReactor struct {
@@ -142,25 +146,31 @@ func (r *NotificationReactor) runWorker(ctx context.Context, sub domain.Notifica
 				continue
 			}
 
+			claimedKey := ""
 			if r.dedup != nil {
-				claimed, err := r.dedup.Claim(ctx, notificationDedupKey(event, sub), 5*time.Minute)
+				key := notificationDedupKey(event, sub)
+				claimed, err := r.dedup.Claim(ctx, key, 5*time.Minute)
 				if err != nil {
 					// prefer a duplicate push over a lost one
 					slog.Warn("failed to claim notification, sending anyway", slog.String("error", err.Error()))
 				} else if !claimed {
 					continue
+				} else {
+					claimedKey = key
 				}
 			}
 
 			payload, err := json.Marshal(event)
 			if err != nil {
 				slog.Error("failed to encode notification payload", slog.String("error", err.Error()))
+				r.releaseClaim(ctx, claimedKey)
 				continue
 			}
 
 			resp, err := webpush.SendNotification(payload, &subscription, &r.opts)
 			if err != nil {
 				slog.Error("failed to send notification", slog.String("error", err.Error()))
+				r.releaseClaim(ctx, claimedKey)
 				continue
 			}
 
@@ -176,9 +186,21 @@ func (r *NotificationReactor) runWorker(ctx context.Context, sub domain.Notifica
 					slog.String("status", resp.Status),
 					slog.String("body", string(body)),
 				)
+				r.releaseClaim(ctx, claimedKey)
 			}
 			resp.Body.Close()
 		}
+	}
+}
+
+// releaseClaim gives the dedup claim back after a failed send so an
+// overlapping replica can still deliver the push.
+func (r *NotificationReactor) releaseClaim(ctx context.Context, key string) {
+	if r.dedup == nil || key == "" {
+		return
+	}
+	if err := r.dedup.Release(ctx, key); err != nil {
+		slog.Warn("failed to release notification claim", slog.String("error", err.Error()))
 	}
 }
 

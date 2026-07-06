@@ -20,3 +20,9 @@ func NewRedisDeduper(rdb *redis.Client) *RedisDeduper {
 func (d *RedisDeduper) Claim(ctx context.Context, key string, ttl time.Duration) (bool, error) {
 	return d.rdb.SetNX(ctx, key, 1, ttl).Result()
 }
+
+// Release gives a claim back (e.g. after the claimed side effect failed) so
+// another replica may retry it.
+func (d *RedisDeduper) Release(ctx context.Context, key string) error {
+	return d.rdb.Del(ctx, key).Err()
+}

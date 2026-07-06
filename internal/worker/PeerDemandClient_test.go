@@ -43,6 +43,41 @@ func TestPeerDemandUnion(t *testing.T) {
 	}
 }
 
+type failingDiscovery struct{}
+
+func (failingDiscovery) Peers(ctx context.Context) ([]string, error) {
+	return nil, context.DeadlineExceeded
+}
+
+// While discovery itself fails (e.g. a DNS outage), demand must be frozen
+// rather than expired: "peer gone" and "discovery broken" are
+// indistinguishable, and tearing down subscriptions loses events permanently.
+func TestPeerDemandFreezesWhileDiscoveryFails(t *testing.T) {
+	peerA := demandServer(t, `["cckv://alice/home"]`)
+	defer peerA.Close()
+
+	p := NewPeerDemandClient(staticDiscovery{peers: []string{peerA.URL}})
+
+	subs := p.CurrentSubscriptions()
+	if !slices.Contains(subs, "cckv://alice/home") {
+		t.Fatalf("expected initial demand, got %v", subs)
+	}
+
+	// discovery starts failing and the last poll ages far past the grace
+	p.discovery = failingDiscovery{}
+	p.mu.Lock()
+	for peer, demand := range p.lastKnown {
+		demand.seenAt = time.Now().Add(-10 * peerDemandGrace)
+		p.lastKnown[peer] = demand
+	}
+	p.mu.Unlock()
+
+	subs = p.CurrentSubscriptions()
+	if !slices.Contains(subs, "cckv://alice/home") {
+		t.Fatalf("expected demand to be frozen while discovery fails, got %v", subs)
+	}
+}
+
 // A transiently unreachable peer must keep contributing its last known demand
 // (within the grace period), so that remote subscriptions aren't torn down by
 // a single failed poll.

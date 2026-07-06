@@ -55,13 +55,19 @@ func (p *PeerDemandClient) CurrentSubscriptions() []string {
 
 	peers, err := p.discovery.Peers(ctx)
 	if err != nil {
+		// fail-static: without a fresh peer list we cannot distinguish "peer
+		// gone" from "discovery broken", so keep the full last known demand
+		// (without expiry) rather than tearing down subscriptions for
+		// replicas that are likely still alive
 		slog.Warn(
-			"failed to discover peers, falling back to last known demand",
+			"failed to discover peers, freezing last known demand",
 			slog.String("error", err.Error()),
 			slog.String("module", "worker"),
 			slog.String("group", "peer-demand"),
 		)
-		peers = nil
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		return demandUnion(p.lastKnown)
 	}
 
 	type pollResult struct {
@@ -98,12 +104,20 @@ func (p *PeerDemandClient) CurrentSubscriptions() []string {
 		p.lastKnown[result.peer] = peerDemand{prefixes: result.prefixes, seenAt: now}
 	}
 
-	subscriptionSet := make(map[string]bool)
+	// expiry only runs with a fresh peer list in hand: a peer that stays
+	// unpollable past the grace while discovery works is genuinely gone
 	for peer, demand := range p.lastKnown {
 		if now.Sub(demand.seenAt) > peerDemandGrace {
 			delete(p.lastKnown, peer)
-			continue
 		}
+	}
+
+	return demandUnion(p.lastKnown)
+}
+
+func demandUnion(lastKnown map[string]peerDemand) []string {
+	subscriptionSet := make(map[string]bool)
+	for _, demand := range lastKnown {
 		for _, prefix := range demand.prefixes {
 			subscriptionSet[prefix] = true
 		}

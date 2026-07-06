@@ -34,6 +34,7 @@ import (
 	"os/signal"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"time"
@@ -49,6 +50,11 @@ const (
 	leaseDuration = 15 * time.Second
 	renewDeadline = 10 * time.Second
 	retryPeriod   = 2 * time.Second
+
+	// how long a stale peer list may be served while DNS resolution fails;
+	// past this, /status returns 503 so consumers keep their own last-known
+	// state instead of acting on a false "zero replicas"
+	peerResolveGrace = 30 * time.Second
 )
 
 type electorStatus struct {
@@ -173,6 +179,12 @@ func main() {
 		}
 	}()
 
+	// last successful headless-service resolution, served during brief DNS
+	// blips so a flaky resolver doesn't read as a shrinking cluster
+	var peersMu sync.Mutex
+	var lastPeers []string
+	var lastPeersAt time.Time
+
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /status", func(w http.ResponseWriter, r *http.Request) {
 		status := electorStatus{Peers: []string{}}
@@ -184,10 +196,30 @@ func main() {
 
 		addrs, err := net.DefaultResolver.LookupIPAddr(r.Context(), headlessService)
 		if err != nil {
-			slog.Warn("failed to resolve headless service", slog.String("error", err.Error()))
-		}
-		for _, addr := range addrs {
-			status.Peers = append(status.Peers, "http://"+net.JoinHostPort(addr.IP.String(), strconv.Itoa(peerPort)))
+			// an empty peer list with 200 would be trusted as "zero replicas"
+			// and tear down every cross-replica subscription; serve the last
+			// known list briefly, then fail the request outright
+			peersMu.Lock()
+			stalePeers := lastPeers
+			staleAt := lastPeersAt
+			peersMu.Unlock()
+
+			if stalePeers == nil || time.Since(staleAt) > peerResolveGrace {
+				slog.Error("failed to resolve headless service", slog.String("error", err.Error()))
+				http.Error(w, "failed to resolve headless service", http.StatusServiceUnavailable)
+				return
+			}
+
+			slog.Warn("failed to resolve headless service, serving last known peers", slog.String("error", err.Error()))
+			status.Peers = stalePeers
+		} else {
+			for _, addr := range addrs {
+				status.Peers = append(status.Peers, "http://"+net.JoinHostPort(addr.IP.String(), strconv.Itoa(peerPort)))
+			}
+			peersMu.Lock()
+			lastPeers = status.Peers
+			lastPeersAt = time.Now()
+			peersMu.Unlock()
 		}
 
 		w.Header().Set("Content-Type", "application/json")

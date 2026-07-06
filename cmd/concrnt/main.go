@@ -327,26 +327,22 @@ func main() {
 			return c.String(http.StatusServiceUnavailable, "shutting down")
 		}
 
-		reqCtx := c.Request().Context()
-
-		if err := sqlDB.PingContext(reqCtx); err != nil {
+		// only Postgres gates readiness: redis and memcached are soft
+		// dependencies (cache misses fall back to origin, publish failures
+		// are logged), and failing all replicas at once on a cache-tier blip
+		// would turn a degradation into a full outage
+		if err := sqlDB.PingContext(c.Request().Context()); err != nil {
 			return c.String(http.StatusServiceUnavailable, "db error")
-		}
-
-		if err := redis.Ping(reqCtx).Err(); err != nil {
-			return c.String(http.StatusServiceUnavailable, "redis error")
-		}
-
-		if err := mc.Ping(); err != nil {
-			return c.String(http.StatusServiceUnavailable, "memcached error")
 		}
 
 		return c.String(http.StatusOK, "ok")
 	})
 
+	var serverFailed atomic.Bool
 	go func() {
 		if err := e.Start(":8000"); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			slog.Error("server stopped unexpectedly", slog.String("error", err.Error()))
+			serverFailed.Store(true)
 			stop()
 		}
 	}()
@@ -372,6 +368,12 @@ func main() {
 	// Shutdown does not touch hijacked connections: this is what terminates
 	// the realtime websockets so clients reconnect to another replica
 	e.Close()
+
+	if serverFailed.Load() {
+		// e.g. the listen address was already bound: exit non-zero so
+		// supervisors keying on exit status restart the process
+		os.Exit(1)
+	}
 }
 
 func handleNop(c echo.Context) error {

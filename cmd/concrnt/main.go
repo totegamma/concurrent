@@ -170,11 +170,10 @@ func main() {
 	clustered := clusterConf.ElectorEndpoint != ""
 
 	var elector cluster.Elector
-	var peerDiscovery cluster.Discovery
+	var httpElector *cluster.HTTPElector
 	if clustered {
-		httpElector := cluster.NewHTTPElector(clusterConf.ElectorEndpoint)
+		httpElector = cluster.NewHTTPElector(clusterConf.ElectorEndpoint)
 		elector = httpElector
-		peerDiscovery = httpElector
 	} else {
 		elector = cluster.AlwaysLeader{}
 	}
@@ -216,8 +215,8 @@ func main() {
 	}
 	subscriptionUC := usecase.NewSubscriptionUsecase(ensurer, redisPubsub)
 	subscriber.RegisterClient(subscriptionUC)
-	if peerDiscovery != nil {
-		subscriber.RegisterClient(worker.NewPeerDemandClient(peerDiscovery))
+	if clustered {
+		subscriber.RegisterClient(worker.NewPeerDemandClient(httpElector))
 	}
 
 	chunklineGateway := gateway.NewChunklineGateway(cl, mc, subscriptionUC, redisPubsub)
@@ -233,7 +232,14 @@ func main() {
 
 	var notificationReactor *worker.NotificationReactor
 	if conf.Integrations.VapidPublicKey != "" && conf.Integrations.VapidPrivateKey != "" {
-		notificationReactor = worker.NewNotificationReactor(notificationUC, subscriptionUC, pubsub.NewRedisDeduper(redis), webpush.Options{
+		// cross-replica push dedup only matters when a leadership handover can
+		// overlap two reactors; standalone deployments skip the redis round
+		// trip per notification
+		var notificationDeduper worker.NotificationDeduper
+		if clustered {
+			notificationDeduper = pubsub.NewRedisDeduper(redis)
+		}
+		notificationReactor = worker.NewNotificationReactor(notificationUC, subscriptionUC, notificationDeduper, webpush.Options{
 			Subscriber:      "mailto:admin@" + domainConfig.FQDN,
 			VAPIDPublicKey:  conf.Integrations.VapidPublicKey,
 			VAPIDPrivateKey: conf.Integrations.VapidPrivateKey,

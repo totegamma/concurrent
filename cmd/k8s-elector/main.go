@@ -44,6 +44,8 @@ import (
 	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/leaderelection"
 	"k8s.io/client-go/tools/leaderelection/resourcelock"
+
+	"github.com/concrnt/concrnt/internal/infra/cluster"
 )
 
 const (
@@ -56,12 +58,6 @@ const (
 	// state instead of acting on a false "zero replicas"
 	peerResolveGrace = 30 * time.Second
 )
-
-type electorStatus struct {
-	IsLeader  bool     `json:"isLeader"`
-	LeaderURL string   `json:"leaderUrl"`
-	Peers     []string `json:"peers"`
-}
 
 func getenv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
@@ -187,7 +183,9 @@ func main() {
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /status", func(w http.ResponseWriter, r *http.Request) {
-		status := electorStatus{Peers: []string{}}
+		// cluster.ElectorStatus is the wire contract HTTPElector decodes;
+		// sharing the type keeps the two sides in lockstep
+		status := cluster.ElectorStatus{Peers: []string{}}
 
 		if le := elector.Load(); le != nil {
 			status.IsLeader = le.IsLeader()

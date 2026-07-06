@@ -12,20 +12,9 @@ import (
 
 	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/internal/domain"
+	"github.com/concrnt/concrnt/internal/testutil"
 	"github.com/gorilla/websocket"
 )
-
-func waitFor(t *testing.T, cond func() bool) {
-	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		if cond() {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatal("condition not met in time")
-}
 
 // wsTestServer is the remote end of the subscriber's websocket connections:
 // it tracks live server-side connections and the listen requests received.
@@ -190,7 +179,7 @@ func TestEnsureDoesNotBlockSubscriberOnSlowDial(t *testing.T) {
 	defer cancel()
 	s.Start(ctx)
 
-	waitFor(t, func() bool { return fake.dialCount.Load() >= 1 })
+	testutil.WaitFor(t, func() bool { return fake.dialCount.Load() >= 1 })
 
 	// with the dial still gated, these must all return promptly
 	done := make(chan struct{})
@@ -207,7 +196,7 @@ func TestEnsureDoesNotBlockSubscriberOnSlowDial(t *testing.T) {
 	}
 
 	close(gate)
-	waitFor(t, func() bool { return ws.liveConns() == 1 })
+	testutil.WaitFor(t, func() bool { return ws.liveConns() == 1 })
 }
 
 // Concurrent ensures for the same host must collapse into a single dial whose
@@ -237,13 +226,13 @@ func TestConcurrentEnsureDialsOnce(t *testing.T) {
 	wg.Wait()
 
 	close(gate)
-	waitFor(t, func() bool { return ws.liveConns() == 1 })
+	testutil.WaitFor(t, func() bool { return ws.liveConns() == 1 })
 
 	if got := fake.dialCount.Load(); got != 1 {
 		t.Fatalf("expected exactly 1 dial, got %d", got)
 	}
 
-	waitFor(t, func() bool {
+	testutil.WaitFor(t, func() bool {
 		listen := ws.lastListen()
 		found := 0
 		for _, p := range []string{"cckv://alice/home", "cckv://bob/home", "cckv://carol/home"} {
@@ -273,7 +262,7 @@ func TestCleanupRemovesOnlyOwnState(t *testing.T) {
 	defer cancel()
 	s.Start(ctx)
 
-	waitFor(t, func() bool { return ws.liveConns() == 1 })
+	testutil.WaitFor(t, func() bool { return ws.liveConns() == 1 })
 
 	for range 5 {
 		// kill the current connection while hammering ensure from the side,
@@ -296,7 +285,7 @@ func TestCleanupRemovesOnlyOwnState(t *testing.T) {
 		ws.closeAll()
 		// wait for full recovery while the hammer still runs: a replacement
 		// can die too if it was dialed before closeAll's snapshot
-		waitFor(t, func() bool {
+		testutil.WaitFor(t, func() bool {
 			count, connected := s.trackedEntries()
 			return count == 1 && connected == 1 && ws.liveConns() == 1
 		})
@@ -306,7 +295,7 @@ func TestCleanupRemovesOnlyOwnState(t *testing.T) {
 
 	// a connection observed live above may still have been part of the kill
 	// snapshot; recover like the keeper would, then require a steady state
-	waitFor(t, func() bool {
+	testutil.WaitFor(t, func() bool {
 		count, connected := s.trackedEntries()
 		if count == 0 {
 			s.EnsureSubscriptions(context.Background(), []string{"cckv://alice/home"})
@@ -341,7 +330,7 @@ func TestKeeperRunsImmediatelyOnStart(t *testing.T) {
 
 	// waitFor's 3s budget is well under the 10s tick, so this only passes
 	// with the immediate first pass
-	waitFor(t, func() bool { return ws.liveConns() == 1 })
+	testutil.WaitFor(t, func() bool { return ws.liveConns() == 1 })
 }
 
 // Each keeper pass must collect demand exactly once (shared snapshot), not
@@ -359,7 +348,7 @@ func TestSingleDemandSnapshotPerTick(t *testing.T) {
 	defer cancel()
 	s.Start(ctx)
 
-	waitFor(t, func() bool { return demand.calls.Load() >= 1 })
+	testutil.WaitFor(t, func() bool { return demand.calls.Load() >= 1 })
 	time.Sleep(200 * time.Millisecond) // let the first pass fully settle
 	if got := demand.calls.Load(); got != 1 {
 		t.Fatalf("expected exactly 1 demand collection in the first keeper pass, got %d", got)
@@ -473,8 +462,8 @@ func TestPurgeOnOpenAndOpenPrefixes(t *testing.T) {
 	defer cancel()
 	s.Start(ctx)
 
-	waitFor(t, func() bool { return purger.purged("cckv://alice/home", 2) })
-	waitFor(t, func() bool {
+	testutil.WaitFor(t, func() bool { return purger.purged("cckv://alice/home", 2) })
+	testutil.WaitFor(t, func() bool {
 		open := s.OpenPrefixes()
 		return len(open) == 1 && open[0] == "cckv://alice/home"
 	})
@@ -496,7 +485,7 @@ func TestDeleteExcessClosesInFlightDialResult(t *testing.T) {
 	defer cancel()
 	s.Start(ctx)
 
-	waitFor(t, func() bool { return fake.dialCount.Load() >= 1 })
+	testutil.WaitFor(t, func() bool { return fake.dialCount.Load() >= 1 })
 
 	// demand vanishes while the dial is gated
 	demand.set(nil)
@@ -509,7 +498,7 @@ func TestDeleteExcessClosesInFlightDialResult(t *testing.T) {
 	close(gate)
 
 	// the late dial result must be closed, not installed
-	waitFor(t, func() bool { return ws.liveConns() == 0 })
+	testutil.WaitFor(t, func() bool { return ws.liveConns() == 0 })
 	time.Sleep(100 * time.Millisecond)
 	if count, _ := s.trackedEntries(); count != 0 {
 		t.Fatalf("expected no tracked entries after late dial completes, got %d", count)

@@ -4,9 +4,9 @@ import (
 	"context"
 	"slices"
 	"testing"
-	"time"
 
 	"github.com/concrnt/concrnt"
+	"github.com/concrnt/concrnt/internal/testutil"
 )
 
 type stubEnsurer struct{}
@@ -25,18 +25,6 @@ func (stubPubSub) Subscribe(ctx context.Context, prefixes []string, response cha
 
 func (stubPubSub) SubscribeAll(ctx context.Context, response chan<- concrnt.Event) error {
 	return nil
-}
-
-func waitFor(t *testing.T, cond func() bool) {
-	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		if cond() {
-			return
-		}
-		time.Sleep(10 * time.Millisecond)
-	}
-	t.Fatal("condition not met in time")
 }
 
 // Two concurrent realtime sessions must both contribute to the demand set;
@@ -59,14 +47,14 @@ func TestCurrentSubscriptionsUnionsSessions(t *testing.T) {
 	req1 <- []string{"cckv://alice/home"}
 	req2 <- []string{"cckv://bob/home"}
 
-	waitFor(t, func() bool {
+	testutil.WaitFor(t, func() bool {
 		subs := uc.CurrentSubscriptions()
 		return slices.Contains(subs, "cckv://alice/home") && slices.Contains(subs, "cckv://bob/home")
 	})
 
 	// closing one session must drop only its prefixes
 	cancel1()
-	waitFor(t, func() bool {
+	testutil.WaitFor(t, func() bool {
 		subs := uc.CurrentSubscriptions()
 		return !slices.Contains(subs, "cckv://alice/home") && slices.Contains(subs, "cckv://bob/home")
 	})

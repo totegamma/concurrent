@@ -74,7 +74,7 @@ func (h *InternalHandler) handleEnsure(c echo.Context) error {
 
 // StartInternalListener runs the internal coordination API on its own port,
 // shutting down when ctx is cancelled.
-func StartInternalListener(ctx context.Context, addr string, handler *InternalHandler) *echo.Echo {
+func StartInternalListener(ctx context.Context, addr string, handler *InternalHandler) {
 	e := echo.New()
 	e.HideBanner = true
 	e.HidePort = true
@@ -94,6 +94,4 @@ func StartInternalListener(ctx context.Context, addr string, handler *InternalHa
 		defer cancel()
 		_ = e.Shutdown(shutdownCtx)
 	}()
-
-	return e
 }

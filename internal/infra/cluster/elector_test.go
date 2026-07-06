@@ -9,6 +9,8 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/concrnt/concrnt/internal/testutil"
 )
 
 type fakeElectorService struct {
@@ -42,18 +44,6 @@ func newTestElector(endpoint string) *HTTPElector {
 	return e
 }
 
-func waitFor(t *testing.T, cond func() bool) {
-	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
-		if cond() {
-			return
-		}
-		time.Sleep(5 * time.Millisecond)
-	}
-	t.Fatal("condition not met in time")
-}
-
 func TestHTTPElectorLeadershipTransitions(t *testing.T) {
 	fake := &fakeElectorService{}
 	fake.set(ElectorStatus{IsLeader: false, LeaderURL: "http://10.0.0.9:8001", Peers: []string{"http://10.0.0.9:8001"}})
@@ -74,7 +64,7 @@ func TestHTTPElectorLeadershipTransitions(t *testing.T) {
 	})
 
 	// non-leader: status is reflected but onLead is not called
-	waitFor(t, func() bool { _, ok := e.current(); return ok })
+	testutil.WaitFor(t, func() bool { _, ok := e.current(); return ok })
 	if e.IsLeader() {
 		t.Fatal("must not be leader yet")
 	}
@@ -87,7 +77,7 @@ func TestHTTPElectorLeadershipTransitions(t *testing.T) {
 
 	// become leader -> onLead fires with a live context
 	fake.set(ElectorStatus{IsLeader: true, LeaderURL: "http://self:8001"})
-	waitFor(t, func() bool {
+	testutil.WaitFor(t, func() bool {
 		mu.Lock()
 		defer mu.Unlock()
 		return leadCtx != nil
@@ -101,7 +91,7 @@ func TestHTTPElectorLeadershipTransitions(t *testing.T) {
 
 	// lose leadership -> lead context is cancelled
 	fake.set(ElectorStatus{IsLeader: false})
-	waitFor(t, func() bool { return current.Err() != nil })
+	testutil.WaitFor(t, func() bool { return current.Err() != nil })
 }
 
 func TestHTTPElectorDemotesWhenServiceUnreachable(t *testing.T) {
@@ -122,7 +112,7 @@ func TestHTTPElectorDemotesWhenServiceUnreachable(t *testing.T) {
 		mu.Unlock()
 	})
 
-	waitFor(t, func() bool {
+	testutil.WaitFor(t, func() bool {
 		mu.Lock()
 		defer mu.Unlock()
 		return leadCtx != nil
@@ -133,7 +123,7 @@ func TestHTTPElectorDemotesWhenServiceUnreachable(t *testing.T) {
 
 	// elector service dies -> after the failure grace we must step down
 	server.Close()
-	waitFor(t, func() bool { return current.Err() != nil })
+	testutil.WaitFor(t, func() bool { return current.Err() != nil })
 	if e.IsLeader() {
 		t.Fatal("must not report leadership with a dead elector service")
 	}

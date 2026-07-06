@@ -9,19 +9,21 @@ concrnt:
   # it is handy to generate these info with concurrent.world devtool
   layer: concrnt-mainnet
   debug: false
-  # internal (operational) listener: serves /health, /ready and the
-  # replica-to-replica coordination API. point liveness/readiness probes
-  # here. do NOT expose this port outside the cluster (default: 8001)
-  # internalPort: 8001
+  # note: the internal (operational) listener — /health, /ready and the
+  # replica-to-replica coordination API — listens on :8001 (override with the
+  # CONCRNT_INTERNAL_PORT environment variable). point liveness/readiness
+  # probes there and do NOT expose it outside the cluster.
+  #
   # cluster enables running multiple replicas (e.g. on kubernetes).
   # leave it out for a single instance / docker compose.
   # cluster:
+  #   enable: true
   #   # endpoint of a leader-election / peer-discovery service implementing
   #   # GET /status -> {"isLeader": bool, "leaderUrl": string, "peers": [string]}.
   #   # on kubernetes, run the bundled k8s-elector binary as a sidecar (it
   #   # elects a leader via a coordination.k8s.io Lease and discovers peers
   #   # via a headless service). other backends can implement the same
-  #   # protocol. empty = standalone (this instance is the only replica).
+  #   # protocol. required when enable is true.
   #   electorEndpoint: "http://127.0.0.1:8002"
 
 backends:

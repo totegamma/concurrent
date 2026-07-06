@@ -156,12 +156,17 @@ func main() {
 
 	redis := database.NewRedis(conf.Backends.RedisAddr, "", conf.Backends.RedisDB)
 
-	internalPort := conf.Concrnt.InternalPort
-	if internalPort == 0 {
-		internalPort = 8001
+	// the internal (operational) listener port, alongside the fixed public
+	// :8000; never expose it outside the cluster
+	internalPort := os.Getenv("CONCRNT_INTERNAL_PORT")
+	if internalPort == "" {
+		internalPort = "8001"
 	}
 
-	clustered := conf.Concrnt.Cluster.ElectorEndpoint != ""
+	clustered := conf.Concrnt.Cluster.Enable
+	if clustered && conf.Concrnt.Cluster.ElectorEndpoint == "" {
+		panic("concrnt.cluster.enable requires concrnt.cluster.electorEndpoint")
+	}
 
 	var elector cluster.Elector
 	var discovery worker.PeerDiscovery // nil in standalone mode: no peers to poll
@@ -340,7 +345,7 @@ func main() {
 	coordination.RegisterRoutes(internal)
 
 	go func() {
-		if err := internal.Start(fmt.Sprintf(":%d", internalPort)); err != nil && !errors.Is(err, http.ErrServerClosed) {
+		if err := internal.Start(":" + internalPort); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			// the probes target this listener, so a dead internal listener
 			// gets the process restarted by its supervisor; the public API
 			// keeps serving in the meantime

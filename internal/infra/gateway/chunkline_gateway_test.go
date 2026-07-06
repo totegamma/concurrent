@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"strconv"
@@ -202,4 +203,92 @@ func TestPurgeLatest(t *testing.T) {
 	assertChunk(current, false)
 	assertChunk(current-1, false)
 	assertChunk(current-2, true)
+}
+
+// A close-edge purge (depth 1) must run a second sweep after the workers'
+// aggregate cache TTL: a worker holding a pre-close aggregate can re-cache
+// the just-purged latest chunk in between (mc.Add succeeds precisely because
+// the first purge deleted the key), and that resurrected copy is maintained
+// by nothing.
+func TestPurgeLatestReplaysCloseEdge(t *testing.T) {
+	prev := purgeReplayDelay
+	purgeReplayDelay = 50 * time.Millisecond
+	t.Cleanup(func() { purgeReplayDelay = prev })
+
+	r, manifest := newTestResolver(t)
+
+	now := time.Now()
+	current := manifest.Time2Chunk(now)
+	item := []chunkline.BodyItem{{Timestamp: now, Href: "cckv://alice/home/rec"}}
+
+	seedChunk(t, r.mc, testTimeline, current, item)
+	r.PurgeLatest([]string{testTimeline}, 1)
+
+	// a stale worker resurrects the latest chunk right after the purge
+	seedChunk(t, r.mc, testTimeline, current, item)
+
+	testutil.WaitFor(t, func() bool {
+		_, bodyErr := r.mc.Get(bodyCacheKey(testTimeline, strconv.FormatInt(current, 10)))
+		_, itrErr := r.mc.Get(itrCacheKey(testTimeline, current))
+		return bodyErr == memcache.ErrCacheMiss && itrErr == memcache.ErrCacheMiss
+	})
+}
+
+// A record created while the body of its epoch is not cached must still
+// repoint a cached iterator to that epoch: an iterator cached during an
+// empty epoch points at an older chunk and would hide the record until the
+// epoch rolls over.
+func TestApplyEventToCacheRepointsItrWithoutBody(t *testing.T) {
+	r, manifest := newTestResolver(t)
+
+	now := time.Now()
+	epoch := manifest.Time2Chunk(now)
+
+	// a read during the empty epoch cached itr[epoch] -> older chunk
+	older := strconv.FormatInt(epoch-3, 10)
+	if err := r.mc.Set(&memcache.Item{Key: itrCacheKey(testTimeline, epoch), Value: []byte(older), Expiration: itrCacheTTL}); err != nil {
+		t.Fatal(err)
+	}
+
+	r.applyEventToCache(testEvent("cckv://alice/home/new", now), epoch)
+
+	item, err := r.mc.Get(itrCacheKey(testTimeline, epoch))
+	if err != nil {
+		t.Fatalf("expected iterator to stay cached, got %v", err)
+	}
+	if got := string(item.Value); got != strconv.FormatInt(epoch, 10) {
+		t.Fatalf("expected iterator repointed to %d, got %s", epoch, got)
+	}
+
+	// still no body key: Replace maintains, never creates
+	if _, err := r.mc.Get(bodyCacheKey(testTimeline, strconv.FormatInt(epoch, 10))); err != memcache.ErrCacheMiss {
+		t.Fatalf("expected no body key to be created, got err=%v", err)
+	}
+}
+
+// A body served from cache must not fall through to an origin fetch: the
+// whole point of the cache. (r.client is nil here, so any origin attempt
+// would panic.)
+func TestLoadChunkBodiesCacheHitSkipsOrigin(t *testing.T) {
+	r, manifest := newTestResolver(t)
+
+	now := time.Now()
+	chunk := manifest.Time2Chunk(now) - 5 // an old, unconditionally-cacheable chunk
+	items := []chunkline.BodyItem{{Timestamp: now.Add(-time.Hour), Href: "cckv://alice/home/old"}}
+	seedChunk(t, r.mc, testTimeline, chunk, items)
+
+	results, err := r.LoadChunkBodies(context.Background(), map[string]string{
+		testTimeline: strconv.FormatInt(chunk, 10),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	body, ok := results[testTimeline]
+	if !ok {
+		t.Fatal("expected the cached chunk in the results")
+	}
+	if body.ChunkID != chunk || len(body.Items) != 1 || body.Items[0].Href != "cckv://alice/home/old" {
+		t.Fatalf("unexpected body from cache: %+v", body)
+	}
 }

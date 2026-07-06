@@ -36,6 +36,7 @@ type WorkerSubscriber struct {
 	mu       sync.Mutex
 	cached   []string
 	cachedAt time.Time
+	fetching bool // a refresh is in flight; concurrent callers reuse cached
 }
 
 func NewWorkerSubscriber(elector LeaderLocator) *WorkerSubscriber {
@@ -48,16 +49,29 @@ func NewWorkerSubscriber(elector LeaderLocator) *WorkerSubscriber {
 // CurrentSubscriptions asks the leader for the cluster-wide aggregate
 // subscription state, short-TTL cached so that a frequent caller (e.g. the
 // chunkline cache-freshness check on every read) doesn't hammer the leader.
-// A failed or skipped fetch reports no subscriptions rather than the stale
-// cache: understating demand only costs a cache write, never correctness.
+// Failures are cached too (as "no subscriptions") so an unreachable leader
+// costs at most one 2s attempt per TTL per replica instead of one per read,
+// and only one refresh is ever in flight — concurrent callers reuse the
+// cached value. Understating demand only costs a cache write, never
+// correctness.
 func (w *WorkerSubscriber) CurrentSubscriptions() []string {
 	w.mu.Lock()
-	if time.Since(w.cachedAt) < workerDemandCacheTTL {
+	if time.Since(w.cachedAt) < workerDemandCacheTTL || w.fetching {
 		cached := w.cached
 		w.mu.Unlock()
 		return cached
 	}
+	w.fetching = true
 	w.mu.Unlock()
+
+	var prefixes []string
+	defer func() {
+		w.mu.Lock()
+		w.fetching = false
+		w.cached = prefixes
+		w.cachedAt = time.Now()
+		w.mu.Unlock()
+	}()
 
 	leaderURL, ok := w.elector.LeaderURL()
 	if !ok {
@@ -95,15 +109,10 @@ func (w *WorkerSubscriber) CurrentSubscriptions() []string {
 		return nil
 	}
 
-	var prefixes []string
 	if err := json.NewDecoder(resp.Body).Decode(&prefixes); err != nil {
+		prefixes = nil
 		return nil
 	}
-
-	w.mu.Lock()
-	w.cached = prefixes
-	w.cachedAt = time.Now()
-	w.mu.Unlock()
 
 	return prefixes
 }

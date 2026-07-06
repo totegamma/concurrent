@@ -29,6 +29,13 @@ const (
 	bodyCacheTTL     = 60 * 60 * 24 * 2 // 2 days
 )
 
+// purgeReplayDelay must exceed the workers' aggregate-subscription cache TTL
+// (worker.WorkerSubscriber, 3s): a worker holding a pre-close aggregate can
+// re-cache a just-purged latest chunk for up to that long, so close-edge
+// purges run a second time after this delay to sweep such resurrections.
+// Package variable so tests can shorten it.
+var purgeReplayDelay = 8 * time.Second
+
 // SubscriptionDemand reports the realtime subscription demand of this replica,
 // used to decide whether a latest chunk will be kept fresh by the cache
 // updater and is therefore safe to cache.
@@ -66,7 +73,11 @@ func NewChunklineGateway(
 // memcached.
 func (g *ChunklineGateway) StartWorker(ctx context.Context, subscriber *worker.LeaderSubscriber) {
 	g.r.open = subscriber
-	subscriber.RegisterClient(g.r)
+	// keep-alive, not a session client: the resolver's demand exists to keep
+	// established caches maintained, and must not feed the served aggregate
+	// that gates cache writes (that feedback would keep every once-read
+	// timeline subscribed forever)
+	subscriber.RegisterKeepAliveClient(g.r)
 	subscriber.SetCachePurger(g.r)
 	go g.r.cacheUpdater(ctx)
 }
@@ -441,6 +452,7 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 				ChunkID: chunkID,
 				Items:   bodyItems,
 			}
+			continue // cached: no origin fetch needed (a cached latest chunk is kept fresh by the cache updater)
 		}
 
 		manifest, ok := manifests[tl]
@@ -684,6 +696,16 @@ func (r *resolver) applyEventToCache(event concrnt.Event, epoch int64) {
 	itrKey := itrCacheKey(timeline, epoch)
 	bodyKey := bodyCacheKey(timeline, strconv.FormatInt(epoch, 10))
 
+	// repoint the cached iterator to this epoch before touching the body:
+	// even when no body is cached (nothing to maintain below), a cached
+	// iterator from a read during an empty epoch still steers readers to an
+	// older chunk and would hide this record until the epoch rolls over.
+	// Replace never creates the key, so an uncached iterator stays uncached.
+	err := r.mc.Replace(&memcache.Item{Key: itrKey, Value: []byte(strconv.FormatInt(epoch, 10)), Expiration: itrCacheTTL})
+	if err != nil && !errors.Is(err, memcache.ErrNotStored) {
+		slog.Error("failed to replace iterator in cache", slog.String("timeline", timeline), slog.String("error", err.Error()))
+	}
+
 	bodyItem := chunkline.BodyItem{
 		Timestamp: event.Timestamp,
 		Href:      event.URI,
@@ -741,12 +763,6 @@ func (r *resolver) applyEventToCache(event concrnt.Event, epoch int64) {
 	}
 	if !applied {
 		slog.Error("giving up body chunk cache update after repeated CAS conflicts", slog.String("timeline", timeline))
-		return
-	}
-
-	err = r.mc.Replace(&memcache.Item{Key: itrKey, Value: []byte(strconv.FormatInt(epoch, 10)), Expiration: itrCacheTTL})
-	if err != nil && !errors.Is(err, memcache.ErrNotStored) {
-		slog.Error("failed to replace iterator in cache", slog.String("timeline", timeline), slog.String("error", err.Error()))
 	}
 }
 
@@ -786,5 +802,30 @@ func (r *resolver) PurgeLatest(prefixes []string, depth int) {
 				slog.Error("failed to purge body cache", slog.String("timeline", tl), slog.String("error", err.Error()))
 			}
 		}
+	}
+
+	if depth == 1 {
+		// close edge: a worker whose cached aggregate predates this close can
+		// still consider these prefixes subscribed for a few seconds and
+		// re-cache an unmaintained latest chunk (mc.Add succeeds precisely
+		// because the delete above just removed the key). Sweep again after
+		// the workers' view has expired; a spurious delete only costs one
+		// cache miss.
+		keys := make([]string, 0, len(prefixes)*2)
+		for _, tl := range prefixes {
+			manifest, ok := manifests[tl]
+			if !ok {
+				continue
+			}
+			chunk := manifest.Time2Chunk(time.Now())
+			keys = append(keys, itrCacheKey(tl, chunk), bodyCacheKey(tl, strconv.FormatInt(chunk, 10)))
+		}
+		time.AfterFunc(purgeReplayDelay, func() {
+			for _, key := range keys {
+				if err := r.mc.Delete(key); err != nil && !errors.Is(err, memcache.ErrCacheMiss) {
+					slog.Error("failed to replay cache purge", slog.String("key", key), slog.String("error", err.Error()))
+				}
+			}
+		})
 	}
 }

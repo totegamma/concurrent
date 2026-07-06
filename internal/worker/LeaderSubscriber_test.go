@@ -92,14 +92,22 @@ type fakeSubClient struct {
 	ws        *wsTestServer
 	dialGate  chan struct{}
 	dialCount atomic.Int64
+	resolveTo string // host every prefix resolves to; "" means "remote.example"
+	dialErr   bool   // Realtime fails instead of connecting
 }
 
 func (f *fakeSubClient) ResolveResourceHost(ctx context.Context, uri string) (string, error) {
+	if f.resolveTo != "" {
+		return f.resolveTo, nil
+	}
 	return "remote.example", nil
 }
 
 func (f *fakeSubClient) Realtime(ctx context.Context, fqdn string) (*websocket.Conn, error) {
 	f.dialCount.Add(1)
+	if f.dialErr {
+		return nil, context.DeadlineExceeded
+	}
 	if f.dialGate != nil {
 		select {
 		case <-f.dialGate:
@@ -415,7 +423,7 @@ func TestPurgeOnDeleteExcess(t *testing.T) {
 		Prefixes: []string{"cckv://alice/home", "cckv://bob/home"},
 	}
 
-	s.deleteExcessSubscriptions([]string{"cckv://bob/home"})
+	s.deleteExcessSubscriptions([]string{"cckv://bob/home"}, time.Now())
 
 	if !purger.purged("cckv://alice/home", 1) {
 		t.Fatalf("expected dropped prefix to be purged, calls: %+v", purger.calls)
@@ -435,7 +443,10 @@ func TestPurgeOnCloseAll(t *testing.T) {
 	s.Subscriptions["a.example"] = &SubState{Prefixes: []string{"cckv://alice/home"}}
 	s.Subscriptions["b.example"] = &SubState{Prefixes: []string{"cckv://bob/home"}}
 
-	s.closeAllSubscriptions()
+	// closeAll only sweeps for the term that owns runCtx
+	ctx := context.Background()
+	s.runCtx = ctx
+	s.closeAllSubscriptions(ctx)
 
 	if !purger.purged("cckv://alice/home", 1) || !purger.purged("cckv://bob/home", 1) {
 		t.Fatalf("expected all prefixes purged on close-all, calls: %+v", purger.calls)
@@ -490,7 +501,7 @@ func TestDeleteExcessClosesInFlightDialResult(t *testing.T) {
 
 	// demand vanishes while the dial is gated
 	demand.set(nil)
-	s.deleteExcessSubscriptions(nil)
+	s.deleteExcessSubscriptions(nil, time.Now())
 
 	if count, _ := s.trackedEntries(); count != 0 {
 		t.Fatalf("expected entry to be removed while dialing, got %d", count)
@@ -678,10 +689,10 @@ func TestCurrentSubscriptionsRemovesOnDrop(t *testing.T) {
 	})
 
 	demand.set(nil)
-	s.deleteExcessSubscriptions(nil)
+	s.deleteExcessSubscriptions(nil, time.Now())
 
 	if slices.Contains(s.CurrentSubscriptions(), "cckv://alice/home") {
-		t.Fatal("expected prefix to be removed from the cache once its subscription is dropped")
+		t.Fatal("expected prefix to be removed from the served set once its subscription is dropped")
 	}
 }
 
@@ -709,4 +720,144 @@ type countingDiscovery struct {
 func (d countingDiscovery) Peers(ctx context.Context) ([]string, error) {
 	d.calls.Add(1)
 	return nil, nil
+}
+
+// Keep-alive demand keeps a subscription open but must never appear in the
+// served aggregate: serving it would let reads re-cache latest chunks, which
+// feeds the keep-alive again — a loop holding the subscription open forever.
+func TestKeepAliveClientExcludedFromServedSet(t *testing.T) {
+	ws := newWSTestServer(t)
+	fake := &fakeSubClient{ws: ws}
+	s := newTestSubscriber(fake)
+
+	keep := &dynamicDemand{}
+	keep.set([]string{"cckv://alice/home"})
+	s.RegisterKeepAliveClient(keep)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s.Start(ctx)
+
+	// the keeper honors keep-alive demand: the subscription opens...
+	testutil.WaitFor(t, func() bool { return ws.liveConns() == 1 })
+	testutil.WaitFor(t, func() bool {
+		return slices.Contains(s.OpenPrefixes(), "cckv://alice/home")
+	})
+
+	// ...but the served aggregate must not report it
+	if got := s.CurrentSubscriptions(); slices.Contains(got, "cckv://alice/home") {
+		t.Fatalf("keep-alive demand must not be served, got %v", got)
+	}
+}
+
+// A prefix whose dial keeps failing must not be served as subscribed: workers
+// would cache its latest chunk, which nothing maintains.
+func TestUnopenedDemandNotServed(t *testing.T) {
+	fake := &fakeSubClient{dialErr: true}
+	s := newTestSubscriber(fake)
+
+	demand := &dynamicDemand{}
+	demand.set([]string{"cckv://alice/home"})
+	s.RegisterClient(demand)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s.Start(ctx)
+
+	testutil.WaitFor(t, func() bool { return fake.dialCount.Load() >= 1 })
+	time.Sleep(100 * time.Millisecond) // let the failed dial settle
+
+	if got := s.CurrentSubscriptions(); slices.Contains(got, "cckv://alice/home") {
+		t.Fatalf("demand without an open connection must not be served, got %v", got)
+	}
+}
+
+// Prefixes resolving to this host need no upstream connection (local events
+// reach redis via the delivery path and the cache updater maintains them), so
+// they are served as soon as demand exists.
+func TestLocalPrefixServed(t *testing.T) {
+	fake := &fakeSubClient{resolveTo: "local.example"} // == test subscriber's own FQDN
+	s := newTestSubscriber(fake)
+
+	demand := &dynamicDemand{}
+	demand.set([]string{"cckv://alice/home"})
+	s.RegisterClient(demand)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s.Start(ctx)
+
+	testutil.WaitFor(t, func() bool {
+		return slices.Contains(s.CurrentSubscriptions(), "cckv://alice/home")
+	})
+	if got := fake.dialCount.Load(); got != 0 {
+		t.Fatalf("local prefixes must not be dialed, got %d dials", got)
+	}
+}
+
+// An ensure that lands after the keeper captured its demand snapshot must
+// survive that tick's deleteExcessSubscriptions: the snapshot does not know
+// the new prefix, but stripping it would tear down a subscription that was
+// just opened and lose events until the next tick.
+func TestEnsureAfterSnapshotSurvivesDeleteExcess(t *testing.T) {
+	ws := newWSTestServer(t)
+	fake := &fakeSubClient{ws: ws}
+	s := newTestSubscriber(fake)
+
+	demand := &dynamicDemand{}
+	demand.set([]string{"cckv://alice/home"})
+	s.RegisterClient(demand)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s.Start(ctx)
+
+	snapshotTime := time.Now() // a tick whose snapshot predates the ensure below
+	time.Sleep(10 * time.Millisecond)
+
+	s.EnsureSubscriptions(context.Background(), []string{"cckv://alice/home"})
+	testutil.WaitFor(t, func() bool { return ws.liveConns() == 1 })
+
+	// stale snapshot without the prefix: the fresh ensure stamp must spare it
+	s.deleteExcessSubscriptions(nil, snapshotTime)
+
+	if count, connected := s.trackedEntries(); count != 1 || connected != 1 {
+		t.Fatalf("expected the just-ensured subscription to survive, got tracked=%d connected=%d", count, connected)
+	}
+}
+
+// A stale keeper from a previous lead term must not tear down the connections
+// of the term that replaced it.
+func TestCloseAllSkipsNewerTerm(t *testing.T) {
+	ws := newWSTestServer(t)
+	fake := &fakeSubClient{ws: ws}
+	s := newTestSubscriber(fake)
+
+	demand := &dynamicDemand{}
+	demand.set([]string{"cckv://alice/home"})
+	s.RegisterClient(demand)
+
+	ctx1, cancel1 := context.WithCancel(context.Background())
+	defer cancel1()
+	s.Start(ctx1)
+	testutil.WaitFor(t, func() bool { return ws.liveConns() == 1 })
+
+	// a new term takes over
+	ctx2, cancel2 := context.WithCancel(context.Background())
+	defer cancel2()
+	s.mu.Lock()
+	s.runCtx = ctx2
+	s.mu.Unlock()
+
+	// the old term's closeAll must be a no-op now
+	s.closeAllSubscriptions(ctx1)
+	if count, connected := s.trackedEntries(); count != 1 || connected != 1 {
+		t.Fatalf("expected the new term's connection to survive a stale closeAll, got tracked=%d connected=%d", count, connected)
+	}
+
+	// the owning term's closeAll still sweeps
+	s.closeAllSubscriptions(ctx2)
+	if count, _ := s.trackedEntries(); count != 0 {
+		t.Fatalf("expected the owning term's closeAll to sweep, got %d entries", count)
+	}
 }

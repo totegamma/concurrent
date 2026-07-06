@@ -11,7 +11,6 @@ import (
 	"time"
 
 	"github.com/concrnt/concrnt"
-	"github.com/concrnt/concrnt/client"
 	"github.com/concrnt/concrnt/internal/domain"
 	"github.com/gorilla/websocket"
 )
@@ -25,10 +24,22 @@ type SubscribeClient interface {
 	CurrentSubscriptions() []string
 }
 
+// SubscriberClient is the subset of client.Client the Subscriber needs.
+type SubscriberClient interface {
+	ResolveResourceHost(ctx context.Context, uri string) (string, error)
+	Realtime(ctx context.Context, fqdn string) (*websocket.Conn, error)
+}
+
 type SubState struct {
 	Prefixes   []string
-	Connection *websocket.Conn
-	CancelFunc context.CancelFunc
+	Connection *websocket.Conn    // nil until the dial completes
+	CancelFunc context.CancelFunc // cancels this connection's goroutines; nil until connected
+	Dialing    bool               // a dial for this host is in flight
+
+	// writeMu serializes writes on Connection (listen requests vs pings);
+	// gorilla/websocket forbids concurrent writers. Always taken after s.mu
+	// is released, never while holding it.
+	writeMu sync.Mutex
 }
 
 type PubSub interface {
@@ -39,16 +50,25 @@ type PubSub interface {
 
 type Subscriber struct {
 	mu            sync.Mutex
+	runCtx        context.Context // current lead-term context, set by Start; nil before first lead
 	Subscriptions map[string]*SubState
 	Clients       map[string]SubscribeClient
 	Config        *domain.Config
-	Client        *client.Client
+	Client        SubscriberClient
 	pubsub        PubSub
+}
+
+// listenUpdate is a pending "listen" request to send once s.mu is released.
+type listenUpdate struct {
+	host     string
+	state    *SubState
+	conn     *websocket.Conn
+	prefixes []string
 }
 
 func NewSubscriber(
 	config *domain.Config,
-	client *client.Client,
+	client SubscriberClient,
 	pubsub PubSub,
 ) *Subscriber {
 	return &Subscriber{
@@ -60,7 +80,14 @@ func NewSubscriber(
 	}
 }
 
+// Start begins the keeper loop for one lead term. It may be called again on
+// re-election; each call overwrites runCtx with the fresh lead context, so
+// connections are always bound to the current term rather than to whichever
+// caller happened to trigger the dial.
 func (s *Subscriber) Start(ctx context.Context) {
+	s.mu.Lock()
+	s.runCtx = ctx
+	s.mu.Unlock()
 	go s.keeperRoutine(ctx)
 }
 
@@ -89,14 +116,10 @@ func (s *Subscriber) snapshotClients() []SubscribeClient {
 	return clients
 }
 
-func (s *Subscriber) CurrentSubscriptions(except ...SubscribeClient) []string {
+func (s *Subscriber) CurrentSubscriptions() []string {
 	subscriptionSet := make(map[string]bool)
 
 	for _, client := range s.snapshotClients() {
-		if slices.Contains(except, client) {
-			continue
-		}
-
 		for _, prefix := range client.CurrentSubscriptions() {
 			subscriptionSet[prefix] = true
 		}
@@ -110,39 +133,45 @@ func (s *Subscriber) CurrentSubscriptions(except ...SubscribeClient) []string {
 	return subscriptions
 }
 
-func (s *Subscriber) CollectCurrentSubscriptions() []string {
-	return s.CurrentSubscriptions()
-}
-
 func (s *Subscriber) keeperRoutine(ctx context.Context) {
 	ticker := time.NewTicker(time.Second * 10)
 	defer ticker.Stop()
 
 	for {
+		// one demand snapshot per tick, shared by create and delete so they
+		// cannot disagree within a tick (and peers are only polled once)
+		demand := s.CurrentSubscriptions()
+		s.createInsufficientSubscriptions(ctx, demand)
+		s.repairBrokenSubscriptions()
+		s.deleteExcessSubscriptions(demand)
+
 		select {
 		case <-ctx.Done():
 			s.closeAllSubscriptions()
 			return
 		case <-ticker.C:
-			s.createInsufficientSubscriptions(ctx)
-			s.repairBrokenSubscriptions(ctx)
-			s.deleteExcessSubscriptions(ctx)
 		}
 	}
 }
 
-func (s *Subscriber) repairBrokenSubscriptions(ctx context.Context) {
+func (s *Subscriber) repairBrokenSubscriptions() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
-	for domain := range s.Subscriptions {
-		if s.Subscriptions[domain].Connection == nil {
+	runCtx := s.runCtx
+	if runCtx == nil || runCtx.Err() != nil {
+		return
+	}
+
+	for host, state := range s.Subscriptions {
+		if state.Connection == nil && !state.Dialing {
 			slog.Info(
-				fmt.Sprintf("broken connection found: %s", domain),
+				fmt.Sprintf("broken connection found: %s", host),
 				slog.String("module", "worker"),
 				slog.String("group", "realtime"),
 			)
-			s.subscribeRemote(ctx, domain, s.Subscriptions[domain].Prefixes)
+			state.Dialing = true
+			go s.dialAndRun(runCtx, host, state)
 		}
 	}
 }
@@ -151,6 +180,9 @@ func (s *Subscriber) closeAllSubscriptions() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
+	// runCtx is deliberately left untouched: a new term's Start may already
+	// have replaced it. In-flight dials self-clean via the identity check in
+	// dialAndRun.
 	for domain, state := range s.Subscriptions {
 		if state.CancelFunc != nil {
 			state.CancelFunc()
@@ -194,244 +226,277 @@ func (s *Subscriber) resolvePrefixHosts(ctx context.Context, prefixes []string) 
 	return result
 }
 
+// EnsureSubscriptions makes sure an upstream subscription exists for every
+// given prefix. The caller's ctx bounds only host resolution; connections are
+// bound to the lead context captured at Start, so an ensure forwarded over
+// HTTP does not tear its connection down when the request ends.
 func (s *Subscriber) EnsureSubscriptions(ctx context.Context, subscriptions []string) {
-	prefixesByHost := s.resolvePrefixHosts(ctx, subscriptions)
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.ensureSubscriptionsLocked(ctx, prefixesByHost)
+	s.ensureHosts(s.resolvePrefixHosts(ctx, subscriptions))
 }
 
-func (s *Subscriber) createInsufficientSubscriptions(ctx context.Context) {
-	currentSubscriptions := s.CollectCurrentSubscriptions()
-	prefixesByHost := s.resolvePrefixHosts(ctx, currentSubscriptions)
-
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.ensureSubscriptionsLocked(ctx, prefixesByHost)
+func (s *Subscriber) createInsufficientSubscriptions(ctx context.Context, demand []string) {
+	s.ensureHosts(s.resolvePrefixHosts(ctx, demand))
 }
 
-// caller must hold s.mu
-func (s *Subscriber) ensureSubscriptionsLocked(ctx context.Context, prefixesByHost map[string][]string) {
+func (s *Subscriber) ensureHosts(prefixesByHost map[string][]string) {
+	s.mu.Lock()
+
+	runCtx := s.runCtx
+	if runCtx == nil || runCtx.Err() != nil {
+		s.mu.Unlock()
+		slog.Warn(
+			"subscription ensure requested while not leading, ignoring",
+			slog.String("module", "worker"),
+			slog.String("group", "realtime"),
+		)
+		return
+	}
+
+	var updates []listenUpdate
 	for host, prefixes := range prefixesByHost {
-		changed := false
 		state, ok := s.Subscriptions[host]
 		if !ok {
-			s.Subscriptions[host] = &SubState{
-				Prefixes: prefixes,
+			state = &SubState{
+				Prefixes: slices.Clone(prefixes),
+				Dialing:  true,
 			}
-			changed = true
-		} else {
-			for _, prefix := range prefixes {
-				if !slices.Contains(state.Prefixes, prefix) {
-					state.Prefixes = append(state.Prefixes, prefix)
-					changed = true
-				}
+			s.Subscriptions[host] = state
+			go s.dialAndRun(runCtx, host, state)
+			continue
+		}
+
+		changed := false
+		for _, prefix := range prefixes {
+			if !slices.Contains(state.Prefixes, prefix) {
+				state.Prefixes = append(state.Prefixes, prefix)
+				changed = true
 			}
 		}
 
+		if state.Dialing {
+			// the in-flight dial snapshots Prefixes after connecting, so the
+			// merged prefixes above will be included in its listen request
+			continue
+		}
+		if state.Connection == nil {
+			state.Dialing = true
+			go s.dialAndRun(runCtx, host, state)
+			continue
+		}
 		if changed {
 			slog.Debug(
-				fmt.Sprintf("subscription updated: %s > %v", host, s.Subscriptions[host].Prefixes),
+				fmt.Sprintf("subscription updated: %s > %v", host, state.Prefixes),
 				slog.String("module", "worker"),
 				slog.String("group", "realtime"),
 			)
-			s.subscribeRemote(ctx, host, s.Subscriptions[host].Prefixes)
+			updates = append(updates, listenUpdate{
+				host:     host,
+				state:    state,
+				conn:     state.Connection,
+				prefixes: slices.Clone(state.Prefixes),
+			})
 		}
+	}
+	s.mu.Unlock()
+
+	for _, u := range updates {
+		s.sendListen(u)
 	}
 }
 
-// caller must hold s.mu
-func (s *Subscriber) subscribeRemote(ctx context.Context, domain string, prefixes []string) {
-	state, ok := s.Subscriptions[domain]
-	if !ok {
-		state = &SubState{
-			Prefixes: []string{},
-		}
-		s.Subscriptions[domain] = state
-	}
-	if state.Connection == nil {
-		c, err := s.Client.Realtime(ctx, domain)
-		if err != nil {
-			slog.Error(
-				fmt.Sprintf("fail to connect to remote server %v", domain),
-				slog.String("error", err.Error()),
-				slog.String("module", "worker"),
-				slog.String("group", "realtime"),
-			)
+// dialAndRun performs the network dial for state outside the lock, then either
+// installs the connection or backs out if the entry was replaced or the term
+// ended while dialing.
+func (s *Subscriber) dialAndRun(ctx context.Context, host string, state *SubState) {
+	conn, err := s.Client.Realtime(ctx, host)
 
-			delete(s.Subscriptions, domain)
-			return
-		}
-
-		workerCtx, cancel := context.WithCancel(ctx)
-		state.Connection = c
-		state.CancelFunc = cancel
-
-		messageChan := make(chan []byte)
-
-		go func(ctx context.Context, c *websocket.Conn, messageChan chan<- []byte) {
-			defer func() {
-				cancel()
-				if c != nil {
-					c.Close()
-				}
-				s.mu.Lock()
-				delete(s.Subscriptions, domain)
-				s.mu.Unlock()
-				slog.Debug(
-					fmt.Sprintf("remote connection closed(listener): %s", domain),
-					slog.String("module", "worker"),
-					slog.String("group", "remote ws.listener"),
-				)
-			}()
-			for {
-				// check if the connection is still alive
-				if c == nil {
-					slog.Info(
-						fmt.Sprintf("connection is nil (domain: %s)", domain),
-						slog.String("module", "worker"),
-						slog.String("group", "realtime"),
-					)
-					return
-				}
-				_, message, err := c.ReadMessage()
-				if err != nil {
-
-					if ctx.Err() != nil {
-						break
-					}
-
-					slog.Error(
-						fmt.Sprintf("fail to read message: %v", err),
-						slog.String("module", "worker"),
-						slog.String("group", "realtime"),
-					)
-					break
-				}
-				select {
-				case messageChan <- message:
-				case <-ctx.Done():
-					return
-				}
-			}
-		}(workerCtx, c, messageChan)
-
-		go func(ctx context.Context, c *websocket.Conn, messageChan <-chan []byte) {
-			pingTicker := time.NewTicker(pingInterval)
-			defer func() {
-				cancel()
-				if c != nil {
-					c.Close()
-				}
-				pingTicker.Stop()
-				s.mu.Lock()
-				delete(s.Subscriptions, domain)
-				s.mu.Unlock()
-				slog.Debug(
-					fmt.Sprintf("remote connection closed(relayer): %s", domain),
-					slog.String("module", "worker"),
-					slog.String("group", "remote ws.publisher"),
-				)
-			}()
-
-			var lastPong time.Time = time.Now()
-			c.SetPongHandler(func(string) error {
-				lastPong = time.Now()
-				return nil
-			})
-
-			for {
-				select {
-				case <-ctx.Done():
-					return
-				case message := <-messageChan:
-					slog.Debug(
-						fmt.Sprintf("remote message received: %s", message[:64]),
-						slog.String("module", "worker"),
-						slog.String("group", "realtime"),
-					)
-
-					var event concrnt.Event
-					err := json.Unmarshal(message, &event)
-					if err != nil {
-						slog.Error(
-							"fail to Unmarshall redis message",
-							slog.String("error", err.Error()),
-							slog.String("module", "worker"),
-							slog.String("group", "realtime"),
-						)
-						continue
-					}
-
-					err = s.pubsub.Publish(ctx, event.Source, event)
-					if err != nil {
-						slog.Error(
-							"fail to publish event to local signal service",
-							slog.String("error", err.Error()),
-							slog.String("module", "worker"),
-							slog.String("group", "realtime"),
-						)
-						continue
-					}
-
-				case <-pingTicker.C:
-					if err := c.WriteMessage(websocket.PingMessage, []byte{}); err != nil {
-						slog.Error(
-							fmt.Sprintf("fail to send ping message: %v", err),
-							slog.String("module", "worker"),
-							slog.String("group", "realtime"),
-						)
-						return
-					}
-					if lastPong.Before(time.Now().Add(-disconnectTimeout)) {
-						slog.Warn(
-							fmt.Sprintf("no pong received for %v, closing connection", disconnectTimeout),
-							slog.String("module", "worker"),
-							slog.String("group", "realtime"),
-						)
-						return
-					}
-				}
-			}
-		}(workerCtx, c, messageChan)
-	}
-
-	request := concrnt.RealtimeRequest{
-		Type:     "listen",
-		Prefixes: prefixes,
-	}
-	err := state.Connection.WriteJSON(request)
+	s.mu.Lock()
+	state.Dialing = false
 	if err != nil {
+		if s.Subscriptions[host] == state {
+			// same policy as before: drop the entry, the keeper recreates it
+			// next tick while demand persists
+			delete(s.Subscriptions, host)
+		}
+		s.mu.Unlock()
 		slog.Error(
-			fmt.Sprintf("fail to send subscribe request to remote server %v", domain),
+			fmt.Sprintf("fail to connect to remote server %v", host),
 			slog.String("error", err.Error()),
 			slog.String("module", "worker"),
 			slog.String("group", "realtime"),
 		)
+		return
+	}
+	if ctx.Err() != nil || s.Subscriptions[host] != state {
+		// demoted, or delete-excess/closeAll removed us while dialing
+		s.mu.Unlock()
+		conn.Close()
+		return
+	}
 
-		if state.CancelFunc != nil {
-			state.CancelFunc()
-		}
-		if state.Connection != nil {
-			state.Connection.Close()
-		}
-		delete(s.Subscriptions, domain)
+	workerCtx, cancel := context.WithCancel(ctx)
+	state.Connection = conn
+	state.CancelFunc = cancel
+	prefixes := slices.Clone(state.Prefixes) // includes anything merged during the dial
+	messageChan := make(chan []byte)
+	go s.runListener(workerCtx, cancel, host, state, conn, messageChan)
+	go s.runRelayer(workerCtx, cancel, host, state, conn, messageChan)
+	s.mu.Unlock()
+
+	s.sendListen(listenUpdate{host: host, state: state, conn: conn, prefixes: prefixes})
+}
+
+func (s *Subscriber) sendListen(u listenUpdate) {
+	request := concrnt.RealtimeRequest{
+		Type:     "listen",
+		Prefixes: u.prefixes,
+	}
+	u.state.writeMu.Lock()
+	err := u.conn.WriteJSON(request)
+	u.state.writeMu.Unlock()
+	if err != nil {
+		slog.Error(
+			fmt.Sprintf("fail to send subscribe request to remote server %v", u.host),
+			slog.String("error", err.Error()),
+			slog.String("module", "worker"),
+			slog.String("group", "realtime"),
+		)
+		// closing the conn routes cleanup through the connection goroutines'
+		// identity-checked defers; no manual map surgery here
+		u.conn.Close()
 		return
 	}
 	slog.Debug(
-		fmt.Sprintf("remote connection updated: %s > %v", domain, prefixes),
+		fmt.Sprintf("remote connection updated: %s > %v", u.host, u.prefixes),
 		slog.String("module", "worker"),
 		slog.String("group", "realtime"),
 	)
-
 }
 
-func (s *Subscriber) deleteExcessSubscriptions(ctx context.Context) {
-	currentSubs := s.CollectCurrentSubscriptions()
-
+// dropOwnSubscription removes the map entry only if it still belongs to this
+// connection, so a stale goroutine can never delete a fresh replacement.
+func (s *Subscriber) dropOwnSubscription(host string, state *SubState, conn *websocket.Conn) {
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	if cur, ok := s.Subscriptions[host]; ok && cur == state && cur.Connection == conn {
+		delete(s.Subscriptions, host)
+	}
+	s.mu.Unlock()
+}
+
+func (s *Subscriber) runListener(ctx context.Context, cancel context.CancelFunc, host string, state *SubState, c *websocket.Conn, messageChan chan<- []byte) {
+	defer func() {
+		cancel()
+		c.Close()
+		s.dropOwnSubscription(host, state, c)
+		slog.Debug(
+			fmt.Sprintf("remote connection closed(listener): %s", host),
+			slog.String("module", "worker"),
+			slog.String("group", "remote ws.listener"),
+		)
+	}()
+	for {
+		_, message, err := c.ReadMessage()
+		if err != nil {
+
+			if ctx.Err() != nil {
+				break
+			}
+
+			slog.Error(
+				fmt.Sprintf("fail to read message: %v", err),
+				slog.String("module", "worker"),
+				slog.String("group", "realtime"),
+			)
+			break
+		}
+		select {
+		case messageChan <- message:
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+func (s *Subscriber) runRelayer(ctx context.Context, cancel context.CancelFunc, host string, state *SubState, c *websocket.Conn, messageChan <-chan []byte) {
+	pingTicker := time.NewTicker(pingInterval)
+	defer func() {
+		cancel()
+		c.Close()
+		pingTicker.Stop()
+		s.dropOwnSubscription(host, state, c)
+		slog.Debug(
+			fmt.Sprintf("remote connection closed(relayer): %s", host),
+			slog.String("module", "worker"),
+			slog.String("group", "remote ws.publisher"),
+		)
+	}()
+
+	var lastPong time.Time = time.Now()
+	c.SetPongHandler(func(string) error {
+		lastPong = time.Now()
+		return nil
+	})
+
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case message := <-messageChan:
+			slog.Debug(
+				fmt.Sprintf("remote message received: %s", message[:min(64, len(message))]),
+				slog.String("module", "worker"),
+				slog.String("group", "realtime"),
+			)
+
+			var event concrnt.Event
+			err := json.Unmarshal(message, &event)
+			if err != nil {
+				slog.Error(
+					"fail to Unmarshall redis message",
+					slog.String("error", err.Error()),
+					slog.String("module", "worker"),
+					slog.String("group", "realtime"),
+				)
+				continue
+			}
+
+			err = s.pubsub.Publish(ctx, event.Source, event)
+			if err != nil {
+				slog.Error(
+					"fail to publish event to local signal service",
+					slog.String("error", err.Error()),
+					slog.String("module", "worker"),
+					slog.String("group", "realtime"),
+				)
+				continue
+			}
+
+		case <-pingTicker.C:
+			state.writeMu.Lock()
+			err := c.WriteMessage(websocket.PingMessage, []byte{})
+			state.writeMu.Unlock()
+			if err != nil {
+				slog.Error(
+					fmt.Sprintf("fail to send ping message: %v", err),
+					slog.String("module", "worker"),
+					slog.String("group", "realtime"),
+				)
+				return
+			}
+			if lastPong.Before(time.Now().Add(-disconnectTimeout)) {
+				slog.Warn(
+					fmt.Sprintf("no pong received for %v, closing connection", disconnectTimeout),
+					slog.String("module", "worker"),
+					slog.String("group", "realtime"),
+				)
+				return
+			}
+		}
+	}
+}
+
+func (s *Subscriber) deleteExcessSubscriptions(currentSubs []string) {
+	s.mu.Lock()
 
 	closeDomains := make(map[string]bool)
 	updatedDomains := make(map[string]bool)
@@ -448,7 +513,7 @@ func (s *Subscriber) deleteExcessSubscriptions(ctx context.Context) {
 			updatedDomains[domain] = true
 		}
 
-		s.Subscriptions[domain].Prefixes = newPrefixes
+		state.Prefixes = newPrefixes
 
 		if len(newPrefixes) == 0 {
 			closeDomains[domain] = true
@@ -457,18 +522,38 @@ func (s *Subscriber) deleteExcessSubscriptions(ctx context.Context) {
 
 	for domain := range closeDomains {
 		if state, ok := s.Subscriptions[domain]; ok {
-			if state.Connection != nil {
+			if state.CancelFunc != nil {
 				state.CancelFunc()
+			}
+			if state.Connection != nil {
 				state.Connection.Close()
 			}
+			// a Dialing entry only needs the delete: dialAndRun's identity
+			// check closes the late connection
 		}
 
 		delete(s.Subscriptions, domain)
 		delete(updatedDomains, domain)
 	}
 
+	var updates []listenUpdate
 	for domain := range updatedDomains {
-		s.subscribeRemote(ctx, domain, s.Subscriptions[domain].Prefixes)
+		state := s.Subscriptions[domain]
+		if state.Dialing || state.Connection == nil {
+			// an in-flight dial sends the already-pruned state.Prefixes
+			continue
+		}
+		updates = append(updates, listenUpdate{
+			host:     domain,
+			state:    state,
+			conn:     state.Connection,
+			prefixes: slices.Clone(state.Prefixes),
+		})
+	}
+	s.mu.Unlock()
+
+	for _, u := range updates {
+		s.sendListen(u)
 	}
 
 	if len(closeDomains) > 0 {

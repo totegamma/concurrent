@@ -170,10 +170,11 @@ func main() {
 	clustered := clusterConf.ElectorEndpoint != ""
 
 	var elector cluster.Elector
-	var httpElector *cluster.HTTPElector
+	var discovery worker.PeerDiscovery // nil in standalone mode: no peers to poll
 	if clustered {
-		httpElector = cluster.NewHTTPElector(clusterConf.ElectorEndpoint)
+		httpElector := cluster.NewHTTPElector(clusterConf.ElectorEndpoint)
 		elector = httpElector
+		discovery = httpElector
 	} else {
 		elector = cluster.AlwaysLeader{}
 	}
@@ -207,19 +208,14 @@ func main() {
 	notificationRepo := postgres.NewNotificationRepository(db)
 	notificationUC := usecase.NewNotificationUsecase(notificationRepo)
 
-	subscriber := worker.NewSubscriber(&domainConfig, cl, redisPubsub)
+	leaderSub := worker.NewLeaderSubscriber(&domainConfig, cl, redisPubsub, discovery)
+	workerSub := worker.NewWorkerSubscriber(elector)
+	subscriber := worker.NewSubscriberManager(elector, leaderSub, workerSub)
 
-	var ensurer usecase.SubscriptionEnsurer = subscriber
-	if clustered {
-		ensurer = cluster.NewRoutingEnsurer(elector, subscriber)
-	}
-	subscriptionUC := usecase.NewSubscriptionUsecase(ensurer, redisPubsub)
-	subscriber.RegisterClient(subscriptionUC)
-	if clustered {
-		subscriber.RegisterClient(worker.NewPeerDemandClient(httpElector))
-	}
+	subscriptionUC := usecase.NewSubscriptionUsecase(subscriber, redisPubsub)
+	leaderSub.RegisterClient(subscriptionUC)
 
-	chunklineGateway := gateway.NewChunklineGateway(cl, mc, subscriptionUC, redisPubsub)
+	chunklineGateway := gateway.NewChunklineGateway(cl, mc, subscriber, redisPubsub)
 	chunklineUC := usecase.NewChunklineUsecase(chunklineRepo, chunklineGateway)
 
 	// the delivery queue is a redis-streams consumer group: safe (and useful)
@@ -251,15 +247,15 @@ func main() {
 	// federation subscriber (one upstream websocket per remote host for the
 	// whole cluster), the chunkline cache updater, and the push reactor
 	go elector.Run(ctx, func(leadCtx context.Context) {
-		subscriber.Start(leadCtx)
-		chunklineGateway.StartWorker(leadCtx, subscriber)
+		leaderSub.Start(leadCtx)
+		chunklineGateway.StartWorker(leadCtx, leaderSub)
 		if notificationReactor != nil {
 			notificationReactor.Start(leadCtx)
 		}
 	})
 
 	if clustered {
-		internalHandler := rest.NewInternalHandler(subscriptionUC, subscriber, elector)
+		internalHandler := rest.NewInternalHandler(subscriptionUC, leaderSub, leaderSub, elector)
 		rest.StartInternalListener(ctx, fmt.Sprintf(":%d", internalPort), internalHandler)
 	}
 

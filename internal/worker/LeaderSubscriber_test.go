@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -147,11 +148,11 @@ func (nopPubSub) SubscribeAll(ctx context.Context, response chan<- concrnt.Event
 	return nil
 }
 
-func newTestSubscriber(fake *fakeSubClient) *Subscriber {
-	return NewSubscriber(&domain.Config{FQDN: "local.example"}, fake, nopPubSub{})
+func newTestSubscriber(fake *fakeSubClient) *LeaderSubscriber {
+	return NewLeaderSubscriber(&domain.Config{FQDN: "local.example"}, fake, nopPubSub{}, nil)
 }
 
-func (s *Subscriber) trackedEntries() (count int, connected int) {
+func (s *LeaderSubscriber) trackedEntries() (count int, connected int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	for _, state := range s.Subscriptions {
@@ -506,4 +507,206 @@ func TestDeleteExcessClosesInFlightDialResult(t *testing.T) {
 	if live := ws.liveConns(); live != 0 {
 		t.Fatalf("expected no live connections after late dial completes, got %d", live)
 	}
+}
+
+// demandPeerServer fakes a peer replica's GET /internal/demand endpoint; its
+// body can be swapped to simulate demand changing between polls.
+type demandPeerServer struct {
+	srv  *httptest.Server
+	body atomic.Value
+}
+
+func newDemandPeerServer(t *testing.T, initial string) *demandPeerServer {
+	t.Helper()
+	p := &demandPeerServer{}
+	p.body.Store(initial)
+	p.srv = httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/internal/demand" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(p.body.Load().(string)))
+	}))
+	t.Cleanup(p.srv.Close)
+	return p
+}
+
+// staticPeerDiscovery is a PeerDiscovery whose peer list can be swapped at
+// runtime, to simulate a peer joining or leaving the cluster.
+type staticPeerDiscovery struct {
+	mu    sync.Mutex
+	peers []string
+}
+
+func (d *staticPeerDiscovery) Peers(ctx context.Context) ([]string, error) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	return slices.Clone(d.peers), nil
+}
+
+func (d *staticPeerDiscovery) set(peers []string) {
+	d.mu.Lock()
+	d.peers = peers
+	d.mu.Unlock()
+}
+
+type failingPeerDiscovery struct{}
+
+func (failingPeerDiscovery) Peers(ctx context.Context) ([]string, error) {
+	return nil, context.DeadlineExceeded
+}
+
+// pollPeerDemand must union the demand of every peer discovery currently lists.
+func TestPollPeerDemandUnion(t *testing.T) {
+	peerA := newDemandPeerServer(t, `["cckv://alice/home"]`)
+	peerB := newDemandPeerServer(t, `["cckv://bob/home"]`)
+	discovery := &staticPeerDiscovery{peers: []string{peerA.srv.URL, peerB.srv.URL}}
+
+	s := NewLeaderSubscriber(&domain.Config{FQDN: "local.example"}, &fakeSubClient{}, nopPubSub{}, discovery)
+
+	got := s.pollPeerDemand(context.Background())
+	if !slices.Contains(got, "cckv://alice/home") || !slices.Contains(got, "cckv://bob/home") {
+		t.Fatalf("expected union of both peers, got %v", got)
+	}
+}
+
+// A peer that drops out of discovery must stop contributing demand
+// immediately, even though it would still answer if polled directly:
+// membership is decided by discovery, not by poll success.
+func TestPollPeerDemandDropsPeerGoneFromDiscovery(t *testing.T) {
+	peerA := newDemandPeerServer(t, `["cckv://alice/home"]`)
+	discovery := &staticPeerDiscovery{peers: []string{peerA.srv.URL}}
+	s := NewLeaderSubscriber(&domain.Config{FQDN: "local.example"}, &fakeSubClient{}, nopPubSub{}, discovery)
+
+	got := s.pollPeerDemand(context.Background())
+	if !slices.Contains(got, "cckv://alice/home") {
+		t.Fatalf("expected initial demand, got %v", got)
+	}
+
+	discovery.set(nil)
+	got = s.pollPeerDemand(context.Background())
+	if slices.Contains(got, "cckv://alice/home") {
+		t.Fatalf("expected demand to be dropped once the peer left discovery, got %v", got)
+	}
+}
+
+// A peer that stays listed by discovery but fails to answer must keep
+// contributing its last known demand: redis pubsub delivery is fire-and-
+// forget, so tearing its subscriptions down on one failed poll would lose
+// events.
+func TestPollPeerDemandKeepsLastKnownOnPollFailure(t *testing.T) {
+	peerA := newDemandPeerServer(t, `["cckv://alice/home"]`)
+	discovery := &staticPeerDiscovery{peers: []string{peerA.srv.URL}}
+	s := NewLeaderSubscriber(&domain.Config{FQDN: "local.example"}, &fakeSubClient{}, nopPubSub{}, discovery)
+
+	got := s.pollPeerDemand(context.Background())
+	if !slices.Contains(got, "cckv://alice/home") {
+		t.Fatalf("expected initial demand, got %v", got)
+	}
+
+	peerA.srv.Close()
+
+	got = s.pollPeerDemand(context.Background())
+	if !slices.Contains(got, "cckv://alice/home") {
+		t.Fatalf("expected last known demand to survive a failed poll, got %v", got)
+	}
+}
+
+// While discovery itself fails, all last known demand must be frozen rather
+// than expired: "peer gone" and "discovery broken" are indistinguishable.
+func TestPollPeerDemandFreezesWhileDiscoveryFails(t *testing.T) {
+	peerA := newDemandPeerServer(t, `["cckv://alice/home"]`)
+	discovery := &staticPeerDiscovery{peers: []string{peerA.srv.URL}}
+	s := NewLeaderSubscriber(&domain.Config{FQDN: "local.example"}, &fakeSubClient{}, nopPubSub{}, discovery)
+
+	got := s.pollPeerDemand(context.Background())
+	if !slices.Contains(got, "cckv://alice/home") {
+		t.Fatalf("expected initial demand, got %v", got)
+	}
+
+	s.discovery = failingPeerDiscovery{}
+
+	got = s.pollPeerDemand(context.Background())
+	if !slices.Contains(got, "cckv://alice/home") {
+		t.Fatalf("expected demand to be frozen while discovery fails, got %v", got)
+	}
+}
+
+// CurrentSubscriptions must reflect a newly ensured prefix as soon as its
+// listen is confirmed on the wire, not waiting for the next keeper tick.
+func TestCurrentSubscriptionsAddsOnEnsure(t *testing.T) {
+	ws := newWSTestServer(t)
+	fake := &fakeSubClient{ws: ws}
+	s := newTestSubscriber(fake)
+
+	// registered so the keeper's own demand snapshot agrees with the manual
+	// ensure below; otherwise the very next tick's deleteExcessSubscriptions
+	// would race to undo it (demand is otherwise empty)
+	demand := &dynamicDemand{}
+	demand.set([]string{"cckv://alice/home"})
+	s.RegisterClient(demand)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s.Start(ctx)
+
+	s.EnsureSubscriptions(context.Background(), []string{"cckv://alice/home"})
+
+	testutil.WaitFor(t, func() bool {
+		return slices.Contains(s.CurrentSubscriptions(), "cckv://alice/home")
+	})
+}
+
+// CurrentSubscriptions must drop a prefix as soon as its subscription is torn
+// down, not waiting for the next keeper tick's demand recomputation.
+func TestCurrentSubscriptionsRemovesOnDrop(t *testing.T) {
+	ws := newWSTestServer(t)
+	fake := &fakeSubClient{ws: ws}
+	s := newTestSubscriber(fake)
+
+	demand := &dynamicDemand{}
+	demand.set([]string{"cckv://alice/home"})
+	s.RegisterClient(demand)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s.Start(ctx)
+
+	testutil.WaitFor(t, func() bool {
+		return slices.Contains(s.CurrentSubscriptions(), "cckv://alice/home")
+	})
+
+	demand.set(nil)
+	s.deleteExcessSubscriptions(nil)
+
+	if slices.Contains(s.CurrentSubscriptions(), "cckv://alice/home") {
+		t.Fatal("expected prefix to be removed from the cache once its subscription is dropped")
+	}
+}
+
+// CurrentSubscriptions must be a pure cache read: it must never itself poll
+// peers, or a worker's frequent GETs would turn into a live peer poll storm
+// on the leader.
+func TestCurrentSubscriptionsDoesNotPollPeers(t *testing.T) {
+	var calls atomic.Int64
+	discovery := countingDiscovery{calls: &calls}
+	s := NewLeaderSubscriber(&domain.Config{FQDN: "local.example"}, &fakeSubClient{}, nopPubSub{}, discovery)
+
+	for range 5 {
+		s.CurrentSubscriptions()
+	}
+
+	if got := calls.Load(); got != 0 {
+		t.Fatalf("expected CurrentSubscriptions to never poll peers, got %d calls", got)
+	}
+}
+
+type countingDiscovery struct {
+	calls *atomic.Int64
+}
+
+func (d countingDiscovery) Peers(ctx context.Context) ([]string, error) {
+	d.calls.Add(1)
+	return nil, nil
 }

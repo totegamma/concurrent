@@ -10,8 +10,8 @@ import (
 )
 
 // SubscriptionEnsurer requests that upstream subscriptions cover the given
-// prefixes. Implemented by *worker.Subscriber directly, or by a router that
-// forwards to the current cluster leader.
+// prefixes. Implemented by *worker.SubscriberManager, which runs the request
+// locally on the leader or forwards it to the current cluster leader.
 type SubscriptionEnsurer interface {
 	EnsureSubscriptions(ctx context.Context, prefixes []string)
 }

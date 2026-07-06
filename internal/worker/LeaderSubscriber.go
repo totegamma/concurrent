@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log/slog"
 	"maps"
+	"net/http"
 	"slices"
 	"sync"
 	"time"
@@ -19,6 +20,8 @@ var (
 	pingInterval      = 10 * time.Second
 	disconnectTimeout = 30 * time.Second
 )
+
+const peerPollTimeout = 2 * time.Second
 
 type SubscribeClient interface {
 	CurrentSubscriptions() []string
@@ -39,6 +42,12 @@ type CachePurger interface {
 	PurgeLatest(prefixes []string, depth int)
 }
 
+// PeerDiscovery lists the internal base URLs of all live replicas. nil means
+// standalone: there are no peers to poll.
+type PeerDiscovery interface {
+	Peers(ctx context.Context) ([]string, error)
+}
+
 type SubState struct {
 	Prefixes   []string
 	Connection *websocket.Conn    // nil until the dial completes
@@ -57,7 +66,16 @@ type PubSub interface {
 	SubscribeAll(ctx context.Context, response chan<- concrnt.Event) error
 }
 
-type Subscriber struct {
+// LeaderSubscriber is the Subscriber that actually dials upstream websockets.
+// It must run on exactly one replica of the cluster (the leader): Start is
+// called once per lead term.
+//
+// Two demand sources feed it: this replica's own registered SubscribeClients
+// (Clients), and the union of every peer replica's own local demand, polled
+// over HTTP once per keeper tick (see pollPeerDemand). The result is cached
+// (demand) so that CurrentSubscriptions — called by workers over HTTP on
+// every chunkline cache check — never itself triggers a peer poll.
+type LeaderSubscriber struct {
 	mu            sync.Mutex
 	runCtx        context.Context // current lead-term context, set by Start; nil before first lead
 	Subscriptions map[string]*SubState
@@ -66,6 +84,12 @@ type Subscriber struct {
 	Client        SubscriberClient
 	pubsub        PubSub
 	purger        CachePurger // optional, set by SetCachePurger
+
+	discovery  PeerDiscovery       // nil in standalone mode
+	peerClient *http.Client
+	peerDemand map[string][]string // last known demand per peer, keyed by peer base URL; membership pruned by discovery, not by time
+
+	demand []string // cached aggregate: Clients' demand union peerDemand, refreshed once per keeper tick and nudged on ensure/disconnect
 }
 
 // listenUpdate is a pending "listen" request to send once s.mu is released.
@@ -74,20 +98,24 @@ type listenUpdate struct {
 	state    *SubState
 	conn     *websocket.Conn
 	prefixes []string
-	added    []string // prefixes newly opened by this update (purged depth 2 after the listen)
+	added    []string // prefixes newly opened by this update (purged depth 2, merged into demand, after the listen)
 }
 
-func NewSubscriber(
+func NewLeaderSubscriber(
 	config *domain.Config,
 	client SubscriberClient,
 	pubsub PubSub,
-) *Subscriber {
-	return &Subscriber{
+	discovery PeerDiscovery,
+) *LeaderSubscriber {
+	return &LeaderSubscriber{
 		Subscriptions: make(map[string]*SubState),
 		Clients:       make(map[string]SubscribeClient),
 		Config:        config,
 		Client:        client,
 		pubsub:        pubsub,
+		discovery:     discovery,
+		peerClient:    &http.Client{Timeout: peerPollTimeout},
+		peerDemand:    make(map[string][]string),
 	}
 }
 
@@ -95,7 +123,7 @@ func NewSubscriber(
 // re-election; each call overwrites runCtx with the fresh lead context, so
 // connections are always bound to the current term rather than to whichever
 // caller happened to trigger the dial.
-func (s *Subscriber) Start(ctx context.Context) {
+func (s *LeaderSubscriber) Start(ctx context.Context) {
 	s.mu.Lock()
 	s.runCtx = ctx
 	s.mu.Unlock()
@@ -104,29 +132,15 @@ func (s *Subscriber) Start(ctx context.Context) {
 
 // SetCachePurger hooks cache invalidation into the subscription open/close
 // edges. Wire it before Start.
-func (s *Subscriber) SetCachePurger(p CachePurger) {
+func (s *LeaderSubscriber) SetCachePurger(p CachePurger) {
 	s.mu.Lock()
 	s.purger = p
 	s.mu.Unlock()
 }
 
-// purge must be called without holding s.mu (the purger does network I/O).
-func (s *Subscriber) purge(prefixes []string, depth int) {
-	if len(prefixes) == 0 {
-		return
-	}
-	s.mu.Lock()
-	p := s.purger
-	s.mu.Unlock()
-	if p == nil {
-		return
-	}
-	p.PurgeLatest(prefixes, depth)
-}
-
 // OpenPrefixes reports the union of prefixes whose upstream connection is
 // currently established (as opposed to merely demanded or still dialing).
-func (s *Subscriber) OpenPrefixes() []string {
+func (s *LeaderSubscriber) OpenPrefixes() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -147,7 +161,7 @@ func (s *Subscriber) OpenPrefixes() []string {
 	return prefixes
 }
 
-func (s *Subscriber) RegisterClient(client SubscribeClient) string {
+func (s *LeaderSubscriber) RegisterClient(client SubscribeClient) string {
 	id := fmt.Sprintf("%p", client)
 	s.mu.Lock()
 	s.Clients[id] = client
@@ -160,44 +174,201 @@ func (s *Subscriber) RegisterClient(client SubscribeClient) string {
 	return id
 }
 
-// snapshotClients copies the client list so CurrentSubscriptions() calls
-// (which may do I/O) run without holding the subscriber lock.
-func (s *Subscriber) snapshotClients() []SubscribeClient {
+// CurrentSubscriptions returns the cached cluster-wide aggregate demand. It
+// never does I/O: the aggregate is computed once per keeper tick by
+// pollPeerDemand plus this replica's own Clients, and nudged immediately by
+// EnsureSubscriptions (add) and upstream disconnects (remove) in between
+// ticks. This is what workers poll over HTTP, so it must stay cheap.
+func (s *LeaderSubscriber) CurrentSubscriptions() []string {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	clients := make([]SubscribeClient, 0, len(s.Clients))
-	for _, client := range s.Clients {
-		clients = append(clients, client)
-	}
-	return clients
+	return slices.Clone(s.demand)
 }
 
-func (s *Subscriber) CurrentSubscriptions() []string {
-	subscriptionSet := make(map[string]bool)
+// mergeDemand adds prefixes to the cached aggregate demand. Callers must hold s.mu.
+func (s *LeaderSubscriber) mergeDemand(prefixes []string) {
+	if len(prefixes) == 0 {
+		return
+	}
+	set := make(map[string]bool, len(s.demand)+len(prefixes))
+	for _, p := range s.demand {
+		set[p] = true
+	}
+	for _, p := range prefixes {
+		set[p] = true
+	}
+	s.demand = make([]string, 0, len(set))
+	for p := range set {
+		s.demand = append(s.demand, p)
+	}
+}
 
-	for _, client := range s.snapshotClients() {
-		for _, prefix := range client.CurrentSubscriptions() {
-			subscriptionSet[prefix] = true
+// pruneDemand removes prefixes from the cached aggregate demand. Callers must hold s.mu.
+func (s *LeaderSubscriber) pruneDemand(prefixes []string) {
+	if len(prefixes) == 0 {
+		return
+	}
+	set := make(map[string]bool, len(s.demand))
+	for _, p := range s.demand {
+		set[p] = true
+	}
+	for _, p := range prefixes {
+		delete(set, p)
+	}
+	s.demand = make([]string, 0, len(set))
+	for p := range set {
+		s.demand = append(s.demand, p)
+	}
+}
+
+// pollPeerDemand returns the union of every peer replica's own local demand,
+// fetched from each peer's GET /internal/demand (never /internal/subscriptions
+// — that endpoint answers with this same aggregate, so polling it here would
+// loop leader->peer->leader). A peer that drops out of discovery is forgotten
+// immediately; a peer that stays listed but fails to answer keeps
+// contributing its last known demand (redis pubsub delivery is fire-and-
+// forget, so tearing down its subscriptions on a single failed poll would
+// lose events). If discovery itself fails, the entire last known state is
+// frozen rather than expired, since "peer gone" and "discovery broken" are
+// then indistinguishable.
+func (s *LeaderSubscriber) pollPeerDemand(ctx context.Context) []string {
+	if s.discovery == nil {
+		return nil
+	}
+
+	peers, err := s.discovery.Peers(ctx)
+	if err != nil {
+		slog.Warn(
+			"failed to discover peers, freezing last known demand",
+			slog.String("error", err.Error()),
+			slog.String("module", "worker"),
+			slog.String("group", "realtime"),
+		)
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		set := make(map[string]bool)
+		for _, prefixes := range s.peerDemand {
+			for _, p := range prefixes {
+				set[p] = true
+			}
+		}
+		union := make([]string, 0, len(set))
+		for p := range set {
+			union = append(union, p)
+		}
+		return union
+	}
+
+	type polled struct {
+		peer     string
+		prefixes []string
+		err      error
+	}
+	results := make(chan polled, len(peers))
+	for _, peer := range peers {
+		go func(peer string) {
+			req, err := http.NewRequestWithContext(ctx, http.MethodGet, peer+"/internal/demand", nil)
+			if err != nil {
+				results <- polled{peer: peer, err: err}
+				return
+			}
+			resp, err := s.peerClient.Do(req)
+			if err != nil {
+				results <- polled{peer: peer, err: err}
+				return
+			}
+			defer resp.Body.Close()
+			if resp.StatusCode != http.StatusOK {
+				results <- polled{peer: peer, err: fmt.Errorf("unexpected status %d", resp.StatusCode)}
+				return
+			}
+			var prefixes []string
+			if err := json.NewDecoder(resp.Body).Decode(&prefixes); err != nil {
+				results <- polled{peer: peer, err: err}
+				return
+			}
+			results <- polled{peer: peer, prefixes: prefixes}
+		}(peer)
+	}
+
+	// collected without s.mu held: each result only arrives once its HTTP
+	// round-trip finishes, and s.mu also guards CurrentSubscriptions (which
+	// must stay a cheap, non-blocking read for workers polling it over HTTP)
+	polls := make([]polled, 0, len(peers))
+	for range peers {
+		polls = append(polls, <-results)
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, r := range polls {
+		if r.err != nil {
+			slog.Warn(
+				"failed to poll peer demand",
+				slog.String("peer", r.peer),
+				slog.String("error", r.err.Error()),
+				slog.String("module", "worker"),
+				slog.String("group", "realtime"),
+			)
+			continue // keep this peer's last known entry
+		}
+		s.peerDemand[r.peer] = r.prefixes
+	}
+
+	// discovery is authoritative: a peer missing from the live list is gone
+	for peer := range s.peerDemand {
+		if !slices.Contains(peers, peer) {
+			delete(s.peerDemand, peer)
 		}
 	}
 
-	subscriptions := make([]string, 0, len(subscriptionSet))
-	for prefix := range subscriptionSet {
-		subscriptions = append(subscriptions, prefix)
+	set := make(map[string]bool)
+	for _, prefixes := range s.peerDemand {
+		for _, p := range prefixes {
+			set[p] = true
+		}
 	}
-
-	return subscriptions
+	union := make([]string, 0, len(set))
+	for p := range set {
+		union = append(union, p)
+	}
+	return union
 }
 
-func (s *Subscriber) keeperRoutine(ctx context.Context) {
+func (s *LeaderSubscriber) keeperRoutine(ctx context.Context) {
 	ticker := time.NewTicker(time.Second * 10)
 	defer ticker.Stop()
 
 	for {
-		// one demand snapshot per tick, shared by create and delete so they
+		s.mu.Lock()
+		clients := make([]SubscribeClient, 0, len(s.Clients))
+		for _, client := range s.Clients {
+			clients = append(clients, client)
+		}
+		s.mu.Unlock()
+
+		// one demand snapshot per tick, shared by ensure and delete so they
 		// cannot disagree within a tick (and peers are only polled once)
-		demand := s.CurrentSubscriptions()
-		s.createInsufficientSubscriptions(ctx, demand)
+		demandSet := make(map[string]bool)
+		for _, client := range clients {
+			for _, prefix := range client.CurrentSubscriptions() {
+				demandSet[prefix] = true
+			}
+		}
+		for _, prefix := range s.pollPeerDemand(ctx) {
+			demandSet[prefix] = true
+		}
+		demand := make([]string, 0, len(demandSet))
+		for prefix := range demandSet {
+			demand = append(demand, prefix)
+		}
+
+		s.mu.Lock()
+		s.demand = demand
+		s.mu.Unlock()
+
+		s.EnsureSubscriptions(ctx, demand)
 		s.repairBrokenSubscriptions()
 		s.deleteExcessSubscriptions(demand)
 
@@ -210,7 +381,7 @@ func (s *Subscriber) keeperRoutine(ctx context.Context) {
 	}
 }
 
-func (s *Subscriber) repairBrokenSubscriptions() {
+func (s *LeaderSubscriber) repairBrokenSubscriptions() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -232,9 +403,10 @@ func (s *Subscriber) repairBrokenSubscriptions() {
 	}
 }
 
-func (s *Subscriber) closeAllSubscriptions() {
+func (s *LeaderSubscriber) closeAllSubscriptions() {
 	var dropped []string
 	s.mu.Lock()
+	purger := s.purger
 
 	// runCtx is deliberately left untouched: a new term's Start may already
 	// have replaced it. In-flight dials self-clean via the identity check in
@@ -249,9 +421,12 @@ func (s *Subscriber) closeAllSubscriptions() {
 		dropped = append(dropped, state.Prefixes...)
 		delete(s.Subscriptions, domain)
 	}
+	s.pruneDemand(dropped)
 	s.mu.Unlock()
 
-	s.purge(dropped, 1)
+	if purger != nil && len(dropped) > 0 {
+		purger.PurgeLatest(dropped, 1)
+	}
 
 	slog.Info(
 		"all remote subscriptions closed",
@@ -260,10 +435,14 @@ func (s *Subscriber) closeAllSubscriptions() {
 	)
 }
 
-// resolvePrefixHosts maps each prefix to its remote host, dropping local and
-// unresolvable prefixes. Called without holding the lock (does network I/O).
-func (s *Subscriber) resolvePrefixHosts(ctx context.Context, prefixes []string) map[string][]string {
-	result := make(map[string][]string)
+// EnsureSubscriptions makes sure an upstream subscription exists for every
+// given prefix, folding them into the cached aggregate demand once their
+// listen request is confirmed on the wire. The caller's ctx bounds only host
+// resolution; connections are bound to the lead context captured at Start, so
+// an ensure forwarded over HTTP does not tear its connection down when the
+// request ends.
+func (s *LeaderSubscriber) EnsureSubscriptions(ctx context.Context, prefixes []string) {
+	prefixesByHost := make(map[string][]string)
 	for _, prefix := range prefixes {
 		host, err := s.Client.ResolveResourceHost(ctx, prefix)
 		if err != nil {
@@ -279,26 +458,11 @@ func (s *Subscriber) resolvePrefixHosts(ctx context.Context, prefixes []string) 
 			continue
 		}
 
-		if !slices.Contains(result[host], prefix) {
-			result[host] = append(result[host], prefix)
+		if !slices.Contains(prefixesByHost[host], prefix) {
+			prefixesByHost[host] = append(prefixesByHost[host], prefix)
 		}
 	}
-	return result
-}
 
-// EnsureSubscriptions makes sure an upstream subscription exists for every
-// given prefix. The caller's ctx bounds only host resolution; connections are
-// bound to the lead context captured at Start, so an ensure forwarded over
-// HTTP does not tear its connection down when the request ends.
-func (s *Subscriber) EnsureSubscriptions(ctx context.Context, subscriptions []string) {
-	s.ensureHosts(s.resolvePrefixHosts(ctx, subscriptions))
-}
-
-func (s *Subscriber) createInsufficientSubscriptions(ctx context.Context, demand []string) {
-	s.ensureHosts(s.resolvePrefixHosts(ctx, demand))
-}
-
-func (s *Subscriber) ensureHosts(prefixesByHost map[string][]string) {
 	s.mu.Lock()
 
 	runCtx := s.runCtx
@@ -311,13 +475,14 @@ func (s *Subscriber) ensureHosts(prefixesByHost map[string][]string) {
 		)
 		return
 	}
+	purger := s.purger
 
 	var updates []listenUpdate
-	for host, prefixes := range prefixesByHost {
+	for host, hostPrefixes := range prefixesByHost {
 		state, ok := s.Subscriptions[host]
 		if !ok {
 			state = &SubState{
-				Prefixes: slices.Clone(prefixes),
+				Prefixes: slices.Clone(hostPrefixes),
 				Dialing:  true,
 			}
 			s.Subscriptions[host] = state
@@ -326,7 +491,7 @@ func (s *Subscriber) ensureHosts(prefixesByHost map[string][]string) {
 		}
 
 		var added []string
-		for _, prefix := range prefixes {
+		for _, prefix := range hostPrefixes {
 			if !slices.Contains(state.Prefixes, prefix) {
 				state.Prefixes = append(state.Prefixes, prefix)
 				added = append(added, prefix)
@@ -361,17 +526,46 @@ func (s *Subscriber) ensureHosts(prefixesByHost map[string][]string) {
 	s.mu.Unlock()
 
 	for _, u := range updates {
-		s.sendListen(u)
+		request := concrnt.RealtimeRequest{
+			Type:     "listen",
+			Prefixes: u.prefixes,
+		}
+		u.state.writeMu.Lock()
+		err := u.conn.WriteJSON(request)
+		u.state.writeMu.Unlock()
+		if err != nil {
+			slog.Error(
+				fmt.Sprintf("fail to send subscribe request to remote server %v", u.host),
+				slog.String("error", err.Error()),
+				slog.String("module", "worker"),
+				slog.String("group", "realtime"),
+			)
+			// closing the conn routes cleanup through the connection goroutines'
+			// identity-checked defers; no manual map surgery here
+			u.conn.Close()
+			continue
+		}
+		slog.Debug(
+			fmt.Sprintf("remote connection updated: %s > %v", u.host, u.prefixes),
+			slog.String("module", "worker"),
+			slog.String("group", "realtime"),
+		)
+
+		s.mu.Lock()
+		s.mergeDemand(u.added)
+		s.mu.Unlock()
 		// only after the listen is on the wire: purging earlier would let a
 		// racing read re-cache a pre-subscription body
-		s.purge(u.added, 2)
+		if purger != nil {
+			purger.PurgeLatest(u.added, 2)
+		}
 	}
 }
 
 // dialAndRun performs the network dial for state outside the lock, then either
 // installs the connection or backs out if the entry was replaced or the term
 // ended while dialing.
-func (s *Subscriber) dialAndRun(ctx context.Context, host string, state *SubState) {
+func (s *LeaderSubscriber) dialAndRun(ctx context.Context, host string, state *SubState) {
 	conn, err := s.Client.Realtime(ctx, host)
 
 	s.mu.Lock()
@@ -402,62 +596,63 @@ func (s *Subscriber) dialAndRun(ctx context.Context, host string, state *SubStat
 	state.Connection = conn
 	state.CancelFunc = cancel
 	prefixes := slices.Clone(state.Prefixes) // includes anything merged during the dial
+	purger := s.purger
 	messageChan := make(chan []byte)
 	go s.runListener(workerCtx, cancel, host, state, conn, messageChan)
 	go s.runRelayer(workerCtx, cancel, host, state, conn, messageChan)
 	s.mu.Unlock()
 
-	s.sendListen(listenUpdate{host: host, state: state, conn: conn, prefixes: prefixes})
-	// every prefix of a fresh connection is newly opened; purge only after
-	// the listen is on the wire (see ensureHosts)
-	s.purge(prefixes, 2)
-}
-
-func (s *Subscriber) sendListen(u listenUpdate) {
 	request := concrnt.RealtimeRequest{
 		Type:     "listen",
-		Prefixes: u.prefixes,
+		Prefixes: prefixes,
 	}
-	u.state.writeMu.Lock()
-	err := u.conn.WriteJSON(request)
-	u.state.writeMu.Unlock()
+	state.writeMu.Lock()
+	err = conn.WriteJSON(request)
+	state.writeMu.Unlock()
 	if err != nil {
 		slog.Error(
-			fmt.Sprintf("fail to send subscribe request to remote server %v", u.host),
+			fmt.Sprintf("fail to send subscribe request to remote server %v", host),
 			slog.String("error", err.Error()),
 			slog.String("module", "worker"),
 			slog.String("group", "realtime"),
 		)
-		// closing the conn routes cleanup through the connection goroutines'
-		// identity-checked defers; no manual map surgery here
-		u.conn.Close()
+		conn.Close()
 		return
 	}
 	slog.Debug(
-		fmt.Sprintf("remote connection updated: %s > %v", u.host, u.prefixes),
+		fmt.Sprintf("remote connection updated: %s > %v", host, prefixes),
 		slog.String("module", "worker"),
 		slog.String("group", "realtime"),
 	)
-}
 
-// dropOwnSubscription removes the map entry only if it still belongs to this
-// connection, so a stale goroutine can never delete a fresh replacement.
-func (s *Subscriber) dropOwnSubscription(host string, state *SubState, conn *websocket.Conn) {
-	var dropped []string
 	s.mu.Lock()
-	if cur, ok := s.Subscriptions[host]; ok && cur == state && cur.Connection == conn {
-		dropped = slices.Clone(cur.Prefixes)
-		delete(s.Subscriptions, host)
-	}
+	s.mergeDemand(prefixes)
 	s.mu.Unlock()
-	s.purge(dropped, 1)
+	// every prefix of a fresh connection is newly opened; purge only after
+	// the listen is on the wire (see EnsureSubscriptions)
+	if purger != nil {
+		purger.PurgeLatest(prefixes, 2)
+	}
 }
 
-func (s *Subscriber) runListener(ctx context.Context, cancel context.CancelFunc, host string, state *SubState, c *websocket.Conn, messageChan chan<- []byte) {
+func (s *LeaderSubscriber) runListener(ctx context.Context, cancel context.CancelFunc, host string, state *SubState, c *websocket.Conn, messageChan chan<- []byte) {
 	defer func() {
 		cancel()
 		c.Close()
-		s.dropOwnSubscription(host, state, c)
+
+		var dropped []string
+		s.mu.Lock()
+		purger := s.purger
+		if cur, ok := s.Subscriptions[host]; ok && cur == state && cur.Connection == c {
+			dropped = slices.Clone(cur.Prefixes)
+			delete(s.Subscriptions, host)
+		}
+		s.pruneDemand(dropped)
+		s.mu.Unlock()
+		if purger != nil && len(dropped) > 0 {
+			purger.PurgeLatest(dropped, 1)
+		}
+
 		slog.Debug(
 			fmt.Sprintf("remote connection closed(listener): %s", host),
 			slog.String("module", "worker"),
@@ -487,13 +682,26 @@ func (s *Subscriber) runListener(ctx context.Context, cancel context.CancelFunc,
 	}
 }
 
-func (s *Subscriber) runRelayer(ctx context.Context, cancel context.CancelFunc, host string, state *SubState, c *websocket.Conn, messageChan <-chan []byte) {
+func (s *LeaderSubscriber) runRelayer(ctx context.Context, cancel context.CancelFunc, host string, state *SubState, c *websocket.Conn, messageChan <-chan []byte) {
 	pingTicker := time.NewTicker(pingInterval)
 	defer func() {
 		cancel()
 		c.Close()
 		pingTicker.Stop()
-		s.dropOwnSubscription(host, state, c)
+
+		var dropped []string
+		s.mu.Lock()
+		purger := s.purger
+		if cur, ok := s.Subscriptions[host]; ok && cur == state && cur.Connection == c {
+			dropped = slices.Clone(cur.Prefixes)
+			delete(s.Subscriptions, host)
+		}
+		s.pruneDemand(dropped)
+		s.mu.Unlock()
+		if purger != nil && len(dropped) > 0 {
+			purger.PurgeLatest(dropped, 1)
+		}
+
 		slog.Debug(
 			fmt.Sprintf("remote connection closed(relayer): %s", host),
 			slog.String("module", "worker"),
@@ -565,9 +773,10 @@ func (s *Subscriber) runRelayer(ctx context.Context, cancel context.CancelFunc, 
 	}
 }
 
-func (s *Subscriber) deleteExcessSubscriptions(currentSubs []string) {
+func (s *LeaderSubscriber) deleteExcessSubscriptions(currentSubs []string) {
 	var dropped []string
 	s.mu.Lock()
+	purger := s.purger
 
 	closeDomains := make(map[string]bool)
 	updatedDomains := make(map[string]bool)
@@ -609,6 +818,8 @@ func (s *Subscriber) deleteExcessSubscriptions(currentSubs []string) {
 		delete(updatedDomains, domain)
 	}
 
+	s.pruneDemand(dropped)
+
 	var updates []listenUpdate
 	for domain := range updatedDomains {
 		state := s.Subscriptions[domain]
@@ -625,10 +836,33 @@ func (s *Subscriber) deleteExcessSubscriptions(currentSubs []string) {
 	}
 	s.mu.Unlock()
 
-	s.purge(dropped, 1)
+	if purger != nil && len(dropped) > 0 {
+		purger.PurgeLatest(dropped, 1)
+	}
 
 	for _, u := range updates {
-		s.sendListen(u)
+		request := concrnt.RealtimeRequest{
+			Type:     "listen",
+			Prefixes: u.prefixes,
+		}
+		u.state.writeMu.Lock()
+		err := u.conn.WriteJSON(request)
+		u.state.writeMu.Unlock()
+		if err != nil {
+			slog.Error(
+				fmt.Sprintf("fail to send subscribe request to remote server %v", u.host),
+				slog.String("error", err.Error()),
+				slog.String("module", "worker"),
+				slog.String("group", "realtime"),
+			)
+			u.conn.Close()
+			continue
+		}
+		slog.Debug(
+			fmt.Sprintf("remote connection updated: %s > %v", u.host, u.prefixes),
+			slog.String("module", "worker"),
+			slog.String("group", "realtime"),
+		)
 	}
 
 	if len(closeDomains) > 0 {

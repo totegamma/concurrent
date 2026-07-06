@@ -64,7 +64,7 @@ func NewChunklineGateway(
 // starts the cache updater. Run this only on the replica that runs the
 // singleton workers (the leader) — the cache updater maintains the shared
 // memcached.
-func (g *ChunklineGateway) StartWorker(ctx context.Context, subscriber *worker.Subscriber) {
+func (g *ChunklineGateway) StartWorker(ctx context.Context, subscriber *worker.LeaderSubscriber) {
 	g.r.open = subscriber
 	subscriber.RegisterClient(g.r)
 	subscriber.SetCachePurger(g.r)

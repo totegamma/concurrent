@@ -137,12 +137,19 @@ func (s *AuthMiddleware) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFun
 			}
 			ccid := parsed.Owner
 
+			parsedIssuer, err := concrnt.ParseCCURI(claims.Issuer)
+			if err != nil {
+				span.RecordError(errors.Wrap(err, "failed to parse issuer as CCURI"))
+				goto skipCheckAuthorization
+			}
+			issuerCCID := parsedIssuer.Owner
+
 			// The KeyID header is caller-supplied: the key it names must
 			// belong to the JWT's issuer, whose entity becomes the requester.
 			// Without this binding, a valid signature by one identity's key
 			// could authenticate as any other issuer.
-			if ccid != claims.Issuer {
-				span.RecordError(fmt.Errorf("key owner does not match jwt issuer"))
+			if ccid != issuerCCID {
+				span.RecordError(fmt.Errorf("key owner does not match jwt issuer: expected %s, got %s", issuerCCID, ccid))
 				goto skipCheckAuthorization
 			}
 

@@ -207,8 +207,16 @@ func (r *NotificationReactor) releaseClaim(ctx context.Context, key string) {
 const httpStatusCreated = 201
 
 func notificationDedupKey(event concrnt.Event, sub domain.NotificationSubscription) string {
+	// the association URI is part of the event identity: "associated" events
+	// carry the shared target as URI, so without it two different users
+	// reacting to the same post within the TTL would collide and the second
+	// push would be silently dropped
+	association := ""
+	if event.Association != nil {
+		association = *event.Association
+	}
 	sum := sha256.Sum256([]byte(
-		event.Source + "|" + event.URI + "|" + event.Type + "|" +
+		event.Source + "|" + event.URI + "|" + event.Type + "|" + association + "|" +
 			strconv.FormatInt(event.Timestamp.UnixNano(), 10) + "|" +
 			sub.VendorID + "|" + sub.Owner,
 	))

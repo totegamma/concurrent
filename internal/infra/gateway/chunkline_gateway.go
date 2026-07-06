@@ -1,7 +1,6 @@
 package gateway
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -21,6 +20,7 @@ import (
 	"github.com/concrnt/concrnt/chunkline"
 	"github.com/concrnt/concrnt/client"
 	"github.com/concrnt/concrnt/internal/worker"
+	"github.com/concrnt/concrnt/schemas"
 )
 
 const (
@@ -442,6 +442,13 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 				fmt.Printf("invalid cache format for key %s: %s\n", cacheKey, cacheStr)
 				continue
 			}
+			// the cache updater blindly prepends, so a delayed event (e.g. a
+			// federated record whose authored time predates cached items) can
+			// leave the cached body unordered; readers binary-search on
+			// descending timestamps, so restore the order here
+			slices.SortStableFunc(bodyItems, func(a, b chunkline.BodyItem) int {
+				return b.Timestamp.Compare(a.Timestamp)
+			})
 			chunkID, err := strconv.ParseInt(itr, 10, 64)
 			if err != nil {
 				span.RecordError(fmt.Errorf("invalid chunk ID %s for timeline %s: %w", itr, tl, err))
@@ -673,96 +680,72 @@ func (r *resolver) cacheUpdater(ctx context.Context) {
 			continue
 		}
 
-		timeline := event.Source
-		manifest, err := r.resolveTimeline(ctx, timeline)
-		if err != nil {
-			slog.Error("failed to resolve timeline for caching", slog.String("timeline", timeline), slog.String("error", err.Error()))
-			continue
-		}
-
-		r.applyEventToCache(event, manifest.Time2Chunk(event.Timestamp))
+		r.applyEventToCache(ctx, event)
 	}
 }
 
-// applyEventToCache prepends the event to the cached chunk body exactly once.
-// The CAS loop makes the mutation idempotent under concurrent updaters (a
-// leadership-handover overlap): whichever writer loses the race re-reads the
-// body and finds the record already present. There is no claim to leak, so a
-// writer crashing mid-update cannot suppress the surviving one — pubsub never
-// redelivers, so a suppressed update would be missing from the cached chunk
-// for up to bodyCacheTTL.
-func (r *resolver) applyEventToCache(event concrnt.Event, epoch int64) {
-	timeline := event.Source
-	itrKey := itrCacheKey(timeline, epoch)
-	bodyKey := bodyCacheKey(timeline, strconv.FormatInt(epoch, 10))
+// applyEventToCache maintains the cached chunk of the timeline that gained a
+// record. The event arrives on the record's own key (`<timeline>/<id>`, the
+// channel prefix subscribers match on), never on the bare timeline URI, so
+// the timeline whose chunk cache readers hit is the record key's parent.
+//
+// The item is blindly prepended: chunkline tolerates duplicates (readers
+// deduplicate by href) and unordered chunks (LoadChunkBodies sorts cached
+// bodies on read), so no read-modify-write is needed — a concurrent updater
+// during a leadership handover or a racing origin fetch at worst duplicates
+// the record. Prepend and Replace never create keys, so an unmaintained
+// timeline stays uncached.
+func (r *resolver) applyEventToCache(ctx context.Context, event concrnt.Event) {
+	// the parent of the created record is the timeline it entered
+	authority := strings.Index(event.URI, "://")
+	cut := strings.LastIndex(event.URI, "/")
+	if authority == -1 || cut <= authority+2 {
+		return // a root key belongs to no timeline; nothing to maintain
+	}
+	timeline := event.URI[:cut]
+
+	manifest, err := r.resolveTimeline(ctx, timeline)
+	if err != nil {
+		slog.Error("failed to resolve timeline for caching", slog.String("timeline", timeline), slog.String("error", err.Error()))
+		return
+	}
+	epoch := manifest.Time2Chunk(event.Timestamp)
 
 	// repoint the cached iterator to this epoch before touching the body:
-	// even when no body is cached (nothing to maintain below), a cached
-	// iterator from a read during an empty epoch still steers readers to an
-	// older chunk and would hide this record until the epoch rolls over.
-	// Replace never creates the key, so an uncached iterator stays uncached.
-	err := r.mc.Replace(&memcache.Item{Key: itrKey, Value: []byte(strconv.FormatInt(epoch, 10)), Expiration: itrCacheTTL})
+	// even when no body is cached, a cached iterator from a read during an
+	// empty epoch still steers readers to an older chunk and would hide this
+	// record until the epoch rolls over.
+	err = r.mc.Replace(&memcache.Item{Key: itrCacheKey(timeline, epoch), Value: []byte(strconv.FormatInt(epoch, 10)), Expiration: itrCacheTTL})
 	if err != nil && !errors.Is(err, memcache.ErrNotStored) {
 		slog.Error("failed to replace iterator in cache", slog.String("timeline", timeline), slog.String("error", err.Error()))
 	}
 
-	bodyItem := chunkline.BodyItem{
-		Timestamp: event.Timestamp,
-		Href:      event.URI,
+	// the cached entry must mirror what the origin body endpoint serves
+	// (LoadLocalBody): a reference record enters the timeline as its redirect
+	// target (which is also what readers deduplicate by), everything else as
+	// the record key itself
+	href := event.URI
+	if sd, ok := event.References[event.URI]; ok {
+		var doc concrnt.Document[schemas.Reference]
+		if err := json.Unmarshal([]byte(sd.Document), &doc); err == nil && doc.Schema == schemas.ReferenceURL && doc.Value.Href != "" {
+			href = doc.Value.Href
+		}
 	}
-	serializedItem, err := json.Marshal(bodyItem)
+
+	serializedItem, err := json.Marshal(chunkline.BodyItem{
+		Timestamp:   event.Timestamp,
+		Href:        href,
+		ContentType: "application/concrnt.document+json",
+	})
 	if err != nil {
 		slog.Error("failed to marshal body item for caching", slog.String("timeline", timeline), slog.String("error", err.Error()))
 		return
 	}
 
-	// membership needle: matching on href alone also detects the record when
-	// it is already part of an origin-fetched body whose timestamp
-	// serialization differs from ours
-	needle := serializedItem
-	if event.URI != "" {
-		hrefJSON, err := json.Marshal(event.URI)
-		if err == nil {
-			needle = []byte(`"href":` + string(hrefJSON))
-		}
-	}
-
-	// every CAS conflict means another writer made progress, so the retry cap
-	// only needs to exceed the realistic number of concurrent updaters (2-3
-	// during a leadership handover)
-	applied := false
-	for attempt := 0; attempt < 10; attempt++ {
-		item, err := r.mc.Get(bodyKey) // issues "gets": CasID is populated
-		if errors.Is(err, memcache.ErrCacheMiss) {
-			return // nothing cached to maintain
-		}
-		if err != nil {
-			slog.Error("failed to get body chunk for cache update", slog.String("timeline", timeline), slog.String("error", err.Error()))
-			return
-		}
-
-		if bytes.Contains(item.Value, needle) {
-			applied = true // already applied by a concurrent updater or an origin fetch
-			break
-		}
-
-		item.Value = append(append([]byte(","), serializedItem...), item.Value...)
-		item.Expiration = bodyCacheTTL
-		err = r.mc.CompareAndSwap(item)
-		if err == nil {
-			applied = true
-			break
-		}
-		if errors.Is(err, memcache.ErrCASConflict) {
-			continue // raced with another writer; re-read and re-check
-		}
-		// ErrNotStored: evicted between gets and cas — the cache is gone,
-		// nothing left to maintain
-		slog.Error("failed to update body chunk in cache", slog.String("timeline", timeline), slog.String("error", err.Error()))
-		return
-	}
-	if !applied {
-		slog.Error("giving up body chunk cache update after repeated CAS conflicts", slog.String("timeline", timeline))
+	bodyKey := bodyCacheKey(timeline, strconv.FormatInt(epoch, 10))
+	err = r.mc.Prepend(&memcache.Item{Key: bodyKey, Value: append([]byte(","), serializedItem...)})
+	if err != nil && !errors.Is(err, memcache.ErrNotStored) {
+		slog.Error("failed to prepend body item in cache", slog.String("timeline", timeline), slog.String("error", err.Error()))
 	}
 }
 

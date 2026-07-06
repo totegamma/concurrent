@@ -15,6 +15,7 @@ import (
 	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/chunkline"
 	"github.com/concrnt/concrnt/internal/testutil"
+	"github.com/concrnt/concrnt/schemas"
 )
 
 const testTimeline = "cckv://alice/home"
@@ -72,18 +73,26 @@ func cachedBody(t *testing.T, mc *memcache.Client, timeline string, chunk int64)
 	return string(item.Value)
 }
 
+// testEvent builds a created event exactly as the system publishes it: the
+// channel (and therefore Source and URI) is the record's own key under the
+// timeline, never the bare timeline URI.
 func testEvent(uri string, ts time.Time) concrnt.Event {
 	return concrnt.Event{
 		Type:      "created",
-		Source:    testTimeline,
+		Source:    uri,
 		URI:       uri,
 		Timestamp: ts,
 	}
 }
 
-// Applying the same event twice (two overlapping cache updaters during a
-// leadership handover) must prepend it exactly once.
-func TestApplyEventToCacheOnce(t *testing.T) {
+// Regression test for the frozen-cache bug: created events are published on
+// the record's own key (`<timeline>/<id>`), not on the timeline URI. The
+// cache updater must still maintain the cache of the timeline the readers
+// actually query — deriving it from the record key — or every cached latest
+// chunk silently goes stale until the epoch rolls over or the cache is
+// flushed. (r.client is nil here: resolving anything but the seeded timeline
+// manifest, e.g. treating the record key itself as a timeline, would panic.)
+func TestApplyEventToCache(t *testing.T) {
 	r, manifest := newTestResolver(t)
 
 	now := time.Now()
@@ -92,40 +101,89 @@ func TestApplyEventToCacheOnce(t *testing.T) {
 		{Timestamp: now.Add(-time.Minute), Href: "cckv://alice/home/existing"},
 	})
 
-	event := testEvent("cckv://alice/home/new", now)
-	r.applyEventToCache(event, epoch)
-	r.applyEventToCache(event, epoch)
+	r.applyEventToCache(context.Background(), testEvent(testTimeline+"/rec-new", now))
 
 	body := cachedBody(t, r.mc, testTimeline, epoch)
-	if got := strings.Count(body, `"cckv://alice/home/new"`); got != 1 {
-		t.Fatalf("expected event exactly once in cached body, got %d: %s", got, body)
+	if !strings.Contains(body, `"cckv://alice/home/rec-new"`) {
+		t.Fatalf("record-keyed event not applied to its timeline's cached chunk: %s", body)
 	}
 	if !strings.Contains(body, "existing") {
 		t.Fatalf("existing record lost from cached body: %s", body)
 	}
 }
 
-// A record already present via an origin fetch (whose serialization may
-// differ) must not be prepended again.
-func TestApplyEventToCacheAlreadyInOriginBody(t *testing.T) {
+// A distribution (reference) record must enter the cached chunk as its
+// redirect target, matching what the origin body endpoint serves — otherwise
+// the same logical record appears under two hrefs depending on whether it was
+// served from cache or from origin, and readers cannot deduplicate them.
+func TestApplyEventToCacheReferenceRecordUsesRedirectHref(t *testing.T) {
 	r, manifest := newTestResolver(t)
 
 	now := time.Now()
 	epoch := manifest.Time2Chunk(now)
 	seedChunk(t, r.mc, testTimeline, epoch, []chunkline.BodyItem{
-		{Timestamp: now.Add(-time.Minute), Href: "cckv://alice/home/rec1"},
+		{Timestamp: now.Add(-time.Minute), Href: "ccfs://bob/existing"},
 	})
-	before := cachedBody(t, r.mc, testTimeline, epoch)
 
-	r.applyEventToCache(testEvent("cckv://alice/home/rec1", now), epoch)
+	recordKey := testTimeline + "/dist1"
+	original := "ccfs://bob/original-post"
+	refDoc, err := json.Marshal(concrnt.Document[schemas.Reference]{
+		Kind:      "record",
+		Key:       recordKey,
+		Value:     schemas.Reference{Href: original},
+		Schema:    schemas.ReferenceURL,
+		CreatedAt: now,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 
-	if after := cachedBody(t, r.mc, testTimeline, epoch); after != before {
-		t.Fatalf("body changed for an already-present record:\nbefore: %s\nafter:  %s", before, after)
+	event := testEvent(recordKey, now)
+	event.References = map[string]concrnt.SignedDocument{
+		recordKey: {Document: string(refDoc)},
+	}
+
+	r.applyEventToCache(context.Background(), event)
+
+	body := cachedBody(t, r.mc, testTimeline, epoch)
+	if !strings.Contains(body, `"`+original+`"`) {
+		t.Fatalf("expected redirect target %s in cached chunk: %s", original, body)
+	}
+	if strings.Contains(body, `"`+recordKey+`"`) {
+		t.Fatalf("reference record cached under its own key instead of its redirect target: %s", body)
 	}
 }
 
-// Concurrent distinct events must each land exactly once (exercises the
-// ErrCASConflict retry path against a real memcached).
+// Duplicate application (two overlapping cache updaters during a leadership
+// handover) is tolerated by design: chunkline readers deduplicate by href, so
+// the cache only has to stay parsable.
+func TestApplyEventToCacheDuplicatesTolerated(t *testing.T) {
+	r, manifest := newTestResolver(t)
+
+	now := time.Now()
+	epoch := manifest.Time2Chunk(now)
+	seedChunk(t, r.mc, testTimeline, epoch, []chunkline.BodyItem{
+		{Timestamp: now.Add(-time.Minute), Href: "cckv://alice/home/existing"},
+	})
+
+	event := testEvent(testTimeline+"/rec-new", now)
+	r.applyEventToCache(context.Background(), event)
+	r.applyEventToCache(context.Background(), event)
+
+	results, err := r.LoadChunkBodies(context.Background(), map[string]string{
+		testTimeline: strconv.FormatInt(epoch, 10),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := results[testTimeline].Items
+	if len(items) != 3 {
+		t.Fatalf("expected 3 items (duplicate kept, readers dedupe by href), got %d: %+v", len(items), items)
+	}
+}
+
+// Concurrent distinct events must all land without corrupting the cached
+// body (memcached prepend is atomic).
 func TestApplyEventToCacheConcurrentDistinctEvents(t *testing.T) {
 	r, manifest := newTestResolver(t)
 
@@ -141,7 +199,7 @@ func TestApplyEventToCacheConcurrentDistinctEvents(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			r.applyEventToCache(testEvent(fmt.Sprintf("cckv://alice/home/rec%d", i), now), epoch)
+			r.applyEventToCache(context.Background(), testEvent(fmt.Sprintf("%s/rec%d", testTimeline, i), now))
 		}(i)
 	}
 	wg.Wait()
@@ -161,7 +219,7 @@ func TestApplyEventToCacheNoBody(t *testing.T) {
 	now := time.Now()
 	epoch := manifest.Time2Chunk(now)
 
-	r.applyEventToCache(testEvent("cckv://alice/home/new", now), epoch)
+	r.applyEventToCache(context.Background(), testEvent(testTimeline+"/new", now))
 
 	_, err := r.mc.Get(bodyCacheKey(testTimeline, strconv.FormatInt(epoch, 10)))
 	if err != memcache.ErrCacheMiss {
@@ -250,7 +308,7 @@ func TestApplyEventToCacheRepointsItrWithoutBody(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	r.applyEventToCache(testEvent("cckv://alice/home/new", now), epoch)
+	r.applyEventToCache(context.Background(), testEvent(testTimeline+"/new", now))
 
 	item, err := r.mc.Get(itrCacheKey(testTimeline, epoch))
 	if err != nil {
@@ -260,9 +318,52 @@ func TestApplyEventToCacheRepointsItrWithoutBody(t *testing.T) {
 		t.Fatalf("expected iterator repointed to %d, got %s", epoch, got)
 	}
 
-	// still no body key: Replace maintains, never creates
+	// still no body key: Replace and Prepend maintain, never create
 	if _, err := r.mc.Get(bodyCacheKey(testTimeline, strconv.FormatInt(epoch, 10))); err != memcache.ErrCacheMiss {
 		t.Fatalf("expected no body key to be created, got err=%v", err)
+	}
+}
+
+// The cache updater blindly prepends, so a delayed event (e.g. a federated
+// record whose authored timestamp predates records already cached) leaves the
+// cached bytes unordered. Readers binary-search chunk items assuming
+// descending timestamps, so LoadChunkBodies must restore the order when
+// serving from cache.
+func TestLoadChunkBodiesSortsCachedBody(t *testing.T) {
+	r, manifest := newTestResolver(t)
+
+	// anchor mid-epoch so the delayed timestamp below stays in the same chunk
+	epoch := manifest.Time2Chunk(time.Now())
+	base := manifest.Chunk2Time(epoch).Add(5 * time.Minute)
+	seedChunk(t, r.mc, testTimeline, epoch, []chunkline.BodyItem{
+		{Timestamp: base, Href: "cckv://alice/home/newest"},
+		{Timestamp: base.Add(-2 * time.Minute), Href: "cckv://alice/home/oldest"},
+	})
+
+	// arrives late: authored between the two cached items, lands at the head
+	r.applyEventToCache(context.Background(), testEvent(testTimeline+"/delayed", base.Add(-time.Minute)))
+
+	results, err := r.LoadChunkBodies(context.Background(), map[string]string{
+		testTimeline: strconv.FormatInt(epoch, 10),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	items := results[testTimeline].Items
+
+	wantOrder := []string{"cckv://alice/home/newest", testTimeline + "/delayed", "cckv://alice/home/oldest"}
+	if len(items) != len(wantOrder) {
+		t.Fatalf("expected %d items, got %d: %+v", len(wantOrder), len(items), items)
+	}
+	for i, want := range wantOrder {
+		if items[i].Href != want {
+			t.Fatalf("descending order broken at %d: want %s, got %s (%+v)", i, want, items[i].Href, items)
+		}
+	}
+	for i := 1; i < len(items); i++ {
+		if items[i].Timestamp.After(items[i-1].Timestamp) {
+			t.Fatalf("timestamps not descending: %+v", items)
+		}
 	}
 }
 

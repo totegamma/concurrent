@@ -3,10 +3,15 @@ package main
 import (
 	"bytes"
 	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"sync/atomic"
+	"syscall"
+	"time"
 
 	"github.com/SherClockHolmes/webpush-go"
 	"github.com/labstack/echo/v4"
@@ -17,6 +22,7 @@ import (
 
 	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/client"
+	"github.com/concrnt/concrnt/internal/infra/cluster"
 	"github.com/concrnt/concrnt/internal/infra/config"
 	"github.com/concrnt/concrnt/internal/infra/database"
 	"github.com/concrnt/concrnt/internal/infra/gateway"
@@ -63,6 +69,9 @@ func main() {
 	slogger := slog.New(lh)
 	slog.SetDefault(slogger)
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
 	fmt.Fprint(os.Stderr, concrnt.Banner)
 
 	configPath := os.Getenv("CONCRNT_CONFIG")
@@ -98,12 +107,7 @@ func main() {
 		}
 		defer cleanup()
 
-		skipper := otelecho.WithSkipper(
-			func(c echo.Context) bool {
-				return c.Path() == "/metrics" || c.Path() == "/health"
-			},
-		)
-		e.Use(otelecho.Middleware(conf.Concrnt.FQDN, skipper))
+		e.Use(otelecho.Middleware(conf.Concrnt.FQDN))
 
 		e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 			return func(c echo.Context) error {
@@ -116,7 +120,7 @@ func main() {
 
 	e.Use(echomiddleware.LoggerWithConfig(echomiddleware.LoggerConfig{
 		Skipper: func(c echo.Context) bool {
-			return c.Path() == "/metrics" || c.Path() == "/health" || c.Path() == "/.well-known/concrnt"
+			return c.Path() == "/.well-known/concrnt"
 		},
 		Format: `{"time":"${time_rfc3339_nano}",${custom},"remote_ip":"${remote_ip}",` +
 			`"host":"${host}","method":"${method}","uri":"${uri}","status":${status},` +
@@ -152,6 +156,28 @@ func main() {
 
 	redis := database.NewRedis(conf.Backends.RedisAddr, "", conf.Backends.RedisDB)
 
+	// the internal (operational) listener port, alongside the fixed public
+	// :8000; never expose it outside the cluster
+	internalPort := os.Getenv("CONCRNT_INTERNAL_PORT")
+	if internalPort == "" {
+		internalPort = "8001"
+	}
+
+	clustered := conf.Concrnt.Cluster.Enable
+	if clustered && conf.Concrnt.Cluster.ElectorEndpoint == "" {
+		panic("concrnt.cluster.enable requires concrnt.cluster.electorEndpoint")
+	}
+
+	var elector cluster.Elector
+	var discovery worker.PeerDiscovery // nil in standalone mode: no peers to poll
+	if clustered {
+		httpElector := cluster.NewHTTPElector(conf.Concrnt.Cluster.ElectorEndpoint)
+		elector = httpElector
+		discovery = httpElector
+	} else {
+		elector = cluster.AlwaysLeader{}
+	}
+
 	cl := client.New(domainConfig.FQDN)
 	cl.AddHostRemapping(domainConfig.FQDN, conf.Backends.GatewayAddr)
 	cl.SetUserAgent("concrnt", version)
@@ -181,27 +207,51 @@ func main() {
 	notificationRepo := postgres.NewNotificationRepository(db)
 	notificationUC := usecase.NewNotificationUsecase(notificationRepo)
 
-	subscriber := worker.NewSubscriber(&domainConfig, cl, redisPubsub)
+	leaderSub := worker.NewLeaderSubscriber(&domainConfig, cl, redisPubsub, discovery)
+	workerSub := worker.NewWorkerSubscriber(elector)
+	subscriber := worker.NewSubscriberManager(elector, leaderSub, workerSub)
+
 	subscriptionUC := usecase.NewSubscriptionUsecase(subscriber, redisPubsub)
+	leaderSub.RegisterClient(subscriptionUC)
+
 	chunklineGateway := gateway.NewChunklineGateway(cl, mc, subscriber, redisPubsub)
 	chunklineUC := usecase.NewChunklineUsecase(chunklineRepo, chunklineGateway)
-	subscriber.Start(context.Background())
 
+	// the delivery queue is a redis-streams consumer group: safe (and useful)
+	// to run on every replica
 	deliveryWorker := worker.NewDeliveryWorker(&domainConfig, cl, redisPubsub, recordUC, deliveryQueue)
-	deliveryWorker.Start(context.Background())
+	deliveryWorker.Start(ctx)
 
 	abuseRepo := postgres.NewAbuseRepository(db)
 	abuseUC := usecase.NewAbuseUsecase(abuseRepo)
 
+	var notificationReactor *worker.NotificationReactor
 	if conf.Integrations.VapidPublicKey != "" && conf.Integrations.VapidPrivateKey != "" {
-		notificationReactor := worker.NewNotificationReactor(notificationUC, subscriptionUC, webpush.Options{
+		// cross-replica push dedup only matters when a leadership handover can
+		// overlap two reactors; standalone deployments skip the redis round
+		// trip per notification
+		var notificationDeduper worker.NotificationDeduper
+		if clustered {
+			notificationDeduper = pubsub.NewRedisDeduper(redis)
+		}
+		notificationReactor = worker.NewNotificationReactor(notificationUC, subscriptionUC, notificationDeduper, webpush.Options{
 			Subscriber:      "mailto:admin@" + domainConfig.FQDN,
 			VAPIDPublicKey:  conf.Integrations.VapidPublicKey,
 			VAPIDPrivateKey: conf.Integrations.VapidPrivateKey,
 			TTL:             30,
 		})
-		notificationReactor.Start(context.Background())
 	}
+
+	// singleton workers run only while this replica holds the leadership: the
+	// federation subscriber (one upstream websocket per remote host for the
+	// whole cluster), the chunkline cache updater, and the push reactor
+	go elector.Run(ctx, func(leadCtx context.Context) {
+		leaderSub.Start(leadCtx)
+		chunklineGateway.StartWorker(leadCtx, leaderSub)
+		if notificationReactor != nil {
+			notificationReactor.Start(leadCtx)
+		}
+	})
 
 	authMiddleware := middleware.NewAuthMiddleware(domainConfig, cl, serverUC, recordUC)
 
@@ -256,26 +306,96 @@ func main() {
 	})
 	e.OPTIONS("/register-template", handleNop)
 
-	e.GET("/health", func(c echo.Context) (err error) {
-		// ctx := c.Request().Context()
+	// the internal listener carries everything operational — liveness and
+	// readiness probes, and the replica-to-replica subscriber coordination
+	// API. it must never be exposed outside the cluster.
+	internal := echo.New()
+	internal.HideBanner = true
+	internal.HidePort = true
 
-		/*
-			err = sqlDB.Ping()
-			if err != nil {
-				return c.String(http.StatusInternalServerError, "db error")
-			}
-
-			err = rdb.Ping(ctx).Err()
-			if err != nil {
-				return c.String(http.StatusInternalServerError, "redis error")
-			}
-		*/
-
-		return c.String(200, "ok")
+	internal.GET("/health", func(c echo.Context) (err error) {
+		return c.String(http.StatusOK, "ok")
 	})
 
-	e.Logger.Fatal(e.Start(":8000"))
+	var ready atomic.Bool
+	ready.Store(true)
 
+	sqlDB, err := db.DB()
+	if err != nil {
+		panic("failed to get sql.DB: " + err.Error())
+	}
+
+	internal.GET("/ready", func(c echo.Context) (err error) {
+		if !ready.Load() {
+			return c.String(http.StatusServiceUnavailable, "shutting down")
+		}
+
+		// only Postgres gates readiness: redis and memcached are soft
+		// dependencies (cache misses fall back to origin, publish failures
+		// are logged), and failing all replicas at once on a cache-tier blip
+		// would turn a degradation into a full outage
+		if err := sqlDB.PingContext(c.Request().Context()); err != nil {
+			return c.String(http.StatusServiceUnavailable, "db error")
+		}
+
+		return c.String(http.StatusOK, "ok")
+	})
+
+	coordination := rest.NewSubscriberCoordinationHandler(subscriptionUC, leaderSub, leaderSub, elector)
+	coordination.RegisterRoutes(internal)
+
+	go func() {
+		if err := internal.Start(":" + internalPort); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			// the probes target this listener, so a dead internal listener
+			// gets the process restarted by its supervisor; the public API
+			// keeps serving in the meantime
+			slog.Error("internal listener stopped unexpectedly", slog.String("error", err.Error()))
+		}
+	}()
+
+	var serverFailed atomic.Bool
+	go func() {
+		if err := e.Start(":8000"); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			slog.Error("server stopped unexpectedly", slog.String("error", err.Error()))
+			serverFailed.Store(true)
+			stop()
+		}
+	}()
+
+	<-ctx.Done()
+
+	slog.Info("shutting down")
+	ready.Store(false)
+
+	if clustered {
+		// keep serving briefly so the endpoint controller stops routing to
+		// this pod before connections are closed; the internal listener stays
+		// up through this window so /ready keeps answering 503
+		time.Sleep(3 * time.Second)
+	}
+
+	shutdownCtx, cancelShutdown := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancelShutdown()
+
+	if err := e.Shutdown(shutdownCtx); err != nil {
+		slog.Error("failed to shut down gracefully", slog.String("error", err.Error()))
+	}
+
+	// Shutdown does not touch hijacked connections: this is what terminates
+	// the realtime websockets so clients reconnect to another replica
+	e.Close()
+
+	// last: peers keep getting coordination answers until the public API is
+	// fully drained
+	if err := internal.Shutdown(shutdownCtx); err != nil {
+		slog.Error("failed to shut down internal listener", slog.String("error", err.Error()))
+	}
+
+	if serverFailed.Load() {
+		// e.g. the listen address was already bound: exit non-zero so
+		// supervisors keying on exit status restart the process
+		os.Exit(1)
+	}
 }
 
 func handleNop(c echo.Context) error {

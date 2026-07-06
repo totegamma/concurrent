@@ -16,6 +16,7 @@ jobs:
       matrix:
         target:
           - concrnt
+          - k8s-elector
         arch:
           - ubuntu-24.04
           - ubuntu-24.04-arm
@@ -23,6 +24,9 @@ jobs:
           - target: concrnt
             file: ./cmd/concrnt/Dockerfile
             image: ghcr.io/concrnt/concrnt
+          - target: k8s-elector
+            file: ./cmd/k8s-elector/Dockerfile
+            image: ghcr.io/concrnt/k8s-elector
 
     runs-on: ${{ matrix.arch }}
 
@@ -96,6 +100,9 @@ jobs:
           - target: concrnt
             file: ./cmd/concrnt/Dockerfile
             image: ghcr.io/concrnt/concrnt
+          - target: k8s-elector
+            file: ./cmd/k8s-elector/Dockerfile
+            image: ghcr.io/concrnt/k8s-elector
 
     permissions:
       contents: read

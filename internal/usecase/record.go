@@ -590,8 +590,9 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 							Local:      domain.DeliveryLocalPublish,
 							Remote:     domain.DeliveryRemoteCommit,
 							Event: &concrnt.Event{
-								Type: "deleted",
-								URI:  targetURI,
+								Type:      "deleted",
+								URI:       targetURI,
+								Timestamp: time.Now(),
 							},
 						})
 					},
@@ -637,8 +638,9 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 								Local:      domain.DeliveryLocalPublish,
 								Remote:     domain.DeliveryRemoteCommit,
 								Event: &concrnt.Event{
-									Type: "unassociated",
-									URI:  associatedURI,
+									Type:      "unassociated",
+									URI:       associatedURI,
+									Timestamp: time.Now(),
 								},
 							})
 						},
@@ -677,8 +679,9 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 						Local:      domain.DeliveryLocalPublish,
 						Remote:     domain.DeliveryRemoteNone,
 						Event: &concrnt.Event{
-							Type: "deleted",
-							URI:  targetURI,
+							Type:      "deleted",
+							URI:       targetURI,
+							Timestamp: time.Now(),
 						},
 					})
 				},
@@ -716,8 +719,9 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 							Local:      domain.DeliveryLocalPublish,
 							Remote:     domain.DeliveryRemoteNone,
 							Event: &concrnt.Event{
-								Type: "unassociated",
-								URI:  associatedURI,
+								Type:      "unassociated",
+								URI:       associatedURI,
+								Timestamp: time.Now(),
 							},
 						})
 					},
@@ -1022,6 +1026,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 							Type:        "associated",
 							URI:         target,
 							Association: &ccfs,
+							Timestamp:   time.Now(),
 							References: map[string]concrnt.SignedDocument{
 								ccfs: sd,
 							},

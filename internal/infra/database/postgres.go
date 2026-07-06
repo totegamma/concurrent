@@ -74,18 +74,29 @@ func NewPostgres(dsn string) (*gorm.DB, error) {
 	return db, nil
 }
 
+// migrationLockID serializes AutoMigrate across replicas starting simultaneously.
+const migrationLockID int64 = 0x636f6e63726e74 // "concrnt"
+
 func MigratePostgres(db *gorm.DB) error {
-	return db.AutoMigrate(
-		&models.CommitLog{},
-		&models.CommitOwner{},
-		&models.Record{},
-		&models.RecordKey{},
-		&models.Association{},
-		&models.Ack{},
-		&models.Server{},
-		&models.Entity{},
-		&models.EntityMeta{},
-		&models.Subscription{},
-		&models.AbuseReport{},
-	)
+	// session-level advisory lock must be taken and released on the same connection
+	return db.Connection(func(conn *gorm.DB) error {
+		if err := conn.Exec("SELECT pg_advisory_lock(?)", migrationLockID).Error; err != nil {
+			return err
+		}
+		defer conn.Exec("SELECT pg_advisory_unlock(?)", migrationLockID)
+
+		return conn.AutoMigrate(
+			&models.CommitLog{},
+			&models.CommitOwner{},
+			&models.Record{},
+			&models.RecordKey{},
+			&models.Association{},
+			&models.Ack{},
+			&models.Server{},
+			&models.Entity{},
+			&models.EntityMeta{},
+			&models.Subscription{},
+			&models.AbuseReport{},
+		)
+	})
 }

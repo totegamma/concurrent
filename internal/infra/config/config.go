@@ -24,11 +24,23 @@ type Config struct {
 }
 
 type Concrnt struct {
-	FQDN         string `yaml:"fqdn"`
-	PrivateKey   string `yaml:"privatekey"`
-	Registration string `yaml:"registration"` // open, invite, close
-	Layer        string `yaml:"layer"`
-	Debug        bool   `yaml:"debug"`
+	FQDN         string  `yaml:"fqdn"`
+	PrivateKey   string  `yaml:"privatekey"`
+	Registration string  `yaml:"registration"` // open, invite, close
+	Layer        string  `yaml:"layer"`
+	Debug        bool    `yaml:"debug"`
+	Cluster      Cluster `yaml:"cluster"`
+}
+
+type Cluster struct {
+	// Enable turns on multi-replica coordination: leadership decides which
+	// replica runs the singleton workers, and replicas exchange realtime
+	// subscription demand over the internal listener. Off means standalone:
+	// this instance is the one and only replica.
+	Enable bool `yaml:"enable"`
+	// ElectorEndpoint is the leader-election / peer-discovery service (e.g.
+	// the k8s-elector sidecar). Required when Enable is true.
+	ElectorEndpoint string `yaml:"electorEndpoint"`
 }
 
 type Backends struct {

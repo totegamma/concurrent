@@ -836,13 +836,15 @@ func (c *Client) Realtime(ctx context.Context, fqdn string) (*websocket.Conn, er
 	}
 
 	u := url.URL{Scheme: "wss", Host: domain, Path: path}
-	dialer := websocket.DefaultDialer
-	dialer.HandshakeTimeout = 10 * time.Second
+	dialer := &websocket.Dialer{
+		Proxy:            http.ProxyFromEnvironment,
+		HandshakeTimeout: 10 * time.Second,
+	}
 
 	header := http.Header{}
 	header.Set("User-Agent", c.userAgent)
 
-	conn, _, err := dialer.Dial(u.String(), header)
+	conn, _, err := dialer.DialContext(ctx, u.String(), header)
 	if err != nil {
 		slog.Warn("Failed to connect to websocket. Mark domain "+domain+" as offline", "error", err)
 		c.markOffline(domain)

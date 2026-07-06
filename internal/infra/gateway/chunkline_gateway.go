@@ -20,6 +20,7 @@ import (
 	"github.com/concrnt/concrnt/chunkline"
 	"github.com/concrnt/concrnt/client"
 	"github.com/concrnt/concrnt/internal/worker"
+	"github.com/concrnt/concrnt/schemas"
 )
 
 const (
@@ -28,41 +29,76 @@ const (
 	bodyCacheTTL     = 60 * 60 * 24 * 2 // 2 days
 )
 
+// purgeReplayDelay must exceed the workers' aggregate-subscription cache TTL
+// (worker.WorkerSubscriber, 3s): a worker holding a pre-close aggregate can
+// re-cache a just-purged latest chunk for up to that long, so close-edge
+// purges run a second time after this delay to sweep such resurrections.
+// Package variable so tests can shorten it.
+var purgeReplayDelay = 8 * time.Second
+
+// SubscriptionDemand reports the realtime subscription demand of this replica,
+// used to decide whether a latest chunk will be kept fresh by the cache
+// updater and is therefore safe to cache.
+type SubscriptionDemand interface {
+	CurrentSubscriptions() []string
+}
+
 type ChunklineGateway struct {
-	resolver   *chunkline.Client
-	subscriber *worker.Subscriber
+	resolver *chunkline.Client
+	r        *resolver
 }
 
 func NewChunklineGateway(
 	cl *client.Client,
 	mc *memcache.Client,
-	subscriber *worker.Subscriber,
+	demand SubscriptionDemand,
 	pubsub worker.PubSub,
 ) *ChunklineGateway {
 	r := &resolver{
-		client:     cl,
-		mc:         mc,
-		subscriber: subscriber,
-		pubsub:     pubsub,
+		client: cl,
+		mc:     mc,
+		demand: demand,
+		pubsub: pubsub,
 	}
-	subscriber.RegisterClient(r)
-	go r.cacheUpdater()
 	return &ChunklineGateway{
-		resolver:   chunkline.NewClient(r),
-		subscriber: subscriber,
+		resolver: chunkline.NewClient(r),
+		r:        r,
 	}
+}
+
+// StartWorker registers the resolver's cache keep-alive demand on the
+// subscriber, hooks cache purging into the subscription open/close edges, and
+// starts the cache updater. Run this only on the replica that runs the
+// singleton workers (the leader) — the cache updater maintains the shared
+// memcached.
+func (g *ChunklineGateway) StartWorker(ctx context.Context, subscriber *worker.LeaderSubscriber) {
+	g.r.open = subscriber
+	// keep-alive, not a session client: the resolver's demand exists to keep
+	// established caches maintained, and must not feed the served aggregate
+	// that gates cache writes (that feedback would keep every once-read
+	// timeline subscribed forever)
+	subscriber.RegisterKeepAliveClient(g.r)
+	subscriber.SetCachePurger(g.r)
+	go g.r.cacheUpdater(ctx)
 }
 
 func (g *ChunklineGateway) QueryDescending(ctx context.Context, uris []string, until time.Time, limit int) ([]chunkline.BodyItemWithSource, error) {
 	return g.resolver.QueryDescending(ctx, uris, until, limit)
 }
 
+// OpenSubscriptions reports the prefixes whose upstream subscription is
+// currently established (as opposed to merely demanded).
+type OpenSubscriptions interface {
+	OpenPrefixes() []string
+}
+
 // resolver implements chunkline resolver callbacks.
 type resolver struct {
-	client     *client.Client
-	mc         *memcache.Client
-	subscriber *worker.Subscriber
-	pubsub     worker.PubSub
+	client *client.Client
+	mc     *memcache.Client
+	demand SubscriptionDemand
+	pubsub worker.PubSub
+	open   OpenSubscriptions // set by StartWorker on the leader; nil elsewhere
 }
 
 func manifestCacheKey(timeline string) string {
@@ -313,7 +349,7 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 		return results, nil // return what we have from cache
 	}
 
-	currentSubscriptions := r.subscriber.CurrentSubscriptions(r)
+	currentSubscriptions := r.demand.CurrentSubscriptions()
 
 	for tl, chunkID := range remainings {
 		resp, ok := responces[tl]
@@ -406,6 +442,13 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 				fmt.Printf("invalid cache format for key %s: %s\n", cacheKey, cacheStr)
 				continue
 			}
+			// the cache updater blindly prepends, so a delayed event (e.g. a
+			// federated record whose authored time predates cached items) can
+			// leave the cached body unordered; readers binary-search on
+			// descending timestamps, so restore the order here
+			slices.SortStableFunc(bodyItems, func(a, b chunkline.BodyItem) int {
+				return b.Timestamp.Compare(a.Timestamp)
+			})
 			chunkID, err := strconv.ParseInt(itr, 10, 64)
 			if err != nil {
 				span.RecordError(fmt.Errorf("invalid chunk ID %s for timeline %s: %w", itr, tl, err))
@@ -416,6 +459,7 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 				ChunkID: chunkID,
 				Items:   bodyItems,
 			}
+			continue // cached: no origin fetch needed (a cached latest chunk is kept fresh by the cache updater)
 		}
 
 		manifest, ok := manifests[tl]
@@ -473,7 +517,7 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 		return results, nil // return what we have from cache
 	}
 
-	currentSubscriptions := r.subscriber.CurrentSubscriptions(r)
+	currentSubscriptions := r.demand.CurrentSubscriptions()
 
 	for tl, itr := range remaining {
 		resp, ok := responses[tl]
@@ -509,27 +553,39 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 		}
 		results[tl] = bodyChunk
 
+		isLatestChunk := chunkID == manifests[tl].Time2Chunk(time.Now())
+
 		// もしキャッシュ対象が最新チャンクであれば、現在の購読状態を確認し、購読中でなければキャッシュを保存しない
-		if chunkID == manifests[tl].Time2Chunk(time.Now()) {
+		if isLatestChunk {
 			isSubscribed := slices.Contains(currentSubscriptions, tl)
 			if !isSubscribed {
 				continue // skip caching if not subscribed to the latest chunk
 			}
 		}
 
-		bytes, err := json.Marshal(items)
+		serialized, err := json.Marshal(items)
 		if err != nil {
 			span.RecordError(fmt.Errorf("failed to marshal body chunk for caching for %s: %w", tl, err))
 			continue
 		}
 
-		cacheStr := "," + string(bytes[1:len(bytes)-1])
+		cacheStr := "," + string(serialized[1:len(serialized)-1])
 		cacheItem := &memcache.Item{
 			Key:        bodyCacheKey(tl, itr),
 			Value:      []byte(cacheStr),
 			Expiration: bodyCacheTTL,
 		}
-		err = r.mc.Set(cacheItem)
+		if isLatestChunk {
+			// Add, not Set: a live latest chunk may already be maintained by
+			// the cache updater, and clobbering it with this (possibly older)
+			// origin fetch would drop the records prepended since
+			err = r.mc.Add(cacheItem)
+			if errors.Is(err, memcache.ErrNotStored) {
+				err = nil
+			}
+		} else {
+			err = r.mc.Set(cacheItem)
+		}
 		if err != nil {
 			span.RecordError(fmt.Errorf("failed to set body chunk in cache for %s: %w", tl, err))
 		}
@@ -552,7 +608,16 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 }
 
 func (r *resolver) CurrentSubscriptions() []string {
-	ongoing := r.subscriber.CurrentSubscriptions(r)
+	// start from the prefixes whose upstream subscription is actually open:
+	// "open + latest chunk cached => keep" is self-sustaining regardless of
+	// which replica wrote the cache, whereas demand-based input would drop
+	// the timeline in the same tick its demand lapses, orphaning the cache
+	var ongoing []string
+	if r.open != nil {
+		ongoing = r.open.OpenPrefixes()
+	} else {
+		ongoing = r.demand.CurrentSubscriptions()
+	}
 
 	timelines, err := r.ResolveTimelines(context.Background(), ongoing)
 	if err != nil {
@@ -597,55 +662,153 @@ func (r *resolver) CurrentSubscriptions() []string {
 	return keep
 }
 
-func (r *resolver) cacheUpdater() {
-
-	ctx := context.Background()
+func (r *resolver) cacheUpdater(ctx context.Context) {
 
 	events := make(chan concrnt.Event)
 
 	go r.pubsub.SubscribeAll(ctx, events)
 
-	for event := range events {
+	for {
+		var event concrnt.Event
+		select {
+		case <-ctx.Done():
+			return
+		case event = <-events:
+		}
 
 		if event.Type != "created" {
 			continue
 		}
 
-		timeline := event.Source
-		manifest, err := r.resolveTimeline(ctx, timeline)
-		if err != nil {
-			slog.Error("failed to resolve timeline for caching", slog.String("timeline", timeline), slog.String("error", err.Error()))
+		r.applyEventToCache(ctx, event)
+	}
+}
+
+// applyEventToCache maintains the cached chunk of the timeline that gained a
+// record. The event arrives on the record's own key (`<timeline>/<id>`, the
+// channel prefix subscribers match on), never on the bare timeline URI, so
+// the timeline whose chunk cache readers hit is the record key's parent.
+//
+// The item is blindly prepended: chunkline tolerates duplicates (readers
+// deduplicate by href) and unordered chunks (LoadChunkBodies sorts cached
+// bodies on read), so no read-modify-write is needed — a concurrent updater
+// during a leadership handover or a racing origin fetch at worst duplicates
+// the record. Prepend and Replace never create keys, so an unmaintained
+// timeline stays uncached.
+func (r *resolver) applyEventToCache(ctx context.Context, event concrnt.Event) {
+	// the parent of the created record is the timeline it entered
+	authority := strings.Index(event.URI, "://")
+	cut := strings.LastIndex(event.URI, "/")
+	if authority == -1 || cut <= authority+2 {
+		return // a root key belongs to no timeline; nothing to maintain
+	}
+	timeline := event.URI[:cut]
+
+	manifest, err := r.resolveTimeline(ctx, timeline)
+	if err != nil {
+		slog.Error("failed to resolve timeline for caching", slog.String("timeline", timeline), slog.String("error", err.Error()))
+		return
+	}
+	epoch := manifest.Time2Chunk(event.Timestamp)
+
+	// repoint the cached iterator to this epoch before touching the body:
+	// even when no body is cached, a cached iterator from a read during an
+	// empty epoch still steers readers to an older chunk and would hide this
+	// record until the epoch rolls over.
+	err = r.mc.Replace(&memcache.Item{Key: itrCacheKey(timeline, epoch), Value: []byte(strconv.FormatInt(epoch, 10)), Expiration: itrCacheTTL})
+	if err != nil && !errors.Is(err, memcache.ErrNotStored) {
+		slog.Error("failed to replace iterator in cache", slog.String("timeline", timeline), slog.String("error", err.Error()))
+	}
+
+	// the cached entry must mirror what the origin body endpoint serves
+	// (LoadLocalBody): a reference record enters the timeline as its redirect
+	// target (which is also what readers deduplicate by), everything else as
+	// the record key itself
+	href := event.URI
+	if sd, ok := event.References[event.URI]; ok {
+		var doc concrnt.Document[schemas.Reference]
+		if err := json.Unmarshal([]byte(sd.Document), &doc); err == nil && doc.Schema == schemas.ReferenceURL && doc.Value.Href != "" {
+			href = doc.Value.Href
+		}
+	}
+
+	serializedItem, err := json.Marshal(chunkline.BodyItem{
+		Timestamp:   event.Timestamp,
+		Href:        href,
+		ContentType: "application/concrnt.document+json",
+	})
+	if err != nil {
+		slog.Error("failed to marshal body item for caching", slog.String("timeline", timeline), slog.String("error", err.Error()))
+		return
+	}
+
+	bodyKey := bodyCacheKey(timeline, strconv.FormatInt(epoch, 10))
+	err = r.mc.Prepend(&memcache.Item{Key: bodyKey, Value: append([]byte(","), serializedItem...)})
+	if err != nil && !errors.Is(err, memcache.ErrNotStored) {
+		slog.Error("failed to prepend body item in cache", slog.String("timeline", timeline), slog.String("error", err.Error()))
+	}
+}
+
+// PurgeLatest drops the cached latest chunk (and, for depth 2, the previous
+// one) of each timeline. The subscriber calls this when an upstream
+// subscription opens or closes: a cached latest chunk is only valid while the
+// leader is receiving events for it, so both edges invalidate whatever was
+// cached before or during the unsubscribed gap.
+func (r *resolver) PurgeLatest(prefixes []string, depth int) {
+	if len(prefixes) == 0 {
+		return
+	}
+
+	// deliberately not the caller's context: purge-on-close also runs while
+	// the lead context is already cancelled
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	manifests, err := r.ResolveTimelines(ctx, prefixes)
+	if err != nil {
+		slog.Error("failed to resolve timelines for cache purge", slog.String("error", err.Error()))
+		return
+	}
+
+	for _, tl := range prefixes {
+		manifest, ok := manifests[tl]
+		if !ok {
 			continue
 		}
-
-		epoch := manifest.Time2Chunk(event.Timestamp)
-		itrKey := itrCacheKey(timeline, epoch)
-		bodyKey := bodyCacheKey(timeline, strconv.FormatInt(epoch, 10))
-
-		// update iterator cache
-		err = r.mc.Replace(&memcache.Item{Key: itrKey, Value: []byte(strconv.FormatInt(epoch, 10))})
-		if err != nil {
-			slog.Error("failed to replace iterator in cache", slog.String("timeline", timeline), slog.String("error", err.Error()))
-			continue
+		current := manifest.Time2Chunk(time.Now())
+		for i := range int64(depth) {
+			chunk := current - i
+			if err := r.mc.Delete(itrCacheKey(tl, chunk)); err != nil && !errors.Is(err, memcache.ErrCacheMiss) {
+				slog.Error("failed to purge iterator cache", slog.String("timeline", tl), slog.String("error", err.Error()))
+			}
+			if err := r.mc.Delete(bodyCacheKey(tl, strconv.FormatInt(chunk, 10))); err != nil && !errors.Is(err, memcache.ErrCacheMiss) {
+				slog.Error("failed to purge body cache", slog.String("timeline", tl), slog.String("error", err.Error()))
+			}
 		}
+	}
 
-		// update body cache
-		bodyItem := chunkline.BodyItem{
-			Timestamp: event.Timestamp,
-			Href:      event.URI,
+	if depth == 1 {
+		// close edge: a worker whose cached aggregate predates this close can
+		// still consider these prefixes subscribed for a few seconds and
+		// re-cache an unmaintained latest chunk (mc.Add succeeds precisely
+		// because the delete above just removed the key). Sweep again after
+		// the workers' view has expired; a spurious delete only costs one
+		// cache miss.
+		keys := make([]string, 0, len(prefixes)*2)
+		for _, tl := range prefixes {
+			manifest, ok := manifests[tl]
+			if !ok {
+				continue
+			}
+			chunk := manifest.Time2Chunk(time.Now())
+			keys = append(keys, itrCacheKey(tl, chunk), bodyCacheKey(tl, strconv.FormatInt(chunk, 10)))
 		}
-
-		serializedItem, err := json.Marshal(bodyItem)
-		if err != nil {
-			slog.Error("failed to marshal body item for caching", slog.String("timeline", timeline), slog.String("error", err.Error()))
-			continue
-		}
-		val := "," + string(serializedItem)
-
-		err = r.mc.Prepend(&memcache.Item{Key: bodyKey, Value: []byte(val)})
-		if err != nil {
-			slog.Error("failed to prepend body item in cache", slog.String("timeline", timeline), slog.String("error", err.Error()))
-			continue
-		}
+		time.AfterFunc(purgeReplayDelay, func() {
+			for _, key := range keys {
+				if err := r.mc.Delete(key); err != nil && !errors.Is(err, memcache.ErrCacheMiss) {
+					slog.Error("failed to replay cache purge", slog.String("key", key), slog.String("error", err.Error()))
+				}
+			}
+		})
 	}
 }

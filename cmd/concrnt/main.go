@@ -107,12 +107,7 @@ func main() {
 		}
 		defer cleanup()
 
-		skipper := otelecho.WithSkipper(
-			func(c echo.Context) bool {
-				return c.Path() == "/metrics" || c.Path() == "/health" || c.Path() == "/ready"
-			},
-		)
-		e.Use(otelecho.Middleware(conf.Concrnt.FQDN, skipper))
+		e.Use(otelecho.Middleware(conf.Concrnt.FQDN))
 
 		e.Use(func(next echo.HandlerFunc) echo.HandlerFunc {
 			return func(c echo.Context) error {
@@ -125,7 +120,7 @@ func main() {
 
 	e.Use(echomiddleware.LoggerWithConfig(echomiddleware.LoggerConfig{
 		Skipper: func(c echo.Context) bool {
-			return c.Path() == "/metrics" || c.Path() == "/health" || c.Path() == "/ready" || c.Path() == "/.well-known/concrnt"
+			return c.Path() == "/.well-known/concrnt"
 		},
 		Format: `{"time":"${time_rfc3339_nano}",${custom},"remote_ip":"${remote_ip}",` +
 			`"host":"${host}","method":"${method}","uri":"${uri}","status":${status},` +
@@ -161,18 +156,17 @@ func main() {
 
 	redis := database.NewRedis(conf.Backends.RedisAddr, "", conf.Backends.RedisDB)
 
-	clusterConf := conf.Concrnt.Cluster
-	internalPort := clusterConf.InternalPort
+	internalPort := conf.Concrnt.InternalPort
 	if internalPort == 0 {
 		internalPort = 8001
 	}
 
-	clustered := clusterConf.ElectorEndpoint != ""
+	clustered := conf.Concrnt.Cluster.ElectorEndpoint != ""
 
 	var elector cluster.Elector
 	var discovery worker.PeerDiscovery // nil in standalone mode: no peers to poll
 	if clustered {
-		httpElector := cluster.NewHTTPElector(clusterConf.ElectorEndpoint)
+		httpElector := cluster.NewHTTPElector(conf.Concrnt.Cluster.ElectorEndpoint)
 		elector = httpElector
 		discovery = httpElector
 	} else {
@@ -254,11 +248,6 @@ func main() {
 		}
 	})
 
-	if clustered {
-		internalHandler := rest.NewInternalHandler(subscriptionUC, leaderSub, leaderSub, elector)
-		rest.StartInternalListener(ctx, fmt.Sprintf(":%d", internalPort), internalHandler)
-	}
-
 	authMiddleware := middleware.NewAuthMiddleware(domainConfig, cl, serverUC, recordUC)
 
 	meta := conf.Meta
@@ -312,7 +301,14 @@ func main() {
 	})
 	e.OPTIONS("/register-template", handleNop)
 
-	e.GET("/health", func(c echo.Context) (err error) {
+	// the internal listener carries everything operational — liveness and
+	// readiness probes, and the replica-to-replica subscriber coordination
+	// API. it must never be exposed outside the cluster.
+	internal := echo.New()
+	internal.HideBanner = true
+	internal.HidePort = true
+
+	internal.GET("/health", func(c echo.Context) (err error) {
 		return c.String(http.StatusOK, "ok")
 	})
 
@@ -324,7 +320,7 @@ func main() {
 		panic("failed to get sql.DB: " + err.Error())
 	}
 
-	e.GET("/ready", func(c echo.Context) (err error) {
+	internal.GET("/ready", func(c echo.Context) (err error) {
 		if !ready.Load() {
 			return c.String(http.StatusServiceUnavailable, "shutting down")
 		}
@@ -339,6 +335,18 @@ func main() {
 
 		return c.String(http.StatusOK, "ok")
 	})
+
+	coordination := rest.NewSubscriberCoordinationHandler(subscriptionUC, leaderSub, leaderSub, elector)
+	coordination.RegisterRoutes(internal)
+
+	go func() {
+		if err := internal.Start(fmt.Sprintf(":%d", internalPort)); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			// the probes target this listener, so a dead internal listener
+			// gets the process restarted by its supervisor; the public API
+			// keeps serving in the meantime
+			slog.Error("internal listener stopped unexpectedly", slog.String("error", err.Error()))
+		}
+	}()
 
 	var serverFailed atomic.Bool
 	go func() {
@@ -356,7 +364,8 @@ func main() {
 
 	if clustered {
 		// keep serving briefly so the endpoint controller stops routing to
-		// this pod before connections are closed
+		// this pod before connections are closed; the internal listener stays
+		// up through this window so /ready keeps answering 503
 		time.Sleep(3 * time.Second)
 	}
 
@@ -370,6 +379,12 @@ func main() {
 	// Shutdown does not touch hijacked connections: this is what terminates
 	// the realtime websockets so clients reconnect to another replica
 	e.Close()
+
+	// last: peers keep getting coordination answers until the public API is
+	// fully drained
+	if err := internal.Shutdown(shutdownCtx); err != nil {
+		slog.Error("failed to shut down internal listener", slog.String("error", err.Error()))
+	}
 
 	if serverFailed.Load() {
 		// e.g. the listen address was already bound: exit non-zero so

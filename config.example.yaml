@@ -9,6 +9,10 @@ concrnt:
   # it is handy to generate these info with concurrent.world devtool
   layer: concrnt-mainnet
   debug: false
+  # internal (operational) listener: serves /health, /ready and the
+  # replica-to-replica coordination API. point liveness/readiness probes
+  # here. do NOT expose this port outside the cluster (default: 8001)
+  # internalPort: 8001
   # cluster enables running multiple replicas (e.g. on kubernetes).
   # leave it out for a single instance / docker compose.
   # cluster:
@@ -19,9 +23,6 @@ concrnt:
   #   # via a headless service). other backends can implement the same
   #   # protocol. empty = standalone (this instance is the only replica).
   #   electorEndpoint: "http://127.0.0.1:8002"
-  #   # replica-to-replica coordination port. do NOT expose this port outside
-  #   # the cluster (default: 8001)
-  #   internalPort: 8001
 
 backends:
   postgresDsn: "host=db user=postgres password=postgres dbname=postgres port=5432 sslmode=disable"

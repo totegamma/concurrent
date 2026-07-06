@@ -24,11 +24,15 @@ type Config struct {
 }
 
 type Concrnt struct {
-	FQDN         string  `yaml:"fqdn"`
-	PrivateKey   string  `yaml:"privatekey"`
-	Registration string  `yaml:"registration"` // open, invite, close
-	Layer        string  `yaml:"layer"`
-	Debug        bool    `yaml:"debug"`
+	FQDN         string `yaml:"fqdn"`
+	PrivateKey   string `yaml:"privatekey"`
+	Registration string `yaml:"registration"` // open, invite, close
+	Layer        string `yaml:"layer"`
+	Debug        bool   `yaml:"debug"`
+	// InternalPort is the operational listener: liveness/readiness probes and
+	// replica-to-replica coordination. Never expose it outside the cluster
+	// (default: 8001).
+	InternalPort int     `yaml:"internalPort"`
 	Cluster      Cluster `yaml:"cluster"`
 }
 
@@ -37,7 +41,6 @@ type Cluster struct {
 	// the k8s-elector sidecar). Empty means standalone: this instance is the
 	// one and only replica.
 	ElectorEndpoint string `yaml:"electorEndpoint"`
-	InternalPort    int    `yaml:"internalPort"` // replica-to-replica coordination port (default 8001)
 }
 
 type Backends struct {

@@ -3,7 +3,6 @@ package rest
 import (
 	"context"
 	"net/http"
-	"time"
 
 	"github.com/labstack/echo/v4"
 
@@ -36,17 +35,20 @@ type LeaderState interface {
 	IsLeader() bool
 }
 
-// InternalHandler serves the replica-to-replica coordination API. It must be
-// bound to a listener that is not exposed outside the cluster.
-type InternalHandler struct {
+// SubscriberCoordinationHandler serves the replica-to-replica API that keeps
+// the cluster's single federation Subscriber fed with every replica's
+// realtime demand: workers forward and query subscription state here, and the
+// leader polls each replica's local demand. Mount it only on the internal
+// listener — these endpoints must not be reachable from outside the cluster.
+type SubscriberCoordinationHandler struct {
 	local     LocalDemand
 	aggregate AggregateDemand
 	ensurer   Ensurer
 	leader    LeaderState
 }
 
-func NewInternalHandler(local LocalDemand, aggregate AggregateDemand, ensurer Ensurer, leader LeaderState) *InternalHandler {
-	return &InternalHandler{
+func NewSubscriberCoordinationHandler(local LocalDemand, aggregate AggregateDemand, ensurer Ensurer, leader LeaderState) *SubscriberCoordinationHandler {
+	return &SubscriberCoordinationHandler{
 		local:     local,
 		aggregate: aggregate,
 		ensurer:   ensurer,
@@ -54,19 +56,16 @@ func NewInternalHandler(local LocalDemand, aggregate AggregateDemand, ensurer En
 	}
 }
 
-func (h *InternalHandler) RegisterRoutes(e *echo.Echo) {
+func (h *SubscriberCoordinationHandler) RegisterRoutes(e *echo.Echo) {
 	e.GET("/internal/demand", h.handleDemand)
 	e.GET("/internal/subscriptions", h.handleSubscriptions)
 	e.POST("/internal/subscriptions/ensure", h.handleEnsure)
-	e.GET("/health", func(c echo.Context) error {
-		return c.String(http.StatusOK, "ok")
-	})
 }
 
 // handleDemand returns the prefixes wanted by this replica's own realtime
 // sessions. The leader polls this on every replica (including itself) to
 // build the cluster-wide demand set.
-func (h *InternalHandler) handleDemand(c echo.Context) error {
+func (h *SubscriberCoordinationHandler) handleDemand(c echo.Context) error {
 	prefixes := h.local.CurrentSubscriptions()
 	if prefixes == nil {
 		prefixes = []string{}
@@ -78,7 +77,7 @@ func (h *InternalHandler) handleDemand(c echo.Context) error {
 // Only the leader can answer this — it is the only replica that actually
 // knows it, and forwarding would let two GET /internal/subscriptions handlers
 // loop off each other during a leadership handover.
-func (h *InternalHandler) handleSubscriptions(c echo.Context) error {
+func (h *SubscriberCoordinationHandler) handleSubscriptions(c echo.Context) error {
 	if !h.leader.IsLeader() {
 		return c.String(http.StatusConflict, "not the leader")
 	}
@@ -93,7 +92,7 @@ func (h *InternalHandler) handleSubscriptions(c echo.Context) error {
 // handleEnsure applies subscription demand immediately. Only the leader runs
 // the Subscriber, so non-leaders reject the request; the caller falls back to
 // the periodic peer poll.
-func (h *InternalHandler) handleEnsure(c echo.Context) error {
+func (h *SubscriberCoordinationHandler) handleEnsure(c echo.Context) error {
 	if !h.leader.IsLeader() {
 		return c.String(http.StatusConflict, "not the leader")
 	}
@@ -105,28 +104,4 @@ func (h *InternalHandler) handleEnsure(c echo.Context) error {
 
 	h.ensurer.EnsureSubscriptions(c.Request().Context(), req.Prefixes)
 	return c.String(http.StatusOK, "ok")
-}
-
-// StartInternalListener runs the internal coordination API on its own port,
-// shutting down when ctx is cancelled.
-func StartInternalListener(ctx context.Context, addr string, handler *InternalHandler) {
-	e := echo.New()
-	e.HideBanner = true
-	e.HidePort = true
-
-	handler.RegisterRoutes(e)
-
-	go func() {
-		if err := e.Start(addr); err != nil && err != http.ErrServerClosed {
-			// the coordination plane is degraded but the public API can keep serving
-			e.Logger.Error(err)
-		}
-	}()
-
-	go func() {
-		<-ctx.Done()
-		shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		defer cancel()
-		_ = e.Shutdown(shutdownCtx)
-	}()
 }

@@ -294,15 +294,26 @@ func TestCleanupRemovesOnlyOwnState(t *testing.T) {
 			}
 		}()
 		ws.closeAll()
-		waitFor(t, func() bool { return ws.liveConns() == 1 })
-		close(stop)
-		wg.Wait()
-
+		// wait for full recovery while the hammer still runs: a replacement
+		// can die too if it was dialed before closeAll's snapshot
 		waitFor(t, func() bool {
 			count, connected := s.trackedEntries()
 			return count == 1 && connected == 1 && ws.liveConns() == 1
 		})
+		close(stop)
+		wg.Wait()
 	}
+
+	// a connection observed live above may still have been part of the kill
+	// snapshot; recover like the keeper would, then require a steady state
+	waitFor(t, func() bool {
+		count, connected := s.trackedEntries()
+		if count == 0 {
+			s.EnsureSubscriptions(context.Background(), []string{"cckv://alice/home"})
+			return false
+		}
+		return count == 1 && connected == 1 && ws.liveConns() == 1
+	})
 
 	// stability: no orphaned/untracked connection may linger
 	time.Sleep(200 * time.Millisecond)
@@ -369,6 +380,104 @@ func TestEnsureBeforeStartIsNoop(t *testing.T) {
 	if count, _ := s.trackedEntries(); count != 0 {
 		t.Fatalf("expected no tracked entries before Start, got %d", count)
 	}
+}
+
+type purgeCall struct {
+	prefixes []string
+	depth    int
+}
+
+type recordingPurger struct {
+	mu    sync.Mutex
+	calls []purgeCall
+}
+
+func (p *recordingPurger) PurgeLatest(prefixes []string, depth int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.calls = append(p.calls, purgeCall{prefixes: prefixes, depth: depth})
+}
+
+func (p *recordingPurger) purged(prefix string, depth int) bool {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	for _, call := range p.calls {
+		if call.depth != depth {
+			continue
+		}
+		for _, pf := range call.prefixes {
+			if pf == prefix {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// Dropping demand must purge exactly the dropped prefixes (depth 1), leaving
+// still-demanded prefixes alone.
+func TestPurgeOnDeleteExcess(t *testing.T) {
+	s := newTestSubscriber(&fakeSubClient{})
+	purger := &recordingPurger{}
+	s.SetCachePurger(purger)
+
+	s.Subscriptions["remote.example"] = &SubState{
+		Prefixes: []string{"cckv://alice/home", "cckv://bob/home"},
+	}
+
+	s.deleteExcessSubscriptions([]string{"cckv://bob/home"})
+
+	if !purger.purged("cckv://alice/home", 1) {
+		t.Fatalf("expected dropped prefix to be purged, calls: %+v", purger.calls)
+	}
+	if purger.purged("cckv://bob/home", 1) {
+		t.Fatalf("still-demanded prefix must not be purged, calls: %+v", purger.calls)
+	}
+}
+
+// Losing leadership closes every subscription; all their prefixes must be
+// purged since the cache stops being maintained.
+func TestPurgeOnCloseAll(t *testing.T) {
+	s := newTestSubscriber(&fakeSubClient{})
+	purger := &recordingPurger{}
+	s.SetCachePurger(purger)
+
+	s.Subscriptions["a.example"] = &SubState{Prefixes: []string{"cckv://alice/home"}}
+	s.Subscriptions["b.example"] = &SubState{Prefixes: []string{"cckv://bob/home"}}
+
+	s.closeAllSubscriptions()
+
+	if !purger.purged("cckv://alice/home", 1) || !purger.purged("cckv://bob/home", 1) {
+		t.Fatalf("expected all prefixes purged on close-all, calls: %+v", purger.calls)
+	}
+}
+
+// Establishing a subscription must purge the (possibly gapped) latest chunks
+// (depth 2), and only prefixes with an established connection count as open.
+func TestPurgeOnOpenAndOpenPrefixes(t *testing.T) {
+	ws := newWSTestServer(t)
+	fake := &fakeSubClient{ws: ws}
+	s := newTestSubscriber(fake)
+	purger := &recordingPurger{}
+	s.SetCachePurger(purger)
+
+	demand := &dynamicDemand{}
+	demand.set([]string{"cckv://alice/home"})
+	s.RegisterClient(demand)
+
+	if got := s.OpenPrefixes(); len(got) != 0 {
+		t.Fatalf("expected no open prefixes before connecting, got %v", got)
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	s.Start(ctx)
+
+	waitFor(t, func() bool { return purger.purged("cckv://alice/home", 2) })
+	waitFor(t, func() bool {
+		open := s.OpenPrefixes()
+		return len(open) == 1 && open[0] == "cckv://alice/home"
+	})
 }
 
 // A subscription whose demand disappears while its dial is still in flight

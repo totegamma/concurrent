@@ -30,6 +30,15 @@ type SubscriberClient interface {
 	Realtime(ctx context.Context, fqdn string) (*websocket.Conn, error)
 }
 
+// CachePurger drops caches that are only valid while an upstream subscription
+// is open. The subscriber invokes it on both subscription edges: on close
+// (depth 1) because the cache stops being maintained, and on open (depth 2,
+// covering a gap that started in the previous chunk period) because whatever
+// was cached before or during the unsubscribed gap may be missing records.
+type CachePurger interface {
+	PurgeLatest(prefixes []string, depth int)
+}
+
 type SubState struct {
 	Prefixes   []string
 	Connection *websocket.Conn    // nil until the dial completes
@@ -56,6 +65,7 @@ type Subscriber struct {
 	Config        *domain.Config
 	Client        SubscriberClient
 	pubsub        PubSub
+	purger        CachePurger // optional, set by SetCachePurger
 }
 
 // listenUpdate is a pending "listen" request to send once s.mu is released.
@@ -64,6 +74,7 @@ type listenUpdate struct {
 	state    *SubState
 	conn     *websocket.Conn
 	prefixes []string
+	added    []string // prefixes newly opened by this update (purged depth 2 after the listen)
 }
 
 func NewSubscriber(
@@ -89,6 +100,51 @@ func (s *Subscriber) Start(ctx context.Context) {
 	s.runCtx = ctx
 	s.mu.Unlock()
 	go s.keeperRoutine(ctx)
+}
+
+// SetCachePurger hooks cache invalidation into the subscription open/close
+// edges. Wire it before Start.
+func (s *Subscriber) SetCachePurger(p CachePurger) {
+	s.mu.Lock()
+	s.purger = p
+	s.mu.Unlock()
+}
+
+// purge must be called without holding s.mu (the purger does network I/O).
+func (s *Subscriber) purge(prefixes []string, depth int) {
+	if len(prefixes) == 0 {
+		return
+	}
+	s.mu.Lock()
+	p := s.purger
+	s.mu.Unlock()
+	if p == nil {
+		return
+	}
+	p.PurgeLatest(prefixes, depth)
+}
+
+// OpenPrefixes reports the union of prefixes whose upstream connection is
+// currently established (as opposed to merely demanded or still dialing).
+func (s *Subscriber) OpenPrefixes() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	set := make(map[string]bool)
+	for _, state := range s.Subscriptions {
+		if state.Connection == nil {
+			continue
+		}
+		for _, prefix := range state.Prefixes {
+			set[prefix] = true
+		}
+	}
+
+	prefixes := make([]string, 0, len(set))
+	for prefix := range set {
+		prefixes = append(prefixes, prefix)
+	}
+	return prefixes
 }
 
 func (s *Subscriber) RegisterClient(client SubscribeClient) string {
@@ -177,8 +233,8 @@ func (s *Subscriber) repairBrokenSubscriptions() {
 }
 
 func (s *Subscriber) closeAllSubscriptions() {
+	var dropped []string
 	s.mu.Lock()
-	defer s.mu.Unlock()
 
 	// runCtx is deliberately left untouched: a new term's Start may already
 	// have replaced it. In-flight dials self-clean via the identity check in
@@ -190,8 +246,12 @@ func (s *Subscriber) closeAllSubscriptions() {
 		if state.Connection != nil {
 			state.Connection.Close()
 		}
+		dropped = append(dropped, state.Prefixes...)
 		delete(s.Subscriptions, domain)
 	}
+	s.mu.Unlock()
+
+	s.purge(dropped, 1)
 
 	slog.Info(
 		"all remote subscriptions closed",
@@ -265,11 +325,11 @@ func (s *Subscriber) ensureHosts(prefixesByHost map[string][]string) {
 			continue
 		}
 
-		changed := false
+		var added []string
 		for _, prefix := range prefixes {
 			if !slices.Contains(state.Prefixes, prefix) {
 				state.Prefixes = append(state.Prefixes, prefix)
-				changed = true
+				added = append(added, prefix)
 			}
 		}
 
@@ -283,7 +343,7 @@ func (s *Subscriber) ensureHosts(prefixesByHost map[string][]string) {
 			go s.dialAndRun(runCtx, host, state)
 			continue
 		}
-		if changed {
+		if len(added) > 0 {
 			slog.Debug(
 				fmt.Sprintf("subscription updated: %s > %v", host, state.Prefixes),
 				slog.String("module", "worker"),
@@ -294,6 +354,7 @@ func (s *Subscriber) ensureHosts(prefixesByHost map[string][]string) {
 				state:    state,
 				conn:     state.Connection,
 				prefixes: slices.Clone(state.Prefixes),
+				added:    added,
 			})
 		}
 	}
@@ -301,6 +362,9 @@ func (s *Subscriber) ensureHosts(prefixesByHost map[string][]string) {
 
 	for _, u := range updates {
 		s.sendListen(u)
+		// only after the listen is on the wire: purging earlier would let a
+		// racing read re-cache a pre-subscription body
+		s.purge(u.added, 2)
 	}
 }
 
@@ -344,6 +408,9 @@ func (s *Subscriber) dialAndRun(ctx context.Context, host string, state *SubStat
 	s.mu.Unlock()
 
 	s.sendListen(listenUpdate{host: host, state: state, conn: conn, prefixes: prefixes})
+	// every prefix of a fresh connection is newly opened; purge only after
+	// the listen is on the wire (see ensureHosts)
+	s.purge(prefixes, 2)
 }
 
 func (s *Subscriber) sendListen(u listenUpdate) {
@@ -376,11 +443,14 @@ func (s *Subscriber) sendListen(u listenUpdate) {
 // dropOwnSubscription removes the map entry only if it still belongs to this
 // connection, so a stale goroutine can never delete a fresh replacement.
 func (s *Subscriber) dropOwnSubscription(host string, state *SubState, conn *websocket.Conn) {
+	var dropped []string
 	s.mu.Lock()
 	if cur, ok := s.Subscriptions[host]; ok && cur == state && cur.Connection == conn {
+		dropped = slices.Clone(cur.Prefixes)
 		delete(s.Subscriptions, host)
 	}
 	s.mu.Unlock()
+	s.purge(dropped, 1)
 }
 
 func (s *Subscriber) runListener(ctx context.Context, cancel context.CancelFunc, host string, state *SubState, c *websocket.Conn, messageChan chan<- []byte) {
@@ -496,6 +566,7 @@ func (s *Subscriber) runRelayer(ctx context.Context, cancel context.CancelFunc, 
 }
 
 func (s *Subscriber) deleteExcessSubscriptions(currentSubs []string) {
+	var dropped []string
 	s.mu.Lock()
 
 	closeDomains := make(map[string]bool)
@@ -506,6 +577,8 @@ func (s *Subscriber) deleteExcessSubscriptions(currentSubs []string) {
 		for _, prefix := range state.Prefixes {
 			if slices.Contains(currentSubs, prefix) {
 				newPrefixes = append(newPrefixes, prefix)
+			} else {
+				dropped = append(dropped, prefix)
 			}
 		}
 
@@ -551,6 +624,8 @@ func (s *Subscriber) deleteExcessSubscriptions(currentSubs []string) {
 		})
 	}
 	s.mu.Unlock()
+
+	s.purge(dropped, 1)
 
 	for _, u := range updates {
 		s.sendListen(u)

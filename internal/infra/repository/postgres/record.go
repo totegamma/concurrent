@@ -590,10 +590,18 @@ func getOrCreateParentRecordKey(ctx context.Context, db *gorm.DB, uri string) (*
 				ParentID: pid,
 			}
 
-			err = db.WithContext(ctx).Create(&newRecordKey).Error
+			err = db.WithContext(ctx).Clauses(clause.OnConflict{
+				Columns:   []clause.Column{{Name: "uri"}},
+				DoNothing: true,
+			}).Create(&newRecordKey).Error
 			if err != nil {
 				span.RecordError(err)
 				return nil, err
+			}
+
+			// 別トランザクションが先に作成済み（競合）なら ID は 0 のまま → 再取得
+			if newRecordKey.ID == 0 {
+				return GetRecordKeyByURI(ctx, db, parentURI)
 			}
 
 			return &newRecordKey, nil

@@ -15,6 +15,7 @@ import (
 
 	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/internal/domain"
+	"github.com/concrnt/concrnt/schemas"
 )
 
 type NotificationUsecase interface {
@@ -223,8 +224,8 @@ func notificationDedupKey(event concrnt.Event, sub domain.NotificationSubscripti
 	return "notification_dedup:" + hex.EncodeToString(sum[:])
 }
 
-func eventMatchesSchemas(event concrnt.Event, schemas []string) bool {
-	if len(schemas) == 0 {
+func eventMatchesSchemas(event concrnt.Event, filter []string) bool {
+	if len(filter) == 0 {
 		return true
 	}
 
@@ -233,8 +234,34 @@ func eventMatchesSchemas(event concrnt.Event, schemas []string) bool {
 		if err := json.Unmarshal([]byte(sd.Document), &doc); err != nil {
 			continue
 		}
-		if slices.Contains(schemas, doc.Schema) {
+		if slices.Contains(filter, doc.Schema) {
 			return true
+		}
+
+		// A reference record's own schema is always reference.json, so a
+		// subscription filtering on the underlying content schema (reply,
+		// mention, ...) would never match. Resolve the effective schema the
+		// same way createRecord does and match on that too. See
+		// internal/usecase/record.go createRecord.
+		if doc.Schema == schemas.ReferenceURL {
+			var refDoc concrnt.Document[schemas.Reference]
+			if err := json.Unmarshal([]byte(sd.Document), &refDoc); err != nil {
+				continue
+			}
+
+			effective := ""
+			if refSD, ok := sd.References[refDoc.Value.Href]; ok {
+				var targetDoc concrnt.Document[any]
+				if err := json.Unmarshal([]byte(refSD.Document), &targetDoc); err == nil {
+					effective = targetDoc.Schema
+				}
+			} else if refDoc.Value.Schema != nil {
+				effective = *refDoc.Value.Schema
+			}
+
+			if effective != "" && slices.Contains(filter, effective) {
+				return true
+			}
 		}
 	}
 

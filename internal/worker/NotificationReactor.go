@@ -161,7 +161,7 @@ func (r *NotificationReactor) runWorker(ctx context.Context, sub domain.Notifica
 				}
 			}
 
-			payload, err := json.Marshal(event)
+			payload, err := json.Marshal(buildNotificationPayload(event))
 			if err != nil {
 				slog.Error("failed to encode notification payload", slog.String("error", err.Error()))
 				r.releaseClaim(ctx, claimedKey)
@@ -234,36 +234,80 @@ func eventMatchesSchemas(event concrnt.Event, filter []string) bool {
 		if err := json.Unmarshal([]byte(sd.Document), &doc); err != nil {
 			continue
 		}
+		// Match the document's own schema (e.g. a client subscribing to
+		// reference.json directly) as well as the resolved content schema.
 		if slices.Contains(filter, doc.Schema) {
 			return true
 		}
-
-		// A reference record's own schema is always reference.json, so a
-		// subscription filtering on the underlying content schema (reply,
-		// mention, ...) would never match. Resolve the effective schema the
-		// same way createRecord does and match on that too. See
-		// internal/usecase/record.go createRecord.
-		if doc.Schema == schemas.ReferenceURL {
-			var refDoc concrnt.Document[schemas.Reference]
-			if err := json.Unmarshal([]byte(sd.Document), &refDoc); err != nil {
-				continue
-			}
-
-			effective := ""
-			if refSD, ok := sd.References[refDoc.Value.Href]; ok {
-				var targetDoc concrnt.Document[any]
-				if err := json.Unmarshal([]byte(refSD.Document), &targetDoc); err == nil {
-					effective = targetDoc.Schema
-				}
-			} else if refDoc.Value.Schema != nil {
-				effective = *refDoc.Value.Schema
-			}
-
-			if effective != "" && slices.Contains(filter, effective) {
-				return true
-			}
+		if eff := effectiveSchema(sd); eff != doc.Schema && slices.Contains(filter, eff) {
+			return true
 		}
 	}
 
 	return false
+}
+
+// effectiveSchema returns the content schema a subscription filters on for a
+// signed document. A reference record's own schema is always reference.json, so
+// a subscription filtering on the underlying content schema (reply, mention,
+// ...) would never match; resolve the effective schema the same way createRecord
+// does. See internal/usecase/record.go createRecord. Returns "" if the document
+// cannot be parsed.
+func effectiveSchema(sd concrnt.SignedDocument) string {
+	var doc concrnt.Document[any]
+	if err := json.Unmarshal([]byte(sd.Document), &doc); err != nil {
+		return ""
+	}
+	if doc.Schema != schemas.ReferenceURL {
+		return doc.Schema
+	}
+
+	var refDoc concrnt.Document[schemas.Reference]
+	if err := json.Unmarshal([]byte(sd.Document), &refDoc); err != nil {
+		return doc.Schema
+	}
+	if refSD, ok := sd.References[refDoc.Value.Href]; ok {
+		var targetDoc concrnt.Document[any]
+		if err := json.Unmarshal([]byte(refSD.Document), &targetDoc); err == nil && targetDoc.Schema != "" {
+			return targetDoc.Schema
+		}
+	}
+	if refDoc.Value.Schema != nil {
+		return *refDoc.Value.Schema
+	}
+	return doc.Schema
+}
+
+// buildNotificationPayload reduces a realtime Event to the minimal structure a
+// device needs to render a push notification: the association document's URI
+// (which the client resolves via /api/v2/resolve for schema-specific fields,
+// the actor's profile and the target message body), plus its effective schema,
+// author and creation time as conveniences. The full Event embeds signed
+// documents and far exceeds the 4096-byte WebPush/FCM limit. On a malformed or
+// non-association event it degrades to just the URI/timestamp so the device
+// still shows a generic notification rather than dropping it.
+func buildNotificationPayload(event concrnt.Event) concrnt.NotificationPayload {
+	payload := concrnt.NotificationPayload{
+		URI:       event.URI,
+		CreatedAt: event.Timestamp,
+	}
+	if event.Association == nil {
+		return payload
+	}
+	payload.URI = *event.Association
+
+	sd, ok := event.References[*event.Association]
+	if !ok {
+		return payload
+	}
+	payload.Schema = effectiveSchema(sd)
+
+	var doc concrnt.Document[json.RawMessage]
+	if err := json.Unmarshal([]byte(sd.Document), &doc); err == nil {
+		payload.Author = doc.Author
+		if !doc.CreatedAt.IsZero() {
+			payload.CreatedAt = doc.CreatedAt
+		}
+	}
+	return payload
 }

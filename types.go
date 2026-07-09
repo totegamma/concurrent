@@ -119,6 +119,17 @@ type Event struct {
 	Timestamp   time.Time                 `json:"timestamp"`
 }
 
+// NotificationPayload is the minimal push-notification body delivered to devices
+// (through webpush-relay). It replaces sending the whole Event, whose embedded
+// SignedDocuments blow past the 4096-byte WebPush/FCM limit. The client resolves
+// URI (a ccfs association document) via /api/v2/resolve to render the rest.
+type NotificationPayload struct {
+	URI       string    `json:"uri"`
+	Schema    string    `json:"schema"`
+	Author    string    `json:"author"`
+	CreatedAt time.Time `json:"createdAt"`
+}
+
 type RealtimeRequest struct {
 	Type     string   `json:"type"`
 	Prefixes []string `json:"prefixes"`

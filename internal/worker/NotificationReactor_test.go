@@ -1,6 +1,7 @@
 package worker
 
 import (
+	"encoding/json"
 	"testing"
 	"time"
 
@@ -90,6 +91,71 @@ func TestEventMatchesSchemasResolvesReference(t *testing.T) {
 	// an empty filter matches everything
 	if !eventMatchesSchemas(bundled, nil) {
 		t.Fatal("an empty schema filter must match every event")
+	}
+}
+
+// The push payload must be the minimal notification struct (uri/schema/author/
+// createdAt), not the whole Event, so it stays well under the 4096-byte
+// WebPush/FCM limit. uri must be the association document, and schema/author
+// come from that document.
+func TestBuildNotificationPayloadIsMinimal(t *testing.T) {
+	const likeSchema = "https://schema.concrnt.world/a/like.json"
+	assoc := "ccfs://alice/like1"
+	createdAt := time.Unix(1751760000, 0).UTC()
+
+	event := concrnt.Event{
+		Type:        "associated",
+		Source:      "cckv://carol/home",
+		URI:         "ccfs://carol/post1", // the target post
+		Association: &assoc,
+		Timestamp:   time.Unix(1751760005, 0).UTC(),
+		References: map[string]concrnt.SignedDocument{
+			assoc: {
+				Document: `{"kind":"association","schema":"` + likeSchema + `","author":"con1alice","createdAt":"` + createdAt.Format(time.RFC3339) + `","associate":"ccfs://carol/post1"}`,
+			},
+		},
+	}
+
+	payload := buildNotificationPayload(event)
+
+	if payload.URI != assoc {
+		t.Fatalf("uri must be the association document, got %q", payload.URI)
+	}
+	if payload.Schema != likeSchema {
+		t.Fatalf("schema must be the association's schema, got %q", payload.Schema)
+	}
+	if payload.Author != "con1alice" {
+		t.Fatalf("author must come from the association document, got %q", payload.Author)
+	}
+	if !payload.CreatedAt.Equal(createdAt) {
+		t.Fatalf("createdAt must be the document's, got %v", payload.CreatedAt)
+	}
+
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("payload must marshal: %v", err)
+	}
+	if len(encoded) > 512 {
+		t.Fatalf("minimal payload should be tiny, got %d bytes", len(encoded))
+	}
+}
+
+// A malformed or non-association event must degrade gracefully to just the
+// URI/timestamp rather than being dropped.
+func TestBuildNotificationPayloadFallsBack(t *testing.T) {
+	ts := time.Unix(1751760000, 0).UTC()
+	event := concrnt.Event{Type: "created", URI: "ccfs://bob/post9", Timestamp: ts}
+
+	payload := buildNotificationPayload(event)
+
+	if payload.URI != "ccfs://bob/post9" {
+		t.Fatalf("uri must fall back to event.URI, got %q", payload.URI)
+	}
+	if payload.Schema != "" || payload.Author != "" {
+		t.Fatalf("schema/author must be empty without an association doc, got %q/%q", payload.Schema, payload.Author)
+	}
+	if !payload.CreatedAt.Equal(ts) {
+		t.Fatalf("createdAt must fall back to event.Timestamp, got %v", payload.CreatedAt)
 	}
 }
 

@@ -239,6 +239,14 @@ func main() {
 			VAPIDPublicKey:  conf.Integrations.VapidPublicKey,
 			VAPIDPrivateKey: conf.Integrations.VapidPrivateKey,
 			TTL:             30,
+			// webpush-go zero-pads every message up to RecordSize, so the wire
+			// body is always exactly RecordSize regardless of payload length.
+			// The default (4096) base64-encodes to ~5.5KB, which overflows the
+			// 4096-byte FCM/APNs data limit at webpush-relay and gets its
+			// encrypted payload dropped. 2048 keeps the base64 body (~2.7KB)
+			// within that limit while leaving ~1.9KB of plaintext room — ample
+			// for the minimal notification payload (see NotificationReactor).
+			RecordSize: 2048,
 		})
 	}
 

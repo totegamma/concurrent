@@ -135,9 +135,14 @@ func (s *PolicyService) resolvePolicyStack(ctx context.Context, stack []concrnt.
 		for _, parent := range *layer.VirtualParents {
 			var doc concrnt.Document[any]
 			// The virtual-parent policy record itself is not sensitive data
-			// used for anything but building the evaluation stack, so
-			// strict signature verification is unnecessary here.
-			err := s.client.GetRecord(ctx, parent, &client.Options{NoCache: true, SkipVerify: true}, &doc)
+			// used for anything but building the evaluation stack, so strict
+			// signature verification is unnecessary here. It is cached (10-min
+			// resource TTL): every commit distributed to a timeline evaluates
+			// this policy, so an uncached fetch here means one HTTP round trip
+			// per distribution — bulk imports would otherwise hammer it (and,
+			// via gateway remapping, the server itself). A timeline policy
+			// change taking up to the cache TTL to apply is acceptable.
+			err := s.client.GetRecord(ctx, parent, &client.Options{SkipVerify: true}, &doc)
 			if err != nil {
 				span.RecordError(err)
 				insertEntries([]concrnt.PolicyEntry{{Errored: true}})

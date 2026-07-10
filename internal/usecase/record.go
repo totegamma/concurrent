@@ -177,8 +177,6 @@ func GetReferrerFromReferences(sd concrnt.SignedDocument, requesterID string) *s
 			return nil
 		}
 		return &entity.Value.Domain
-	} else {
-		slog.Debug("no reference found for requester in commit references", slog.String("requester_cckv", requesterCCKV))
 	}
 	return nil
 }

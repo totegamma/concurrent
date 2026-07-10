@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/concrnt/concrnt"
+	"github.com/concrnt/concrnt/impl/interop"
 	"github.com/concrnt/concrnt/internal/domain"
 	"github.com/concrnt/concrnt/policy"
 	"github.com/concrnt/concrnt/schemas"
@@ -158,6 +159,7 @@ func TestCommitUnresolvableRequesterReturnsError(t *testing.T) {
 		nil,
 		nil,
 		nil,
+		nil,
 	)
 
 	for _, kind := range []string{"record", "association"} {
@@ -198,7 +200,8 @@ func TestCommitEntityAcceptIfNewer(t *testing.T) {
 		}, privKeyHex)
 	}
 
-	storedAt := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+	// Recent so the always-on backdate window doesn't reject these commits.
+	storedAt := time.Now().Add(-time.Hour).UTC().Truncate(time.Second)
 	stored := newEntityDoc(storedAt)
 
 	cases := []struct {
@@ -222,6 +225,7 @@ func TestCommitEntityAcceptIfNewer(t *testing.T) {
 					SignedDocument: &stored,
 				}},
 				&domain.Config{FQDN: "example.com"},
+				nil,
 				nil,
 				nil,
 				nil,
@@ -254,13 +258,15 @@ func TestCommitDocumentReferenceInlineTargetOffline(t *testing.T) {
 		t.Fatalf("derive ccid: %v", err)
 	}
 
+	// Recent so the always-on backdate window doesn't reject these commits.
+	createdAt := time.Now().Add(-time.Minute).UTC().Truncate(time.Second)
 	targetURI := concrnt.CCURI{Scheme: "cckv", Owner: ccid, Key: "posts/1"}.String()
 	targetSD := signTestDocument(t, concrnt.Document[any]{
 		Kind:      "record",
 		Key:       targetURI,
 		Author:    ccid,
 		Schema:    "https://example.com/post.json",
-		CreatedAt: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC),
+		CreatedAt: createdAt,
 	}, privKeyHex)
 
 	refKey := concrnt.CCURI{Scheme: "cckv", Owner: ccid, Key: "timelines/home/entry1"}.String()
@@ -270,7 +276,7 @@ func TestCommitDocumentReferenceInlineTargetOffline(t *testing.T) {
 		Value:     schemas.Reference{Href: targetURI},
 		Author:    ccid,
 		Schema:    schemas.ReferenceURL,
-		CreatedAt: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC),
+		CreatedAt: createdAt,
 	}
 	refDocBytes, err := json.Marshal(refDoc)
 	if err != nil {
@@ -291,6 +297,7 @@ func TestCommitDocumentReferenceInlineTargetOffline(t *testing.T) {
 		nopSignalService{},
 		nopPolicyService{},
 		nil,
+		nil,
 	)
 
 	if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
@@ -298,5 +305,144 @@ func TestCommitDocumentReferenceInlineTargetOffline(t *testing.T) {
 	}
 	if !repo.createRecordCalled {
 		t.Fatal("CreateRecord was not called")
+	}
+}
+
+// stubKVS records Set calls and reports every key as existing when present is set.
+type stubKVS struct {
+	present bool
+	setKeys []string
+}
+
+func (s *stubKVS) Set(ctx context.Context, key string, value string, ttl time.Duration) error {
+	s.setKeys = append(s.setKeys, key)
+	return nil
+}
+func (s *stubKVS) Exists(ctx context.Context, key string) (bool, error) {
+	return s.present, nil
+}
+
+// signedRecord builds a signed record commit by the given identity at createdAt.
+func signedRecord(t *testing.T, ccid, privKeyHex string, createdAt time.Time) concrnt.SignedDocument {
+	t.Helper()
+	return signTestDocument(t, concrnt.Document[any]{
+		Kind:      "record",
+		Key:       concrnt.CCURI{Scheme: "cckv", Owner: ccid, Key: "posts/1"}.String(),
+		Author:    ccid,
+		Schema:    "https://example.com/post.json",
+		CreatedAt: createdAt,
+	}, privKeyHex)
+}
+
+// newRecordCommitUsecase wires a usecase whose author entity is local and
+// resolvable, so a plain record commit reaches the repository.
+func newRecordCommitUsecase(ccid string, cfg *domain.Config, repo RecordRepository, store KVS) *RecordUsecase {
+	return NewRecordUsecase(
+		repo,
+		fixedResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: cfg.FQDN}},
+		cfg,
+		nil,
+		nopSignalService{},
+		nopPolicyService{},
+		nil,
+		store,
+	)
+}
+
+func newIdentity(t *testing.T) (ccid, privKeyHex string) {
+	t.Helper()
+	priv := make([]byte, 32)
+	if _, err := rand.Read(priv); err != nil {
+		t.Fatalf("generate private key: %v", err)
+	}
+	privKeyHex = hex.EncodeToString(priv)
+	ccid, err := concrnt.PrivKeyToAddr(privKeyHex, "con")
+	if err != nil {
+		t.Fatalf("derive ccid: %v", err)
+	}
+	return ccid, privKeyHex
+}
+
+// A document stamped too far in the future is rejected for everyone.
+func TestCommitRejectsFarFutureCreatedAt(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+	repo := &recordingRecordRepo{}
+	uc := newRecordCommitUsecase(ccid, cfg, repo, nil)
+
+	sd := signedRecord(t, ccid, priv, time.Now().Add(24*time.Hour))
+	_, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute)
+	if err == nil || !strings.Contains(err.Error(), "future") {
+		t.Fatalf("expected future-createdAt rejection, got %v", err)
+	}
+	if repo.createRecordCalled {
+		t.Fatal("CreateRecord should not be called for a far-future document")
+	}
+}
+
+// Documents older than the backdate window are rejected, while documents
+// within it commit normally.
+func TestCommitBackdateWindow(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+
+	t.Run("too old", func(t *testing.T) {
+		repo := &recordingRecordRepo{}
+		uc := newRecordCommitUsecase(ccid, cfg, repo, nil)
+		sd := signedRecord(t, ccid, priv, time.Now().Add(-domain.MaxBackdate-time.Hour))
+		_, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute)
+		if err == nil || !strings.Contains(err.Error(), "backdate") {
+			t.Fatalf("expected backdate rejection, got %v", err)
+		}
+		if repo.createRecordCalled {
+			t.Fatal("CreateRecord should not be called for a too-old document")
+		}
+	})
+
+	t.Run("within window", func(t *testing.T) {
+		repo := &recordingRecordRepo{}
+		uc := newRecordCommitUsecase(ccid, cfg, repo, nil)
+		sd := signedRecord(t, ccid, priv, time.Now().Add(-domain.MaxBackdate+time.Hour))
+		if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+			t.Fatalf("Commit returned error: %v", err)
+		}
+		if !repo.createRecordCalled {
+			t.Fatal("CreateRecord was not called for an in-window document")
+		}
+	})
+}
+
+// A commit whose key is tombstoned is rejected (replay of a deleted key).
+func TestCommitRejectsTombstonedKey(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+	repo := &recordingRecordRepo{}
+	uc := newRecordCommitUsecase(ccid, cfg, repo, &stubKVS{present: true})
+
+	sd := signedRecord(t, ccid, priv, time.Now())
+	_, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute)
+	if err == nil || !strings.Contains(err.Error(), "deleted") {
+		t.Fatalf("expected tombstone rejection, got %v", err)
+	}
+	if repo.createRecordCalled {
+		t.Fatal("CreateRecord should not be called for a tombstoned key")
+	}
+}
+
+// System service accounts bypass the replay guards entirely: an old,
+// tombstoned commit still applies (this is the migration/import path).
+func TestCommitSystemAccountBypassesReplayGuards(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+	repo := &recordingRecordRepo{}
+	uc := newRecordCommitUsecase(ccid, cfg, repo, &stubKVS{present: true})
+
+	ctx := context.WithValue(context.Background(), interop.ServiceAccountTypeCtxKey, "system")
+	sd := signedRecord(t, ccid, priv, time.Now().Add(-100*24*time.Hour))
+	if _, err := uc.Commit(ctx, "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+		t.Fatalf("system commit returned error: %v", err)
+	}
+	if !repo.createRecordCalled {
+		t.Fatal("CreateRecord was not called for a system-account commit")
 	}
 }

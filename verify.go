@@ -18,20 +18,14 @@ type DocumentResolver interface {
 	ResolveSignedDocument(ctx context.Context, uri string) (SignedDocument, error)
 }
 
-// VerifyOpts controls SignedDocument.Verify behavior.
-type VerifyOpts struct {
-	// AllowNoneProof allows proof.type == "none" to verify successfully.
-	// Callers are responsible for any authorization checks (e.g. restricting
-	// none proofs to trusted system service accounts) before setting this.
-	AllowNoneProof bool
-}
-
 // ErrSignatureVerificationFailed indicates a signed document's proof did not
 // verify.
 var ErrSignatureVerificationFailed = errors.New("signature verification failed")
 
-// ErrNoneProofNotAllowed indicates a none-proof document was verified without
-// VerifyOpts.AllowNoneProof.
+// ErrNoneProofNotAllowed indicates a none-proof (unsigned) document reached
+// Verify. None proofs carry no authorship and are only accepted by trusted
+// system service accounts, which bypass Verify entirely rather than passing an
+// option here.
 var ErrNoneProofNotAllowed = errors.New("none proof type is not allowed")
 
 // ErrUnsupportedProofType indicates a proof type Verify doesn't know how to
@@ -47,8 +41,10 @@ const maxVerifyDepth = 4
 // the referenced document is looked up via the inlined References first
 // (falling back to resolver) and recursively verified; for subkey proofs the
 // enact document is always fetched via the resolver, never from References.
-func (sd *SignedDocument) Verify(ctx context.Context, resolver DocumentResolver, opts *VerifyOpts) error {
-	return sd.verify(ctx, resolver, opts, maxVerifyDepth)
+// None (unsigned) proofs never verify — trusted system service accounts skip
+// Verify entirely instead.
+func (sd *SignedDocument) Verify(ctx context.Context, resolver DocumentResolver) error {
+	return sd.verify(ctx, resolver, maxVerifyDepth)
 }
 
 func (sd *SignedDocument) resolve(ctx context.Context, resolver DocumentResolver, uri string) (SignedDocument, error) {
@@ -61,7 +57,7 @@ func (sd *SignedDocument) resolve(ctx context.Context, resolver DocumentResolver
 	return resolver.ResolveSignedDocument(ctx, uri)
 }
 
-func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver, opts *VerifyOpts, depth int) error {
+func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver, depth int) error {
 	if depth <= 0 {
 		return errors.New("proof chain is too deep")
 	}
@@ -107,7 +103,7 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 			return errors.Join(fmt.Errorf("failed to fetch subkey document %s", *sd.Proof.Key), err)
 		}
 
-		err = subKeySD.verify(ctx, resolver, opts, depth-1)
+		err = subKeySD.verify(ctx, resolver, depth-1)
 		if err != nil {
 			return errors.Join(errors.New("subkey document failed verification"), err)
 		}
@@ -164,7 +160,7 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 			return errors.Join(fmt.Errorf("failed to fetch referenced document %s", *sd.Proof.Href), err)
 		}
 
-		err = targetSD.verify(ctx, resolver, opts, depth-1)
+		err = targetSD.verify(ctx, resolver, depth-1)
 		if err != nil {
 			return errors.Join(errors.New("referenced document failed verification"), err)
 		}
@@ -181,10 +177,7 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 		return nil
 
 	case ProofTypeNone:
-		if opts == nil || !opts.AllowNoneProof {
-			return ErrNoneProofNotAllowed
-		}
-		return nil
+		return ErrNoneProofNotAllowed
 
 	default:
 		return fmt.Errorf("%w: %s", ErrUnsupportedProofType, sd.Proof.Type)

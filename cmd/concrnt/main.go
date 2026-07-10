@@ -27,6 +27,7 @@ import (
 	"github.com/concrnt/concrnt/internal/infra/database"
 	"github.com/concrnt/concrnt/internal/infra/gateway"
 	"github.com/concrnt/concrnt/internal/infra/jobqueue"
+	"github.com/concrnt/concrnt/internal/infra/kvs"
 	"github.com/concrnt/concrnt/internal/infra/pubsub"
 	"github.com/concrnt/concrnt/internal/infra/repository/postgres"
 	"github.com/concrnt/concrnt/internal/present/rest"
@@ -185,6 +186,7 @@ func main() {
 	moduleManager := service.NewModuleManager(rest.Endpoints, conf.Services)
 
 	redisPubsub := pubsub.NewRedisPubsub(redis)
+	redisKVS := kvs.NewRedis(redis)
 	deliveryQueue := jobqueue.NewRedisDeliveryQueue(redis)
 	policy := service.NewPolicyService(
 		GetGlobalPolicy(),
@@ -199,7 +201,7 @@ func main() {
 
 	residenceRepo := postgres.NewResidenceRepository(db, cl, domainConfig)
 	recordRepo := postgres.NewRecordRepository(db)
-	recordUC := usecase.NewRecordUsecase(recordRepo, residenceRepo, &domainConfig, cl, redisPubsub, policy, deliveryQueue)
+	recordUC := usecase.NewRecordUsecase(recordRepo, residenceRepo, &domainConfig, cl, redisPubsub, policy, deliveryQueue, redisKVS)
 	residenceUC := usecase.NewResidenceUsecase(residenceRepo, recordUC, &domainConfig)
 
 	chunklineRepo := postgres.NewChunklineRepository(db)

@@ -80,7 +80,7 @@ func TestVerifyEcrecoverValid(t *testing.T) {
 		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 	}, priv)
 
-	if err := sd.Verify(context.Background(), nil, nil); err != nil {
+	if err := sd.Verify(context.Background(), nil); err != nil {
 		t.Fatalf("Verify returned error: %v", err)
 	}
 }
@@ -101,7 +101,7 @@ func TestVerifyEcrecoverTamperedDocument(t *testing.T) {
 	}
 	sd.Document = tampered
 
-	err := sd.Verify(context.Background(), nil, nil)
+	err := sd.Verify(context.Background(), nil)
 	if err == nil {
 		t.Fatal("Verify returned nil error for tampered document")
 	}
@@ -161,7 +161,7 @@ func TestVerifySubkeyValid(t *testing.T) {
 	sd := newSubkeyProof(t, ownerCCID, subCCID, subPriv, subkeyURI, subkeySD)
 	resolver := mapResolver{subkeyURI: subkeySD}
 
-	if err := sd.Verify(context.Background(), resolver, nil); err != nil {
+	if err := sd.Verify(context.Background(), resolver); err != nil {
 		t.Fatalf("Verify returned error: %v", err)
 	}
 }
@@ -186,7 +186,7 @@ func TestVerifySubkeyRejectsAuthorMismatch(t *testing.T) {
 	sd := newSubkeyProof(t, ownerCCID, subCCID, subPriv, subkeyURI, subkeySD)
 	resolver := mapResolver{subkeyURI: subkeySD}
 
-	err := sd.Verify(context.Background(), resolver, nil)
+	err := sd.Verify(context.Background(), resolver)
 	if err == nil {
 		t.Fatal("Verify returned nil error for subkey author mismatch")
 	}
@@ -222,7 +222,7 @@ func TestVerifyDocumentReferenceValid(t *testing.T) {
 	}
 
 	resolver := mapResolver{targetURI: targetSD}
-	if err := sd.Verify(context.Background(), resolver, nil); err != nil {
+	if err := sd.Verify(context.Background(), resolver); err != nil {
 		t.Fatalf("Verify returned error: %v", err)
 	}
 }
@@ -258,7 +258,7 @@ func TestVerifyDocumentReferenceRejectsAuthorMismatch(t *testing.T) {
 	}
 
 	resolver := mapResolver{targetURI: targetSD}
-	err = sd.Verify(context.Background(), resolver, nil)
+	err = sd.Verify(context.Background(), resolver)
 	if err == nil {
 		t.Fatal("Verify returned nil error for document-reference author mismatch")
 	}
@@ -295,7 +295,7 @@ func TestVerifyPrefersInlineReferencesOverResolver(t *testing.T) {
 	}
 
 	// No resolver passed at all: inline References must be enough.
-	if err := sd.Verify(context.Background(), nil, nil); err != nil {
+	if err := sd.Verify(context.Background(), nil); err != nil {
 		t.Fatalf("Verify returned error: %v", err)
 	}
 }
@@ -320,17 +320,17 @@ func TestVerifySubkeyIgnoresInlineReference(t *testing.T) {
 	sd.References = map[string]SignedDocument{subkeyURI: subkeySD}
 
 	// inline copy present but no resolver: must fail
-	if err := sd.Verify(context.Background(), nil, nil); err == nil {
+	if err := sd.Verify(context.Background(), nil); err == nil {
 		t.Fatal("Verify returned nil error for subkey proof with no resolver")
 	}
 
 	// resolver that doesn't know the enact doc (revoked/deleted): must fail
-	if err := sd.Verify(context.Background(), mapResolver{}, nil); err == nil {
+	if err := sd.Verify(context.Background(), mapResolver{}); err == nil {
 		t.Fatal("Verify returned nil error for subkey proof with an empty resolver")
 	}
 
 	// resolver serving the authoritative enact doc: must succeed
-	if err := sd.Verify(context.Background(), mapResolver{subkeyURI: subkeySD}, nil); err != nil {
+	if err := sd.Verify(context.Background(), mapResolver{subkeyURI: subkeySD}); err != nil {
 		t.Fatalf("Verify returned error for subkey proof with a working resolver: %v", err)
 	}
 }
@@ -368,16 +368,16 @@ func TestVerifyDocumentReferenceRejectsTamperedInlineCopy(t *testing.T) {
 		References: map[string]SignedDocument{targetURI: targetSD},
 	}
 
-	if err := sd.Verify(context.Background(), nil, nil); err == nil {
+	if err := sd.Verify(context.Background(), nil); err == nil {
 		t.Fatal("Verify returned nil error for a tampered inline reference")
 	}
 }
 
-// A none-proof inline target inherits AllowNoneProof from the opts: rejected
-// for ordinary callers, accepted for system-privileged ones. This is the
-// migration/import path — distribution records reference none-proof base
-// records inlined in the dump.
-func TestVerifyDocumentReferenceInlineNoneProofTarget(t *testing.T) {
+// A none-proof inline target is always rejected by Verify — none proofs carry
+// no authorship. The migration/import path (where distribution records
+// reference none-proof base records) relies on system service accounts
+// skipping Verify entirely at the commit layer, not on Verify accepting none.
+func TestVerifyDocumentReferenceInlineNoneProofTargetRejected(t *testing.T) {
 	ownerCCID, _ := newTestIdentity(t)
 
 	targetURI := "cckv://" + ownerCCID + "/target"
@@ -415,15 +415,12 @@ func TestVerifyDocumentReferenceInlineNoneProofTarget(t *testing.T) {
 		References: map[string]SignedDocument{targetURI: targetSD},
 	}
 
-	if err := sd.Verify(context.Background(), nil, nil); err == nil {
-		t.Fatal("Verify returned nil error for a none-proof inline target without AllowNoneProof")
-	}
-	if err := sd.Verify(context.Background(), nil, &VerifyOpts{AllowNoneProof: true}); err != nil {
-		t.Fatalf("Verify returned error for a none-proof inline target with AllowNoneProof: %v", err)
+	if err := sd.Verify(context.Background(), nil); err == nil {
+		t.Fatal("Verify returned nil error for a none-proof inline target")
 	}
 }
 
-func TestVerifyNoneProofRejectedByDefault(t *testing.T) {
+func TestVerifyNoneProofAlwaysRejected(t *testing.T) {
 	ccid, _ := newTestIdentity(t)
 	doc := Document[testRecordValue]{
 		Kind:      "record",
@@ -441,34 +438,8 @@ func TestVerifyNoneProofRejectedByDefault(t *testing.T) {
 		Proof:    Proof{Type: ProofTypeNone},
 	}
 
-	if err := sd.Verify(context.Background(), nil, nil); err == nil {
-		t.Fatal("Verify returned nil error for none proof without AllowNoneProof")
-	}
-	if err := sd.Verify(context.Background(), nil, &VerifyOpts{AllowNoneProof: false}); err == nil {
-		t.Fatal("Verify returned nil error for none proof with AllowNoneProof=false")
-	}
-}
-
-func TestVerifyNoneProofAllowedWhenOptedIn(t *testing.T) {
-	ccid, _ := newTestIdentity(t)
-	doc := Document[testRecordValue]{
-		Kind:      "record",
-		Key:       "cckv://" + ccid + "/example",
-		Value:     testRecordValue{Foo: "bar"},
-		Author:    ccid,
-		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
-	}
-	docBytes, err := json.Marshal(doc)
-	if err != nil {
-		t.Fatalf("marshal document: %v", err)
-	}
-	sd := SignedDocument{
-		Document: string(docBytes),
-		Proof:    Proof{Type: ProofTypeNone},
-	}
-
-	if err := sd.Verify(context.Background(), nil, &VerifyOpts{AllowNoneProof: true}); err != nil {
-		t.Fatalf("Verify returned error for allowed none proof: %v", err)
+	if err := sd.Verify(context.Background(), nil); !errors.Is(err, ErrNoneProofNotAllowed) {
+		t.Fatalf("Verify returned %v for none proof, want ErrNoneProofNotAllowed", err)
 	}
 }
 
@@ -496,7 +467,7 @@ func TestVerifyRejectsProofChainTooDeep(t *testing.T) {
 	}
 	resolver := mapResolver{uri: loopSD}
 
-	err = loopSD.Verify(context.Background(), resolver, nil)
+	err = loopSD.Verify(context.Background(), resolver)
 	if err == nil {
 		t.Fatal("Verify returned nil error for a self-referencing proof chain")
 	}
@@ -521,7 +492,7 @@ func TestVerifyUnsupportedProofType(t *testing.T) {
 		Proof:    Proof{Type: "something-unknown"},
 	}
 
-	if err := sd.Verify(context.Background(), nil, nil); err == nil {
+	if err := sd.Verify(context.Background(), nil); err == nil {
 		t.Fatal("Verify returned nil error for unsupported proof type")
 	}
 }

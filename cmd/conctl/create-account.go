@@ -67,7 +67,7 @@ var createAccountCmd = &cobra.Command{
 
 		residenceRepo := postgres.NewResidenceRepository(op.DB, op.Client, op.GlobalConfig)
 		recordRepo := postgres.NewRecordRepository(op.DB)
-		recordUC := usecase.NewRecordUsecase(recordRepo, residenceRepo, &op.GlobalConfig, op.Client, nopSignal{}, nopPolicy{}, nopDelivery{})
+		recordUC := usecase.NewRecordUsecase(recordRepo, residenceRepo, &op.GlobalConfig, op.Client, nopSignal{}, nopPolicy{}, nopDelivery{}, nil)
 		residenceUC := usecase.NewResidenceUsecase(residenceRepo, recordUC, &op.GlobalConfig)
 
 		if err := residenceUC.Register(cmd.Context(), "", req); err != nil {

@@ -570,7 +570,7 @@ func (c *Client) GetRecord(ctx context.Context, uri string, opts *Options, resul
 			}
 		}
 		if !verified {
-			err := sd.Verify(ctx, &optionsResolver{c: c, opts: opts}, nil)
+			err := sd.Verify(ctx, &optionsResolver{c: c, opts: opts})
 			if err != nil {
 				err := errors.Join(fmt.Errorf("signature verification failed for resource %s", uri), err)
 				span.RecordError(err)

@@ -78,6 +78,14 @@ type PolicyService interface {
 	Eval(ctx context.Context, req policy.RequestContext, stack []concrnt.Policy, action string, key string) error
 }
 
+// KVS is a general-purpose key-value store (set-with-TTL, existence check),
+// used here to hold deletion tombstones. Implemented by
+// internal/infra/kvs.Redis; nil in offline tooling/tests.
+type KVS interface {
+	Set(ctx context.Context, key string, value string, ttl time.Duration) error
+	Exists(ctx context.Context, key string) (bool, error)
+}
+
 type commitApplyResult struct {
 	result        *concrnt.SignedDocument
 	owners        []string
@@ -92,6 +100,7 @@ type RecordUsecase struct {
 	signal    SignalService
 	policy    PolicyService
 	delivery  DeliveryQueue
+	kvs       KVS
 	cache     *cache.Cache
 }
 
@@ -103,6 +112,7 @@ func NewRecordUsecase(
 	signal SignalService,
 	policy PolicyService,
 	delivery DeliveryQueue,
+	kvs KVS,
 ) *RecordUsecase {
 	return &RecordUsecase{
 		repo:      repo,
@@ -112,8 +122,39 @@ func NewRecordUsecase(
 		signal:    signal,
 		policy:    policy,
 		delivery:  delivery,
+		kvs:       kvs,
 		cache:     cache.New(10*time.Minute, 15*time.Minute),
 	}
+}
+
+// tombstoneKey namespaces a deleted-resource marker in the KVS.
+func tombstoneKey(uri string) string { return "tombstone:" + uri }
+
+// markKeyDeleted tombstones a deleted resource URI for the backdate window, so
+// a captured copy of the deleted document can't be replayed back in.
+func (uc *RecordUsecase) markKeyDeleted(ctx context.Context, uri string) error {
+	if uc.kvs == nil {
+		return nil
+	}
+	return uc.kvs.Set(ctx, tombstoneKey(uri), "1", domain.MaxBackdate)
+}
+
+// isKeyDeleted reports whether a resource URI is currently tombstoned.
+func (uc *RecordUsecase) isKeyDeleted(ctx context.Context, uri string) (bool, error) {
+	if uc.kvs == nil {
+		return false, nil
+	}
+	return uc.kvs.Exists(ctx, tombstoneKey(uri))
+}
+
+// documentIDFor derives a document's content+time CDID, the id it is stored
+// under. It is time-prefixed and content-hashed, so string comparison orders
+// documents by createdAt with a deterministic content tiebreaker.
+func documentIDFor(document string, createdAt time.Time) string {
+	hash := concrnt.GetHash([]byte(document))
+	var hash10 [10]byte
+	copy(hash10[:], hash[:10])
+	return cdid.New(hash10, createdAt).String()
 }
 
 // resolver returns uc.client as a DocumentResolver, or a nil interface when
@@ -153,30 +194,63 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		return nil, err
 	}
 
-	// none proofs are only trusted from system service accounts; that's an
-	// authorization decision, not proof authenticity, so it's computed here
-	// rather than inside SignedDocument.Verify. It's irrelevant (and thus
-	// harmless) for any other proof type.
 	serviceAccountType, _ := ctx.Value(interop.ServiceAccountTypeCtxKey).(string)
-	allowNone := serviceAccountType == "system"
+	isServiceAccount := serviceAccountType == "system"
 
-	// document-reference proofs verify against the recursively-verified
-	// inline copy in References (the author vouching for their own document),
-	// so commits stay valid even when the referenced document's origin server
-	// is unreachable — e.g. migration/import before that server has migrated.
-	// Subkey enact documents are still always fetched from their
-	// authoritative server inside Verify, so revoked subkeys can't be
-	// replayed via inline copies.
-	if err := sd.Verify(ctx, uc.resolver(), &concrnt.VerifyOpts{AllowNoneProof: allowNone}); err != nil {
+	// A signed createdAt is otherwise attacker-controlled, and a far-future
+	// stamp would let one document dominate every later one (e.g. entity
+	// accept-if-newer freezes on the newest createdAt). Reject too-far-future
+	// documents globally, with a generous clock-skew tolerance.
+	if doc.CreatedAt.After(time.Now().Add(domain.MaxFutureSkew)) {
+		err := domain.ValidationError{Field: "createdAt", Message: "createdAt is too far in the future"}
 		span.RecordError(err)
-		if errors.Is(err, concrnt.ErrNoneProofNotAllowed) {
-			slog.Error("Unauthorized commit with none proof", "error", err.Error())
-			return nil, errors.Join(domain.ValidationError{Field: "proof.type", Message: "none proof type is only allowed for system service accounts"}, err)
+		return nil, err
+	}
+
+	// System service accounts (migration/import via conctl) carry the server's
+	// own key and legitimately replay unsigned (none-proof) historical
+	// documents with backdated timestamps, so they skip signature verification
+	// and the replay guards below. Every other committer is verified:
+	//   - document-reference proofs verify against the recursively-verified
+	//     inline copy in References (the author vouching for their own
+	//     document), so commits stay valid even when the referenced document's
+	//     origin server is unreachable (e.g. mid-migration imports);
+	//   - subkey enact documents are always fetched from their authoritative
+	//     server inside Verify, so revoked subkeys can't be replayed inline.
+	if !isServiceAccount {
+		if err := sd.Verify(ctx, uc.resolver()); err != nil {
+			span.RecordError(err)
+			if errors.Is(err, concrnt.ErrNoneProofNotAllowed) {
+				slog.Error("Unauthorized commit with none proof", "error", err.Error())
+				return nil, errors.Join(domain.ValidationError{Field: "proof.type", Message: "none proof type is only allowed for system service accounts"}, err)
+			}
+			if errors.Is(err, concrnt.ErrUnsupportedProofType) {
+				return nil, errors.Join(domain.ValidationError{Field: "proof.type", Message: "unsupported proof type: " + sd.Proof.Type}, err)
+			}
+			return nil, errors.Join(domain.ValidationError{Field: "proof", Message: "signature verification failed"}, err)
 		}
-		if errors.Is(err, concrnt.ErrUnsupportedProofType) {
-			return nil, errors.Join(domain.ValidationError{Field: "proof.type", Message: "unsupported proof type: " + sd.Proof.Type}, err)
+
+		// Replay guards: reject documents older than the backdate window, and
+		// reject re-committing a key that was explicitly deleted within it.
+		// Together they make a deletion permanent against replay — a captured
+		// document is either still tombstoned or already too old to accept.
+		if doc.CreatedAt.Before(time.Now().Add(-domain.MaxBackdate)) {
+			err := domain.ValidationError{Field: "createdAt", Message: "createdAt is older than the allowed backdate window"}
+			span.RecordError(err)
+			return nil, err
 		}
-		return nil, errors.Join(domain.ValidationError{Field: "proof", Message: "signature verification failed"}, err)
+		if doc.Key != "" {
+			deleted, err := uc.isKeyDeleted(ctx, doc.Key)
+			if err != nil {
+				span.RecordError(err)
+				return nil, err
+			}
+			if deleted {
+				err := domain.ValidationError{Field: "key", Message: "cannot re-commit an explicitly deleted key"}
+				span.RecordError(err)
+				return nil, err
+			}
+		}
 	}
 
 	requesterID := doc.Author
@@ -227,10 +301,7 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		}
 	}
 
-	hash := concrnt.GetHash([]byte(sd.Document))
-	hash10 := [10]byte{}
-	copy(hash10[:], hash[:10])
-	documentID := cdid.New(hash10, doc.CreatedAt).String()
+	documentID := documentIDFor(sd.Document, doc.CreatedAt)
 
 	var applyCommit func(tx RepositoryTx) (*commitApplyResult, error)
 
@@ -347,11 +418,16 @@ func (uc *RecordUsecase) saveEntity(ctx context.Context, tx RepositoryTx, docume
 		return nil, err
 	}
 
-	// Accept-if-newer: an entity document only replaces the stored one when
-	// it is strictly newer. Older or same-time replays (e.g. re-running a
-	// migration/import) succeed as a no-op instead of clobbering a newer
-	// affiliation, and skip the registration/alias checks below so stale
-	// replays can't fail on them.
+	// Accept-if-newer fast path: an entity document only replaces the stored
+	// one when its documentID is greater. documentID is a time-prefixed,
+	// content-hashed, sortable CDID, so this orders by createdAt and breaks
+	// exact-createdAt ties deterministically (both federated servers converge
+	// on the same winner). Older-or-equal replays (e.g. re-running a
+	// migration/import, where the same document reproduces the same documentID)
+	// succeed as a no-op here, skipping the registration/alias checks below so
+	// stale replays can't fail on them. CreateEntity re-checks the same
+	// ordering under a row lock, so this check is only an optimization, not the
+	// authoritative guard against concurrent writers.
 	existing, err := uc.residence.GetEntityByCCID(ctx, entity.Author)
 	if err != nil && !errors.Is(err, domain.ErrNotFound) {
 		span.RecordError(err)
@@ -362,7 +438,7 @@ func (uc *RecordUsecase) saveEntity(ctx context.Context, tx RepositoryTx, docume
 		if err := json.Unmarshal([]byte(existing.SignedDocument.Document), &existingDoc); err != nil {
 			// corrupt stored document: log and let the incoming one overwrite it
 			slog.Error("failed to decode stored entity document, overwriting", "ccid", entity.Author, "error", err.Error())
-		} else if !entity.CreatedAt.After(existingDoc.CreatedAt) {
+		} else if documentID <= documentIDFor(existing.SignedDocument.Document, existingDoc.CreatedAt) {
 			return &commitApplyResult{result: &sd, owners: []string{entity.Author}}, nil
 		}
 	}
@@ -593,6 +669,17 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 
 		postProcesses := []PostProcessAction{}
 		if mode == domain.CommitModeExecute {
+			// Tombstone the deleted key so a captured copy of this document
+			// can't be replayed back in during the backdate window (see the
+			// replay guard in Commit). Appended as a post-process so it only
+			// runs once the delete has actually committed.
+			if uc.kvs != nil {
+				tombstoneURI := targetURI
+				postProcesses = append(postProcesses, func(ctx context.Context) error {
+					return uc.markKeyDeleted(ctx, tombstoneURI)
+				})
+			}
+
 			destinations := []string{targetURI}
 			if targetDoc.Distributes != nil {
 				destinations = append(destinations, *targetDoc.Distributes...)
@@ -1003,7 +1090,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 			// Note: none-proof targets are deliberately rejected here — they
 			// carry no verifiable authorship, so a committer-supplied inline
 			// copy cannot be trusted.
-			if err := targetSD.Verify(ctx, uc.resolver(), nil); err != nil {
+			if err := targetSD.Verify(ctx, uc.resolver()); err != nil {
 				span.RecordError(err)
 				return nil, errors.Join(errors.New("target document failed signature verification"), err)
 			}

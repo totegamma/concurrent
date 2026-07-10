@@ -79,9 +79,15 @@ func (r *RecordRepository) CreateEntity(
 		DocumentID: documentID,
 	}
 
+	// document_id is a time-prefixed, content-hashed, lexicographically
+	// sortable CDID, so "excluded.document_id > entities.document_id" keeps the
+	// newer document (and breaks exact-createdAt ties deterministically). This
+	// makes newer-wins atomic at the row lock, closing the read-then-write race
+	// between the usecase-level accept-if-newer check and this upsert.
 	if err := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "id"}},
 		DoUpdates: clause.AssignmentColumns([]string{"alias", "domain", "document_id"}),
+		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("entities.document_id < excluded.document_id")}},
 	}).Create(&modelEntity).Error; err != nil {
 		return err
 	}

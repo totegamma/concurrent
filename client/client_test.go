@@ -210,7 +210,7 @@ func TestVerifyWithClientResolverRejectsNoneProof(t *testing.T) {
 	}
 
 	cl := New("example.test")
-	err = sd.Verify(context.Background(), cl, nil)
+	err = sd.Verify(context.Background(), cl)
 	if err == nil {
 		t.Fatal("Verify returned nil error for none proof")
 	}

@@ -37,10 +37,10 @@ var importCommitlogCmd = &cobra.Command{
 		"entity documents with the migration time). Import is idempotent: commit ids are\n" +
 		"content+time derived and inserts skip existing rows, and entity commits are\n" +
 		"accept-if-newer (older replays are a no-op), so re-running is safe. Policy checks\n" +
-		"are skipped (faithful restore); document signatures are still verified, but\n" +
-		"document-reference proofs verify against the referenced document inlined in the dump,\n" +
-		"so no network access is needed for them. Only commits signed with a subkey still\n" +
-		"require the enact document's server to be reachable (set backends.gatewayAddr).\n" +
+		"are skipped (faithful restore). Imports run as the system service account, so\n" +
+		"document signatures are NOT re-verified — the dump is trusted as-is — and no\n" +
+		"network access is required (dump-commitlog does not persist inlined references, so\n" +
+		"verifying them would otherwise need the referencing servers reachable).\n" +
 		"Note: writes bypass a running server's in-process caches.",
 	RunE: withOperationContext(func(cmd *cobra.Command, args []string, op *operationContext) error {
 		// conctl runs with the server's own private key, so it acts as the
@@ -70,7 +70,7 @@ var importCommitlogCmd = &cobra.Command{
 
 		residenceRepo := postgres.NewResidenceRepository(op.DB, op.Client, op.GlobalConfig)
 		recordRepo := postgres.NewRecordRepository(op.DB)
-		recordUC := usecase.NewRecordUsecase(recordRepo, residenceRepo, &op.GlobalConfig, op.Client, nopSignal{}, nopPolicy{}, nopDelivery{})
+		recordUC := usecase.NewRecordUsecase(recordRepo, residenceRepo, &op.GlobalConfig, op.Client, nopSignal{}, nopPolicy{}, nopDelivery{}, nil)
 
 		mode := domain.CommitModeLocalOnlyExecute
 		if importCommitlogDryRun {

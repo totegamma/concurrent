@@ -300,12 +300,44 @@ func TestVerifyPrefersInlineReferencesOverResolver(t *testing.T) {
 	}
 }
 
-// With IgnoreReferences set, inlined (submitter-supplied) copies of
-// referenced documents must not be trusted: the referenced document has to
-// come from the resolver, so a missing/failing resolver means verification
-// fails even when a valid copy is inlined. This is what lets authoritative
-// paths (commits) observe subkey revocation.
-func TestVerifyIgnoreReferencesFetchesViaResolver(t *testing.T) {
+// Subkey enact documents must always come from the resolver: an inlined
+// (submitter-supplied) copy must not be trusted, otherwise a revoked
+// (deleted) subkey enact document could be replayed forever.
+func TestVerifySubkeyIgnoresInlineReference(t *testing.T) {
+	ownerCCID, ownerPriv := newTestIdentity(t)
+	subCCID, subPriv := newTestIdentity(t)
+
+	subkeyURI := "cckv://" + ownerCCID + "/subkeys/1"
+	subkeySD := signDocument(t, Document[schemas.Subkey]{
+		Kind:      "record",
+		Key:       subkeyURI,
+		Value:     schemas.Subkey{CKID: subCCID},
+		Author:    ownerCCID,
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}, ownerPriv)
+
+	sd := newSubkeyProof(t, ownerCCID, subCCID, subPriv, subkeyURI, subkeySD)
+	sd.References = map[string]SignedDocument{subkeyURI: subkeySD}
+
+	// inline copy present but no resolver: must fail
+	if err := sd.Verify(context.Background(), nil, nil); err == nil {
+		t.Fatal("Verify returned nil error for subkey proof with no resolver")
+	}
+
+	// resolver that doesn't know the enact doc (revoked/deleted): must fail
+	if err := sd.Verify(context.Background(), mapResolver{}, nil); err == nil {
+		t.Fatal("Verify returned nil error for subkey proof with an empty resolver")
+	}
+
+	// resolver serving the authoritative enact doc: must succeed
+	if err := sd.Verify(context.Background(), mapResolver{subkeyURI: subkeySD}, nil); err != nil {
+		t.Fatalf("Verify returned error for subkey proof with a working resolver: %v", err)
+	}
+}
+
+// A trusted inline reference still has to verify on its own: a tampered
+// inline copy fails its signature check even though no resolver is consulted.
+func TestVerifyDocumentReferenceRejectsTamperedInlineCopy(t *testing.T) {
 	ownerCCID, ownerPriv := newTestIdentity(t)
 
 	targetURI := "cckv://" + ownerCCID + "/target"
@@ -316,6 +348,7 @@ func TestVerifyIgnoreReferencesFetchesViaResolver(t *testing.T) {
 		Author:    ownerCCID,
 		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 	}, ownerPriv)
+	targetSD.Document = strings.Replace(targetSD.Document, "bar", "evil", 1)
 
 	refDoc := Document[schemas.Reference]{
 		Kind:      "record",
@@ -334,21 +367,59 @@ func TestVerifyIgnoreReferencesFetchesViaResolver(t *testing.T) {
 		Proof:      Proof{Type: ProofTypeDocumentReference, Href: &targetURI},
 		References: map[string]SignedDocument{targetURI: targetSD},
 	}
-	opts := &VerifyOpts{IgnoreReferences: true}
 
-	// inline copy present but no resolver: must fail
-	if err := sd.Verify(context.Background(), nil, opts); err == nil {
-		t.Fatal("Verify returned nil error with IgnoreReferences and no resolver")
+	if err := sd.Verify(context.Background(), nil, nil); err == nil {
+		t.Fatal("Verify returned nil error for a tampered inline reference")
+	}
+}
+
+// A none-proof inline target inherits AllowNoneProof from the opts: rejected
+// for ordinary callers, accepted for system-privileged ones. This is the
+// migration/import path — distribution records reference none-proof base
+// records inlined in the dump.
+func TestVerifyDocumentReferenceInlineNoneProofTarget(t *testing.T) {
+	ownerCCID, _ := newTestIdentity(t)
+
+	targetURI := "cckv://" + ownerCCID + "/target"
+	targetDoc := Document[testRecordValue]{
+		Kind:      "record",
+		Key:       targetURI,
+		Value:     testRecordValue{Foo: "bar"},
+		Author:    ownerCCID,
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	targetDocBytes, err := json.Marshal(targetDoc)
+	if err != nil {
+		t.Fatalf("marshal target document: %v", err)
+	}
+	targetSD := SignedDocument{
+		Document: string(targetDocBytes),
+		Proof:    Proof{Type: ProofTypeNone},
 	}
 
-	// resolver that doesn't know the target (e.g. revoked/deleted): must fail
-	if err := sd.Verify(context.Background(), mapResolver{}, opts); err == nil {
-		t.Fatal("Verify returned nil error with IgnoreReferences and an empty resolver")
+	refDoc := Document[schemas.Reference]{
+		Kind:      "record",
+		Key:       "cckv://" + ownerCCID + "/ref",
+		Value:     schemas.Reference{Href: targetURI},
+		Author:    ownerCCID,
+		Schema:    schemas.ReferenceURL,
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	refDocBytes, err := json.Marshal(refDoc)
+	if err != nil {
+		t.Fatalf("marshal reference document: %v", err)
+	}
+	sd := SignedDocument{
+		Document:   string(refDocBytes),
+		Proof:      Proof{Type: ProofTypeDocumentReference, Href: &targetURI},
+		References: map[string]SignedDocument{targetURI: targetSD},
 	}
 
-	// resolver serving the authoritative copy: must succeed
-	if err := sd.Verify(context.Background(), mapResolver{targetURI: targetSD}, opts); err != nil {
-		t.Fatalf("Verify returned error with IgnoreReferences and a working resolver: %v", err)
+	if err := sd.Verify(context.Background(), nil, nil); err == nil {
+		t.Fatal("Verify returned nil error for a none-proof inline target without AllowNoneProof")
+	}
+	if err := sd.Verify(context.Background(), nil, &VerifyOpts{AllowNoneProof: true}); err != nil {
+		t.Fatalf("Verify returned error for a none-proof inline target with AllowNoneProof: %v", err)
 	}
 }
 

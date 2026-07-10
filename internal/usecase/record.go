@@ -160,10 +160,14 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 	serviceAccountType, _ := ctx.Value(interop.ServiceAccountTypeCtxKey).(string)
 	allowNone := serviceAccountType == "system"
 
-	// IgnoreReferences: proof-chain documents (e.g. subkey enact records)
-	// must come from their authoritative server, not from committer-supplied
-	// inline copies — otherwise a revoked subkey could be replayed forever.
-	if err := sd.Verify(ctx, uc.resolver(), &concrnt.VerifyOpts{AllowNoneProof: allowNone, IgnoreReferences: true}); err != nil {
+	// document-reference proofs verify against the recursively-verified
+	// inline copy in References (the author vouching for their own document),
+	// so commits stay valid even when the referenced document's origin server
+	// is unreachable — e.g. migration/import before that server has migrated.
+	// Subkey enact documents are still always fetched from their
+	// authoritative server inside Verify, so revoked subkeys can't be
+	// replayed via inline copies.
+	if err := sd.Verify(ctx, uc.resolver(), &concrnt.VerifyOpts{AllowNoneProof: allowNone}); err != nil {
 		span.RecordError(err)
 		if errors.Is(err, concrnt.ErrNoneProofNotAllowed) {
 			slog.Error("Unauthorized commit with none proof", "error", err.Error())
@@ -343,6 +347,26 @@ func (uc *RecordUsecase) saveEntity(ctx context.Context, tx RepositoryTx, docume
 		return nil, err
 	}
 
+	// Accept-if-newer: an entity document only replaces the stored one when
+	// it is strictly newer. Older or same-time replays (e.g. re-running a
+	// migration/import) succeed as a no-op instead of clobbering a newer
+	// affiliation, and skip the registration/alias checks below so stale
+	// replays can't fail on them.
+	existing, err := uc.residence.GetEntityByCCID(ctx, entity.Author)
+	if err != nil && !errors.Is(err, domain.ErrNotFound) {
+		span.RecordError(err)
+		return nil, err
+	}
+	if existing != nil && existing.SignedDocument != nil {
+		var existingDoc concrnt.Document[schemas.Entity]
+		if err := json.Unmarshal([]byte(existing.SignedDocument.Document), &existingDoc); err != nil {
+			// corrupt stored document: log and let the incoming one overwrite it
+			slog.Error("failed to decode stored entity document, overwriting", "ccid", entity.Author, "error", err.Error())
+		} else if !entity.CreatedAt.After(existingDoc.CreatedAt) {
+			return &commitApplyResult{result: &sd, owners: []string{entity.Author}}, nil
+		}
+	}
+
 	if entity.Value.Domain == uc.config.FQDN {
 		// if local, check if author is registered
 		_, err := uc.residence.GetMeta(ctx, entity.Author)
@@ -379,7 +403,7 @@ func (uc *RecordUsecase) saveEntity(ctx context.Context, tx RepositoryTx, docume
 		}
 	}
 
-	err := uc.repo.CreateEntity(ctx, tx, entity.Author, entity.Value.Alias, entity.Value.Domain, documentID)
+	err = uc.repo.CreateEntity(ctx, tx, entity.Author, entity.Value.Alias, entity.Value.Domain, documentID)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -979,7 +1003,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 			// Note: none-proof targets are deliberately rejected here — they
 			// carry no verifiable authorship, so a committer-supplied inline
 			// copy cannot be trusted.
-			if err := targetSD.Verify(ctx, uc.resolver(), &concrnt.VerifyOpts{IgnoreReferences: true}); err != nil {
+			if err := targetSD.Verify(ctx, uc.resolver(), nil); err != nil {
 				span.RecordError(err)
 				return nil, errors.Join(errors.New("target document failed signature verification"), err)
 			}

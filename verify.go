@@ -24,14 +24,6 @@ type VerifyOpts struct {
 	// Callers are responsible for any authorization checks (e.g. restricting
 	// none proofs to trusted system service accounts) before setting this.
 	AllowNoneProof bool
-
-	// IgnoreReferences makes Verify fetch referenced documents (subkey /
-	// document-reference proofs) via the resolver even when a copy is
-	// inlined in SignedDocument.References. Inlined copies are supplied by
-	// whoever submitted the document, so trusting them would let a revoked
-	// (deleted) subkey enact document be replayed forever; authoritative
-	// paths such as committing must set this.
-	IgnoreReferences bool
 }
 
 // ErrSignatureVerificationFailed indicates a signed document's proof did not
@@ -51,20 +43,17 @@ var ErrUnsupportedProofType = errors.New("unsupported or unverifiable proof type
 // proof chains.
 const maxVerifyDepth = 4
 
-// Verify verifies a signed document's proof. For proofs that reference
-// another document (subkey, document-reference), the referenced document is
-// looked up (via References if present and not disabled by
-// VerifyOpts.IgnoreReferences, otherwise via resolver) and recursively
-// verified.
+// Verify verifies a signed document's proof. For document-reference proofs
+// the referenced document is looked up via the inlined References first
+// (falling back to resolver) and recursively verified; for subkey proofs the
+// enact document is always fetched via the resolver, never from References.
 func (sd *SignedDocument) Verify(ctx context.Context, resolver DocumentResolver, opts *VerifyOpts) error {
 	return sd.verify(ctx, resolver, opts, maxVerifyDepth)
 }
 
-func (sd *SignedDocument) resolve(ctx context.Context, resolver DocumentResolver, opts *VerifyOpts, uri string) (SignedDocument, error) {
-	if opts == nil || !opts.IgnoreReferences {
-		if ref, ok := sd.References[uri]; ok {
-			return ref, nil
-		}
+func (sd *SignedDocument) resolve(ctx context.Context, resolver DocumentResolver, uri string) (SignedDocument, error) {
+	if ref, ok := sd.References[uri]; ok {
+		return ref, nil
 	}
 	if resolver == nil {
 		return SignedDocument{}, fmt.Errorf("no resolver available to fetch referenced document %s", uri)
@@ -106,7 +95,14 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 			return errors.New("key is required for subkey proof")
 		}
 
-		subKeySD, err := sd.resolve(ctx, resolver, opts, *sd.Proof.Key)
+		// The enact document must always come from its authoritative server:
+		// inlined copies are supplied by whoever submitted the document, so
+		// trusting them would let a revoked (deleted) subkey enact document
+		// be replayed forever.
+		if resolver == nil {
+			return fmt.Errorf("no resolver available to fetch subkey document %s", *sd.Proof.Key)
+		}
+		subKeySD, err := resolver.ResolveSignedDocument(ctx, *sd.Proof.Key)
 		if err != nil {
 			return errors.Join(fmt.Errorf("failed to fetch subkey document %s", *sd.Proof.Key), err)
 		}
@@ -157,7 +153,13 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 			return errors.New("proof href does not match reference document href")
 		}
 
-		targetSD, err := sd.resolve(ctx, resolver, opts, *sd.Proof.Href)
+		// An inlined copy of the target is trusted here: it must pass its own
+		// proof verification below and its author must match this document's
+		// author, so a correctly-signed inline reference is the author
+		// vouching for their own document and cannot be forged. This keeps
+		// commits verifiable even when the referenced document's origin
+		// server is unreachable (e.g. mid-migration imports).
+		targetSD, err := sd.resolve(ctx, resolver, *sd.Proof.Href)
 		if err != nil {
 			return errors.Join(fmt.Errorf("failed to fetch referenced document %s", *sd.Proof.Href), err)
 		}

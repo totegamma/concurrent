@@ -11,6 +11,8 @@ import (
 
 	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/internal/domain"
+	"github.com/concrnt/concrnt/policy"
+	"github.com/concrnt/concrnt/schemas"
 )
 
 type stubRecordRepo struct{ RecordRepository }
@@ -19,6 +21,90 @@ type stubResidenceRepo struct{ ResidenceRepository }
 
 func (stubResidenceRepo) GetEntityByCCID(ctx context.Context, ccid string) (*domain.Entity, error) {
 	return nil, domain.ErrNotFound
+}
+
+type fakeTx struct{}
+
+func (fakeTx) Commit(ctx context.Context) error   { return nil }
+func (fakeTx) Rollback(ctx context.Context) error { return nil }
+
+// recordingRecordRepo satisfies the write path of RecordRepository in memory
+// and records which mutations were attempted.
+type recordingRecordRepo struct {
+	RecordRepository
+	createEntityCalled bool
+	createRecordCalled bool
+}
+
+func (r *recordingRecordRepo) BeginTx(ctx context.Context) (RepositoryTx, error) {
+	return fakeTx{}, nil
+}
+func (r *recordingRecordRepo) CreateCommitLog(ctx context.Context, tx RepositoryTx, id string, ip string, document string, proof any) error {
+	return nil
+}
+func (r *recordingRecordRepo) CreateCommitOwners(ctx context.Context, tx RepositoryTx, id string, owners []string) error {
+	return nil
+}
+func (r *recordingRecordRepo) CreateEntity(ctx context.Context, tx RepositoryTx, ccid string, alias *string, domain string, documentID string) error {
+	r.createEntityCalled = true
+	return nil
+}
+func (r *recordingRecordRepo) CreateRecord(ctx context.Context, tx RepositoryTx, documentID string, key string, owner string, schema string, onUpdate *string, policies *string, distributions []string, redirect *string, createdAt time.Time) error {
+	r.createRecordCalled = true
+	return nil
+}
+func (r *recordingRecordRepo) GetHierarchicalRecordPolicies(ctx context.Context, uri string) ([]concrnt.Policy, error) {
+	return nil, nil
+}
+func (r *recordingRecordRepo) GetSignedDocument(ctx context.Context, uri string) (*concrnt.SignedDocument, error) {
+	return nil, domain.ErrNotFound
+}
+
+// fixedResidenceRepo serves one pre-existing entity for every lookup.
+type fixedResidenceRepo struct {
+	ResidenceRepository
+	entity *domain.Entity
+}
+
+func (s fixedResidenceRepo) GetEntityByCCID(ctx context.Context, ccid string) (*domain.Entity, error) {
+	if s.entity == nil {
+		return nil, domain.ErrNotFound
+	}
+	return s.entity, nil
+}
+
+type nopPolicyService struct{}
+
+func (nopPolicyService) Eval(ctx context.Context, req policy.RequestContext, stack []concrnt.Policy, action string, key string) error {
+	return nil
+}
+
+type nopSignalService struct{}
+
+func (nopSignalService) Publish(ctx context.Context, channel string, event concrnt.Event) error {
+	return nil
+}
+
+func signTestDocument[T any](t *testing.T, doc concrnt.Document[T], privKeyHex string) concrnt.SignedDocument {
+	t.Helper()
+
+	docBytes, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatalf("marshal document: %v", err)
+	}
+	sigBytes, err := concrnt.SignBytes(docBytes, privKeyHex)
+	if err != nil {
+		t.Fatalf("sign document: %v", err)
+	}
+	signature := hex.EncodeToString(sigBytes)
+
+	return concrnt.SignedDocument{
+		Document: string(docBytes),
+		Proof: concrnt.Proof{
+			Type:      concrnt.ProofTypeEcrecover,
+			Signature: &signature,
+		},
+	}
 }
 
 func signedCommitDocument(t *testing.T, kind string) concrnt.SignedDocument {
@@ -86,5 +172,131 @@ func TestCommitUnresolvableRequesterReturnsError(t *testing.T) {
 				t.Fatalf("unexpected error: %v", err)
 			}
 		})
+	}
+}
+
+// Entity commits are accept-if-newer: a document older than (or as old as)
+// the stored one succeeds as a no-op instead of clobbering the newer
+// affiliation; only a strictly newer document reaches the repository.
+func TestCommitEntityAcceptIfNewer(t *testing.T) {
+	priv := make([]byte, 32)
+	if _, err := rand.Read(priv); err != nil {
+		t.Fatalf("generate private key: %v", err)
+	}
+	privKeyHex := hex.EncodeToString(priv)
+	ccid, err := concrnt.PrivKeyToAddr(privKeyHex, "con")
+	if err != nil {
+		t.Fatalf("derive ccid: %v", err)
+	}
+
+	newEntityDoc := func(createdAt time.Time) concrnt.SignedDocument {
+		return signTestDocument(t, concrnt.Document[schemas.Entity]{
+			Kind:      "entity",
+			Value:     schemas.Entity{Domain: "remote.example.net"},
+			Author:    ccid,
+			CreatedAt: createdAt,
+		}, privKeyHex)
+	}
+
+	storedAt := time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC)
+	stored := newEntityDoc(storedAt)
+
+	cases := []struct {
+		name             string
+		createdAt        time.Time
+		wantCreateEntity bool
+	}{
+		{"older", storedAt.Add(-time.Hour), false},
+		{"same", storedAt, false},
+		{"newer", storedAt.Add(time.Hour), true},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &recordingRecordRepo{}
+			uc := NewRecordUsecase(
+				repo,
+				fixedResidenceRepo{entity: &domain.Entity{
+					ID:             ccid,
+					Domain:         "remote.example.net",
+					SignedDocument: &stored,
+				}},
+				&domain.Config{FQDN: "example.com"},
+				nil,
+				nil,
+				nil,
+				nil,
+			)
+
+			sd := newEntityDoc(tc.createdAt)
+			if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+				t.Fatalf("Commit returned error: %v", err)
+			}
+			if repo.createEntityCalled != tc.wantCreateEntity {
+				t.Fatalf("CreateEntity called = %v, want %v", repo.createEntityCalled, tc.wantCreateEntity)
+			}
+		})
+	}
+}
+
+// A document-reference commit whose target is inlined in References must
+// succeed with no client at all (resolver == nil) — this is the migration /
+// import scenario, where the referenced record's origin server may not be
+// reachable (e.g. it hasn't migrated yet).
+func TestCommitDocumentReferenceInlineTargetOffline(t *testing.T) {
+	priv := make([]byte, 32)
+	if _, err := rand.Read(priv); err != nil {
+		t.Fatalf("generate private key: %v", err)
+	}
+	privKeyHex := hex.EncodeToString(priv)
+	ccid, err := concrnt.PrivKeyToAddr(privKeyHex, "con")
+	if err != nil {
+		t.Fatalf("derive ccid: %v", err)
+	}
+
+	targetURI := concrnt.CCURI{Scheme: "cckv", Owner: ccid, Key: "posts/1"}.String()
+	targetSD := signTestDocument(t, concrnt.Document[any]{
+		Kind:      "record",
+		Key:       targetURI,
+		Author:    ccid,
+		Schema:    "https://example.com/post.json",
+		CreatedAt: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC),
+	}, privKeyHex)
+
+	refKey := concrnt.CCURI{Scheme: "cckv", Owner: ccid, Key: "timelines/home/entry1"}.String()
+	refDoc := concrnt.Document[schemas.Reference]{
+		Kind:      "record",
+		Key:       refKey,
+		Value:     schemas.Reference{Href: targetURI},
+		Author:    ccid,
+		Schema:    schemas.ReferenceURL,
+		CreatedAt: time.Date(2026, 1, 2, 0, 0, 0, 0, time.UTC),
+	}
+	refDocBytes, err := json.Marshal(refDoc)
+	if err != nil {
+		t.Fatalf("marshal reference document: %v", err)
+	}
+	sd := concrnt.SignedDocument{
+		Document:   string(refDocBytes),
+		Proof:      concrnt.Proof{Type: concrnt.ProofTypeDocumentReference, Href: &targetURI},
+		References: map[string]concrnt.SignedDocument{targetURI: targetSD},
+	}
+
+	repo := &recordingRecordRepo{}
+	uc := NewRecordUsecase(
+		repo,
+		fixedResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: "remote.example.net"}},
+		&domain.Config{FQDN: "example.com"},
+		nil, // no client: verification must not need the network
+		nopSignalService{},
+		nopPolicyService{},
+		nil,
+	)
+
+	if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+		t.Fatalf("Commit returned error: %v", err)
+	}
+	if !repo.createRecordCalled {
+		t.Fatal("CreateRecord was not called")
 	}
 }

@@ -360,6 +360,34 @@ func transferMetas(fromDB, toDB *gorm.DB) {
 
 	toDB.Save(&v2metas)
 
+	// v1ではmetaを持たないローカル所属(CLIでのオーバーライド作成など)が存在しうるが、
+	// v2はローカルentityのimportにmetaの存在(=ドメインへの登録)を要求する。
+	// v1のentityが該当ドメインで作成されている時点で正当な登録であることは確認できて
+	// いるので、migrationが自動でactivateしたことを示すmetaを補完してから
+	// entityのimportに進む。
+	metaExists := make(map[string]bool, len(v1metas))
+	for _, m := range v1metas {
+		metaExists[m.ID] = true
+	}
+
+	var localEntities []core.Entity
+	fromDB.Where("domain in ?", []string{fromFQDN, fromCSID}).Find(&localEntities)
+
+	var supplemented []models.EntityMeta
+	for _, entity := range localEntities {
+		if metaExists[entity.ID] || slices.Contains(ignoreIDs, entity.ID) {
+			continue
+		}
+		supplemented = append(supplemented, models.EntityMeta{
+			ID:   entity.ID,
+			Info: `{"note":"automatically activated by v1-to-v2 migration (entity had no meta in v1)"}`,
+		})
+	}
+
+	if len(supplemented) > 0 {
+		toDB.Save(&supplemented)
+		fmt.Println("auto-activated local entities without v1 meta: ", len(supplemented))
+	}
 }
 
 func getEntity(db *gorm.DB, id string) (core.Entity, error) {

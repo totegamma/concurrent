@@ -406,6 +406,29 @@ func getEntity(db *gorm.DB, id string) (core.Entity, error) {
 	return entity, nil
 }
 
+func isLocalEntity(entity core.Entity) bool {
+	return entity.Domain == fromFQDN || entity.Domain == fromCSID
+}
+
+// keyOwnerIsLocal reports whether the owner segment of a cckv:// key is
+// this server (destFQDN) or a locally-registered entity.
+// 外部ユーザーのnamespace配下へのrecordはdest側のpolicyで拒否されるため、
+// 生成段階でスキップするための判定に使う。
+func keyOwnerIsLocal(db *gorm.DB, key string) bool {
+	uri, err := concrnt.ParseCCURI(key)
+	if err != nil {
+		return false
+	}
+	if uri.Owner == destFQDN {
+		return true
+	}
+	entity, err := getEntity(db, uri.Owner)
+	if err != nil {
+		return false
+	}
+	return isLocalEntity(entity)
+}
+
 func transferEntities(db *gorm.DB, dest_db *gorm.DB) error {
 
 	var seeker time.Time
@@ -601,7 +624,7 @@ func convertRecord(
 				},
 			}
 
-			if v1Author.Domain == fromFQDN {
+			if isLocalEntity(v1Author) {
 				line, err := json.Marshal(sd)
 				if err != nil {
 					fmt.Println("failed to serialize signed document: ", err)
@@ -610,43 +633,47 @@ func convertRecord(
 				lines += string(line) + "\n"
 			}
 
+			// mappingCacheへの登録は外部authorでも行う(association変換でのkey解決に必要)
 			mappingKey := fmt.Sprintf("cckv://%s/concrnt.world/v1/m%s", v1msg.Signer, cdidBase)
-			mappingDoc := concrnt.Document[schemas.Reference]{
-				Kind: "record",
-				Key:  mappingKey,
-				Value: schemas.Reference{
-					Href:   key,
-					Schema: &v1msg.Schema,
-				},
-				Author:    v1msg.Signer,
-				Schema:    schemas.ReferenceURL,
-				CreatedAt: v1msg.SignedAt,
-			}
 			mappingCache[mappingKey] = key
 
-			mappingBytes, err := json.Marshal(mappingDoc)
-			if err != nil {
-				fmt.Println("failed to serialize mapping document: ", err)
-				return "", err
-			}
+			if isLocalEntity(v1Author) {
+				mappingDoc := concrnt.Document[schemas.Reference]{
+					Kind: "record",
+					Key:  mappingKey,
+					Value: schemas.Reference{
+						Href:   key,
+						Schema: &v1msg.Schema,
+					},
+					Author:    v1msg.Signer,
+					Schema:    schemas.ReferenceURL,
+					CreatedAt: v1msg.SignedAt,
+				}
 
-			mappingSD := concrnt.SignedDocument{
-				Document: string(mappingBytes),
-				Proof: concrnt.Proof{
-					Type: "document-reference",
-					Href: &key,
-				},
-				References: map[string]concrnt.SignedDocument{
-					key: sd,
-				},
-			}
+				mappingBytes, err := json.Marshal(mappingDoc)
+				if err != nil {
+					fmt.Println("failed to serialize mapping document: ", err)
+					return "", err
+				}
 
-			line, err := json.Marshal(mappingSD)
-			if err != nil {
-				fmt.Println("failed to serialize mapping signed document: ", err)
-				return "", err
+				mappingSD := concrnt.SignedDocument{
+					Document: string(mappingBytes),
+					Proof: concrnt.Proof{
+						Type: "document-reference",
+						Href: &key,
+					},
+					References: map[string]concrnt.SignedDocument{
+						key: sd,
+					},
+				}
+
+				line, err := json.Marshal(mappingSD)
+				if err != nil {
+					fmt.Println("failed to serialize mapping signed document: ", err)
+					return "", err
+				}
+				lines += string(line) + "\n"
 			}
-			lines += string(line) + "\n"
 
 			for _, timeline := range distributes {
 
@@ -661,6 +688,9 @@ func convertRecord(
 				domainURI := fmt.Sprintf("cckv://%s", destFQDN)
 				if !strings.HasPrefix(distKey, authorURI) && !strings.HasPrefix(distKey, domainURI) {
 					continue // skip distributing to author's own timeline
+				}
+				if !keyOwnerIsLocal(db, distKey) {
+					continue // 外部ユーザーのtimelineへの書き込みはpolicyで拒否されるためスキップ
 				}
 
 				distDoc := concrnt.Document[schemas.Reference]{
@@ -817,7 +847,7 @@ func convertRecord(
 
 			SaveMigrationTable(destDB, "a"+cdidBase, ccfs)
 
-			if assOwner.Domain == fromFQDN {
+			if isLocalEntity(assOwner) {
 				line, err := json.Marshal(sd)
 				if err != nil {
 					fmt.Println("failed to serialize signed document: ", err)
@@ -899,6 +929,9 @@ func convertRecord(
 				domainURI := fmt.Sprintf("cckv://%s", destFQDN)
 				if !strings.HasPrefix(distKey, authorURI) && !strings.HasPrefix(distKey, domainURI) && !strings.HasPrefix(distKey, ownerURI) {
 					continue
+				}
+				if !keyOwnerIsLocal(db, distKey) {
+					continue // 外部ユーザーのtimelineへの書き込みはpolicyで拒否されるためスキップ
 				}
 
 				distDoc := concrnt.Document[schemas.Reference]{
@@ -1125,6 +1158,12 @@ func convertRecord(
 			// continue
 			return "", nil
 		}
+	}
+
+	// 外部ユーザーのnamespace配下のkeyを持つdocument(外部ユーザーのprofile等)は
+	// dest側で拒否されるため生成しない
+	if v2doc.Key != "" && !keyOwnerIsLocal(db, v2doc.Key) {
+		return "", nil
 	}
 
 	serializedDoc, err := json.Marshal(v2doc)

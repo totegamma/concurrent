@@ -3,7 +3,9 @@ package main
 import (
 	"encoding/json"
 	"fmt"
+	"io"
 	"net/http"
+	"os"
 	"slices"
 	"strconv"
 	"strings"
@@ -161,12 +163,19 @@ func convertTimeline(timeline string) string {
 	}
 }
 
-func commit(body string) error {
+// ImportResult is the per-line failure report returned by POST /api/v2/repository.
+// The response array contains only the lines that failed to import.
+type ImportResult struct {
+	Document string `json:"document,omitempty"`
+	Error    string `json:"error,omitempty"`
+}
+
+func commit(body string) ([]ImportResult, error) {
 
 	request, err := http.NewRequest("POST", fmt.Sprintf("https://%s/api/v2/repository", destFQDN), strings.NewReader(body))
 	if err != nil {
 		fmt.Println("failed to create request: ", err)
-		return err
+		return nil, err
 	}
 
 	request.Header.Set("Content-Type", "text/plain")
@@ -176,14 +185,14 @@ func commit(body string) error {
 		_, claims, err := jwt.Parse(token)
 		if err != nil {
 			fmt.Println("failed to parse token: ", err)
-			return err
+			return nil, err
 		}
 
 		if claims.ExpirationTime != "" {
 			expUnix, err := strconv.ParseInt(claims.ExpirationTime, 10, 64)
 			if err != nil {
 				fmt.Println("failed to parse token expiration time: ", err)
-				return err
+				return nil, err
 			}
 			expTime := time.Unix(expUnix, 0)
 			if time.Until(expTime) < 1*time.Minute {
@@ -208,13 +217,55 @@ func commit(body string) error {
 	resp, err := client.Do(request)
 	if err != nil {
 		fmt.Println("failed to post document: ", err)
-		return err
+		return nil, err
 	}
-	resp.Body.Close()
+	defer resp.Body.Close()
 
-	fmt.Println("traceID: ", resp.Header.Get("trace-id"))
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		fmt.Println("failed to read response body: ", err)
+		return nil, err
+	}
 
-	return nil
+	if traceID := resp.Header.Get("trace-id"); traceID != "" {
+		fmt.Println("traceID: ", traceID)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		err := fmt.Errorf("unexpected status code %d from %s: %s", resp.StatusCode, request.URL, truncateForLog(string(respBody), 500))
+		fmt.Println(err)
+		return nil, err
+	}
+
+	var results []ImportResult
+	err = json.Unmarshal(respBody, &results)
+	if err != nil {
+		err := fmt.Errorf("failed to parse import response (is the destination really a concrnt v2 server?): %w: %s", err, truncateForLog(string(respBody), 500))
+		fmt.Println(err)
+		return nil, err
+	}
+
+	return results, nil
+}
+
+func truncateForLog(s string, n int) string {
+	if len(s) > n {
+		return s[:n] + "..."
+	}
+	return s
+}
+
+// reportImportErrors prints per-line import failures and returns their count.
+func reportImportErrors(results []ImportResult) int {
+	const maxShown = 20
+	for i, result := range results {
+		if i >= maxShown {
+			fmt.Printf("  ... and %d more errors\n", len(results)-maxShown)
+			break
+		}
+		fmt.Printf("  import error: %s (document: %s)\n", result.Error, truncateForLog(result.Document, 200))
+	}
+	return len(results)
 }
 
 func convertTimelines(timelines []string) []string {
@@ -327,7 +378,7 @@ func getEntity(db *gorm.DB, id string) (core.Entity, error) {
 	return entity, nil
 }
 
-func transferEntities(db *gorm.DB, dest_db *gorm.DB) {
+func transferEntities(db *gorm.DB, dest_db *gorm.DB) error {
 
 	var seeker time.Time
 	info, err := LoadMigrationInfo(dest_db, "entities")
@@ -344,7 +395,12 @@ func transferEntities(db *gorm.DB, dest_db *gorm.DB) {
 	}
 
 	var entities []core.Entity
-	q := db.Where("domain not in ?", ignoreIDs)
+	// NOTE: gormは空スライスの `not in ?` を `NOT IN (NULL)`(常に偽)に展開して
+	// しまうため、ignoreIDs が空のときは条件を付けてはいけない
+	q := db.Session(&gorm.Session{})
+	if len(ignoreIDs) > 0 {
+		q = q.Where("id not in ?", ignoreIDs)
+	}
 
 	if !seeker.IsZero() {
 		q = q.Where("c_date >= ?", seeker)
@@ -394,10 +450,14 @@ func transferEntities(db *gorm.DB, dest_db *gorm.DB) {
 		batch += string(line) + "\n"
 	}
 
-	err = commit(batch)
+	results, err := commit(batch)
 	if err != nil {
-		fmt.Println("failed to commit batch: ", err)
-		return
+		return fmt.Errorf("failed to commit entity batch: %w", err)
+	}
+
+	if failed := reportImportErrors(results); failed > 0 {
+		// seekerを保存せずに中断する: 原因を直して再実行すれば同じentityを再送できる
+		return fmt.Errorf("%d of %d entities failed to import", failed, len(entities))
 	}
 
 	err = SaveMigrationInfo(dest_db, &MigrationInfo{
@@ -409,6 +469,8 @@ func transferEntities(db *gorm.DB, dest_db *gorm.DB) {
 	} else {
 		fmt.Println("migration info saved with seeker: ", time.Now().Format(time.RFC3339))
 	}
+
+	return nil
 }
 
 func convertRecord(
@@ -1059,7 +1121,9 @@ func convertRecord(
 	return string(line), nil
 }
 
-func transferRecords(db *gorm.DB, dest_db *gorm.DB) {
+func transferRecords(db *gorm.DB, dest_db *gorm.DB) error {
+
+	totalImportErrors := 0
 
 	lastKey := uint(0)
 	info, err := LoadMigrationInfo(dest_db, "records")
@@ -1113,11 +1177,12 @@ func transferRecords(db *gorm.DB, dest_db *gorm.DB) {
 			batch += lines + "\n"
 		}
 
-		err = commit(batch)
+		results, err := commit(batch)
 		if err != nil {
-			fmt.Println("failed to commit batch: ", err)
-			return
+			return fmt.Errorf("failed to commit batch: %w", err)
 		}
+
+		totalImportErrors += reportImportErrors(results)
 
 		fmt.Println("indexed until -> ", lastKey)
 
@@ -1135,6 +1200,12 @@ func transferRecords(db *gorm.DB, dest_db *gorm.DB) {
 			break
 		}
 	}
+
+	if totalImportErrors > 0 {
+		return fmt.Errorf("%d records failed to import (see errors above). seeker has advanced past them; use --one-shot <document_id> to retry individual documents", totalImportErrors)
+	}
+
+	return nil
 }
 
 var migrateV1toV2Cmd = &cobra.Command{
@@ -1168,18 +1239,33 @@ var migrateV1toV2Cmd = &cobra.Command{
 
 			fmt.Println(string(lines))
 
-			err = commit(string(lines) + "\n")
+			results, err := commit(string(lines) + "\n")
 			if err != nil {
 				fmt.Println("failed to commit document: ", err)
 				return
+			}
+			if failed := reportImportErrors(results); failed > 0 {
+				fmt.Println("failed to import document")
+				os.Exit(1)
 			}
 
 		} else {
 			destDB.AutoMigrate(&MigrationInfo{}, &MigrationTable{})
 
 			transferMetas(fromDB, destDB)
-			transferEntities(fromDB, destDB)
-			transferRecords(fromDB, destDB)
+
+			err = transferEntities(fromDB, destDB)
+			if err != nil {
+				fmt.Println("entity migration failed: ", err)
+				fmt.Println("aborting before record migration. fix the cause and re-run.")
+				os.Exit(1)
+			}
+
+			err = transferRecords(fromDB, destDB)
+			if err != nil {
+				fmt.Println("record migration failed: ", err)
+				os.Exit(1)
+			}
 		}
 	},
 }

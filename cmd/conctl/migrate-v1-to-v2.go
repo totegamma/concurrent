@@ -1268,8 +1268,10 @@ func transferRecords(db *gorm.DB, dest_db *gorm.DB) error {
 		}
 	}
 
+	// 個々のdocumentのimportエラーは完走扱い(exit 0)にする。
+	// commit()自体の失敗(HTTPエラー等)は途中で中断しているのでエラーを返す。
 	if totalImportErrors > 0 {
-		return fmt.Errorf("%d records failed to import (see errors above). seeker has advanced past them; use --one-shot <document_id> to retry individual documents", totalImportErrors)
+		fmt.Printf("warning: %d records failed to import (see errors above). seeker has advanced past them; use --one-shot <document_id> to retry individual documents\n", totalImportErrors)
 	}
 
 	return nil

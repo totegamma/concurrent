@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"slices"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -13,14 +14,24 @@ import (
 	"github.com/concrnt/concrnt"
 )
 
+var (
+	filterCommitlogExcludeProofs []string
+	filterCommitlogExcludeOwners []string
+)
+
 var filterCommitlogCmd = &cobra.Command{
 	Use:   "filter-commitlog <commits-file> [out-file]",
-	Short: "Drop none-proof commits from a commit-log dump",
-	Long: "Reads a <name>.commits.jsonl file produced by dump-commitlog and writes only the lines\n" +
-		"whose proof type is not \"none\" — i.e. drops server-imported/migrated documents and keeps\n" +
-		"user-signed commits and their document-reference records. Writes to [out-file], or stdout\n" +
-		"when omitted. Lines that fail to parse are KEPT (with a warning on stderr) so a filter run\n" +
-		"never loses data. Pure file transform: no config, server, or database access.",
+	Short: "Filter a commit-log dump by proof type and owner",
+	Long: "Reads a <name>.commits.jsonl file produced by dump-commitlog and writes the lines that\n" +
+		"pass every given filter. --exclude-proof drops commits by proof type (e.g. \"none\" to\n" +
+		"drop server-imported/migrated documents while keeping user-signed commits and their\n" +
+		"document-reference records). --exclude-owner drops commits belonging to the given CCIDs\n" +
+		"(e.g. to erase test accounts): a commit is considered owned by a CCID when it is the\n" +
+		"document's author, the owner of the document's key, or the owner of its associate\n" +
+		"target — the same notion the server uses for commit_owners. With no filters the input\n" +
+		"passes through unchanged. Writes to [out-file], or stdout when omitted. Lines that fail\n" +
+		"to parse are KEPT (with a warning on stderr) so a filter run never loses data. Pure file\n" +
+		"transform: no config, server, or database access.",
 	Args: cobra.RangeArgs(1, 2),
 	RunE: func(cmd *cobra.Command, args []string) error {
 		in, err := os.Open(args[0])
@@ -43,7 +54,7 @@ var filterCommitlogCmd = &cobra.Command{
 		sc := bufio.NewScanner(in)
 		sc.Buffer(make([]byte, 0, 1<<20), importScanBuf)
 		lineNo := 0
-		var kept, dropped, unparsed int
+		var kept, droppedProof, droppedOwner, unparsed int
 		for sc.Scan() {
 			lineNo++
 			line := strings.TrimSpace(sc.Text())
@@ -54,9 +65,44 @@ var filterCommitlogCmd = &cobra.Command{
 			if err := json.Unmarshal([]byte(line), &sd); err != nil {
 				unparsed++
 				fmt.Fprintf(os.Stderr, "line %d: failed to parse SignedDocument, keeping as-is: %v\n", lineNo, err)
-			} else if sd.Proof.Type == concrnt.ProofTypeNone {
-				dropped++
+				kept++
+				if _, err := w.WriteString(line + "\n"); err != nil {
+					return fmt.Errorf("failed to write output: %w", err)
+				}
 				continue
+			}
+			if slices.Contains(filterCommitlogExcludeProofs, sd.Proof.Type) {
+				droppedProof++
+				continue
+			}
+			if len(filterCommitlogExcludeOwners) > 0 {
+				var doc struct {
+					Author    string  `json:"author"`
+					Key       string  `json:"key"`
+					Associate *string `json:"associate"`
+				}
+				if err := json.Unmarshal([]byte(sd.Document), &doc); err != nil {
+					unparsed++
+					fmt.Fprintf(os.Stderr, "line %d: failed to parse document, keeping as-is: %v\n", lineNo, err)
+				} else {
+					owners := []string{doc.Author}
+					if doc.Key != "" {
+						if parsed, err := concrnt.ParseCCURI(doc.Key); err == nil {
+							owners = append(owners, parsed.Owner)
+						}
+					}
+					if doc.Associate != nil {
+						if parsed, err := concrnt.ParseCCURI(*doc.Associate); err == nil {
+							owners = append(owners, parsed.Owner)
+						}
+					}
+					if slices.ContainsFunc(owners, func(o string) bool {
+						return slices.Contains(filterCommitlogExcludeOwners, o)
+					}) {
+						droppedOwner++
+						continue
+					}
+				}
 			}
 			kept++
 			if _, err := w.WriteString(line + "\n"); err != nil {
@@ -70,7 +116,13 @@ var filterCommitlogCmd = &cobra.Command{
 			return fmt.Errorf("failed to flush output: %w", err)
 		}
 
-		fmt.Fprintf(os.Stderr, "kept %d, dropped %d none-proof commits", kept, dropped)
+		fmt.Fprintf(os.Stderr, "kept %d", kept)
+		if len(filterCommitlogExcludeProofs) > 0 {
+			fmt.Fprintf(os.Stderr, ", dropped %d by proof type", droppedProof)
+		}
+		if len(filterCommitlogExcludeOwners) > 0 {
+			fmt.Fprintf(os.Stderr, ", dropped %d by owner", droppedOwner)
+		}
 		if unparsed > 0 {
 			fmt.Fprintf(os.Stderr, " (%d unparsable lines kept)", unparsed)
 		}
@@ -81,4 +133,7 @@ var filterCommitlogCmd = &cobra.Command{
 
 func init() {
 	utilCmd.AddCommand(filterCommitlogCmd)
+
+	filterCommitlogCmd.Flags().StringSliceVar(&filterCommitlogExcludeProofs, "exclude-proof", nil, "Drop commits with this proof type (repeatable, e.g. none)")
+	filterCommitlogCmd.Flags().StringSliceVar(&filterCommitlogExcludeOwners, "exclude-owner", nil, "Drop commits owned by this CCID (repeatable)")
 }

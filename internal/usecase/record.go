@@ -1053,6 +1053,14 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 		if parsed.AssociationVariant != nil {
 			uniqueKey += *parsed.AssociationVariant
 		}
+		// bodyも一意性判定に含める(v1と同じ意味論)。bodyが異なるassociation
+		// (同一ユーザーからの複数リプライ等)は共存できる
+		bodyBytes, err := json.Marshal(parsed.Value)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+		uniqueKey += string(bodyBytes)
 		uniqueHash := xxh3.HashString(uniqueKey)
 
 		err = uc.repo.CreateAssociation(ctx, tx, documentID, *parsed.Associate, targetURI.Owner, parsed.Author, parsed.Schema, parsed.AssociationVariant, fmt.Sprintf("%x", uniqueHash), parsed.CreatedAt)

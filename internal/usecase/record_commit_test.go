@@ -446,3 +446,54 @@ func TestCommitSystemAccountBypassesReplayGuards(t *testing.T) {
 		t.Fatal("CreateRecord was not called for a system-account commit")
 	}
 }
+
+// associationRecordingRepo captures the unique key passed to CreateAssociation.
+type associationRecordingRepo struct {
+	recordingRecordRepo
+	uniques []string
+}
+
+func (r *associationRecordingRepo) CreateAssociation(ctx context.Context, tx RepositoryTx, documentID string, targetURI string, owner string, author string, schema string, variant *string, unique string, createdAt time.Time) error {
+	r.uniques = append(r.uniques, unique)
+	return nil
+}
+
+// The association unique key includes the body: associations that differ only
+// in body must coexist (v1 semantics — e.g. two replies by the same author to
+// the same message), while a byte-identical body still dedupes.
+func TestCommitAssociationUniqueIncludesBody(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+	repo := &associationRecordingRepo{}
+	uc := newRecordCommitUsecase(ccid, cfg, repo, nil)
+
+	associate := concrnt.CCURI{Scheme: "cckv", Owner: ccid, Key: "posts/1"}.String()
+	commitWithBody := func(body any) {
+		t.Helper()
+		sd := signTestDocument(t, concrnt.Document[any]{
+			Kind:      "association",
+			Associate: &associate,
+			Value:     body,
+			Author:    ccid,
+			Schema:    "https://example.com/a/reply.json",
+			CreatedAt: time.Now(),
+		}, priv)
+		if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeDryRun); err != nil {
+			t.Fatalf("commit returned error: %v", err)
+		}
+	}
+
+	commitWithBody(map[string]any{"messageId": "m1"})
+	commitWithBody(map[string]any{"messageId": "m2"})
+	commitWithBody(map[string]any{"messageId": "m1"})
+
+	if len(repo.uniques) != 3 {
+		t.Fatalf("expected 3 CreateAssociation calls, got %d", len(repo.uniques))
+	}
+	if repo.uniques[0] == repo.uniques[1] {
+		t.Fatal("associations with different bodies must not share a unique key")
+	}
+	if repo.uniques[0] != repo.uniques[2] {
+		t.Fatal("associations with identical bodies must share a unique key")
+	}
+}

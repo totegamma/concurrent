@@ -902,6 +902,14 @@ func convertRecord(
 					return "", err
 				}
 
+				// 実キー宛てassociationのccfsも登録し、delete変換時に両方消せるようにする
+				assocHash := concrnt.GetHash(assocBytes)
+				assocHash10 := [10]byte{}
+				copy(assocHash10[:], assocHash[:10])
+				assocDocumentID := cdidv2.New(assocHash10, v1ass.SignedAt).String()
+				assocCcfs := concrnt.ComposeCCURI("ccfs", v1ass.Owner, assocDocumentID)
+				SaveMigrationTable(destDB, "a"+cdidBase+"#real", assocCcfs)
+
 				assocSD := concrnt.SignedDocument{
 					Document: string(assocBytes),
 					Proof: concrnt.Proof{
@@ -1142,12 +1150,46 @@ func convertRecord(
 				return "", nil
 			}
 
-			v2doc = &concrnt.Document[any]{
-				Kind:      "delete",
-				Value:     targetKey,
-				Author:    v1del.Signer,
-				CreatedAt: v1del.SignedAt,
+			targetKeys := []string{targetKey}
+
+			// associationは互換キー宛てと実キー宛ての2つを発行しているので、
+			// 実キー側の登録があればそちらのdeleteも発行する
+			realKey, err := ResolveMigrationTable(destDB, v1del.Target+"#real")
+			if err == nil {
+				targetKeys = append(targetKeys, realKey)
 			}
+
+			lines := ""
+			for _, key := range targetKeys {
+				delDoc := &concrnt.Document[any]{
+					Kind:      "delete",
+					Value:     key,
+					Author:    v1del.Signer,
+					CreatedAt: v1del.SignedAt,
+				}
+
+				serializedDoc, err := json.Marshal(delDoc)
+				if err != nil {
+					fmt.Println("failed to serialize v2 document: ", err)
+					return "", err
+				}
+
+				sd := concrnt.SignedDocument{
+					Document: string(serializedDoc),
+					Proof: concrnt.Proof{
+						Type: "none",
+					},
+				}
+
+				line, err := json.Marshal(sd)
+				if err != nil {
+					fmt.Println("failed to serialize signed document: ", err)
+					return "", err
+				}
+				lines += string(line) + "\n"
+			}
+
+			return lines, nil
 		}
 	case "ack", "unack", "enact", "affiliation", "event":
 		// continue // skip these types for now

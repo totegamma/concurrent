@@ -469,6 +469,14 @@ func transferEntities(db *gorm.DB, dest_db *gorm.DB) error {
 
 		domain := convertDomain(entity.Domain)
 
+		// dest FQDNを本番と変えてテストする場合、v1にキャッシュされている
+		// destドメイン所属の外部entityがdest側で「未登録のローカルユーザー」として
+		// 拒否される。dest自身のユーザーをv1視点からimportする必要はないのでスキップ。
+		if domain == destFQDN && !isLocalEntity(entity) {
+			fmt.Printf("skipping entity %s: belongs to dest domain %s but is not local to %s\n", entity.ID, entity.Domain, fromFQDN)
+			continue
+		}
+
 		v2doc := &concrnt.Document[any]{
 			Kind: "entity",
 			Key:  key,

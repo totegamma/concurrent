@@ -180,7 +180,9 @@ func main() {
 	}
 
 	cl := client.New(domainConfig.FQDN)
-	cl.AddHostRemapping(domainConfig.FQDN, conf.Backends.GatewayAddr)
+	if conf.Backends.GatewayAddr != "" {
+		cl.AddHostRemapping(domainConfig.FQDN, conf.Backends.GatewayAddr)
+	}
 	cl.SetUserAgent("concrnt", version)
 
 	moduleManager := service.NewModuleManager(rest.Endpoints, conf.Services)

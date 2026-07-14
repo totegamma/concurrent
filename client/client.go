@@ -73,6 +73,17 @@ func (c *Client) AddHostRemapping(host string, target string) {
 		slog.Warn("Failed to parse remapping target "+target, "error", err)
 		return
 	}
+	// url.Parse accepts values like "" or "concrnt:8000" (scheme "concrnt",
+	// empty host) without error; installing such a remap breaks every request
+	// to the remapped host
+	if parsed.Scheme != "http" && parsed.Scheme != "https" {
+		slog.Warn("Ignoring remapping target " + target + ": scheme must be http or https (e.g. http://concrnt:8000)")
+		return
+	}
+	if parsed.Host == "" {
+		slog.Warn("Ignoring remapping target " + target + ": host is empty")
+		return
+	}
 	c.remappings[host] = parsed
 }
 

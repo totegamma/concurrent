@@ -458,6 +458,92 @@ func (r *associationRecordingRepo) CreateAssociation(ctx context.Context, tx Rep
 	return nil
 }
 
+// importRecordingRepo additionally answers the blocking-list query issued when
+// a commit's author and target owner differ.
+type importRecordingRepo struct {
+	associationRecordingRepo
+}
+
+func (r *importRecordingRepo) QueryByParent(ctx context.Context, parent, schema string, since, until *time.Time, limit int, order string) ([]concrnt.SignedDocument, error) {
+	return nil, nil
+}
+
+// Self-service migration: an authenticated requester importing a repository
+// dump (LocalOnlyExecute) is exempt from the backdate window for their own
+// documents and for others' documents targeting their content. The exemption
+// requires both the import mode and authentication.
+func TestCommitBackdateExemptForAuthenticatedSelfImport(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+	old := time.Now().Add(-domain.MaxBackdate - time.Hour)
+	authedCtx := context.WithValue(context.Background(), interop.RequesterCtxKey, domain.Entity{ID: ccid, Domain: cfg.FQDN})
+
+	t.Run("own old document imports", func(t *testing.T) {
+		repo := &recordingRecordRepo{}
+		uc := newRecordCommitUsecase(ccid, cfg, repo, nil)
+		sd := signedRecord(t, ccid, priv, old)
+		if _, err := uc.Commit(authedCtx, "127.0.0.1", sd, domain.CommitModeLocalOnlyExecute); err != nil {
+			t.Fatalf("Commit returned error: %v", err)
+		}
+		if !repo.createRecordCalled {
+			t.Fatal("CreateRecord was not called for an exempt import")
+		}
+	})
+
+	t.Run("unauthenticated import rejected", func(t *testing.T) {
+		repo := &recordingRecordRepo{}
+		uc := newRecordCommitUsecase(ccid, cfg, repo, nil)
+		sd := signedRecord(t, ccid, priv, old)
+		_, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeLocalOnlyExecute)
+		if err == nil || !strings.Contains(err.Error(), "backdate") {
+			t.Fatalf("expected backdate rejection, got %v", err)
+		}
+	})
+
+	t.Run("non-import mode rejected", func(t *testing.T) {
+		repo := &recordingRecordRepo{}
+		uc := newRecordCommitUsecase(ccid, cfg, repo, nil)
+		sd := signedRecord(t, ccid, priv, old)
+		_, err := uc.Commit(authedCtx, "127.0.0.1", sd, domain.CommitModeExecute)
+		if err == nil || !strings.Contains(err.Error(), "backdate") {
+			t.Fatalf("expected backdate rejection, got %v", err)
+		}
+	})
+
+	t.Run("other author targeting requester imports", func(t *testing.T) {
+		otherCCID, otherPriv := newIdentity(t)
+		associate := concrnt.CCURI{Scheme: "cckv", Owner: ccid, Key: "posts/1"}.String()
+		sd := signTestDocument(t, concrnt.Document[any]{
+			Kind:      "association",
+			Associate: &associate,
+			Author:    otherCCID,
+			Schema:    "https://example.com/a/like.json",
+			CreatedAt: old,
+		}, otherPriv)
+
+		repo := &importRecordingRepo{}
+		uc := newRecordCommitUsecase(ccid, cfg, repo, nil)
+		if _, err := uc.Commit(authedCtx, "127.0.0.1", sd, domain.CommitModeLocalOnlyExecute); err != nil {
+			t.Fatalf("Commit returned error: %v", err)
+		}
+		if len(repo.uniques) != 1 {
+			t.Fatal("CreateAssociation was not called for an inbound association import")
+		}
+	})
+
+	t.Run("other author unrelated target rejected", func(t *testing.T) {
+		otherCCID, otherPriv := newIdentity(t)
+		sd := signedRecord(t, otherCCID, otherPriv, old)
+
+		repo := &importRecordingRepo{}
+		uc := newRecordCommitUsecase(ccid, cfg, repo, nil)
+		_, err := uc.Commit(authedCtx, "127.0.0.1", sd, domain.CommitModeLocalOnlyExecute)
+		if err == nil || !strings.Contains(err.Error(), "backdate") {
+			t.Fatalf("expected backdate rejection, got %v", err)
+		}
+	})
+}
+
 // The association unique key includes the body: associations that differ only
 // in body must coexist (v1 semantics — e.g. two replies by the same author to
 // the same message), while a byte-identical body still dedupes.

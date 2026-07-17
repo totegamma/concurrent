@@ -228,11 +228,34 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 			return nil, errors.Join(domain.ValidationError{Field: "proof", Message: "signature verification failed"}, err)
 		}
 
+		// Self-service migration: an authenticated user importing their own
+		// repository dump (LocalOnlyExecute never re-federates) may replay
+		// historical documents past the backdate window — their own, and
+		// documents by others that target their content (e.g. inbound
+		// associations carried over in the dump). Signature verification and
+		// the deleted-key tombstone below still apply.
+		backdateExempt := false
+		if mode == domain.CommitModeLocalOnlyExecute {
+			if authenticated, ok := ctx.Value(interop.RequesterCtxKey).(domain.Entity); ok {
+				backdateExempt = doc.Author == authenticated.ID
+				if !backdateExempt && doc.Key != "" {
+					if parsed, err := concrnt.ParseCCURI(doc.Key); err == nil && parsed.Owner == authenticated.ID {
+						backdateExempt = true
+					}
+				}
+				if !backdateExempt && doc.Associate != nil {
+					if parsed, err := concrnt.ParseCCURI(*doc.Associate); err == nil && parsed.Owner == authenticated.ID {
+						backdateExempt = true
+					}
+				}
+			}
+		}
+
 		// Replay guards: reject documents older than the backdate window, and
 		// reject re-committing a key that was explicitly deleted within it.
 		// Together they make a deletion permanent against replay — a captured
 		// document is either still tombstoned or already too old to accept.
-		if doc.CreatedAt.Before(time.Now().Add(-domain.MaxBackdate)) {
+		if !backdateExempt && doc.CreatedAt.Before(time.Now().Add(-domain.MaxBackdate)) {
 			err := domain.ValidationError{Field: "createdAt", Message: "createdAt is older than the allowed backdate window"}
 			span.RecordError(err)
 			return nil, err

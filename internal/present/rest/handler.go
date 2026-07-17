@@ -100,6 +100,7 @@ func (h *Handler) RegisterRoutes(app *echo.Echo, e *echo.Group) {
 	api.GET("/realtime", h.handleRealtime)
 	api.OPTIONS("/realtime", h.handleNop)
 	api.POST("/register", h.handleRegister)
+	api.DELETE("/register", h.handleUnregister)
 	api.OPTIONS("/register", h.handleNop)
 	api.GET("/timeline/recent", h.handleTimelineRecent)
 	api.OPTIONS("/timeline/recent", h.handleNop)
@@ -452,6 +453,19 @@ func (h *Handler) handleRegister(c echo.Context) error {
 
 	err = h.residence.Register(ctx, ip, req)
 	if err != nil {
+		return presenter.InternalError(c, err)
+	}
+	return presenter.OK(c, echo.Map{"status": "ok"})
+}
+
+func (h *Handler) handleUnregister(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	err := h.residence.Unregister(ctx)
+	if err != nil {
+		if errors.Is(err, domain.ErrPermissionDenied) {
+			return presenter.Forbidden(c, err.Error())
+		}
 		return presenter.InternalError(c, err)
 	}
 	return presenter.OK(c, echo.Map{"status": "ok"})

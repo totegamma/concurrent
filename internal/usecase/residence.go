@@ -16,6 +16,7 @@ import (
 type ResidenceRepository interface {
 	SaveMeta(ctx context.Context, meta domain.EntityMeta) error
 	GetMeta(ctx context.Context, ccid string) (*domain.EntityMeta, error)
+	DeleteMeta(ctx context.Context, ccid string) error
 
 	GetEntityByCCID(ctx context.Context, ccid string) (*domain.Entity, error)
 	GetEntityByAlias(ctx context.Context, alias string) (*domain.Entity, error)
@@ -37,6 +38,44 @@ func NewResidenceUsecase(
 		record: record,
 		config: config,
 	}
+}
+
+// Unregister deletes the requester's residence meta from this server — the
+// final cleanup step of a migration. The requester must have already moved
+// their entity document to another domain: deleting the meta of a current
+// resident would leave them unable to update their own entity document
+// (saveEntity requires a meta for local-domain entity commits).
+func (uc *ResidenceUsecase) Unregister(ctx context.Context) error {
+	ctx, span := tracer.Start(ctx, "ResidenceUsecase.Unregister")
+	defer span.End()
+
+	requester, ok := ctx.Value(interop.RequesterCtxKey).(domain.Entity)
+	if !ok {
+		err := errors.New("requester not found in context")
+		span.RecordError(err)
+		return err
+	}
+
+	entity, err := uc.repo.GetEntityByCCID(ctx, requester.ID)
+	if err != nil {
+		// entityが見つからない場合はmetaだけ残っている状態なので削除に進む
+		if !errors.Is(err, domain.ErrNotFound) {
+			span.RecordError(err)
+			return err
+		}
+	} else if entity.Domain == uc.config.FQDN {
+		err := domain.PermissionError{Reason: "entity still resides on this domain; move to another domain first"}
+		span.RecordError(err)
+		return err
+	}
+
+	// DeleteMetaはmetaが存在しなくてもエラーにしない(冪等)
+	if err := uc.repo.DeleteMeta(ctx, requester.ID); err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	return nil
 }
 
 func (uc *ResidenceUsecase) Register(ctx context.Context, ip string, req concrnt.RegisterRequest[domain.EntityMeta]) error {

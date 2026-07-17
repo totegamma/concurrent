@@ -65,6 +65,18 @@ func (r *ResidenceRepository) GetMeta(ctx context.Context, ccid string) (*domain
 	}, nil
 }
 
+func (r *ResidenceRepository) DeleteMeta(ctx context.Context, ccid string) error {
+	ctx, span := tracer.Start(ctx, "ResidenceRepository.DeleteMeta")
+	defer span.End()
+
+	if err := r.db.WithContext(ctx).Where("id = ?", ccid).Delete(&models.EntityMeta{}).Error; err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	return nil
+}
+
 func (r *ResidenceRepository) GetEntityByCCID(ctx context.Context, ccid string) (*domain.Entity, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.GetEntityByCCID")
 	defer span.End()

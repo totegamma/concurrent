@@ -20,7 +20,6 @@ import (
 	"github.com/concrnt/concrnt/impl/interop"
 	"github.com/concrnt/concrnt/internal/domain"
 	"github.com/concrnt/concrnt/internal/present/rest/presenter"
-	"github.com/concrnt/concrnt/internal/service"
 	"github.com/concrnt/concrnt/internal/usecase"
 )
 
@@ -33,7 +32,6 @@ type Handler struct {
 	notify    *usecase.NotificationUsecase
 	abuse     *usecase.AbuseUsecase
 	subscribe *usecase.SubscriptionUsecase
-	mm        *service.ModuleManager
 }
 
 func NewHandler(
@@ -45,7 +43,6 @@ func NewHandler(
 	notify *usecase.NotificationUsecase,
 	abuse *usecase.AbuseUsecase,
 	subscribe *usecase.SubscriptionUsecase,
-	mm *service.ModuleManager,
 ) *Handler {
 	return &Handler{
 		config:    config,
@@ -56,7 +53,6 @@ func NewHandler(
 		notify:    notify,
 		abuse:     abuse,
 		subscribe: subscribe,
-		mm:        mm,
 	}
 }
 
@@ -196,22 +192,15 @@ func (h *Handler) handleResolve(c echo.Context) error {
 	}
 
 	if parsed.Scheme == "ccfs" && parsed.Type == concrnt.CCFSTypeBlob {
-		// redirect to
-		endpoints := h.mm.GetEndpoints()
-		storageModule, ok := endpoints["net.concrnt.storage.resolve"]
-		if !ok {
-			return presenter.InternalError(c, errors.New("storage module not found"))
+		err := h.server.ResolveBlob(ctx, parsed)
+		if errors.Is(err, domain.ErrRedirect) {
+			redirectErr := err.(domain.RedirectError)
+			return presenter.Redirect(c, redirectErr.Location, redirectErr.Body)
 		}
-
-		path, err := concrnt.RenderURITemplate(storageModule, map[string]string{
-			"hash": parsed.CDID,
-		})
-		if err != nil {
-			return presenter.InternalError(c, err)
+		if errors.Is(err, domain.ErrNotFound) {
+			return presenter.NotFound(c, "resource not found")
 		}
-
-		c.Response().Header().Set("Location", path)
-		return c.JSON(http.StatusSeeOther, echo.Map{"location": path})
+		return presenter.InternalError(c, err)
 	}
 
 	if parsed.Key == "" && parsed.CDID == "" {

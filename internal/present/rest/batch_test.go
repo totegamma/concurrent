@@ -62,7 +62,6 @@ func TestBatchHandlerAggregatesChunklineItrRequests(t *testing.T) {
 		nil,
 		nil,
 		nil,
-		nil,
 	)
 
 	app := echo.New()

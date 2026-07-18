@@ -199,7 +199,7 @@ func main() {
 	)
 
 	serverRepo := postgres.NewServerRepository(&domainConfig, db, cl)
-	serverUC := usecase.NewServerUsecase(serverRepo, &domainConfig, softwareInfo, moduleManager)
+	serverUC := usecase.NewServerUsecase(serverRepo, &domainConfig, softwareInfo, moduleManager, cl)
 
 	residenceRepo := postgres.NewResidenceRepository(db, cl, domainConfig)
 	recordRepo := postgres.NewRecordRepository(db)
@@ -285,7 +285,6 @@ func main() {
 		notificationUC,
 		abuseUC,
 		subscriptionUC,
-		moduleManager,
 	)
 	api := e.Group("", authMiddleware.IdentifyIdentity, authMiddleware.IdentifyIdentity)
 

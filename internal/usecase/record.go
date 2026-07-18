@@ -980,15 +980,17 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 		return nil, err
 	}
 
-	postProcesses := []PostProcessAction{
-		func(ctx context.Context) error {
+	postProcesses := []PostProcessAction{}
+
+	if mode == domain.CommitModeExecute {
+		postProcesses = append(postProcesses, func(ctx context.Context) error {
 			return uc.signal.Publish(ctx, resultURI, concrnt.Event{
 				Type:       "created",
 				URI:        resultURI,
 				References: map[string]concrnt.SignedDocument{resultURI: sd},
 				Timestamp:  createdAt,
 			})
-		},
+		})
 	}
 
 	if mode == domain.CommitModeExecute && parsed.Distributes != nil {

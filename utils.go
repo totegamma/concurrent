@@ -20,11 +20,17 @@ func JsonPrint(tag string, v any) {
 	fmt.Printf("=== %s ===\n%s\n", tag, string(b))
 }
 
+const (
+	CCFSTypeConcrnt = "concrnt"
+	CCFSTypeBlob    = "blob"
+)
+
 type CCURI struct {
 	Scheme string  `json:"schema"`
 	Owner  string  `json:"owner"`
 	Key    string  `json:"key"`
-	CDID   string  `json:"cdid"`
+	Type   string  `json:"type,omitempty"` // ccfs only: CCFSTypeConcrnt or CCFSTypeBlob
+	CDID   string  `json:"cdid"`           // ccfs only: bare cdid (type=concrnt) or bare sha256 hex (type=blob)
 	Hint   *string `json:"hint,omitempty"`
 	Raw    string  `json:"raw"`
 }
@@ -38,15 +44,15 @@ func (c CCURI) String() string {
 		} else {
 			result = fmt.Sprintf("cckv://%s/%s", c.Owner, c.Key)
 		}
+		if c.Key == "" {
+			result = strings.TrimSuffix(result, "/")
+		}
 	case "ccfs":
 		if c.Hint != nil {
-			result = fmt.Sprintf("ccfs://%s@%s/%s", c.Owner, *c.Hint, c.CDID)
+			result = fmt.Sprintf("ccfs://%s@%s/%s/%s", c.Owner, *c.Hint, c.Type, c.CDID)
 		} else {
-			result = fmt.Sprintf("ccfs://%s/%s", c.Owner, c.CDID)
+			result = fmt.Sprintf("ccfs://%s/%s/%s", c.Owner, c.Type, c.CDID)
 		}
-	}
-	if c.Key == "" {
-		result = strings.TrimSuffix(result, "/")
 	}
 	return result
 }
@@ -94,11 +100,31 @@ func ParseCCURI(escaped string) (*CCURI, error) {
 			Raw:    uriString,
 		}, nil
 	case "ccfs":
+		parts := strings.Split(key, "/")
+		var ccfsType, hash string
+		switch {
+		case len(parts) == 1 && parts[0] != "" && parts[0] != CCFSTypeConcrnt && parts[0] != CCFSTypeBlob:
+			// legacy flat form ccfs://<owner>/<hash>: interpret as a concrnt object
+			ccfsType = CCFSTypeConcrnt
+			hash = parts[0]
+		case len(parts) == 2 && parts[0] != "" && parts[1] != "":
+			ccfsType = parts[0]
+			hash = parts[1]
+			if ccfsType != CCFSTypeConcrnt && ccfsType != CCFSTypeBlob {
+				return nil, fmt.Errorf("invalid ccfs type: %s", ccfsType)
+			}
+			if ccfsType == CCFSTypeBlob && !isSha256Hex(hash) {
+				return nil, fmt.Errorf("invalid ccfs blob hash: expected 64 hex characters")
+			}
+		default:
+			return nil, fmt.Errorf("invalid ccfs uri: expected ccfs://<owner>/<type>/<hash>")
+		}
 		return &CCURI{
 			Scheme: "ccfs",
 			Owner:  owner,
 			Key:    "",
-			CDID:   key,
+			Type:   ccfsType,
+			CDID:   hash,
 			Hint:   hint,
 			Raw:    uriString,
 		}, nil
@@ -125,6 +151,23 @@ func ComposeCCURI(scheme, owner, key string) string {
 		Path:   key,
 	}
 	return u.String()
+}
+
+func ComposeCCFSURI(owner, ccfsType, hash string) string {
+	return ComposeCCURI("ccfs", owner, ccfsType+"/"+hash)
+}
+
+func isSha256Hex(s string) bool {
+	if len(s) != 64 {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		if !(c >= '0' && c <= '9' || c >= 'a' && c <= 'f' || c >= 'A' && c <= 'F') {
+			return false
+		}
+	}
+	return true
 }
 
 func hasChar(s string, c byte) bool {

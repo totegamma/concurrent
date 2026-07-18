@@ -217,7 +217,7 @@ func TestGlobalPolicyViaPolicyService(t *testing.T) {
 			name:          "association read defaults to allowed",
 			action:        "association:read",
 			requester:     localRequester,
-			key:           "ccfs://con1otherlocal/assoc-1",
+			key:           "ccfs://con1otherlocal/concrnt/assoc-1",
 			expectAllowed: true,
 			self: concrnt.Document[any]{
 				Kind:      "association",
@@ -230,7 +230,7 @@ func TestGlobalPolicyViaPolicyService(t *testing.T) {
 			name:          "association delete allows parent namespace owner",
 			action:        "association:delete",
 			requester:     localRequester,
-			key:           "ccfs://con1localrequester/assoc-1",
+			key:           "ccfs://con1localrequester/concrnt/assoc-1",
 			expectAllowed: true,
 			self: concrnt.Document[any]{
 				Kind:      "association",
@@ -243,7 +243,7 @@ func TestGlobalPolicyViaPolicyService(t *testing.T) {
 			name:          "association delete allows association author",
 			action:        "association:delete",
 			requester:     localRequester,
-			key:           "ccfs://con1otherlocal/assoc-1",
+			key:           "ccfs://con1otherlocal/concrnt/assoc-1",
 			expectAllowed: true,
 			self: concrnt.Document[any]{
 				Kind:      "association",
@@ -256,7 +256,7 @@ func TestGlobalPolicyViaPolicyService(t *testing.T) {
 			name:          "association delete denies otherwise",
 			action:        "association:delete",
 			requester:     localRequester,
-			key:           "ccfs://con1otherlocal/assoc-1",
+			key:           "ccfs://con1otherlocal/concrnt/assoc-1",
 			expectAllowed: false,
 			self: concrnt.Document[any]{
 				Kind:      "association",

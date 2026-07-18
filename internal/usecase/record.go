@@ -652,6 +652,11 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 					return nil, err
 				}
 			case "ccfs":
+				if parsedURI.Type != concrnt.CCFSTypeConcrnt {
+					err := errors.New("unsupported ccfs type for delete record: " + parsedURI.Type)
+					span.RecordError(err)
+					return nil, err
+				}
 				err = uc.repo.DeleteRecordByDocumentID(ctx, tx, parsedURI.CDID)
 				if err != nil {
 					span.RecordError(err)
@@ -671,8 +676,8 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 				return nil, err
 			}
 
-			if parsedURI.Scheme != "ccfs" {
-				err := errors.New("unsupported document scheme for delete association: " + parsedURI.Scheme)
+			if parsedURI.Scheme != "ccfs" || parsedURI.Type != concrnt.CCFSTypeConcrnt {
+				err := errors.New("unsupported document scheme for delete association: " + targetURI)
 				span.RecordError(err)
 				return nil, err
 			}
@@ -1005,6 +1010,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 	ccfs := concrnt.CCURI{
 		Scheme: "ccfs",
 		Owner:  parsedKey.Owner,
+		Type:   concrnt.CCFSTypeConcrnt,
 		CDID:   documentID,
 	}.String()
 
@@ -1053,6 +1059,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 	ccfs := concrnt.CCURI{
 		Scheme: "ccfs",
 		Owner:  targetURI.Owner,
+		Type:   concrnt.CCFSTypeConcrnt,
 		CDID:   documentID,
 	}.String()
 
@@ -1255,6 +1262,7 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 	ccfs := concrnt.CCURI{
 		Scheme: "ccfs",
 		Owner:  targetUser.ID,
+		Type:   concrnt.CCFSTypeConcrnt,
 		CDID:   documentID,
 	}.String()
 
@@ -1334,6 +1342,7 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, doc
 	ccfs := concrnt.CCURI{
 		Scheme: "ccfs",
 		Owner:  targetUser.ID,
+		Type:   concrnt.CCFSTypeConcrnt,
 		CDID:   documentID,
 	}.String()
 

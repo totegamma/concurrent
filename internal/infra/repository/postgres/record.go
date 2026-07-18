@@ -354,6 +354,9 @@ func (r *RecordRepository) GetHierarchicalRecordPolicies(ctx context.Context, ur
 
 	cckv := uri
 	if parsed.Scheme == "ccfs" {
+		if parsed.Type != concrnt.CCFSTypeConcrnt {
+			return nil, domain.NotFoundError{Resource: uri}
+		}
 		var rk models.RecordKey
 		err = r.db.WithContext(ctx).
 			Joins("JOIN records r ON r.document_id = record_keys.record_id").
@@ -468,7 +471,7 @@ func (r *RecordRepository) GetSignedDocument(ctx context.Context, uri string) (*
 			return nil, err
 		}
 
-		ccfs := concrnt.ComposeCCURI("ccfs", parsed.Owner, parsed.CDID)
+		ccfs := concrnt.ComposeCCFSURI(parsed.Owner, concrnt.CCFSTypeConcrnt, *recordKey.RecordID)
 
 		return &concrnt.SignedDocument{
 			CCKV:     &uri,
@@ -478,6 +481,9 @@ func (r *RecordRepository) GetSignedDocument(ctx context.Context, uri string) (*
 		}, nil
 
 	case "ccfs":
+		if parsed.Type != concrnt.CCFSTypeConcrnt {
+			return nil, domain.NotFoundError{Resource: uri}
+		}
 		var commitLog models.CommitLog
 		err = r.db.WithContext(ctx).
 			Where("id = ?", parsed.CDID).
@@ -660,6 +666,9 @@ func (r *RecordRepository) GetDistributions(ctx context.Context, uri string) ([]
 		}
 		return recordKey.Record.Distributions, nil
 	case "ccfs":
+		if parsed.Type != concrnt.CCFSTypeConcrnt {
+			return nil, domain.NotFoundError{Resource: uri}
+		}
 		var record models.Record
 		err = r.db.WithContext(ctx).
 			Where("document_id = ?", parsed.CDID).
@@ -714,7 +723,7 @@ func (r *RecordRepository) GetAssociatedRecords(
 			return nil, err
 		}
 
-		ccfs := concrnt.ComposeCCURI("ccfs", assoc.Owner, assoc.DocumentID)
+		ccfs := concrnt.ComposeCCFSURI(assoc.Owner, concrnt.CCFSTypeConcrnt, assoc.DocumentID)
 
 		sds[i] = concrnt.SignedDocument{
 			CCFS:     &ccfs,
@@ -842,7 +851,7 @@ func (r *RecordRepository) QueryByPrefix(
 			return nil, err
 		}
 
-		ccfs := concrnt.ComposeCCURI("ccfs", rk.Record.Owner, rk.Record.DocumentID)
+		ccfs := concrnt.ComposeCCFSURI(rk.Record.Owner, concrnt.CCFSTypeConcrnt, rk.Record.DocumentID)
 
 		sds = append(sds, concrnt.SignedDocument{
 			CCKV:     &rk.URI,
@@ -906,7 +915,7 @@ func (r *RecordRepository) QueryByParent(
 			return nil, err
 		}
 
-		ccfs := concrnt.ComposeCCURI("ccfs", rk.Record.Owner, rk.Record.DocumentID)
+		ccfs := concrnt.ComposeCCFSURI(rk.Record.Owner, concrnt.CCFSTypeConcrnt, rk.Record.DocumentID)
 
 		sds = append(sds, concrnt.SignedDocument{
 			CCKV:     &rk.URI,
@@ -957,7 +966,7 @@ func (r *RecordRepository) GetAcknowledgeRecords(ctx context.Context, from, to, 
 			return nil, err
 		}
 
-		ccfs := concrnt.ComposeCCURI("ccfs", ack.From, ack.DocumentID)
+		ccfs := concrnt.ComposeCCFSURI(ack.From, concrnt.CCFSTypeConcrnt, ack.DocumentID)
 
 		result[i] = concrnt.SignedDocument{
 			CCFS:     &ccfs,

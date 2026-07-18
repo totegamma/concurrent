@@ -851,7 +851,7 @@ func convertRecord(
 			copy(hash10[:], hash[:10])
 			documentID := cdidv2.New(hash10, v1ass.SignedAt).String()
 
-			ccfs := concrnt.ComposeCCURI("ccfs", v1ass.Owner, documentID)
+			ccfs := concrnt.ComposeCCFSURI(v1ass.Owner, concrnt.CCFSTypeConcrnt, documentID)
 
 			SaveMigrationTable(destDB, "a"+cdidBase, ccfs)
 
@@ -915,7 +915,7 @@ func convertRecord(
 				assocHash10 := [10]byte{}
 				copy(assocHash10[:], assocHash[:10])
 				assocDocumentID := cdidv2.New(assocHash10, v1ass.SignedAt).String()
-				assocCcfs := concrnt.ComposeCCURI("ccfs", v1ass.Owner, assocDocumentID)
+				assocCcfs := concrnt.ComposeCCFSURI(v1ass.Owner, concrnt.CCFSTypeConcrnt, assocDocumentID)
 				SaveMigrationTable(destDB, "a"+cdidBase+"#real", assocCcfs)
 
 				assocSD := concrnt.SignedDocument{

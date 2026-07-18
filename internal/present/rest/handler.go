@@ -195,7 +195,7 @@ func (h *Handler) handleResolve(c echo.Context) error {
 		return presenter.BadRequestMessage(c, "invalid uri")
 	}
 
-	if parsed.Scheme == "ccfs" && strings.HasPrefix(parsed.CDID, "sha256-") {
+	if parsed.Scheme == "ccfs" && parsed.Type == concrnt.CCFSTypeBlob {
 		// redirect to
 		endpoints := h.mm.GetEndpoints()
 		storageModule, ok := endpoints["net.concrnt.storage.resolve"]

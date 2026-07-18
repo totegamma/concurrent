@@ -122,11 +122,11 @@ func TestApplyEventToCacheReferenceRecordUsesRedirectHref(t *testing.T) {
 	now := time.Now()
 	epoch := manifest.Time2Chunk(now)
 	seedChunk(t, r.mc, testTimeline, epoch, []chunkline.BodyItem{
-		{Timestamp: now.Add(-time.Minute), Href: "ccfs://bob/existing"},
+		{Timestamp: now.Add(-time.Minute), Href: "ccfs://bob/concrnt/existing"},
 	})
 
 	recordKey := testTimeline + "/dist1"
-	original := "ccfs://bob/original-post"
+	original := "ccfs://bob/concrnt/original-post"
 	refDoc, err := json.Marshal(concrnt.Document[schemas.Reference]{
 		Kind:      "record",
 		Key:       recordKey,

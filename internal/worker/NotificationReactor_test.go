@@ -17,12 +17,12 @@ func TestNotificationDedupKeyDistinguishesAssociations(t *testing.T) {
 	sub := domain.NotificationSubscription{VendorID: "vendor", Owner: "owner"}
 	ts := time.Unix(1751760000, 0)
 
-	assocA := "ccfs://alice/like1"
-	assocB := "ccfs://bob/like2"
+	assocA := "ccfs://alice/concrnt/like1"
+	assocB := "ccfs://bob/concrnt/like2"
 	base := concrnt.Event{
 		Type:      "associated",
 		Source:    "cckv://carol/home",
-		URI:       "ccfs://carol/post1",
+		URI:       "ccfs://carol/concrnt/post1",
 		Timestamp: ts,
 	}
 
@@ -45,14 +45,14 @@ func TestNotificationDedupKeyDistinguishesAssociations(t *testing.T) {
 // hint is carried in the reference value.
 func TestEventMatchesSchemasResolvesReference(t *testing.T) {
 	const replySchema = "https://schema.concrnt.world/m/reply.json"
-	href := "ccfs://alice/post1"
+	href := "ccfs://alice/concrnt/post1"
 
 	// reference wrapper carrying the target document under References
 	bundled := concrnt.Event{
 		Type: "created",
-		URI:  "ccfs://bob/ref1",
+		URI:  "ccfs://bob/concrnt/ref1",
 		References: map[string]concrnt.SignedDocument{
-			"ccfs://bob/ref1": {
+			"ccfs://bob/concrnt/ref1": {
 				Document: `{"schema":"` + schemas.ReferenceURL + `","value":{"href":"` + href + `"}}`,
 				References: map[string]concrnt.SignedDocument{
 					href: {Document: `{"schema":"` + replySchema + `"}`},
@@ -67,9 +67,9 @@ func TestEventMatchesSchemasResolvesReference(t *testing.T) {
 	// reference wrapper carrying only the schema hint (no bundled target)
 	hintOnly := concrnt.Event{
 		Type: "created",
-		URI:  "ccfs://bob/ref2",
+		URI:  "ccfs://bob/concrnt/ref2",
 		References: map[string]concrnt.SignedDocument{
-			"ccfs://bob/ref2": {
+			"ccfs://bob/concrnt/ref2": {
 				Document: `{"schema":"` + schemas.ReferenceURL + `","value":{"href":"` + href + `","schema":"` + replySchema + `"}}`,
 			},
 		},
@@ -100,18 +100,18 @@ func TestEventMatchesSchemasResolvesReference(t *testing.T) {
 // come from that document.
 func TestBuildNotificationPayloadIsMinimal(t *testing.T) {
 	const likeSchema = "https://schema.concrnt.world/a/like.json"
-	assoc := "ccfs://alice/like1"
+	assoc := "ccfs://alice/concrnt/like1"
 	createdAt := time.Unix(1751760000, 0).UTC()
 
 	event := concrnt.Event{
 		Type:        "associated",
 		Source:      "cckv://carol/home",
-		URI:         "ccfs://carol/post1", // the target post
+		URI:         "ccfs://carol/concrnt/post1", // the target post
 		Association: &assoc,
 		Timestamp:   time.Unix(1751760005, 0).UTC(),
 		References: map[string]concrnt.SignedDocument{
 			assoc: {
-				Document: `{"kind":"association","schema":"` + likeSchema + `","author":"con1alice","createdAt":"` + createdAt.Format(time.RFC3339) + `","associate":"ccfs://carol/post1"}`,
+				Document: `{"kind":"association","schema":"` + likeSchema + `","author":"con1alice","createdAt":"` + createdAt.Format(time.RFC3339) + `","associate":"ccfs://carol/concrnt/post1"}`,
 			},
 		},
 	}
@@ -144,11 +144,11 @@ func TestBuildNotificationPayloadIsMinimal(t *testing.T) {
 // URI/timestamp rather than being dropped.
 func TestBuildNotificationPayloadFallsBack(t *testing.T) {
 	ts := time.Unix(1751760000, 0).UTC()
-	event := concrnt.Event{Type: "created", URI: "ccfs://bob/post9", Timestamp: ts}
+	event := concrnt.Event{Type: "created", URI: "ccfs://bob/concrnt/post9", Timestamp: ts}
 
 	payload := buildNotificationPayload(event)
 
-	if payload.URI != "ccfs://bob/post9" {
+	if payload.URI != "ccfs://bob/concrnt/post9" {
 		t.Fatalf("uri must fall back to event.URI, got %q", payload.URI)
 	}
 	if payload.Schema != "" || payload.Author != "" {
@@ -167,7 +167,7 @@ func TestNotificationDedupKeyDistinguishesTimestamps(t *testing.T) {
 	base := concrnt.Event{
 		Type:      "unassociated",
 		Source:    "cckv://carol/home",
-		URI:       "ccfs://carol/post1",
+		URI:       "ccfs://carol/concrnt/post1",
 		Timestamp: time.Unix(1751760000, 0),
 	}
 	later := base

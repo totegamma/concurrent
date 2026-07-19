@@ -106,7 +106,7 @@ func EvaluatePolicy(ctx context.Context, policy Policy, req RequestContext, acti
 
 	conclusion := UNSET
 	for _, stmt := range statements {
-		evalResult, err := Eval(req, stmt.Condition)
+		evalResult, err := Eval(ctx, req, stmt.Condition)
 		if err != nil {
 			span.RecordError(err)
 			continue
@@ -140,7 +140,7 @@ func EvaluatePolicy(ctx context.Context, policy Policy, req RequestContext, acti
 	return conclusion, reason, nil
 }
 
-func Eval(ctx RequestContext, expr Expr) (EvalResult, error) {
+func Eval(ctx context.Context, rctx RequestContext, expr Expr) (EvalResult, error) {
 
 	if expr.Operator == "Const" {
 		return EvalResult{
@@ -162,7 +162,7 @@ func Eval(ctx RequestContext, expr Expr) (EvalResult, error) {
 	args := make([]any, 0, len(expr.Args))
 	evalResults := make([]EvalResult, 0, len(expr.Args))
 	for _, arg := range expr.Args {
-		result, err := Eval(ctx, arg)
+		result, err := Eval(ctx, rctx, arg)
 		if err != nil {
 			return EvalResult{
 				Operator: expr.Operator,
@@ -174,7 +174,7 @@ func Eval(ctx RequestContext, expr Expr) (EvalResult, error) {
 	}
 
 	if operatorFunc, exists := operators[expr.Operator]; exists {
-		result, err := operatorFunc(ctx, args)
+		result, err := operatorFunc(ctx, rctx, args)
 		result.Args = evalResults
 		return result, err
 	}

@@ -737,6 +737,115 @@ func (c *Client) Query(ctx context.Context, resolver string, params QueryParams)
 	return results, nil
 }
 
+// Call invokes a named concrnt API (an entry in the target server's
+// /.well-known/concrnt Endpoints map, e.g. "net.concrnt.core.acknowledges")
+// and decodes the JSON response into result.
+func (c *Client) Call(ctx context.Context, resolver string, endpoint string, params map[string]string, opts *Options, result any) error {
+	ctx, span := tracer.Start(ctx, "Client.Call")
+	defer span.End()
+
+	if opts == nil {
+		opts = &Options{}
+	}
+
+	domain, err := c.resolveResolver(ctx, resolver)
+	if err != nil {
+		err := errors.Join(fmt.Errorf("failed to resolve resolver %s", resolver), err)
+		span.RecordError(err)
+		return err
+	}
+	if domain == "" {
+		err := errors.New("resolver cannot be empty")
+		span.RecordError(err)
+		return err
+	}
+
+	server, err := c.GetServer(ctx, domain, nil)
+	if err != nil {
+		err := errors.Join(fmt.Errorf("failed to get server for resolver %s", domain), err)
+		span.RecordError(err)
+		return err
+	}
+
+	desc, ok := server.Endpoints[endpoint]
+	if !ok {
+		err := errors.Join(fmt.Errorf("endpoint %s not found in server %s", endpoint, server.Domain), ErrEndpointMissing)
+		span.RecordError(err)
+		return err
+	}
+
+	path, err := concrnt.RenderURITemplate(desc, params)
+	if err != nil {
+		err := errors.Join(fmt.Errorf("failed to render endpoint template %s for server %s", endpoint, server.Domain), err)
+		span.RecordError(err)
+		return err
+	}
+	url := "https://" + server.Domain + path
+
+	// ==== cache check =============
+	cacheKey := "call:" + url
+	if !opts.NoCache {
+		x, found := c.cache.Get(cacheKey)
+		if found {
+			resultBytes := x.([]byte)
+			err := json.Unmarshal(resultBytes, &result)
+			if err != nil {
+				err := errors.Join(fmt.Errorf("failed to unmarshal cached call response for %s", url), err)
+				span.RecordError(err)
+				return err
+			}
+			return nil
+		}
+	}
+	// ==============================
+
+	if !c.IsOnline(server.Domain) {
+		return fmt.Errorf("Domain is offline")
+	}
+
+	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
+	if err != nil {
+		err := errors.Join(fmt.Errorf("failed to create request for call to %s", url), err)
+		span.RecordError(err)
+		return err
+	}
+	req.Header.Set("Accept", "application/json")
+
+	resp, err := c.client.Do(req)
+	if err != nil {
+		c.markOfflineIfTimeout(server.Domain, "calling "+endpoint, err)
+		err := errors.Join(fmt.Errorf("failed to perform call to %s", url), err)
+		span.RecordError(err)
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		err := fmt.Errorf("failed to call %s: status code %d", url, resp.StatusCode)
+		span.RecordError(err)
+		return err
+	}
+
+	err = json.NewDecoder(resp.Body).Decode(&result)
+	if err != nil {
+		err := errors.Join(fmt.Errorf("failed to decode call response from %s", url), err)
+		span.RecordError(err)
+		return err
+	}
+
+	if !opts.NoCache {
+		bytes, err := json.Marshal(result)
+		if err != nil {
+			err := errors.Join(fmt.Errorf("failed to marshal call response for caching for %s", url), err)
+			span.RecordError(err)
+			return err
+		}
+		c.cache.Set(cacheKey, bytes, cache.DefaultExpiration)
+	}
+
+	return nil
+}
+
 func (c *Client) Commit(ctx context.Context, resolver string, sd concrnt.SignedDocument) error {
 	ctx, span := tracer.Start(ctx, "Client.Commit")
 	defer span.End()

@@ -1,6 +1,7 @@
 package policy
 
 import (
+	"context"
 	"fmt"
 	"reflect"
 	"slices"
@@ -8,7 +9,7 @@ import (
 	"github.com/concrnt/concrnt"
 )
 
-type Operator func(ctx RequestContext, args []any) (EvalResult, error)
+type Operator func(ctx context.Context, rctx RequestContext, args []any) (EvalResult, error)
 
 var operators = make(map[string]Operator)
 
@@ -20,9 +21,11 @@ func init() {
 	operators["Contains"] = opContains
 	operators["CCUriOwner"] = opCCUriOwner
 	operators["Load"] = opLoad
+	operators["ConcrntCall"] = opConcrntCall
+	operators["IsNotEmpty"] = opIsNotEmpty
 }
 
-func opAnd(ctx RequestContext, args []any) (EvalResult, error) {
+func opAnd(ctx context.Context, rctx RequestContext, args []any) (EvalResult, error) {
 
 	for i, arg := range args {
 		evaluated, ok := arg.(bool)
@@ -48,7 +51,7 @@ func opAnd(ctx RequestContext, args []any) (EvalResult, error) {
 	}, nil
 }
 
-func opOr(ctx RequestContext, args []any) (EvalResult, error) {
+func opOr(ctx context.Context, rctx RequestContext, args []any) (EvalResult, error) {
 	for i, arg := range args {
 		evaluated, ok := arg.(bool)
 		if !ok {
@@ -73,7 +76,7 @@ func opOr(ctx RequestContext, args []any) (EvalResult, error) {
 	}, nil
 }
 
-func opNot(ctx RequestContext, args []any) (EvalResult, error) {
+func opNot(ctx context.Context, rctx RequestContext, args []any) (EvalResult, error) {
 	if len(args) != 1 {
 		err := fmt.Errorf("bad argument length for NOT. Expected 1 but got %d\n", len(args))
 		return EvalResult{
@@ -97,7 +100,7 @@ func opNot(ctx RequestContext, args []any) (EvalResult, error) {
 	}, nil
 }
 
-func opEq(ctx RequestContext, args []any) (EvalResult, error) {
+func opEq(ctx context.Context, rctx RequestContext, args []any) (EvalResult, error) {
 	if len(args) != 2 {
 		err := fmt.Errorf("bad argument length for EQ. Expected 2 but got %d\n", len(args))
 		return EvalResult{
@@ -112,7 +115,7 @@ func opEq(ctx RequestContext, args []any) (EvalResult, error) {
 	}, nil
 }
 
-func opContains(ctx RequestContext, args []any) (EvalResult, error) {
+func opContains(ctx context.Context, rctx RequestContext, args []any) (EvalResult, error) {
 	if len(args) != 2 {
 		err := fmt.Errorf("bad argument length for CONTAINS. Expected 2 but got %d\n", len(args))
 		return EvalResult{
@@ -140,7 +143,7 @@ func opContains(ctx RequestContext, args []any) (EvalResult, error) {
 }
 
 /*
-func opParseCCURI(ctx RequestContext, args []any) (EvalResult, error) {
+func opParseCCURI(ctx context.Context, rctx RequestContext, args []any) (EvalResult, error) {
 	if len(args) != 1 {
 		err := fmt.Errorf("bad argument length for ParseCCURI. Expected 1 but got %d\n", len(args))
 		return EvalResult{
@@ -173,7 +176,7 @@ func opParseCCURI(ctx RequestContext, args []any) (EvalResult, error) {
 }
 */
 
-func opCCUriOwner(ctx RequestContext, args []any) (EvalResult, error) {
+func opCCUriOwner(ctx context.Context, rctx RequestContext, args []any) (EvalResult, error) {
 	if len(args) != 1 {
 		err := fmt.Errorf("bad argument length for CCIriOwner. Expected 1 but got %d\n", len(args))
 		return EvalResult{
@@ -207,7 +210,7 @@ func opCCUriOwner(ctx RequestContext, args []any) (EvalResult, error) {
 	}, nil
 }
 
-func opLoad(ctx RequestContext, args []any) (EvalResult, error) {
+func opLoad(ctx context.Context, rctx RequestContext, args []any) (EvalResult, error) {
 	if len(args) != 1 {
 		err := fmt.Errorf("bad argument length for Load. Expected 1 but got %d\n", len(args))
 		return EvalResult{
@@ -225,7 +228,7 @@ func opLoad(ctx RequestContext, args []any) (EvalResult, error) {
 		}, err
 	}
 
-	mappedCtx := structToMap(ctx)
+	mappedCtx := structToMap(rctx)
 	value, ok := resolveDotNotation(mappedCtx, key)
 	if !ok {
 		err := fmt.Errorf("key not found: %s", key)
@@ -240,4 +243,115 @@ func opLoad(ctx RequestContext, args []any) (EvalResult, error) {
 		Operator: "Load",
 		Result:   value,
 	}, nil
+}
+
+func opConcrntCall(ctx context.Context, rctx RequestContext, args []any) (EvalResult, error) {
+	if rctx.Caller == nil {
+		err := fmt.Errorf("no concrnt caller available in this evaluation context\n")
+		return EvalResult{
+			Operator: "ConcrntCall",
+			Error:    err.Error(),
+		}, err
+	}
+
+	if len(args) < 2 || (len(args)-2)%2 != 0 {
+		err := fmt.Errorf("bad argument length for ConcrntCall. Expected resolver, api and key/value pairs but got %d args\n", len(args))
+		return EvalResult{
+			Operator: "ConcrntCall",
+			Error:    err.Error(),
+		}, err
+	}
+
+	resolver, ok := args[0].(string)
+	if !ok {
+		err := fmt.Errorf("bad argument type for ConcrntCall resolver. Expected string but got %s: %v\n", reflect.TypeOf(args[0]), args[0])
+		return EvalResult{
+			Operator: "ConcrntCall",
+			Error:    err.Error(),
+		}, err
+	}
+
+	api, ok := args[1].(string)
+	if !ok {
+		err := fmt.Errorf("bad argument type for ConcrntCall api. Expected string but got %s: %v\n", reflect.TypeOf(args[1]), args[1])
+		return EvalResult{
+			Operator: "ConcrntCall",
+			Error:    err.Error(),
+		}, err
+	}
+
+	params := make(map[string]string)
+	for i := 2; i < len(args); i += 2 {
+		key, ok := args[i].(string)
+		if !ok {
+			err := fmt.Errorf("bad argument type for ConcrntCall param key at index %d. Expected string but got %s: %v\n", i, reflect.TypeOf(args[i]), args[i])
+			return EvalResult{
+				Operator: "ConcrntCall",
+				Error:    err.Error(),
+			}, err
+		}
+		value, ok := args[i+1].(string)
+		if !ok {
+			err := fmt.Errorf("bad argument type for ConcrntCall param value at index %d. Expected string but got %s: %v\n", i+1, reflect.TypeOf(args[i+1]), args[i+1])
+			return EvalResult{
+				Operator: "ConcrntCall",
+				Error:    err.Error(),
+			}, err
+		}
+		params[key] = value
+	}
+
+	result, err := rctx.Caller.ConcrntCall(ctx, resolver, api, params)
+	if err != nil {
+		return EvalResult{
+			Operator: "ConcrntCall",
+			Error:    err.Error(),
+		}, err
+	}
+
+	return EvalResult{
+		Operator: "ConcrntCall",
+		Result:   result,
+	}, nil
+}
+
+func opIsNotEmpty(ctx context.Context, rctx RequestContext, args []any) (EvalResult, error) {
+	if len(args) != 1 {
+		err := fmt.Errorf("bad argument length for IsNotEmpty. Expected 1 but got %d\n", len(args))
+		return EvalResult{
+			Operator: "IsNotEmpty",
+			Error:    err.Error(),
+		}, err
+	}
+
+	if args[0] == nil {
+		return EvalResult{
+			Operator: "IsNotEmpty",
+			Result:   false,
+		}, nil
+	}
+
+	switch arg := args[0].(type) {
+	case []any:
+		return EvalResult{
+			Operator: "IsNotEmpty",
+			Result:   len(arg) > 0,
+		}, nil
+	case string:
+		return EvalResult{
+			Operator: "IsNotEmpty",
+			Result:   arg != "",
+		}, nil
+	case map[string]any:
+		return EvalResult{
+			Operator: "IsNotEmpty",
+			Result:   len(arg) > 0,
+		}, nil
+	default:
+		err := fmt.Errorf("bad argument type for IsNotEmpty. Expected slice, string or map but got %s: %v\n", reflect.TypeOf(args[0]), args[0])
+		return EvalResult{
+			Operator: "IsNotEmpty",
+			Error:    err.Error(),
+		}, err
+	}
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"slices"
 	"strings"
 	"time"
 
@@ -40,6 +41,33 @@ func NewPolicyService(
 		client:           client,
 		cache:            cache.New(10*time.Minute, 15*time.Minute),
 	}
+}
+
+// policyAllowedAPIs is the in-code allowlist of named concrnt APIs that
+// policy ConcrntCall expressions may invoke. Checked before any resolution
+// or network I/O.
+var policyAllowedAPIs = []string{
+	"net.concrnt.core.acknowledges",
+}
+
+func (s *PolicyService) ConcrntCall(ctx context.Context, resolver string, api string, params map[string]string) (any, error) {
+	ctx, span := tracer.Start(ctx, "Policy.Service.ConcrntCall")
+	defer span.End()
+
+	if !slices.Contains(policyAllowedAPIs, api) {
+		err := fmt.Errorf("api %q is not allowed in policy evaluation", api)
+		span.RecordError(err)
+		return nil, err
+	}
+
+	var result any
+	err := s.client.Call(ctx, resolver, api, params, nil, &result)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	return result, nil
 }
 
 func (s *PolicyService) ResolvePolicyURL(ctx context.Context, policyURL string) (policy.Policy, error) {
@@ -268,6 +296,7 @@ func (s *PolicyService) Eval(ctx context.Context, req policy.RequestContext, sta
 		Self:            req.Self,
 		Params:          req.Params,
 		Globals:         s.globalParameters,
+		Caller:          s,
 	}
 
 	conclusion, reason, error := policy.EvaluateStack(ctx, requestContext, policyStack, action, key)

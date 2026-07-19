@@ -1,5 +1,7 @@
 package policy
 
+import "context"
+
 type Conclusion string
 
 const (
@@ -57,6 +59,12 @@ func (c Conclusion) Or(other Conclusion) Conclusion {
 	return UNSET
 }
 
+// ConcrntCaller invokes a named concrnt API (e.g. "net.concrnt.core.acknowledges")
+// on behalf of policy evaluation. Implementations decide which api names are permitted.
+type ConcrntCaller interface {
+	ConcrntCall(ctx context.Context, resolver string, api string, params map[string]string) (any, error)
+}
+
 type RequestContext struct {
 	Requester       any            `json:"requester"`
 	RequesterDomain any            `json:"requester_domain"`
@@ -64,6 +72,7 @@ type RequestContext struct {
 	Self            any            `json:"self"`
 	Params          map[string]any `json:"params"`
 	Globals         any            `json:"globals"`
+	Caller          ConcrntCaller  `json:"-"`
 }
 
 type PolicyDocument struct {

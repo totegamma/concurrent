@@ -360,6 +360,97 @@ func TestQuerySkipsOfflineDomain(t *testing.T) {
 	}
 }
 
+func TestCall(t *testing.T) {
+	t.Parallel()
+
+	const domain = "example.test"
+	want := []any{
+		map[string]any{"document": `{"kind":"ack"}`},
+	}
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/.well-known/concrnt":
+			wkc := concrnt.WellKnownConcrnt{
+				Version: "2.0",
+				Domain:  domain,
+				CSID:    "ccs1example",
+				Layer:   "concrnt",
+				Endpoints: map[string]string{
+					"net.concrnt.test.list": "/list{?from,to}",
+				},
+			}
+			if err := json.NewEncoder(w).Encode(wkc); err != nil {
+				t.Fatalf("encode well-known: %v", err)
+			}
+		case "/list":
+			query := r.URL.Query()
+			assertQueryParam(t, query.Get("from"), "con1alice")
+			assertQueryParam(t, query.Get("to"), "con1bob")
+			assertQueryParam(t, r.Header.Get("Accept"), "application/json")
+
+			if err := json.NewEncoder(w).Encode(want); err != nil {
+				t.Fatalf("encode call response: %v", err)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+
+	cl := New(domain)
+	cl.AddHostRemapping(domain, server.URL)
+
+	var got any
+	err := cl.Call(context.Background(), domain, "net.concrnt.test.list", map[string]string{
+		"from": "con1alice",
+		"to":   "con1bob",
+	}, nil, &got)
+	if err != nil {
+		t.Fatalf("Call returned error: %v", err)
+	}
+
+	gotList, ok := got.([]any)
+	if !ok {
+		t.Fatalf("Call decoded %T, want []any", got)
+	}
+	if len(gotList) != 1 {
+		t.Fatalf("Call returned %d results, want 1", len(gotList))
+	}
+	gotEntry, ok := gotList[0].(map[string]any)
+	if !ok || gotEntry["document"] != `{"kind":"ack"}` {
+		t.Fatalf("Call returned entry %v, want %v", gotList[0], want[0])
+	}
+}
+
+func TestCallEndpointMissing(t *testing.T) {
+	t.Parallel()
+
+	const domain = "example.test"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		wkc := concrnt.WellKnownConcrnt{
+			Version:   "2.0",
+			Domain:    domain,
+			CSID:      "ccs1example",
+			Layer:     "concrnt",
+			Endpoints: map[string]string{},
+		}
+		if err := json.NewEncoder(w).Encode(wkc); err != nil {
+			t.Fatalf("encode well-known: %v", err)
+		}
+	}))
+	defer server.Close()
+
+	cl := New(domain)
+	cl.AddHostRemapping(domain, server.URL)
+
+	var got any
+	err := cl.Call(context.Background(), domain, "net.concrnt.test.list", map[string]string{}, nil, &got)
+	if !errors.Is(err, ErrEndpointMissing) {
+		t.Fatalf("Call returned error %v, want ErrEndpointMissing", err)
+	}
+}
+
 func TestGetResourceBatchUsesBatchEndpoint(t *testing.T) {
 	t.Parallel()
 

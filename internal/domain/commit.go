@@ -15,9 +15,11 @@ const (
 const (
 	// MaxBackdate is how far in the past a non-service-account commit's
 	// createdAt may be. Documents older than now-MaxBackdate are rejected, and
-	// explicitly deleted keys are tombstoned for exactly this long — so a
-	// captured document is always either still tombstoned or already too old to
-	// accept, which makes a deletion permanent against replay.
+	// explicitly deleted (or overwritten) documents have their ccfs URI
+	// (content id) tombstoned for exactly this long — so a captured document
+	// is always either still tombstoned or already too old to accept, which
+	// makes a deletion permanent against replay while leaving the cckv key
+	// itself reusable for fresh documents.
 	MaxBackdate = 7 * 24 * time.Hour
 
 	// MaxFutureSkew is how far ahead of server time a committed createdAt may

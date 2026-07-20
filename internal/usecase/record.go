@@ -127,11 +127,13 @@ func NewRecordUsecase(
 	}
 }
 
-// tombstoneKey namespaces a deleted-resource marker in the KVS.
+// tombstoneKey namespaces a deleted-document marker in the KVS.
 func tombstoneKey(uri string) string { return "tombstone:" + uri }
 
-// markKeyDeleted tombstones a deleted resource URI for the backdate window, so
-// a captured copy of the deleted document can't be replayed back in.
+// markKeyDeleted tombstones a deleted (or overwritten) document's ccfs URI for
+// the backdate window, so a captured copy of that exact document can't be
+// replayed back in. Keying by content id rather than cckv key leaves the key
+// itself reusable for fresh documents.
 func (uc *RecordUsecase) markKeyDeleted(ctx context.Context, uri string) error {
 	if uc.kvs == nil {
 		return nil
@@ -139,7 +141,7 @@ func (uc *RecordUsecase) markKeyDeleted(ctx context.Context, uri string) error {
 	return uc.kvs.Set(ctx, tombstoneKey(uri), "1", domain.MaxBackdate)
 }
 
-// isKeyDeleted reports whether a resource URI is currently tombstoned.
+// isKeyDeleted reports whether a document URI is currently tombstoned.
 func (uc *RecordUsecase) isKeyDeleted(ctx context.Context, uri string) (bool, error) {
 	if uc.kvs == nil {
 		return false, nil
@@ -192,6 +194,8 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		return nil, err
 	}
 
+	documentID := documentIDFor(sd.Document, doc.CreatedAt)
+
 	serviceAccountType, _ := ctx.Value(interop.ServiceAccountTypeCtxKey).(string)
 	isServiceAccount := serviceAccountType == "system"
 
@@ -233,7 +237,7 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		// historical documents past the backdate window — their own, and
 		// documents by others that target their content (e.g. inbound
 		// associations carried over in the dump). Signature verification and
-		// the deleted-key tombstone below still apply.
+		// the deleted-document tombstone below still apply.
 		backdateExempt := false
 		if mode == domain.CommitModeLocalOnlyExecute {
 			if authenticated, ok := ctx.Value(interop.RequesterCtxKey).(domain.Entity); ok {
@@ -252,22 +256,47 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		}
 
 		// Replay guards: reject documents older than the backdate window, and
-		// reject re-committing a key that was explicitly deleted within it.
-		// Together they make a deletion permanent against replay — a captured
-		// document is either still tombstoned or already too old to accept.
+		// reject re-committing a document that was explicitly deleted (or
+		// superseded by an overwrite) within it. Together they make a deletion
+		// permanent against replay — a captured document is either still
+		// tombstoned or already too old to accept. The tombstone is keyed by
+		// the document's ccfs URI (content id), not its cckv key, so a deleted
+		// key stays reusable: only the exact deleted document is rejected,
+		// while a fresh document at the same key has a different CDID and
+		// commits normally.
 		if !backdateExempt && doc.CreatedAt.Before(time.Now().Add(-domain.MaxBackdate)) {
 			err := domain.ValidationError{Field: "createdAt", Message: "createdAt is older than the allowed backdate window"}
 			span.RecordError(err)
 			return nil, err
 		}
+		// The ccfs owner must be derived exactly as at creation time: records
+		// use the key's owner (createRecord), associations the associate's
+		// owner (createAssociation). Unparseable keys skip the check — they
+		// are rejected downstream anyway.
+		ccfsOwner := ""
 		if doc.Key != "" {
-			deleted, err := uc.isKeyDeleted(ctx, doc.Key)
+			if parsed, err := concrnt.ParseCCURI(doc.Key); err == nil {
+				ccfsOwner = parsed.Owner
+			}
+		} else if doc.Associate != nil {
+			if parsed, err := concrnt.ParseCCURI(*doc.Associate); err == nil {
+				ccfsOwner = parsed.Owner
+			}
+		}
+		if ccfsOwner != "" {
+			ccfs := concrnt.CCURI{
+				Scheme: "ccfs",
+				Owner:  ccfsOwner,
+				Type:   concrnt.CCFSTypeConcrnt,
+				CDID:   documentID,
+			}.String()
+			deleted, err := uc.isKeyDeleted(ctx, ccfs)
 			if err != nil {
 				span.RecordError(err)
 				return nil, err
 			}
 			if deleted {
-				err := domain.ValidationError{Field: "key", Message: "cannot re-commit an explicitly deleted key"}
+				err := domain.ValidationError{Field: "document", Message: "cannot re-commit an explicitly deleted document"}
 				span.RecordError(err)
 				return nil, err
 			}
@@ -321,8 +350,6 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 			return nil, err
 		}
 	}
-
-	documentID := documentIDFor(sd.Document, doc.CreatedAt)
 
 	var applyCommit func(tx RepositoryTx) (*commitApplyResult, error)
 
@@ -695,12 +722,19 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 
 		postProcesses := []PostProcessAction{}
 		if mode == domain.CommitModeExecute {
-			// Tombstone the deleted key so a captured copy of this document
-			// can't be replayed back in during the backdate window (see the
-			// replay guard in Commit). Appended as a post-process so it only
-			// runs once the delete has actually committed.
+			// Tombstone the deleted document's ccfs URI (content id) so a
+			// captured copy of it can't be replayed back in during the
+			// backdate window (see the replay guard in Commit), while its
+			// cckv key stays reusable for fresh documents. GetSignedDocument
+			// composes CCFS for cckv lookups too, so this covers cckv- and
+			// ccfs-addressed record deletes and association deletes alike.
+			// Appended as a post-process so it only runs once the delete has
+			// actually committed.
 			if uc.kvs != nil {
 				tombstoneURI := targetURI
+				if targetSD.CCFS != nil {
+					tombstoneURI = *targetSD.CCFS
+				}
 				postProcesses = append(postProcesses, func(ctx context.Context) error {
 					return uc.markKeyDeleted(ctx, tombstoneURI)
 				})
@@ -981,6 +1015,22 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 	}
 
 	postProcesses := []PostProcessAction{}
+
+	// Overwrite: tombstone the superseded version's ccfs URI so a captured
+	// copy of it can't be replayed back in (rollback) during the backdate
+	// window — this is what keeps a later delete of this key permanent even
+	// against older versions. Skipped when the incoming document is the
+	// stored one itself: idempotent redelivery must not tombstone the live
+	// version. Appended as a post-process so it only runs once the overwrite
+	// has actually committed.
+	if mode == domain.CommitModeExecute && uc.kvs != nil && existingSD != nil && existingSD.CCFS != nil {
+		oldCCFS := *existingSD.CCFS
+		if parsedOld, err := concrnt.ParseCCURI(oldCCFS); err == nil && parsedOld.CDID != documentID {
+			postProcesses = append(postProcesses, func(ctx context.Context) error {
+				return uc.markKeyDeleted(ctx, oldCCFS)
+			})
+		}
+	}
 
 	if mode == domain.CommitModeExecute {
 		postProcesses = append(postProcesses, func(ctx context.Context) error {

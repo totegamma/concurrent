@@ -60,7 +60,7 @@ var createAccountCmd = &cobra.Command{
 			return err
 		}
 
-		req, err := buildCreateAccountRequest(identity, op.GlobalConfig.FQDN, alias, info, inviter, time.Now().UTC())
+		req, err := buildCreateAccountRequest(identity, op.GlobalConfig.FQDN, alias, info, time.Now().UTC())
 		if err != nil {
 			return err
 		}
@@ -72,6 +72,18 @@ var createAccountCmd = &cobra.Command{
 
 		if err := residenceUC.Register(cmd.Context(), "", req); err != nil {
 			return fmt.Errorf("failed to create account: %w", err)
+		}
+
+		// Registerはinviterをinviteトークンからのみ導出するため、管理者が
+		// 明示した--inviterはここで直接metaへ反映する(conctlはDB直結の信頼経路)
+		if inviter != nil {
+			if err := residenceRepo.SaveMeta(cmd.Context(), domain.EntityMeta{
+				ID:      identity.CCID,
+				Inviter: inviter,
+				Info:    info,
+			}); err != nil {
+				return fmt.Errorf("failed to set inviter on entity meta: %w", err)
+			}
 		}
 
 		fmt.Println("domain:\t\t", op.GlobalConfig.FQDN)

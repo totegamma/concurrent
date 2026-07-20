@@ -14,7 +14,6 @@ import (
 	"github.com/cosmos/go-bip39"
 
 	"github.com/concrnt/concrnt"
-	domain "github.com/concrnt/concrnt/internal/domain"
 	"github.com/concrnt/concrnt/schemas"
 )
 
@@ -111,11 +110,10 @@ func buildCreateAccountRequest(
 	fqdn string,
 	alias *string,
 	info string,
-	inviter *string,
 	createdAt time.Time,
-) (concrnt.RegisterRequest[domain.EntityMeta], error) {
+) (concrnt.RegisterRequest, error) {
 	if fqdn == "" {
-		return concrnt.RegisterRequest[domain.EntityMeta]{}, fmt.Errorf("fqdn cannot be empty")
+		return concrnt.RegisterRequest{}, fmt.Errorf("fqdn cannot be empty")
 	}
 
 	createdAt = createdAt.UTC()
@@ -134,21 +132,21 @@ func buildCreateAccountRequest(
 
 	documentBytes, err := json.Marshal(document)
 	if err != nil {
-		return concrnt.RegisterRequest[domain.EntityMeta]{}, fmt.Errorf("failed to marshal entity document: %w", err)
+		return concrnt.RegisterRequest{}, fmt.Errorf("failed to marshal entity document: %w", err)
 	}
 
 	signatureBytes, err := concrnt.SignBytes(documentBytes, identity.PrivateKey)
 	if err != nil {
-		return concrnt.RegisterRequest[domain.EntityMeta]{}, fmt.Errorf("failed to sign entity document: %w", err)
+		return concrnt.RegisterRequest{}, fmt.Errorf("failed to sign entity document: %w", err)
 	}
 
 	if err := concrnt.VerifySignature(documentBytes, signatureBytes, identity.CCID); err != nil {
-		return concrnt.RegisterRequest[domain.EntityMeta]{}, fmt.Errorf("failed to verify generated entity signature: %w", err)
+		return concrnt.RegisterRequest{}, fmt.Errorf("failed to verify generated entity signature: %w", err)
 	}
 
 	signature := hex.EncodeToString(signatureBytes)
 
-	return concrnt.RegisterRequest[domain.EntityMeta]{
+	return concrnt.RegisterRequest{
 		SignedDocument: concrnt.SignedDocument{
 			Document: string(documentBytes),
 			Proof: concrnt.Proof{
@@ -156,9 +154,6 @@ func buildCreateAccountRequest(
 				Signature: &signature,
 			},
 		},
-		Meta: domain.EntityMeta{
-			Inviter: inviter,
-			Info:    info,
-		},
+		Meta: json.RawMessage(info),
 	}, nil
 }

@@ -2,12 +2,48 @@ package usecase
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 
 	"github.com/concrnt/concrnt/impl/interop"
 	"github.com/concrnt/concrnt/internal/domain"
 )
+
+// encodeMetaInfo turns the client-supplied registration meta (any JSON value,
+// typically the register-template form data object) into the jsonb string
+// stored in EntityMeta.Info.
+func TestEncodeMetaInfo(t *testing.T) {
+	t.Run("object is marshaled as-is", func(t *testing.T) {
+		info, err := encodeMetaInfo(map[string]any{"name": "alice", "consent": true})
+		if err != nil {
+			t.Fatalf("encodeMetaInfo returned error: %v", err)
+		}
+		if info != `{"consent":true,"name":"alice"}` {
+			t.Fatalf("info = %s", info)
+		}
+	})
+
+	t.Run("nil becomes jsonb null", func(t *testing.T) {
+		info, err := encodeMetaInfo(nil)
+		if err != nil {
+			t.Fatalf("encodeMetaInfo returned error: %v", err)
+		}
+		if info != "null" {
+			t.Fatalf("info = %s", info)
+		}
+	})
+
+	t.Run("raw message passes through compacted", func(t *testing.T) {
+		info, err := encodeMetaInfo(json.RawMessage(`{"note": "created by conctl"}`))
+		if err != nil {
+			t.Fatalf("encodeMetaInfo returned error: %v", err)
+		}
+		if info != `{"note":"created by conctl"}` {
+			t.Fatalf("info = %s", info)
+		}
+	})
+}
 
 // unregisterResidenceRepo serves a fixed entity (or an error) and records
 // DeleteMeta calls.

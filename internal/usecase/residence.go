@@ -78,7 +78,17 @@ func (uc *ResidenceUsecase) Unregister(ctx context.Context) error {
 	return nil
 }
 
-func (uc *ResidenceUsecase) Register(ctx context.Context, ip string, req concrnt.RegisterRequest[domain.EntityMeta]) error {
+// encodeMetaInfo serializes the client-supplied registration meta (an
+// arbitrary JSON value) into the string stored in EntityMeta.Info (jsonb).
+func encodeMetaInfo(meta any) (string, error) {
+	info, err := json.Marshal(meta)
+	if err != nil {
+		return "", err
+	}
+	return string(info), nil
+}
+
+func (uc *ResidenceUsecase) Register(ctx context.Context, ip string, req concrnt.RegisterRequest) error {
 	ctx, span := tracer.Start(ctx, "RecordUsecase.Register")
 	defer span.End()
 
@@ -170,9 +180,17 @@ func (uc *ResidenceUsecase) Register(ctx context.Context, ip string, req concrnt
 		return err
 	}
 
-	req.Meta.ID = ccid
-	req.Meta.Inviter = inviter
-	err = uc.repo.SaveMeta(ctx, req.Meta)
+	info, err := encodeMetaInfo(req.Meta)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	err = uc.repo.SaveMeta(ctx, domain.EntityMeta{
+		ID:      ccid,
+		Inviter: inviter,
+		Info:    info,
+	})
 	if err != nil {
 		span.RecordError(err)
 		return err

@@ -103,9 +103,9 @@ type SignedDocument struct {
 	References map[string]SignedDocument `json:"references,omitempty"`
 }
 
-type RegisterRequest[T any] struct {
+type RegisterRequest struct {
 	SignedDocument
-	Meta        T       `json:"meta,omitempty"`
+	Meta        any     `json:"meta,omitempty"`
 	InviteToken *string `json:"inviteToken,omitempty"`
 }
 

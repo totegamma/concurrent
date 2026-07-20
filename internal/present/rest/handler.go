@@ -457,7 +457,7 @@ func (h *Handler) handleChunklineRemoved(c echo.Context) error {
 
 func (h *Handler) handleRegister(c echo.Context) error {
 	ctx := c.Request().Context()
-	var req concrnt.RegisterRequest[domain.EntityMeta]
+	var req concrnt.RegisterRequest
 	err := c.Bind(&req)
 	if err != nil {
 		return presenter.BadRequest(c, err)

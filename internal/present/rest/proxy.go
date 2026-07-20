@@ -89,6 +89,11 @@ func (p *Proxy) RegisterRoutes(e *echo.Echo) {
 				ctx := c.Request().Context()
 				c.Response().Header().Set("cc-service", service.Name)
 
+				// Never trust client-supplied identity propagation headers;
+				// they are set below only for gateway-authenticated requests.
+				c.Request().Header.Del(interop.RequesterHeader)
+				c.Request().Header.Del(interop.RequesterTagHeader)
+
 				requester, ok := ctx.Value(interop.RequesterCtxKey).(domain.Entity)
 				if ok {
 					serialized, err := json.Marshal(requester)

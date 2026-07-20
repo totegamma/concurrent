@@ -29,3 +29,15 @@ func (r *Redis) Exists(ctx context.Context, key string) (bool, error) {
 	}
 	return n > 0, nil
 }
+
+// SetAdd adds a member to a set and refreshes the whole set's TTL.
+func (r *Redis) SetAdd(ctx context.Context, key string, value string, ttl time.Duration) error {
+	if err := r.rdb.SAdd(ctx, key, value).Err(); err != nil {
+		return err
+	}
+	return r.rdb.Expire(ctx, key, ttl).Err()
+}
+
+func (r *Redis) SetMembers(ctx context.Context, key string) ([]string, error) {
+	return r.rdb.SMembers(ctx, key).Result()
+}

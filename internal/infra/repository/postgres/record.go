@@ -556,6 +556,45 @@ func (r *RecordRepository) DeleteRecordByDocumentID(ctx context.Context, tx usec
 	return db.Delete(&models.Record{}, "document_id = ?", documentID).Error
 }
 
+func (r *RecordRepository) GetTimelineRemoval(ctx context.Context, keyURI string) (string, string, error) {
+	ctx, span := tracer.Start(ctx, "Repository.Record.GetTimelineRemoval")
+	defer span.End()
+
+	var recordKey models.RecordKey
+	err := r.db.WithContext(ctx).
+		Preload("Record").
+		Where("uri = ?", keyURI).
+		Take(&recordKey).Error
+	if err != nil {
+		span.RecordError(err)
+		return "", "", domain.NotFoundError{Resource: keyURI}
+	}
+
+	// only rows with a parent and a record_created_at appear in chunkline bodies
+	if recordKey.ParentID == nil || recordKey.RecordCreatedAt == nil {
+		return "", "", nil
+	}
+
+	var parent models.RecordKey
+	err = r.db.WithContext(ctx).
+		Where("id = ?", *recordKey.ParentID).
+		Take(&parent).Error
+	if err != nil {
+		span.RecordError(err)
+		return "", "", err
+	}
+
+	// derive the item ID exactly the way LoadLocalBody derives BodyItem.Href
+	// (which is what BodyItem.ID() returns): the redirect target for
+	// reference records, the record key URI otherwise
+	itemID := recordKey.URI
+	if recordKey.Record.Redirect != nil {
+		itemID = *recordKey.Record.Redirect
+	}
+
+	return parent.URI, itemID, nil
+}
+
 func (r *RecordRepository) DeleteAssociation(ctx context.Context, tx usecase.RepositoryTx, documentID string) error {
 	ctx, span := tracer.Start(ctx, "Repository.Record.DeleteAssociation")
 	defer span.End()

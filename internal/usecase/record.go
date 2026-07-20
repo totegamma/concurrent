@@ -39,6 +39,12 @@ type RecordRepository interface {
 	DeleteRecordByDocumentID(ctx context.Context, tx RepositoryTx, documentID string) error
 	DeleteAssociation(ctx context.Context, tx RepositoryTx, documentID string) error
 
+	// GetTimelineRemoval reports the chunkline (timeline URI, item ID) tuple a
+	// record key currently occupies, or ("", "") when it is not a timeline
+	// member. The item ID must match the BodyItem.ID() the chunkline body
+	// endpoint serves for that member.
+	GetTimelineRemoval(ctx context.Context, keyURI string) (timeline string, itemID string, err error)
+
 	GetSignedDocument(ctx context.Context, uri string) (*concrnt.SignedDocument, error)
 	GetHierarchicalRecordPolicies(ctx context.Context, uri string) ([]concrnt.Policy, error)
 	GetAllCommitLogs(ctx context.Context, owner string) ([]concrnt.SignedDocument, error)
@@ -78,12 +84,15 @@ type PolicyService interface {
 	Eval(ctx context.Context, req policy.RequestContext, stack []concrnt.Policy, action string, key string) error
 }
 
-// KVS is a general-purpose key-value store (set-with-TTL, existence check),
-// used here to hold deletion tombstones. Implemented by
-// internal/infra/kvs.Redis; nil in offline tooling/tests.
+// KVS is a general-purpose key-value store (set-with-TTL, existence check,
+// TTL'd string sets), used here to hold deletion tombstones and per-timeline
+// removed-item advertisements. Implemented by internal/infra/kvs.Redis; nil in
+// offline tooling/tests.
 type KVS interface {
 	Set(ctx context.Context, key string, value string, ttl time.Duration) error
 	Exists(ctx context.Context, key string) (bool, error)
+	SetAdd(ctx context.Context, key string, value string, ttl time.Duration) error
+	SetMembers(ctx context.Context, key string) ([]string, error)
 }
 
 type commitApplyResult struct {
@@ -662,8 +671,22 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 			return nil, err
 		}
 
+		var removedTimeline, removedItemID string
+
 		switch targetDoc.Kind {
 		case "record":
+
+			// capture which chunkline item this record occupies before the
+			// delete cascades its record_keys row away; advertised via
+			// /chunkline/removed so readers can drop it from cached chunks
+			if mode == domain.CommitModeExecute && uc.kvs != nil && targetSD.CCKV != nil {
+				tl, id, err := uc.repo.GetTimelineRemoval(ctx, *targetSD.CCKV)
+				if err != nil {
+					span.RecordError(err) // non-fatal: the deleted item just lingers in caches
+				} else {
+					removedTimeline, removedItemID = tl, id
+				}
+			}
 
 			parsedURI, err := concrnt.ParseCCURI(targetURI)
 			if err != nil {
@@ -737,6 +760,13 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 				}
 				postProcesses = append(postProcesses, func(ctx context.Context) error {
 					return uc.markKeyDeleted(ctx, tombstoneURI)
+				})
+			}
+
+			if uc.kvs != nil && removedTimeline != "" {
+				tl, id := removedTimeline, removedItemID
+				postProcesses = append(postProcesses, func(ctx context.Context) error {
+					return uc.kvs.SetAdd(ctx, removedItemsKey(tl), id, removedItemsTTL)
 				})
 			}
 

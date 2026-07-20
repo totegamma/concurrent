@@ -219,7 +219,7 @@ func main() {
 	leaderSub.RegisterClient(subscriptionUC)
 
 	chunklineGateway := gateway.NewChunklineGateway(cl, mc, subscriber, redisPubsub)
-	chunklineUC := usecase.NewChunklineUsecase(chunklineRepo, chunklineGateway)
+	chunklineUC := usecase.NewChunklineUsecase(chunklineRepo, chunklineGateway, redisKVS)
 
 	// the delivery queue is a redis-streams consumer group: safe (and useful)
 	// to run on every replica

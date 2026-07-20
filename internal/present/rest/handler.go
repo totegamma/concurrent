@@ -116,6 +116,10 @@ func (h *Handler) RegisterRoutes(app *echo.Echo, e *echo.Group) {
 	api.OPTIONS("/chunkline/itr/:chunk", h.handleNop)
 	api.GET("/chunkline/body/:chunk", h.handleChunklineBody)
 	api.OPTIONS("/chunkline/body/:chunk", h.handleNop)
+	// not part of the CCAPI endpoint map (rest.Endpoints): advertised to
+	// readers via the chunkline manifest's "removed" field instead
+	api.GET("/chunkline/removed", h.handleChunklineRemoved)
+	api.OPTIONS("/chunkline/removed", h.handleNop)
 
 	// internal
 	// api.GET("/internal/signal/subscriptions", h.handleCurrentSubs)
@@ -434,6 +438,17 @@ func (h *Handler) handleChunklineBody(c echo.Context) error {
 		return presenter.BadRequestMessage(c, "invalid chunk id")
 	}
 	results, err := h.chunkline.LoadLocalBody(ctx, uri, chunkID)
+	if err != nil {
+		return presenter.InternalError(c, err)
+	}
+	return presenter.OK(c, results)
+}
+
+func (h *Handler) handleChunklineRemoved(c echo.Context) error {
+	ctx := c.Request().Context()
+	uri := c.QueryParam("uri")
+
+	results, err := h.chunkline.GetLocalRemovedItems(ctx, uri)
 	if err != nil {
 		return presenter.InternalError(c, err)
 	}

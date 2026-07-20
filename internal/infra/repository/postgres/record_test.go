@@ -141,6 +141,51 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		require.True(t, record.CreatedAt.Equal(targetCreatedAt))
 	})
 
+	t.Run("timeline removal tuple matches chunkline body IDs", func(t *testing.T) {
+		chunklineRepo := NewChunklineRepository(db)
+
+		// plain record: item ID is the record key URI
+		timeline, itemID, err := repo.GetTimelineRemoval(ctx, key)
+		require.NoError(t, err)
+		require.Equal(t, "cckv://con1owner/timeline", timeline)
+		require.Equal(t, key, itemID)
+
+		// reference record: item ID is the redirect target
+		refKey := "cckv://con1owner/timeline/ref-1"
+		refTarget := "cckv://con1target/timeline/post-2"
+		timeline, itemID, err = repo.GetTimelineRemoval(ctx, refKey)
+		require.NoError(t, err)
+		require.Equal(t, "cckv://con1owner/timeline", timeline)
+		require.Equal(t, refTarget, itemID)
+
+		// the advertised ID must equal the BodyItem.ID() the body endpoint
+		// serves for the same member, or readers can't match them up
+		for keyURI, wantID := range map[string]string{key: key, refKey: refTarget} {
+			var recordKey models.RecordKey
+			require.NoError(t, db.Where("uri = ?", keyURI).Take(&recordKey).Error)
+			require.NotNil(t, recordKey.RecordCreatedAt)
+			chunkID := recordKey.RecordCreatedAt.Unix() / 600
+
+			items, err := chunklineRepo.LoadLocalBody(ctx, "cckv://con1owner/timeline", chunkID)
+			require.NoError(t, err)
+			ids := make([]string, 0, len(items))
+			for _, item := range items {
+				ids = append(ids, item.ID())
+			}
+			require.Contains(t, ids, wantID)
+		}
+
+		// the timeline row itself is not a chunkline member
+		timeline, itemID, err = repo.GetTimelineRemoval(ctx, "cckv://con1owner/timeline")
+		require.NoError(t, err)
+		require.Empty(t, timeline)
+		require.Empty(t, itemID)
+
+		// unknown keys report not-found
+		_, _, err = repo.GetTimelineRemoval(ctx, "cckv://con1owner/timeline/no-such-key")
+		require.Error(t, err)
+	})
+
 	t.Run("create association and toggle ack", func(t *testing.T) {
 		variant := "reply"
 		associationSD := repositorySignedDocument(t, concrnt.Document[map[string]string]{

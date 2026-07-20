@@ -27,6 +27,8 @@ const (
 	manifestCacheTTL = 60 * 60 * 24 * 7 // 7 days
 	itrCacheTTL      = 60 * 60 * 24 * 2 // 2 days
 	bodyCacheTTL     = 60 * 60 * 24 * 2 // 2 days
+	removedCacheTTL  = 60 * 60 * 24 * 2 // 2 days, matches the origin's advertisement window
+	removedFreshTTL  = 60               // throttles origin refresh to ~1/min/timeline
 )
 
 // purgeReplayDelay must exceed the workers' aggregate-subscription cache TTL
@@ -111,6 +113,14 @@ func itrCacheKey(timeline string, chunkID int64) string {
 
 func bodyCacheKey(timeline string, chunkID string) string {
 	return fmt.Sprintf("chunkline_body:%s:%s", timeline, chunkID)
+}
+
+func removedCacheKey(timeline string) string {
+	return "chunkline_removed:" + timeline
+}
+
+func removedFreshKey(timeline string) string {
+	return "chunkline_removed_fresh:" + timeline
 }
 
 func (r *resolver) resolveTimeline(ctx context.Context, timeline string) (chunkline.Manifest, error) {
@@ -219,11 +229,185 @@ func (r *resolver) ResolveTimelines(ctx context.Context, timelines []string) (ma
 
 }
 
+// GetRemovedItems serves QueryDescending's per-timeline lists of recently
+// removed item IDs, loosely: the synchronous path only reads the shared
+// memcached copy (empty on a miss) so the timeline query is never blocked on
+// an origin, and a background goroutine refreshes stale entries from each
+// origin's manifest-advertised removed endpoint — deletions apply on the next
+// query. Deleted items lingering in results until then is accepted behavior.
 func (r *resolver) GetRemovedItems(ctx context.Context, timelines []string) (map[string][]string, error) {
+	ctx, span := tracer.Start(ctx, "ChunklineResolver.GetRemovedItems")
+	defer span.End()
+
+	keys := make([]string, len(timelines))
+	for i, tl := range timelines {
+		keys[i] = removedCacheKey(tl)
+	}
+
+	cachedItems, err := r.mc.GetMulti(keys)
+	if err != nil && !errors.Is(err, memcache.ErrCacheMiss) {
+		span.RecordError(fmt.Errorf("failed to get removed items from cache: %w", err))
+	}
+
 	result := make(map[string][]string)
 	for _, tl := range timelines {
 		result[tl] = []string{}
+		item, found := cachedItems[removedCacheKey(tl)]
+		if !found {
+			continue
+		}
+		var ids []string
+		err := json.Unmarshal(item.Value, &ids)
+		if err != nil {
+			span.RecordError(fmt.Errorf("failed to unmarshal cached removed items for %s: %w", tl, err))
+			continue
+		}
+		result[tl] = ids
 	}
+
+	// refresh the cache in the background; the request context may be gone
+	// before the origin answers, so the goroutine runs on its own context
+	go func(timelines []string) {
+		ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+		defer cancel()
+
+		freshKeys := make([]string, len(timelines))
+		for i, tl := range timelines {
+			freshKeys[i] = removedFreshKey(tl)
+		}
+		freshItems, err := r.mc.GetMulti(freshKeys)
+		if err != nil && !errors.Is(err, memcache.ErrCacheMiss) {
+			slog.Error("chunkline removed: failed to get fresh markers", slog.String("error", err.Error()))
+		}
+
+		stale := make([]string, 0, len(timelines))
+		for _, tl := range timelines {
+			if _, found := freshItems[removedFreshKey(tl)]; found {
+				continue
+			}
+			stale = append(stale, tl)
+		}
+		if len(stale) == 0 {
+			return
+		}
+
+		manifests, err := r.ResolveTimelines(ctx, stale)
+		if err != nil {
+			slog.Error("chunkline removed: failed to resolve timelines", slog.String("error", err.Error()))
+			return
+		}
+
+		requestsByDomain := make(map[string]map[string]string) // domain -> timeline -> query url
+
+		for _, tl := range stale {
+			manifest, ok := manifests[tl]
+			if !ok {
+				continue
+			}
+
+			if manifest.Removed == "" {
+				continue // origin doesn't track removals
+			}
+
+			relPath, err := concrnt.RenderURITemplate(manifest.Removed, map[string]string{})
+			if err != nil {
+				slog.Error("chunkline removed: failed to render removed URI", slog.String("timeline", tl), slog.String("error", err.Error()))
+				continue
+			}
+
+			rel, err := url.Parse(relPath)
+			if err != nil {
+				slog.Error("chunkline removed: invalid removed URI template", slog.String("timeline", tl), slog.String("error", err.Error()))
+				continue
+			}
+
+			base, err := url.Parse(tl)
+			if err != nil {
+				slog.Error("chunkline removed: invalid timeline URI", slog.String("timeline", tl), slog.String("error", err.Error()))
+				continue
+			}
+
+			endpoint := base.ResolveReference(rel)
+			if endpoint.Scheme != "http" && endpoint.Scheme != "https" {
+				host, err := r.client.ResolveResourceHost(ctx, tl)
+				if err != nil {
+					slog.Error("chunkline removed: failed to resolve host", slog.String("timeline", tl), slog.String("error", err.Error()))
+					continue
+				}
+				endpoint.Scheme = "https"
+				endpoint.Host = host
+			}
+
+			domain := endpoint.Host
+			if _, exists := requestsByDomain[domain]; !exists {
+				requestsByDomain[domain] = make(map[string]string)
+			}
+			requestsByDomain[domain][tl] = endpoint.String()
+		}
+
+		if len(requestsByDomain) == 0 {
+			return
+		}
+
+		responces, err := r.client.BatchGet(ctx, requestsByDomain)
+		if err != nil {
+			slog.Error("chunkline removed: batch request failed", slog.String("error", err.Error()))
+			return
+		}
+
+		for tl, resp := range responces {
+			if resp.StatusCode != http.StatusOK {
+				slog.Error("chunkline removed: non-200 response", slog.String("timeline", tl), slog.Int("status", resp.StatusCode))
+				continue
+			}
+
+			bytes, err := io.ReadAll(resp.Body)
+			if err != nil {
+				slog.Error("chunkline removed: failed to read response body", slog.String("timeline", tl), slog.String("error", err.Error()))
+				continue
+			}
+
+			var ids []string
+			err = json.Unmarshal(bytes, &ids)
+			if err != nil {
+				slog.Error("chunkline removed: failed to unmarshal response", slog.String("timeline", tl), slog.String("error", err.Error()))
+				continue
+			}
+			if ids == nil {
+				ids = []string{}
+			}
+
+			value, err := json.Marshal(ids)
+			if err != nil {
+				slog.Error("chunkline removed: failed to marshal for caching", slog.String("timeline", tl), slog.String("error", err.Error()))
+				continue
+			}
+
+			err = r.mc.Set(&memcache.Item{
+				Key:        removedCacheKey(tl),
+				Value:      value,
+				Expiration: removedCacheTTL,
+			})
+			if err != nil {
+				slog.Error("chunkline removed: failed to set cache", slog.String("timeline", tl), slog.String("error", err.Error()))
+				continue
+			}
+
+			// mark fresh only on success so failed origins are retried on the
+			// next query
+			err = r.mc.Set(&memcache.Item{
+				Key:        removedFreshKey(tl),
+				Value:      []byte("1"),
+				Expiration: removedFreshTTL,
+			})
+			if err != nil {
+				slog.Error("chunkline removed: failed to set fresh marker", slog.String("timeline", tl), slog.String("error", err.Error()))
+			}
+		}
+	}(slices.Clone(timelines))
+
+	// errors never propagate: an unreachable origin must not fail the
+	// timeline query, the deleted items just linger until the next refresh
 	return result, nil
 }
 

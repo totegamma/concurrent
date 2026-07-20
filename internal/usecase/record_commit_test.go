@@ -311,8 +311,9 @@ func TestCommitDocumentReferenceInlineTargetOffline(t *testing.T) {
 
 // stubKVS records Set calls and answers Exists from the keys it holds.
 type stubKVS struct {
-	keys    map[string]bool
-	setKeys []string
+	keys      map[string]bool
+	setKeys   []string
+	addedSets []string
 }
 
 func (s *stubKVS) Set(ctx context.Context, key string, value string, ttl time.Duration) error {
@@ -325,6 +326,13 @@ func (s *stubKVS) Set(ctx context.Context, key string, value string, ttl time.Du
 }
 func (s *stubKVS) Exists(ctx context.Context, key string) (bool, error) {
 	return s.keys[key], nil
+}
+func (s *stubKVS) SetAdd(ctx context.Context, key string, value string, ttl time.Duration) error {
+	s.addedSets = append(s.addedSets, key)
+	return nil
+}
+func (s *stubKVS) SetMembers(ctx context.Context, key string) ([]string, error) {
+	return nil, nil
 }
 
 // signedRecord builds a signed record commit by the given identity at createdAt.

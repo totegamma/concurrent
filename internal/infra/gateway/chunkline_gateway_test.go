@@ -393,3 +393,63 @@ func TestLoadChunkBodiesCacheHitSkipsOrigin(t *testing.T) {
 		t.Fatalf("unexpected body from cache: %+v", body)
 	}
 }
+
+// GetRemovedItems serves whatever the cache holds and never errors; timelines
+// without a cached list come back empty. The refresh goroutine must not touch
+// the (nil in these tests) HTTP client: the seeded manifest has no removed
+// endpoint, so a buggy fetch attempt panics the test binary.
+func TestGetRemovedItemsServesCache(t *testing.T) {
+	r, _ := newTestResolver(t)
+
+	other := "cckv://bob/home"
+	seedManifest(t, r.mc, other, chunkline.Manifest{Version: "0.1", ChunkSize: 600})
+
+	raw, err := json.Marshal([]string{"cckv://alice/home/gone"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = r.mc.Set(&memcache.Item{Key: removedCacheKey(testTimeline), Value: raw, Expiration: removedCacheTTL})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := r.GetRemovedItems(context.Background(), []string{testTimeline, other})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result[testTimeline]) != 1 || result[testTimeline][0] != "cckv://alice/home/gone" {
+		t.Fatalf("unexpected removed items for seeded timeline: %+v", result[testTimeline])
+	}
+	if len(result[other]) != 0 {
+		t.Fatalf("expected no removed items for unseeded timeline, got %+v", result[other])
+	}
+
+	time.Sleep(100 * time.Millisecond) // let the refresh goroutine run (and panic if buggy)
+}
+
+// A live fresh marker suppresses the origin refresh entirely, even when the
+// manifest advertises a removed endpoint (again: a fetch attempt against the
+// nil client would panic).
+func TestGetRemovedItemsFreshMarkerSkipsRefresh(t *testing.T) {
+	r, _ := newTestResolver(t)
+
+	seedManifest(t, r.mc, testTimeline, chunkline.Manifest{
+		Version:   "0.1",
+		ChunkSize: 600,
+		Removed:   "removed?uri=" + testTimeline,
+	})
+	err := r.mc.Set(&memcache.Item{Key: removedFreshKey(testTimeline), Value: []byte("1"), Expiration: removedFreshTTL})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	result, err := r.GetRemovedItems(context.Background(), []string{testTimeline})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(result[testTimeline]) != 0 {
+		t.Fatalf("expected no removed items, got %+v", result[testTimeline])
+	}
+
+	time.Sleep(100 * time.Millisecond) // let the refresh goroutine run (and panic if buggy)
+}

@@ -18,7 +18,12 @@ type Manifest struct {
 	LastChunk  *int64    `json:"last_chunk"`
 	Ascending  *Endpoint `json:"ascending,omitempty"`
 	Descending *Endpoint `json:"descending,omitempty"`
-	Metadata   any       `json:"metadata"`
+	// Removed is a URL template (no variables) returning the JSON array of
+	// item IDs recently removed from this timeline. Readers use it to drop
+	// deleted items from already-cached chunks. Optional; absent on servers
+	// that don't track removals.
+	Removed  string `json:"removed,omitempty"`
+	Metadata any    `json:"metadata"`
 }
 
 func (m Manifest) Time2Chunk(t time.Time) int64 {

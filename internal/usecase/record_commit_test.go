@@ -453,9 +453,9 @@ type associationRecordingRepo struct {
 	uniques []string
 }
 
-func (r *associationRecordingRepo) CreateAssociation(ctx context.Context, tx RepositoryTx, documentID string, targetURI string, owner string, author string, schema string, variant *string, unique string, createdAt time.Time) error {
+func (r *associationRecordingRepo) CreateAssociation(ctx context.Context, tx RepositoryTx, documentID string, targetURI string, owner string, author string, schema string, variant *string, unique string, createdAt time.Time) (bool, error) {
 	r.uniques = append(r.uniques, unique)
-	return nil
+	return true, nil
 }
 
 // importRecordingRepo additionally answers the blocking-list query issued when

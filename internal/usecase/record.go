@@ -32,7 +32,7 @@ type RecordRepository interface {
 	CreateCommitOwners(ctx context.Context, tx RepositoryTx, id string, owners []string) error
 	CreateEntity(ctx context.Context, tx RepositoryTx, ccid string, alias *string, domain string, documentID string) error
 	CreateRecord(ctx context.Context, tx RepositoryTx, documentID string, key string, owner string, schema string, onUpdate *string, policies *string, distributions []string, redirect *string, createdAt time.Time) error
-	CreateAssociation(ctx context.Context, tx RepositoryTx, documentID string, targetURI string, owner string, author string, schema string, variant *string, unique string, createdAt time.Time) error
+	CreateAssociation(ctx context.Context, tx RepositoryTx, documentID string, targetURI string, owner string, author string, schema string, variant *string, unique string, createdAt time.Time) (bool, error)
 	Acknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) error
 	UnAcknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) error
 	DeleteRecordByKey(ctx context.Context, tx RepositoryTx, targetURI string) error
@@ -285,7 +285,7 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 	// Only "entity" commits (self-registration) may proceed without an
 	// already-resolvable requester entity.
 	if doc.Kind != "entity" && requester == nil {
-		err := errors.Join(fmt.Errorf("requester entity not found for %s operation", doc.Kind), requesterErr)
+		err := errors.Join(domain.ValidationError{Field: "document.author", Message: fmt.Sprintf("requester entity not found for %s operation", doc.Kind)}, requesterErr)
 		span.RecordError(err)
 		return nil, err
 	}
@@ -1095,14 +1095,16 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 		uniqueKey += string(bodyBytes)
 		uniqueHash := xxh3.HashString(uniqueKey)
 
-		err = uc.repo.CreateAssociation(ctx, tx, documentID, *parsed.Associate, targetURI.Owner, parsed.Author, parsed.Schema, parsed.AssociationVariant, fmt.Sprintf("%x", uniqueHash), parsed.CreatedAt)
+		inserted, err := uc.repo.CreateAssociation(ctx, tx, documentID, *parsed.Associate, targetURI.Owner, parsed.Author, parsed.Schema, parsed.AssociationVariant, fmt.Sprintf("%x", uniqueHash), parsed.CreatedAt)
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
 		}
 
-		created = true
-		if mode == domain.CommitModeExecute {
+		// 重複配送(挿入なし)のときは参照配布もスキップする。さもないと
+		// 別documentIDの論理重複がタイムラインに二重に載る
+		created = inserted
+		if created && mode == domain.CommitModeExecute {
 			actions, err := uc.createReferenceDistributionActions(ctx, ip, documentID, parsed.Author, ccfs, requester, sd, distributionsFromPtr(parsed.Distributes), mode)
 			if err != nil {
 				span.RecordError(err)

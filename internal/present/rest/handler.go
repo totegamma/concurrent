@@ -183,7 +183,7 @@ func (h *Handler) handleResolve(c echo.Context) error {
 	}
 
 	if uri.Scheme == "http" || uri.Scheme == "https" {
-		return c.JSON(http.StatusSeeOther, echo.Map{"location": uri.String()})
+		return presenter.Redirect(c, uri.String(), echo.Map{"location": uri.String()})
 	}
 
 	parsed, err := concrnt.ParseCCURI(uriString)
@@ -337,7 +337,12 @@ func (h *Handler) handleChunklineItr(c echo.Context) error {
 		return presenter.InternalError(c, err)
 	}
 
-	return c.String(http.StatusOK, strconv.FormatInt(results[uri], 10))
+	itr, ok := results[uri]
+	if !ok {
+		return presenter.NotFound(c, "no iterator for the given uri and chunk")
+	}
+
+	return c.String(http.StatusOK, strconv.FormatInt(itr, 10))
 }
 
 func (h *Handler) chunklineItrBatchHandler() batchCustomHandler {
@@ -393,7 +398,12 @@ func (h *Handler) chunklineItrBatchHandler() batchCustomHandler {
 				}
 
 				for _, lookup := range lookups {
-					responses[lookup.contentID] = newBatchTextResponse(http.StatusOK, strconv.FormatInt(results[lookup.uri], 10))
+					itr, ok := results[lookup.uri]
+					if !ok {
+						responses[lookup.contentID] = newBatchTextResponse(http.StatusNotFound, "no iterator for the given uri and chunk")
+						continue
+					}
+					responses[lookup.contentID] = newBatchTextResponse(http.StatusOK, strconv.FormatInt(itr, 10))
 				}
 			}
 
@@ -667,18 +677,21 @@ func (h *Handler) handleRealtime(c echo.Context) error {
 		ws.Close()
 	}()
 
-	ctx := c.Request().Context()
+	// The channels are deliberately never closed: the producers spawned by
+	// Realtime (and the redis pubsub goroutines below it) send on output and
+	// only exit via context cancellation, so closing output here would race
+	// those sends and panic. Cancellation is the single shutdown signal for
+	// both goroutines and the loop below; unclosed channels are just GC'd.
+	ctx, cancel := context.WithCancel(c.Request().Context())
+	defer cancel()
 
 	input := make(chan []string)
-	defer close(input)
 	output := make(chan concrnt.Event)
-	defer close(output)
 
 	go h.subscribe.Realtime(ctx, input, output)
 
-	quit := make(chan struct{})
-
 	go func() {
+		defer cancel()
 		for {
 			var req concrnt.RealtimeRequest
 			err := ws.ReadJSON(&req)
@@ -701,13 +714,16 @@ func (h *Handler) handleRealtime(c echo.Context) error {
 					)
 				}
 
-				quit <- struct{}{}
-				break
+				return
 			}
 
 			switch req.Type {
 			case "listen", "subscribe": // listen is for backward compatibility
-				input <- req.Prefixes
+				select {
+				case input <- req.Prefixes:
+				case <-ctx.Done():
+					return
+				}
 				slog.DebugContext(
 					ctx, fmt.Sprintf("Socket subscribe: %s", req.Prefixes),
 					slog.String("module", "socket"),
@@ -726,7 +742,7 @@ func (h *Handler) handleRealtime(c echo.Context) error {
 
 	for {
 		select {
-		case <-quit:
+		case <-ctx.Done():
 			return nil
 		case items := <-output:
 			err := ws.WriteJSON(items)

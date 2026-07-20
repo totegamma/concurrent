@@ -114,6 +114,13 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 			return errors.Join(errors.New("failed to decode subkey document"), err)
 		}
 
+		// CIP-10: only a subkey-enact document authorizes a subkey. Without
+		// this check, any owner-signed document that happens to carry a
+		// value.ckid would pass as a subkey authorization.
+		if subKeyDoc.Schema != schemas.EnactSubkeyURL {
+			return errors.New("subkey proof requires a subkey-enact document")
+		}
+
 		if subKeyDoc.Author != doc.Author {
 			return errors.New("subkey document author does not match signed document author")
 		}

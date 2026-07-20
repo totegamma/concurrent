@@ -267,3 +267,32 @@ func TestEvaluateStackErroredFallsBackToDefaults(t *testing.T) {
 	assert.NoError(t, err)
 	assert.Equal(t, UNSET, conclusion)
 }
+
+// A statement's reason must survive into EvaluateStack's aggregated reason
+// string, so denials can be explained to the caller.
+func TestEvaluateStackAggregatesReasons(t *testing.T) {
+
+	reason := "blocked by moderation policy"
+	denyPolicy := Policy{
+		Statements: []Statement{
+			{
+				Action:    "record:read",
+				Key:       "*",
+				Emit:      DENY,
+				Reason:    &reason,
+				Condition: Expr{Operator: "Const", Const: true},
+			},
+		},
+	}
+
+	stack := PolicyStack{
+		{
+			{Policy: denyPolicy},
+		},
+	}
+
+	conclusion, gotReason, err := EvaluateStack(context.Background(), RequestContext{}, stack, "record:read", "cckv://owner/key")
+	assert.NoError(t, err)
+	assert.Equal(t, DENY, conclusion)
+	assert.Contains(t, gotReason, reason)
+}

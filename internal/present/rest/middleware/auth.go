@@ -174,6 +174,12 @@ func (s *AuthMiddleware) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFun
 					goto skipCheckAuthorization
 				}
 
+				// CIP-10: only a subkey-enact document authorizes a subkey.
+				if subKeyDoc.Schema != schemas.EnactSubkeyURL {
+					span.RecordError(fmt.Errorf("subkey document is not a subkey-enact document: %s", subKeyDoc.Schema))
+					goto skipCheckAuthorization
+				}
+
 				if subKeyDoc.Author != ccid {
 					span.RecordError(fmt.Errorf("subkey document author does not match issuer"))
 					goto skipCheckAuthorization

@@ -154,9 +154,13 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		})
 		associationUnique := fmt.Sprintf("%x", xxh3.HashString("con1owner"+"con1author"+key+variant))
 		associationCreatedAt := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
+		var inserted bool
 		withRepositoryTx(t, ctx, repo, "association-record", "127.0.0.1", associationSD, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
-			return repo.CreateAssociation(ctx, tx, "association-record", key, "con1owner", "con1author", "https://schema.example/comment.json", &variant, associationUnique, associationCreatedAt)
+			var err error
+			inserted, err = repo.CreateAssociation(ctx, tx, "association-record", key, "con1owner", "con1author", "https://schema.example/comment.json", &variant, associationUnique, associationCreatedAt)
+			return err
 		})
+		require.True(t, inserted)
 
 		var association models.Association
 		require.NoError(t, db.Where("document_id = ?", "association-record").Take(&association).Error)
@@ -165,6 +169,28 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		require.Equal(t, variant, *association.Variant)
 		require.Equal(t, associationUnique, association.Unique)
 		requireCommitOwner(t, db, "association-record", "con1owner")
+
+		// duplicate deliveries are silent no-ops: the same document re-sent
+		// (primary-key conflict)...
+		withRepositoryTx(t, ctx, repo, "association-record", "127.0.0.1", associationSD, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
+			var err error
+			inserted, err = repo.CreateAssociation(ctx, tx, "association-record", key, "con1owner", "con1author", "https://schema.example/comment.json", &variant, associationUnique, associationCreatedAt)
+			return err
+		})
+		require.False(t, inserted)
+
+		// ...and the same logical association re-signed under a new document id
+		// (unique-key conflict)
+		withRepositoryTx(t, ctx, repo, "association-record-retry", "127.0.0.1", associationSD, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
+			var err error
+			inserted, err = repo.CreateAssociation(ctx, tx, "association-record-retry", key, "con1owner", "con1author", "https://schema.example/comment.json", &variant, associationUnique, associationCreatedAt)
+			return err
+		})
+		require.False(t, inserted)
+
+		var associationCount int64
+		require.NoError(t, db.Model(&models.Association{}).Where(`"unique" = ?`, associationUnique).Count(&associationCount).Error)
+		require.EqualValues(t, 1, associationCount)
 
 		ackSchema := "https://schema.example/like.json"
 		ackSD := repositorySignedDocument(t, concrnt.Document[map[string]string]{

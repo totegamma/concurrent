@@ -372,6 +372,13 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 		}
 
 		iterator := strings.TrimSpace(string(bytes))
+		// Older servers report "no iterator" as a 200 "0" instead of a 404.
+		// Chunk 0 is the 1970 epoch bucket and can never be a real iterator,
+		// so drop it (and empty bodies) before use and before caching.
+		if iterator == "" || iterator == "0" {
+			span.RecordError(fmt.Errorf("invalid iterator %q for timeline %s", iterator, tl))
+			continue
+		}
 		results[tl] = iterator
 
 		// もしキャッシュ対象が最新チャンクであれば、現在の購読状態を確認し、購読中でなければキャッシュを保存しない
@@ -475,7 +482,13 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 			continue
 		}
 
-		refPath := strings.ReplaceAll(manifest.Descending.Body, "{chunk}", itr)
+		refPath, err := concrnt.RenderURITemplate(manifest.Descending.Body, map[string]string{
+			"chunk": itr,
+		})
+		if err != nil {
+			span.RecordError(fmt.Errorf("invalid body URI template for timeline %s: %w", tl, err))
+			continue
+		}
 		ref, err := url.Parse(refPath)
 		if err != nil {
 			span.RecordError(fmt.Errorf("invalid body URI template for timeline %s: %w", tl, err))

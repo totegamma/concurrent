@@ -129,7 +129,10 @@ func (r *ChunklineRepository) LoadLocalBody(ctx context.Context, uri string, chu
 		return nil, err
 	}
 
-	if len(members) == 0 || members[len(members)-1].Record.CreatedAt.After(prevChunkDate) {
+	// Judge window coverage by record_created_at — the same column the queries
+	// filter and order by — not the joined Record.CreatedAt, which can diverge
+	// (e.g. backdated records) and would skip the window scan.
+	if len(members) == 0 || members[len(members)-1].RecordCreatedAt == nil || members[len(members)-1].RecordCreatedAt.After(prevChunkDate) {
 		err = r.db.WithContext(ctx).
 			Where("parent_id = ?", parentRecordKey.ID).
 			Where("record_created_at <= ?", chunkDate).
@@ -154,8 +157,13 @@ func (r *ChunklineRepository) LoadLocalBody(ctx context.Context, uri string, chu
 			href = *member.Record.Redirect
 		}
 
+		timestamp := member.Record.CreatedAt
+		if member.RecordCreatedAt != nil {
+			timestamp = *member.RecordCreatedAt
+		}
+
 		item := chunkline.BodyItem{
-			Timestamp:   member.Record.CreatedAt,
+			Timestamp:   timestamp,
 			Href:        href,
 			ContentType: contentType,
 		}

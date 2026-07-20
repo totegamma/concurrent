@@ -153,6 +153,7 @@ func TestVerifySubkeyValid(t *testing.T) {
 	subkeySD := signDocument(t, Document[schemas.Subkey]{
 		Kind:      "record",
 		Key:       subkeyURI,
+		Schema:    schemas.EnactSubkeyURL,
 		Value:     schemas.Subkey{CKID: subCCID},
 		Author:    ownerCCID,
 		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
@@ -163,6 +164,31 @@ func TestVerifySubkeyValid(t *testing.T) {
 
 	if err := sd.Verify(context.Background(), resolver); err != nil {
 		t.Fatalf("Verify returned error: %v", err)
+	}
+}
+
+// CIP-10: only a subkey-enact document may authorize a subkey. An owner-signed
+// document of any other schema carrying a value.ckid must not pass as a subkey
+// authorization.
+func TestVerifySubkeyRejectsNonEnactSchema(t *testing.T) {
+	ownerCCID, ownerPriv := newTestIdentity(t)
+	subCCID, subPriv := newTestIdentity(t)
+
+	subkeyURI := "cckv://" + ownerCCID + "/subkeys/1"
+	subkeySD := signDocument(t, Document[schemas.Subkey]{
+		Kind:      "record",
+		Key:       subkeyURI,
+		Schema:    "https://schema.example/some-other-document.json",
+		Value:     schemas.Subkey{CKID: subCCID},
+		Author:    ownerCCID,
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}, ownerPriv)
+
+	sd := newSubkeyProof(t, ownerCCID, subCCID, subPriv, subkeyURI, subkeySD)
+	resolver := mapResolver{subkeyURI: subkeySD}
+
+	if err := sd.Verify(context.Background(), resolver); err == nil {
+		t.Fatal("Verify returned nil error for a non-enact subkey document")
 	}
 }
 
@@ -177,6 +203,7 @@ func TestVerifySubkeyRejectsAuthorMismatch(t *testing.T) {
 	subkeySD := signDocument(t, Document[schemas.Subkey]{
 		Kind:      "record",
 		Key:       subkeyURI,
+		Schema:    schemas.EnactSubkeyURL,
 		Value:     schemas.Subkey{CKID: subCCID},
 		Author:    otherCCID,
 		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
@@ -311,6 +338,7 @@ func TestVerifySubkeyIgnoresInlineReference(t *testing.T) {
 	subkeySD := signDocument(t, Document[schemas.Subkey]{
 		Kind:      "record",
 		Key:       subkeyURI,
+		Schema:    schemas.EnactSubkeyURL,
 		Value:     schemas.Subkey{CKID: subCCID},
 		Author:    ownerCCID,
 		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),

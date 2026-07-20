@@ -18,8 +18,9 @@ import (
 )
 
 type batchChunklineRepo struct {
-	mu    sync.Mutex
-	calls []batchChunklineLookupCall
+	mu      sync.Mutex
+	calls   []batchChunklineLookupCall
+	missing map[string]bool
 }
 
 type batchChunklineLookupCall struct {
@@ -42,6 +43,9 @@ func (r *batchChunklineRepo) LookupLocalItrs(ctx context.Context, uris []string,
 
 	results := make(map[string]int64, len(uris))
 	for i, uri := range uris {
+		if r.missing[uri] {
+			continue
+		}
 		results[uri] = chunkID - int64(i)
 	}
 	return results, nil
@@ -94,6 +98,54 @@ func TestBatchHandlerAggregatesChunklineItrRequests(t *testing.T) {
 		"cckv://example.test/timeline/0",
 		"cckv://example.test/timeline/1",
 	}, repo.calls[0].uris)
+}
+
+// A timeline with no iterator (absent from the lookup result) must yield a
+// 404, not a 200 "0", both on the plain endpoint and inside a batch part.
+func TestChunklineItrMissingIsNotFound(t *testing.T) {
+	present := "cckv://example.test/timeline/0"
+	absent := "cckv://example.test/timeline/empty"
+
+	repo := &batchChunklineRepo{missing: map[string]bool{absent: true}}
+	handler := NewHandler(
+		domain.Config{},
+		nil,
+		nil,
+		usecase.NewChunklineUsecase(repo, nil),
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	app := echo.New()
+	handler.RegisterRoutes(app, app.Group(""))
+
+	server := httptest.NewServer(app)
+	t.Cleanup(server.Close)
+
+	resp, err := server.Client().Get(server.URL + apiPrefix + "/chunkline/itr/100?uri=" + absent)
+	require.NoError(t, err)
+	resp.Body.Close()
+	require.Equal(t, http.StatusNotFound, resp.StatusCode)
+
+	requests := map[string]*http.Request{}
+	req0, err := http.NewRequest("GET", server.URL+apiPrefix+"/chunkline/itr/100?uri="+present, nil)
+	require.NoError(t, err)
+	requests["0"] = req0
+	req1, err := http.NewRequest("GET", server.URL+apiPrefix+"/chunkline/itr/100?uri="+absent, nil)
+	require.NoError(t, err)
+	requests["1"] = req1
+
+	batchPath, err := concrnt.RenderURITemplate(Endpoints["net.concrnt.core.batch"], map[string]string{})
+	require.NoError(t, err)
+
+	responses, err := client.DoBatchRequestWithClient(context.Background(), server.Client(), server.URL+batchPath, requests)
+	require.NoError(t, err)
+
+	require.Len(t, responses, 2)
+	require.Equal(t, http.StatusOK, responses["0"].StatusCode)
+	require.Equal(t, http.StatusNotFound, responses["1"].StatusCode)
 }
 
 var _ usecase.ChunklineRepository = (*batchChunklineRepo)(nil)

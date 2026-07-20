@@ -146,6 +146,6 @@ func IsTimeCDID(s string) bool {
 }
 
 func IsCDIDChar(c byte) bool {
-	// 0-9 a-z but no i, l, o, u
-	return ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z')) && c != 'i' && c != 'l' && c != 'o' && c != 'u'
+	// 0-9 a-z but no i, l, o, x ('x' is reserved as the hash-CDID prefix)
+	return ((c >= '0' && c <= '9') || (c >= 'a' && c <= 'z')) && c != 'i' && c != 'l' && c != 'o' && c != 'x'
 }

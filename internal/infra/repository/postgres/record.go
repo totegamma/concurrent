@@ -256,20 +256,20 @@ func (r *RecordRepository) CreateRecord(
 
 }
 
-func (r *RecordRepository) CreateAssociation(ctx context.Context, tx usecase.RepositoryTx, documentID string, targetURI string, owner string, author string, schema string, variant *string, unique string, createdAt time.Time) error {
+func (r *RecordRepository) CreateAssociation(ctx context.Context, tx usecase.RepositoryTx, documentID string, targetURI string, owner string, author string, schema string, variant *string, unique string, createdAt time.Time) (bool, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.CreateAssociation")
 	defer span.End()
 
 	db, err := getRecordTx(ctx, tx)
 	if err != nil {
 		span.RecordError(err)
-		return err
+		return false, err
 	}
 
 	targetRK, err := GetRecordKeyByURI(ctx, db, targetURI)
 	if err != nil {
 		span.RecordError(err)
-		return err
+		return false, err
 	}
 
 	association := models.Association{
@@ -284,12 +284,19 @@ func (r *RecordRepository) CreateAssociation(ctx context.Context, tx usecase.Rep
 		CreatedAt: createdAt,
 	}
 
-	err = db.Create(&association).Error
-	if err != nil {
-		span.RecordError(err)
+	// A targetless ON CONFLICT DO NOTHING suppresses duplicates on both the
+	// document_id primary key (same document re-delivered) and
+	// uni_associations_unique (same logical association under a new document
+	// id), making duplicate deliveries a silent success like record/ack.
+	result := db.Clauses(clause.OnConflict{
+		DoNothing: true,
+	}).Create(&association)
+	if result.Error != nil {
+		span.RecordError(result.Error)
+		return false, result.Error
 	}
 
-	return err
+	return result.RowsAffected > 0, nil
 }
 
 func (r *RecordRepository) Acknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) error {

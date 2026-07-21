@@ -39,6 +39,13 @@ type RecordRepository interface {
 	DeleteRecordByDocumentID(ctx context.Context, tx RepositoryTx, documentID string) error
 	DeleteAssociation(ctx context.Context, tx RepositoryTx, documentID string) error
 
+	// QueryRecordSubtree enumerates every live record at base itself
+	// (includeSelf) and under base's path subtree, URI-ordered. Unlike
+	// QueryByPrefix it never matches sibling keys ("item2" for base "item")
+	// and escapes pattern metacharacters — it returns exactly the set a
+	// range delete may remove.
+	QueryRecordSubtree(ctx context.Context, base string, includeSelf bool) ([]concrnt.SignedDocument, error)
+
 	// GetTimelineRemoval reports the chunkline (timeline URI, item ID) tuple a
 	// record key currently occupies, or ("", "") when it is not a timeline
 	// member. The item ID must match the BodyItem.ID() the chunkline body
@@ -613,6 +620,13 @@ func (uc *RecordUsecase) createReferenceDistributionActions(ctx context.Context,
 	return postProcesses, nil
 }
 
+// deleteRecord handles both a plain delete and the trailing-asterisk range
+// notation ("...item*" = item plus its subtree, "...item/*" = subtree only) —
+// a plain delete is simply a range whose enumeration is the single addressed
+// document. The delete policy is evaluated on every target before anything is
+// removed, and any failure — including a single policy denial — makes the
+// commit transaction roll back in full, commitlog included: deletion is
+// all-or-nothing.
 func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requester domain.Entity, sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.Delete")
 	defer span.End()
@@ -624,135 +638,176 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 		return nil, err
 	}
 
-	targetURI := string(deletedoc.Value)
-	targetHost, err := uc.client.ResolveResourceHost(ctx, targetURI)
+	rawTarget := string(deletedoc.Value)
+
+	rangeBase, includeSelf, isRange, err := parseRangeDeleteTarget(rawTarget)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	targetHost, err := uc.client.ResolveResourceHost(ctx, rawTarget)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
 
 	if targetHost == uc.config.FQDN {
-		targetSD, err := uc.repo.GetSignedDocument(ctx, targetURI)
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
 
-		targetDoc := concrnt.Document[any]{}
-		err = json.Unmarshal([]byte(targetSD.Document), &targetDoc)
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
-
-		policyRoot := string(deletedoc.Value)
-		if targetDoc.Associate != nil {
-			policyRoot = *targetDoc.Associate
-		}
-
-		stack, err := uc.repo.GetHierarchicalRecordPolicies(ctx, policyRoot)
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
-
-		err = uc.policy.Eval(
-			ctx,
-			policy.RequestContext{
-				Requester: requester,
-				Self:      targetDoc,
-			},
-			stack,
-			policyDeleteAction(targetDoc),
-			targetURI,
-		)
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
-
-		var removedTimeline, removedItemID string
-
-		switch targetDoc.Kind {
-		case "record":
-
-			// capture which chunkline item this record occupies before the
-			// delete cascades its record_keys row away; advertised via
-			// /chunkline/removed so readers can drop it from cached chunks
-			if mode == domain.CommitModeExecute && uc.kvs != nil && targetSD.CCKV != nil {
-				tl, id, err := uc.repo.GetTimelineRemoval(ctx, *targetSD.CCKV)
-				if err != nil {
-					span.RecordError(err) // non-fatal: the deleted item just lingers in caches
-				} else {
-					removedTimeline, removedItemID = tl, id
-				}
+		// enumerate the targets: the subtree for a range, the single
+		// addressed document otherwise
+		var targets []concrnt.SignedDocument
+		var targetURIs []string // per-target address (cckv/ccfs URI) deletion and policy key on
+		if isRange {
+			targets, err = uc.repo.QueryRecordSubtree(ctx, rangeBase, includeSelf)
+			if err != nil {
+				span.RecordError(err)
+				return nil, err
 			}
+			if len(targets) == 0 {
+				err := domain.NotFoundError{Resource: rawTarget}
+				span.RecordError(err)
+				return nil, err
+			}
+			for _, target := range targets {
+				targetURIs = append(targetURIs, *target.CCKV)
+			}
+		} else {
+			targetSD, err := uc.repo.GetSignedDocument(ctx, rawTarget)
+			if err != nil {
+				span.RecordError(err)
+				return nil, err
+			}
+			targets = []concrnt.SignedDocument{*targetSD}
+			targetURIs = []string{rawTarget}
+		}
 
-			parsedURI, err := concrnt.ParseCCURI(targetURI)
+		// evaluate the delete policy on every target before removing anything
+		targetDocs := make([]concrnt.Document[any], len(targets))
+		for i, target := range targets {
+			err = json.Unmarshal([]byte(target.Document), &targetDocs[i])
 			if err != nil {
 				span.RecordError(err)
 				return nil, err
 			}
 
-			switch parsedURI.Scheme {
-			case "cckv":
-				err = uc.repo.DeleteRecordByKey(ctx, tx, targetURI)
+			policyRoot := targetURIs[i]
+			if targetDocs[i].Associate != nil {
+				policyRoot = *targetDocs[i].Associate
+			}
+
+			stack, err := uc.repo.GetHierarchicalRecordPolicies(ctx, policyRoot)
+			if err != nil {
+				span.RecordError(err)
+				return nil, err
+			}
+
+			err = uc.policy.Eval(
+				ctx,
+				policy.RequestContext{
+					Requester: requester,
+					Self:      targetDocs[i],
+				},
+				stack,
+				policyDeleteAction(targetDocs[i]),
+				targetURIs[i],
+			)
+			if err != nil {
+				span.RecordError(err)
+				return nil, err
+			}
+		}
+
+		postProcesses := []PostProcessAction{}
+		for i := range targets {
+			targetSD := &targets[i]
+			targetDoc := targetDocs[i]
+			targetURI := targetURIs[i]
+
+			var removedTimeline, removedItemID string
+
+			switch targetDoc.Kind {
+			case "record":
+
+				// capture which chunkline item this record occupies before the
+				// delete cascades its record_keys row away; advertised via
+				// /chunkline/removed so readers can drop it from cached chunks
+				if mode == domain.CommitModeExecute && uc.kvs != nil && targetSD.CCKV != nil {
+					tl, id, err := uc.repo.GetTimelineRemoval(ctx, *targetSD.CCKV)
+					if err != nil {
+						span.RecordError(err) // non-fatal: the deleted item just lingers in caches
+					} else {
+						removedTimeline, removedItemID = tl, id
+					}
+				}
+
+				parsedURI, err := concrnt.ParseCCURI(targetURI)
 				if err != nil {
 					span.RecordError(err)
 					return nil, err
 				}
-			case "ccfs":
-				if parsedURI.Type != concrnt.CCFSTypeConcrnt {
-					err := errors.New("unsupported ccfs type for delete record: " + parsedURI.Type)
+
+				switch parsedURI.Scheme {
+				case "cckv":
+					err = uc.repo.DeleteRecordByKey(ctx, tx, targetURI)
+					if err != nil {
+						span.RecordError(err)
+						return nil, err
+					}
+				case "ccfs":
+					if parsedURI.Type != concrnt.CCFSTypeConcrnt {
+						err := errors.New("unsupported ccfs type for delete record: " + parsedURI.Type)
+						span.RecordError(err)
+						return nil, err
+					}
+					err = uc.repo.DeleteRecordByDocumentID(ctx, tx, parsedURI.CDID)
+					if err != nil {
+						span.RecordError(err)
+						return nil, err
+					}
+				default:
+					err := errors.New("unsupported document scheme for delete record: " + parsedURI.Scheme)
 					span.RecordError(err)
 					return nil, err
 				}
-				err = uc.repo.DeleteRecordByDocumentID(ctx, tx, parsedURI.CDID)
+
+			case "association":
+
+				parsedURI, err := concrnt.ParseCCURI(targetURI)
+				if err != nil {
+					span.RecordError(err)
+					return nil, err
+				}
+
+				if parsedURI.Scheme != "ccfs" || parsedURI.Type != concrnt.CCFSTypeConcrnt {
+					err := errors.New("unsupported document scheme for delete association: " + targetURI)
+					span.RecordError(err)
+					return nil, err
+				}
+
+				err = uc.repo.DeleteAssociation(ctx, tx, parsedURI.CDID)
 				if err != nil {
 					span.RecordError(err)
 					return nil, err
 				}
 			default:
-				err := errors.New("unsupported document scheme for delete record: " + parsedURI.Scheme)
+				err := errors.New("unsupported document kind for delete: " + targetDoc.Kind)
 				span.RecordError(err)
 				return nil, err
 			}
 
-		case "association":
-
-			parsedURI, err := concrnt.ParseCCURI(targetURI)
-			if err != nil {
-				span.RecordError(err)
-				return nil, err
+			if mode != domain.CommitModeExecute {
+				continue
 			}
 
-			if parsedURI.Scheme != "ccfs" || parsedURI.Type != concrnt.CCFSTypeConcrnt {
-				err := errors.New("unsupported document scheme for delete association: " + targetURI)
-				span.RecordError(err)
-				return nil, err
-			}
-
-			err = uc.repo.DeleteAssociation(ctx, tx, parsedURI.CDID)
-			if err != nil {
-				span.RecordError(err)
-				return nil, err
-			}
-		default:
-			err := errors.New("unsupported document kind for delete: " + targetDoc.Kind)
-			span.RecordError(err)
-			return nil, err
-		}
-
-		postProcesses := []PostProcessAction{}
-		if mode == domain.CommitModeExecute {
 			// Tombstone the deleted document's ccfs URI (content id) so a
 			// captured copy of it can't be replayed back in during the
 			// backdate window (see the replay guard in Commit), while its
 			// cckv key stays reusable for fresh documents. GetSignedDocument
-			// composes CCFS for cckv lookups too, so this covers cckv- and
-			// ccfs-addressed record deletes and association deletes alike.
-			// Appended as a post-process so it only runs once the delete has
-			// actually committed.
+			// and QueryRecordSubtree compose CCFS for cckv lookups too, so
+			// this covers cckv- and ccfs-addressed record deletes and
+			// association deletes alike. Appended as a post-process so it
+			// only runs once the delete has actually committed.
 			if uc.kvs != nil {
 				tombstoneURI := targetURI
 				if targetSD.CCFS != nil {
@@ -817,7 +872,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 					return nil, err
 				}
 
-				destinations := []string{*targetDoc.Associate}
+				destinations := []string{associatedURI}
 				if associatedDoc.Distributes != nil {
 					destinations = append(destinations, *associatedDoc.Distributes...)
 				}
@@ -849,68 +904,54 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 				}
 			}
 		}
-		return &commitApplyResult{result: targetSD, owners: uc.localEntityOwners(ctx, requester), postProcesses: postProcesses}, nil
+
+		// targets are URI-ordered, so with includeSelf the base record itself
+		// leads and becomes the reported result
+		return &commitApplyResult{result: &targets[0], owners: uc.localEntityOwners(ctx, requester), postProcesses: postProcesses}, nil
 
 	} else { // remote entity. only emit signals.
-		targetSD, ok := sd.References[targetURI]
-		if !ok {
-			err := errors.New("target document not found in references for remote delete")
-			span.RecordError(err)
-			return nil, err
-		}
 
-		document := concrnt.Document[any]{}
-		err = json.Unmarshal([]byte(targetSD.Document), &document)
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
+		// recover the concrete targets from References: for a range the
+		// origin server enqueues one delivery job per deleted target, each
+		// carrying that target in References, so matching References against
+		// the range is how this server learns the target list
+		var refURIs []string
+		if isRange {
+			for refURI := range sd.References {
+				if (includeSelf && refURI == rangeBase) || strings.HasPrefix(refURI, rangeBase+"/") {
+					refURIs = append(refURIs, refURI)
+				}
+			}
+			if len(refURIs) == 0 {
+				err := errors.New("no reference matched range delete target")
+				span.RecordError(err)
+				return nil, err
+			}
+			slices.Sort(refURIs)
+		} else {
+			if _, ok := sd.References[rawTarget]; !ok {
+				err := errors.New("target document not found in references for remote delete")
+				span.RecordError(err)
+				return nil, err
+			}
+			refURIs = []string{rawTarget}
 		}
 
 		postProcesses := []PostProcessAction{}
-		destinations := []string{targetURI}
-		if document.Distributes != nil {
-			destinations = append(destinations, *document.Distributes...)
-		}
+		for _, targetURI := range refURIs {
+			targetSD := sd.References[targetURI]
 
-		for _, dest := range destinations {
-			postProcesses = append(postProcesses,
-				func(ctx context.Context) error {
-					return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
-						ResolveURI: dest,
-						Local:      domain.DeliveryLocalPublish,
-						Remote:     domain.DeliveryRemoteNone,
-						Event: &concrnt.Event{
-							Type:      "deleted",
-							URI:       targetURI,
-							Timestamp: time.Now(),
-						},
-					})
-				},
-			)
-		}
-
-		if document.Associate != nil {
-			associatedURI := *document.Associate
-			associatedSD, ok := sd.References[associatedURI]
-			if !ok {
-				slog.Error("associated document not found in references for remote delete", slog.String("associated_uri", associatedURI))
-				span.RecordError(errors.New("associated document not found in references for remote delete"))
-				return nil, errors.New("associated document not found in references for remote delete")
-			}
-
-			var associatedDoc concrnt.Document[any]
-			err = json.Unmarshal([]byte(associatedSD.Document), &associatedDoc)
+			document := concrnt.Document[any]{}
+			err = json.Unmarshal([]byte(targetSD.Document), &document)
 			if err != nil {
-				slog.Error("failed to unmarshal associated document for signal", slog.String("associated_uri", associatedURI), slog.String("error", err.Error()))
 				span.RecordError(err)
 				return nil, err
 			}
 
-			destinations := []string{}
-			if associatedDoc.Distributes != nil {
-				destinations = append(destinations, *associatedDoc.Distributes...)
+			destinations := []string{targetURI}
+			if document.Distributes != nil {
+				destinations = append(destinations, *document.Distributes...)
 			}
-			destinations = append(destinations, associatedURI)
 
 			for _, dest := range destinations {
 				postProcesses = append(postProcesses,
@@ -920,18 +961,92 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 							Local:      domain.DeliveryLocalPublish,
 							Remote:     domain.DeliveryRemoteNone,
 							Event: &concrnt.Event{
-								Type:      "unassociated",
-								URI:       associatedURI,
+								Type:      "deleted",
+								URI:       targetURI,
 								Timestamp: time.Now(),
 							},
 						})
 					},
 				)
 			}
+
+			if document.Associate != nil {
+				associatedURI := *document.Associate
+				associatedSD, ok := sd.References[associatedURI]
+				if !ok {
+					slog.Error("associated document not found in references for remote delete", slog.String("associated_uri", associatedURI))
+					span.RecordError(errors.New("associated document not found in references for remote delete"))
+					return nil, errors.New("associated document not found in references for remote delete")
+				}
+
+				var associatedDoc concrnt.Document[any]
+				err = json.Unmarshal([]byte(associatedSD.Document), &associatedDoc)
+				if err != nil {
+					slog.Error("failed to unmarshal associated document for signal", slog.String("associated_uri", associatedURI), slog.String("error", err.Error()))
+					span.RecordError(err)
+					return nil, err
+				}
+
+				destinations := []string{}
+				if associatedDoc.Distributes != nil {
+					destinations = append(destinations, *associatedDoc.Distributes...)
+				}
+				destinations = append(destinations, associatedURI)
+
+				for _, dest := range destinations {
+					postProcesses = append(postProcesses,
+						func(ctx context.Context) error {
+							return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
+								ResolveURI: dest,
+								Local:      domain.DeliveryLocalPublish,
+								Remote:     domain.DeliveryRemoteNone,
+								Event: &concrnt.Event{
+									Type:      "unassociated",
+									URI:       associatedURI,
+									Timestamp: time.Now(),
+								},
+							})
+						},
+					)
+				}
+			}
 		}
 
-		return &commitApplyResult{result: &targetSD, owners: uc.localEntityOwners(ctx, requester), postProcesses: postProcesses}, nil
+		result := sd.References[refURIs[0]]
+		return &commitApplyResult{result: &result, owners: uc.localEntityOwners(ctx, requester), postProcesses: postProcesses}, nil
 	}
+}
+
+// parseRangeDeleteTarget detects the trailing-asterisk range notation on a
+// delete target: "cckv://.../item*" selects item itself plus its subtree,
+// "cckv://.../item/*" selects the subtree only. Matching is by path hierarchy,
+// not string prefix — "item2" is never part of "item*". A target without a
+// trailing '*' is a plain single-key delete (isRange=false, no validation).
+func parseRangeDeleteTarget(targetURI string) (base string, includeSelf bool, isRange bool, err error) {
+	switch {
+	case strings.HasSuffix(targetURI, "/*"):
+		base = strings.TrimSuffix(targetURI, "/*")
+	case strings.HasSuffix(targetURI, "*"):
+		base = strings.TrimSuffix(targetURI, "*")
+		includeSelf = true
+	default:
+		return targetURI, false, false, nil
+	}
+
+	if strings.Contains(base, "*") {
+		return "", false, true, domain.ValidationError{Field: "value", Message: "'*' is only allowed as a trailing range sentinel in a delete target"}
+	}
+	parsed, perr := concrnt.ParseCCURI(base)
+	if perr != nil {
+		return "", false, true, domain.ValidationError{Field: "value", Message: "invalid range delete target: " + perr.Error()}
+	}
+	if parsed.Scheme != "cckv" {
+		return "", false, true, domain.ValidationError{Field: "value", Message: "range delete targets must use the cckv scheme"}
+	}
+	if parsed.Key == "" {
+		return "", false, true, domain.ValidationError{Field: "value", Message: "range delete requires a non-empty key"}
+	}
+	return base, includeSelf, true, nil
 }
 
 func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, documentID string, ip string, requester domain.Entity, parsed concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
@@ -984,6 +1099,14 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 	}
 	if parsedKey.Scheme != "cckv" {
 		err := fmt.Errorf("invalid key: document key scheme must be cckv")
+		span.RecordError(err)
+		return nil, err
+	}
+	// '*' is reserved as the range-delete sentinel (parseRangeDeleteTarget):
+	// a key containing it could never be addressed by an exact-match delete
+	// unambiguously.
+	if strings.Contains(parsedKey.Key, "*") {
+		err := domain.ValidationError{Field: "key", Message: "record key must not contain '*'"}
 		span.RecordError(err)
 		return nil, err
 	}

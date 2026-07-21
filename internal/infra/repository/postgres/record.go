@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/lib/pq"
@@ -884,6 +885,58 @@ func (r *RecordRepository) QueryByPrefix(
 	}
 
 	if err := query.Preload("Record.Document").Find(&rks).Error; err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	sds := make([]concrnt.SignedDocument, 0, len(rks))
+	for _, rk := range rks {
+		var proof concrnt.Proof
+		err := json.Unmarshal([]byte(rk.Record.Document.Proof), &proof)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+
+		ccfs := concrnt.ComposeCCFSURI(rk.Record.Owner, concrnt.CCFSTypeConcrnt, rk.Record.DocumentID)
+
+		sds = append(sds, concrnt.SignedDocument{
+			CCKV:     &rk.URI,
+			CCFS:     &ccfs,
+			Document: rk.Record.Document.Document,
+			Proof:    proof,
+		})
+	}
+
+	return sds, nil
+}
+
+// likeEscaper escapes LIKE metacharacters so a key containing '%' or '_'
+// can't over-match when embedded in a pattern.
+var likeEscaper = strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`)
+
+// QueryRecordSubtree returns every live record whose key is base itself
+// (includeSelf) or lies under base's path subtree (base + "/..."), ordered by
+// URI so base leads. Unlike QueryByPrefix's raw prefix match this never picks
+// up sibling keys ("item2" for base "item"), and metacharacters in base are
+// escaped — the result is exactly the set a range delete may remove.
+func (r *RecordRepository) QueryRecordSubtree(ctx context.Context, base string, includeSelf bool) ([]concrnt.SignedDocument, error) {
+	ctx, span := tracer.Start(ctx, "Repository.Record.QueryRecordSubtree")
+	defer span.End()
+
+	query := r.db.WithContext(ctx).
+		Model(&models.RecordKey{}).
+		Joins("JOIN records r ON r.document_id = record_keys.record_id")
+
+	subtreePattern := likeEscaper.Replace(base) + `/%`
+	if includeSelf {
+		query = query.Where(`uri = ? OR uri LIKE ? ESCAPE '\'`, base, subtreePattern)
+	} else {
+		query = query.Where(`uri LIKE ? ESCAPE '\'`, subtreePattern)
+	}
+
+	var rks []models.RecordKey
+	if err := query.Order("uri ASC").Preload("Record.Document").Find(&rks).Error; err != nil {
 		span.RecordError(err)
 		return nil, err
 	}

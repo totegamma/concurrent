@@ -404,6 +404,133 @@ func TestRecordRepositoryWrites(t *testing.T) {
 	})
 }
 
+// QueryRecordSubtree must match by path hierarchy — never siblings sharing a
+// string prefix, never keys that only match via unescaped LIKE metacharacters —
+// and deleting the enumerated keys must remove exactly those records (with
+// their associations) while leaving siblings and commitlogs in place.
+func TestRecordSubtreeQueryAndDelete(t *testing.T) {
+	db, cleanup := testutil.CreateDB()
+	t.Cleanup(cleanup)
+
+	ctx := context.Background()
+	repo := NewRecordRepository(db)
+
+	base := "cckv://con1owner/lists/item"
+	keys := []string{
+		base,                             // the base record itself
+		base + "/a",                      // child
+		base + "/a/b",                    // grandchild
+		base + "2",                       // sibling sharing the string prefix — never in the subtree
+		"cckv://con1owner/lists/it_em/x", // LIKE-metacharacter decoy: '_' matches any char unescaped
+	}
+	createdAt := time.Date(2026, 7, 8, 9, 10, 11, 0, time.UTC)
+	for i, key := range keys {
+		id := fmt.Sprintf("subtree-%d", i)
+		sd := repositorySignedDocument(t, concrnt.Document[map[string]string]{
+			Kind:      "record",
+			Key:       key,
+			Value:     map[string]string{"body": key},
+			Author:    "con1owner",
+			Schema:    "https://schema.example/item.json",
+			CreatedAt: createdAt,
+		})
+		withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
+			return repo.CreateRecord(ctx, tx, id, key, "con1owner", "https://schema.example/item.json", nil, nil, []string{}, nil, createdAt)
+		})
+	}
+
+	// an association targeting a subtree member must cascade with the delete
+	variant := "reply"
+	associationSD := repositorySignedDocument(t, concrnt.Document[map[string]string]{
+		Kind:      "association",
+		Value:     map[string]string{"body": "on child"},
+		Author:    "con1author",
+		Schema:    "https://schema.example/comment.json",
+		CreatedAt: createdAt,
+		Associate: &keys[1],
+	})
+	withRepositoryTx(t, ctx, repo, "subtree-association", "127.0.0.1", associationSD, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
+		_, err := repo.CreateAssociation(ctx, tx, "subtree-association", keys[1], "con1owner", "con1author", "https://schema.example/comment.json", &variant, "subtree-unique", createdAt)
+		return err
+	})
+
+	urisOf := func(sds []concrnt.SignedDocument) []string {
+		uris := make([]string, 0, len(sds))
+		for _, sd := range sds {
+			require.NotNil(t, sd.CCKV)
+			require.NotNil(t, sd.CCFS)
+			uris = append(uris, *sd.CCKV)
+		}
+		return uris
+	}
+
+	t.Run("subtree including self", func(t *testing.T) {
+		sds, err := repo.QueryRecordSubtree(ctx, base, true)
+		require.NoError(t, err)
+		require.Equal(t, []string{base, base + "/a", base + "/a/b"}, urisOf(sds))
+	})
+
+	t.Run("children only", func(t *testing.T) {
+		sds, err := repo.QueryRecordSubtree(ctx, base, false)
+		require.NoError(t, err)
+		require.Equal(t, []string{base + "/a", base + "/a/b"}, urisOf(sds))
+	})
+
+	t.Run("metacharacters in base are escaped", func(t *testing.T) {
+		// unescaped, 'it_em' would also match 'it/em', 'item', ... — it must
+		// only match its own literal subtree
+		sds, err := repo.QueryRecordSubtree(ctx, "cckv://con1owner/lists/it_em", true)
+		require.NoError(t, err)
+		require.Equal(t, []string{"cckv://con1owner/lists/it_em/x"}, urisOf(sds))
+	})
+
+	t.Run("subtree delete removes exactly the enumerated keys", func(t *testing.T) {
+		sds, err := repo.QueryRecordSubtree(ctx, base, true)
+		require.NoError(t, err)
+
+		deleteSD := repositorySignedDocument(t, concrnt.Document[schemas.Delete]{
+			Kind:      "delete",
+			Value:     schemas.Delete(base + "*"),
+			Author:    "con1owner",
+			CreatedAt: createdAt,
+		})
+		withRepositoryTx(t, ctx, repo, "subtree-delete", "127.0.0.1", deleteSD, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
+			for _, uri := range urisOf(sds) {
+				if err := repo.DeleteRecordByKey(ctx, tx, uri); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+
+		// the subtree is gone: records and their key rows
+		var count int64
+		for i := range 3 {
+			require.NoError(t, db.Model(&models.Record{}).Where("document_id = ?", fmt.Sprintf("subtree-%d", i)).Count(&count).Error)
+			require.Zero(t, count, "record %d must be deleted", i)
+		}
+		require.NoError(t, db.Model(&models.RecordKey{}).Where("uri IN ?", []string{base, base + "/a", base + "/a/b"}).Where("record_id IS NOT NULL").Count(&count).Error)
+		require.Zero(t, count)
+
+		// the association on the deleted child cascaded away
+		require.NoError(t, db.Model(&models.Association{}).Where("document_id = ?", "subtree-association").Count(&count).Error)
+		require.Zero(t, count)
+
+		// siblings and decoys survive
+		for i := 3; i < 5; i++ {
+			require.NoError(t, db.Model(&models.Record{}).Where("document_id = ?", fmt.Sprintf("subtree-%d", i)).Count(&count).Error)
+			require.EqualValues(t, 1, count, "record %d must survive", i)
+		}
+
+		// commitlogs of the deleted records stay (delete never erases history)
+		for i := range 3 {
+			require.NoError(t, db.Model(&models.CommitLog{}).Where("id = ?", fmt.Sprintf("subtree-%d", i)).Count(&count).Error)
+			require.EqualValues(t, 1, count, "commitlog %d must survive", i)
+		}
+	})
+
+}
+
 func withRepositoryTx(t *testing.T, ctx context.Context, repo usecase.RecordRepository, id string, ip string, sd concrnt.SignedDocument, owners []string, fn func(tx usecase.RepositoryTx) error) {
 	t.Helper()
 

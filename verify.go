@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/concrnt/concrnt/schemas"
 )
@@ -93,8 +94,8 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 
 		// The enact document must always come from its authoritative server:
 		// inlined copies are supplied by whoever submitted the document, so
-		// trusting them would let a revoked (deleted) subkey enact document
-		// be replayed forever.
+		// trusting them would let a revoked subkey enact document be replayed
+		// forever.
 		if resolver == nil {
 			return fmt.Errorf("no resolver available to fetch subkey document %s", *sd.Proof.Key)
 		}
@@ -108,21 +109,71 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 			return errors.Join(errors.New("subkey document failed verification"), err)
 		}
 
-		var subKeyDoc Document[schemas.Subkey]
-		err = json.Unmarshal([]byte(subKeySD.Document), &subKeyDoc)
+		// CIP-13: the key resolves either to the enact document itself (the
+		// subkey is currently valid) or to a revoked-subkey document embedding
+		// the original enact document (the subkey was valid only between the
+		// enact's createdAt and the revocation's createdAt). Anything else
+		// must not pass as a subkey authorization — otherwise any owner-signed
+		// document that happens to carry a value.ckid would.
+		var enactDoc Document[schemas.Subkey]
+		var validUntil *time.Time
+
+		var keyDoc Document[json.RawMessage]
+		err = json.Unmarshal([]byte(subKeySD.Document), &keyDoc)
 		if err != nil {
 			return errors.Join(errors.New("failed to decode subkey document"), err)
 		}
 
-		// CIP-10: only a subkey-enact document authorizes a subkey. Without
-		// this check, any owner-signed document that happens to carry a
-		// value.ckid would pass as a subkey authorization.
-		if subKeyDoc.Schema != schemas.EnactSubkeyURL {
-			return errors.New("subkey proof requires a subkey-enact document")
+		switch keyDoc.Schema {
+		case schemas.SubkeyURL:
+			err = json.Unmarshal([]byte(subKeySD.Document), &enactDoc)
+			if err != nil {
+				return errors.Join(errors.New("failed to decode subkey enact document"), err)
+			}
+
+		case schemas.RevokedSubkeyURL:
+			var revokedDoc Document[SignedDocument]
+			err = json.Unmarshal([]byte(subKeySD.Document), &revokedDoc)
+			if err != nil {
+				return errors.Join(errors.New("failed to decode revoked-subkey document"), err)
+			}
+			if revokedDoc.Author != doc.Author {
+				return errors.New("revoked-subkey document author does not match signed document author")
+			}
+
+			// The embedded enact document is submitter-independent (it is part
+			// of the owner-signed revocation), but it still has to verify on
+			// its own so a forged enact can't be smuggled in via value.
+			enactSD := revokedDoc.Value
+			err = enactSD.verify(ctx, resolver, depth-1)
+			if err != nil {
+				return errors.Join(errors.New("enact document embedded in revoked-subkey failed verification"), err)
+			}
+			err = json.Unmarshal([]byte(enactSD.Document), &enactDoc)
+			if err != nil {
+				return errors.Join(errors.New("failed to decode enact document embedded in revoked-subkey"), err)
+			}
+			if enactDoc.Schema != schemas.SubkeyURL {
+				return errors.New("revoked-subkey document does not embed a subkey enact document")
+			}
+			validUntil = &revokedDoc.CreatedAt
+
+		default:
+			return errors.New("subkey proof requires a subkey enact document")
 		}
 
-		if subKeyDoc.Author != doc.Author {
+		if enactDoc.Author != doc.Author {
 			return errors.New("subkey document author does not match signed document author")
+		}
+
+		// CIP-13 §4.1/§6: the signed document must fall inside the subkey's
+		// validity period — from the enact's createdAt up to (for revoked
+		// subkeys) the revocation's createdAt.
+		if doc.CreatedAt.Before(enactDoc.CreatedAt) {
+			return errors.New("signed document predates the subkey enact document")
+		}
+		if validUntil != nil && doc.CreatedAt.After(*validUntil) {
+			return errors.New("signed document postdates the subkey revocation")
 		}
 
 		signatureBytes, err := hex.DecodeString(*sd.Proof.Signature)
@@ -130,7 +181,7 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 			return errors.Join(errors.New("invalid signature format"), err)
 		}
 
-		err = VerifySignature([]byte(sd.Document), signatureBytes, subKeyDoc.Value.CKID)
+		err = VerifySignature([]byte(sd.Document), signatureBytes, enactDoc.Value.CKID)
 		if err != nil {
 			return errors.Join(ErrSignatureVerificationFailed, err)
 		}

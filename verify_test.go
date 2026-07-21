@@ -111,7 +111,7 @@ func TestVerifyEcrecoverTamperedDocument(t *testing.T) {
 }
 
 // newSubkeyProof builds a record signed via a subkey: subkeySD is the
-// owner-signed subkey-enact document (Author=ownerCCID, Value.CKID=subCCID),
+// owner-signed subkey enact document (Author=ownerCCID, Value.CKID=subCCID),
 // and the returned SignedDocument is the record itself (Author=ownerCCID)
 // signed with the subkey's private key.
 func newSubkeyProof(t *testing.T, ownerCCID, subCCID, subPriv, subkeyURI string, subkeySD SignedDocument) SignedDocument {
@@ -153,7 +153,7 @@ func TestVerifySubkeyValid(t *testing.T) {
 	subkeySD := signDocument(t, Document[schemas.Subkey]{
 		Kind:      "record",
 		Key:       subkeyURI,
-		Schema:    schemas.EnactSubkeyURL,
+		Schema:    schemas.SubkeyURL,
 		Value:     schemas.Subkey{CKID: subCCID},
 		Author:    ownerCCID,
 		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
@@ -167,7 +167,7 @@ func TestVerifySubkeyValid(t *testing.T) {
 	}
 }
 
-// CIP-10: only a subkey-enact document may authorize a subkey. An owner-signed
+// CIP-13: only a subkey enact document may authorize a subkey. An owner-signed
 // document of any other schema carrying a value.ckid must not pass as a subkey
 // authorization.
 func TestVerifySubkeyRejectsNonEnactSchema(t *testing.T) {
@@ -203,7 +203,7 @@ func TestVerifySubkeyRejectsAuthorMismatch(t *testing.T) {
 	subkeySD := signDocument(t, Document[schemas.Subkey]{
 		Kind:      "record",
 		Key:       subkeyURI,
-		Schema:    schemas.EnactSubkeyURL,
+		Schema:    schemas.SubkeyURL,
 		Value:     schemas.Subkey{CKID: subCCID},
 		Author:    otherCCID,
 		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
@@ -216,6 +216,143 @@ func TestVerifySubkeyRejectsAuthorMismatch(t *testing.T) {
 	err := sd.Verify(context.Background(), resolver)
 	if err == nil {
 		t.Fatal("Verify returned nil error for subkey author mismatch")
+	}
+}
+
+// revokedSubkeySD builds an owner-signed revoked-subkey document embedding
+// enactSD (CIP-13 §4), placed at the same key as the enact document.
+func revokedSubkeySD(t *testing.T, ownerCCID, ownerPriv, subkeyURI string, enactSD SignedDocument, revokedAt time.Time) SignedDocument {
+	t.Helper()
+	return signDocument(t, Document[SignedDocument]{
+		Kind:      "record",
+		Key:       subkeyURI,
+		Schema:    schemas.RevokedSubkeyURL,
+		Value:     SignedDocument{Document: enactSD.Document, Proof: enactSD.Proof},
+		Author:    ownerCCID,
+		CreatedAt: revokedAt,
+	}, ownerPriv)
+}
+
+// CIP-13 §4.1: after revocation, a signature made inside the subkey's validity
+// period (enact createdAt .. revocation createdAt) must still verify.
+func TestVerifySubkeyRevokedSignatureWithinValidityPeriod(t *testing.T) {
+	ownerCCID, ownerPriv := newTestIdentity(t)
+	subCCID, subPriv := newTestIdentity(t)
+
+	subkeyURI := "cckv://" + ownerCCID + "/subkeys/1"
+	enactSD := signDocument(t, Document[schemas.Subkey]{
+		Kind:      "record",
+		Key:       subkeyURI,
+		Schema:    schemas.SubkeyURL,
+		Value:     schemas.Subkey{CKID: subCCID},
+		Author:    ownerCCID,
+		CreatedAt: time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC),
+	}, ownerPriv)
+
+	// the record itself is created 2026-01-01, inside the validity period
+	sd := newSubkeyProof(t, ownerCCID, subCCID, subPriv, subkeyURI, enactSD)
+
+	revokedSD := revokedSubkeySD(t, ownerCCID, ownerPriv, subkeyURI, enactSD,
+		time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+	resolver := mapResolver{subkeyURI: revokedSD}
+
+	if err := sd.Verify(context.Background(), resolver); err != nil {
+		t.Fatalf("Verify returned error for a signature within the validity period: %v", err)
+	}
+}
+
+// CIP-13 §4.1: a signature created after the revocation must fail.
+func TestVerifySubkeyRevokedSignatureAfterRevocation(t *testing.T) {
+	ownerCCID, ownerPriv := newTestIdentity(t)
+	subCCID, subPriv := newTestIdentity(t)
+
+	subkeyURI := "cckv://" + ownerCCID + "/subkeys/1"
+	enactSD := signDocument(t, Document[schemas.Subkey]{
+		Kind:      "record",
+		Key:       subkeyURI,
+		Schema:    schemas.SubkeyURL,
+		Value:     schemas.Subkey{CKID: subCCID},
+		Author:    ownerCCID,
+		CreatedAt: time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC),
+	}, ownerPriv)
+
+	// record createdAt 2026-01-01 > revocation 2025-12-15
+	sd := newSubkeyProof(t, ownerCCID, subCCID, subPriv, subkeyURI, enactSD)
+
+	revokedSD := revokedSubkeySD(t, ownerCCID, ownerPriv, subkeyURI, enactSD,
+		time.Date(2025, 12, 15, 0, 0, 0, 0, time.UTC))
+	resolver := mapResolver{subkeyURI: revokedSD}
+
+	if err := sd.Verify(context.Background(), resolver); err == nil {
+		t.Fatal("Verify returned nil error for a signature created after revocation")
+	}
+}
+
+// CIP-13 §6 step 5: a signature that predates the enact document is outside
+// the validity period even while the subkey is active.
+func TestVerifySubkeySignaturePredatingEnactRejected(t *testing.T) {
+	ownerCCID, ownerPriv := newTestIdentity(t)
+	subCCID, subPriv := newTestIdentity(t)
+
+	subkeyURI := "cckv://" + ownerCCID + "/subkeys/1"
+	enactSD := signDocument(t, Document[schemas.Subkey]{
+		Kind:      "record",
+		Key:       subkeyURI,
+		Schema:    schemas.SubkeyURL,
+		Value:     schemas.Subkey{CKID: subCCID},
+		Author:    ownerCCID,
+		CreatedAt: time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC), // after the record's 2026-01-01
+	}, ownerPriv)
+
+	sd := newSubkeyProof(t, ownerCCID, subCCID, subPriv, subkeyURI, enactSD)
+	resolver := mapResolver{subkeyURI: enactSD}
+
+	if err := sd.Verify(context.Background(), resolver); err == nil {
+		t.Fatal("Verify returned nil error for a signature predating the enact document")
+	}
+}
+
+// A revoked-subkey document embedding something that is not a valid enact
+// document (wrong schema, or tampered) must not authorize anything.
+func TestVerifySubkeyRevokedRejectsBadEmbeddedEnact(t *testing.T) {
+	ownerCCID, ownerPriv := newTestIdentity(t)
+	subCCID, subPriv := newTestIdentity(t)
+
+	subkeyURI := "cckv://" + ownerCCID + "/subkeys/1"
+	enactSD := signDocument(t, Document[schemas.Subkey]{
+		Kind:      "record",
+		Key:       subkeyURI,
+		Schema:    schemas.SubkeyURL,
+		Value:     schemas.Subkey{CKID: subCCID},
+		Author:    ownerCCID,
+		CreatedAt: time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC),
+	}, ownerPriv)
+	sd := newSubkeyProof(t, ownerCCID, subCCID, subPriv, subkeyURI, enactSD)
+	revokedAt := time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC)
+
+	// embedded enact has a non-enact schema
+	wrongSchemaSD := signDocument(t, Document[schemas.Subkey]{
+		Kind:      "record",
+		Key:       subkeyURI,
+		Schema:    "https://schema.example/some-other-document.json",
+		Value:     schemas.Subkey{CKID: subCCID},
+		Author:    ownerCCID,
+		CreatedAt: time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC),
+	}, ownerPriv)
+	revokedSD := revokedSubkeySD(t, ownerCCID, ownerPriv, subkeyURI, wrongSchemaSD, revokedAt)
+	if err := sd.Verify(context.Background(), mapResolver{subkeyURI: revokedSD}); err == nil {
+		t.Fatal("Verify returned nil error for a revoked-subkey embedding a non-enact document")
+	}
+
+	// embedded enact is tampered so its own signature no longer verifies
+	tamperedSD := enactSD
+	tamperedSD.Document = strings.Replace(enactSD.Document, `"kind":"record"`, `"kind":"recorD"`, 1)
+	if tamperedSD.Document == enactSD.Document {
+		t.Fatal("tampering did not change the embedded enact document")
+	}
+	revokedSD = revokedSubkeySD(t, ownerCCID, ownerPriv, subkeyURI, tamperedSD, revokedAt)
+	if err := sd.Verify(context.Background(), mapResolver{subkeyURI: revokedSD}); err == nil {
+		t.Fatal("Verify returned nil error for a revoked-subkey embedding a tampered enact document")
 	}
 }
 
@@ -338,7 +475,7 @@ func TestVerifySubkeyIgnoresInlineReference(t *testing.T) {
 	subkeySD := signDocument(t, Document[schemas.Subkey]{
 		Kind:      "record",
 		Key:       subkeyURI,
-		Schema:    schemas.EnactSubkeyURL,
+		Schema:    schemas.SubkeyURL,
 		Value:     schemas.Subkey{CKID: subCCID},
 		Author:    ownerCCID,
 		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),

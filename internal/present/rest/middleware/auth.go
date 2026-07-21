@@ -174,9 +174,12 @@ func (s *AuthMiddleware) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFun
 					goto skipCheckAuthorization
 				}
 
-				// CIP-10: only a subkey-enact document authorizes a subkey.
-				if subKeyDoc.Schema != schemas.EnactSubkeyURL {
-					span.RecordError(fmt.Errorf("subkey document is not a subkey-enact document: %s", subKeyDoc.Schema))
+				// CIP-13: only an enact document (schema subkey.json)
+				// authorizes a subkey. A revoked-subkey document resolving at
+				// the key means the subkey is no longer valid for
+				// authentication (§7), so it is rejected here too.
+				if subKeyDoc.Schema != schemas.SubkeyURL {
+					span.RecordError(fmt.Errorf("subkey document is not a subkey enact document: %s", subKeyDoc.Schema))
 					goto skipCheckAuthorization
 				}
 

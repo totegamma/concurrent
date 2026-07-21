@@ -603,6 +603,13 @@ func (c *Client) GetRecord(ctx context.Context, uri string, opts *Options, resul
 	return nil
 }
 
+// InvalidateResource drops any cached copy (and remembered verification) of
+// the resource at uri, so the next fetch observes the latest version.
+func (c *Client) InvalidateResource(uri string) {
+	c.cache.Delete("resource:" + uri + ":application/json")
+	c.cache.Delete("verified:" + uri)
+}
+
 // ResolveSignedDocument fetches the signed document at uri, satisfying
 // concrnt.DocumentResolver so a *Client can be passed directly to
 // SignedDocument.Verify.

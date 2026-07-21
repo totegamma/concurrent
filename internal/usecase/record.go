@@ -459,6 +459,21 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 	}
 	committed = true
 
+	// A same-key overwrite or delete must be visible to this server's own
+	// verification paths immediately, not after the resource cache's TTL:
+	// auth and commit verification resolve documents (e.g. subkey enact,
+	// CIP-13 revocation) through uc.client, which caches for 10 minutes.
+	if uc.client != nil {
+		if doc.Key != "" {
+			uc.client.InvalidateResource(doc.Key)
+		}
+		if doc.Kind == "delete" {
+			if target, ok := doc.Value.(string); ok && target != "" {
+				uc.client.InvalidateResource(target)
+			}
+		}
+	}
+
 	for _, task := range applyResult.postProcesses {
 		if err := task(ctx); err != nil {
 			slog.Error(

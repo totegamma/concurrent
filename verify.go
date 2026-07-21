@@ -6,6 +6,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"slices"
+	"strings"
 	"time"
 
 	"github.com/concrnt/concrnt/schemas"
@@ -45,7 +47,16 @@ const maxVerifyDepth = 4
 // None (unsigned) proofs never verify — trusted system service accounts skip
 // Verify entirely instead.
 func (sd *SignedDocument) Verify(ctx context.Context, resolver DocumentResolver) error {
-	return sd.verify(ctx, resolver, maxVerifyDepth)
+	return sd.verify(ctx, resolver, maxVerifyDepth, nil)
+}
+
+// VerifyWithProofTypes verifies like Verify but additionally requires the
+// top-level document's proof to be one of the allowed types. A nil allowed
+// slice means no restriction. Nested documents reached during verification
+// carry their own requirements (e.g. CIP-13 restricts subkey enact/revocation
+// documents to ecrecover-direct) independent of this parameter.
+func (sd *SignedDocument) VerifyWithProofTypes(ctx context.Context, resolver DocumentResolver, allowed []string) error {
+	return sd.verify(ctx, resolver, maxVerifyDepth, allowed)
 }
 
 func (sd *SignedDocument) resolve(ctx context.Context, resolver DocumentResolver, uri string) (SignedDocument, error) {
@@ -58,9 +69,13 @@ func (sd *SignedDocument) resolve(ctx context.Context, resolver DocumentResolver
 	return resolver.ResolveSignedDocument(ctx, uri)
 }
 
-func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver, depth int) error {
+func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver, depth int, allowed []string) error {
 	if depth <= 0 {
 		return errors.New("proof chain is too deep")
+	}
+
+	if allowed != nil && !slices.Contains(allowed, sd.Proof.Type) {
+		return fmt.Errorf("proof type %s is not allowed here (allowed: %s)", sd.Proof.Type, strings.Join(allowed, ", "))
 	}
 
 	var doc Document[any]
@@ -104,7 +119,10 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 			return errors.Join(fmt.Errorf("failed to fetch subkey document %s", *sd.Proof.Key), err)
 		}
 
-		err = subKeySD.verify(ctx, resolver, depth-1)
+		// CIP-13 §6 step 2: the enact / revoked-subkey document must itself be
+		// signed with the entity's master key (ecrecover-direct) — a subkey
+		// must not be able to enact or revoke another subkey.
+		err = subKeySD.verify(ctx, resolver, depth-1, []string{ProofTypeEcrecover})
 		if err != nil {
 			return errors.Join(errors.New("subkey document failed verification"), err)
 		}
@@ -143,9 +161,10 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 
 			// The embedded enact document is submitter-independent (it is part
 			// of the owner-signed revocation), but it still has to verify on
-			// its own so a forged enact can't be smuggled in via value.
+			// its own so a forged enact can't be smuggled in via value. Like
+			// the live enact, it must be master-key signed (CIP-13 §6 step 3).
 			enactSD := revokedDoc.Value
-			err = enactSD.verify(ctx, resolver, depth-1)
+			err = enactSD.verify(ctx, resolver, depth-1, []string{ProofTypeEcrecover})
 			if err != nil {
 				return errors.Join(errors.New("enact document embedded in revoked-subkey failed verification"), err)
 			}
@@ -218,7 +237,7 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 			return errors.Join(fmt.Errorf("failed to fetch referenced document %s", *sd.Proof.Href), err)
 		}
 
-		err = targetSD.verify(ctx, resolver, depth-1)
+		err = targetSD.verify(ctx, resolver, depth-1, nil)
 		if err != nil {
 			return errors.Join(errors.New("referenced document failed verification"), err)
 		}

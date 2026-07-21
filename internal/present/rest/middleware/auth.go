@@ -165,10 +165,13 @@ func (s *AuthMiddleware) IdentifyIdentity(next echo.HandlerFunc) echo.HandlerFun
 
 				// GetRecord verifies the subkey document's signature by
 				// default and caches both the document and the verification
-				// result, so no additional strict-mode handling is needed
-				// here.
+				// result. CIP-13 §6: the enact document itself must be
+				// master-key (ecrecover-direct) signed — an enact signed by
+				// another subkey must not authenticate.
 				var subKeyDoc concrnt.Document[schemas.Subkey]
-				err := s.client.GetRecord(ctx, keyID, nil, &subKeyDoc)
+				err := s.client.GetRecord(ctx, keyID, &client.Options{
+					AllowedProofTypes: []string{concrnt.ProofTypeEcrecover},
+				}, &subKeyDoc)
 				if err != nil {
 					span.RecordError(err)
 					goto skipCheckAuthorization

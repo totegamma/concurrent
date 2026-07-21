@@ -233,6 +233,134 @@ func revokedSubkeySD(t *testing.T, ownerCCID, ownerPriv, subkeyURI string, enact
 	}, ownerPriv)
 }
 
+// signDocumentWithSubkey marshals doc and signs it with subPriv as a subkey
+// proof pointing at keyURI.
+func signDocumentWithSubkey[T any](t *testing.T, doc Document[T], subPriv, keyURI string) SignedDocument {
+	t.Helper()
+
+	docBytes, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatalf("marshal document: %v", err)
+	}
+	sigBytes, err := SignBytes(docBytes, subPriv)
+	if err != nil {
+		t.Fatalf("sign document with subkey: %v", err)
+	}
+	signature := hex.EncodeToString(sigBytes)
+	return SignedDocument{
+		Document: string(docBytes),
+		Proof: Proof{
+			Type:      ProofTypeSubkey,
+			Signature: &signature,
+			Key:       &keyURI,
+		},
+	}
+}
+
+// CIP-13 §6 step 2: an enact document must be master-key (ecrecover-direct)
+// signed — a subkey must not be able to enact another subkey, even though the
+// chain would otherwise verify within the depth limit.
+func TestVerifySubkeyRejectsSubkeySignedEnact(t *testing.T) {
+	ownerCCID, ownerPriv := newTestIdentity(t)
+	subACCID, subAPriv := newTestIdentity(t)
+	subBCCID, subBPriv := newTestIdentity(t)
+
+	// subkey A: legitimately enacted with the master key
+	keyAURI := "cckv://" + ownerCCID + "/subkeys/a"
+	enactASD := signDocument(t, Document[schemas.Subkey]{
+		Kind:      "record",
+		Key:       keyAURI,
+		Schema:    schemas.SubkeyURL,
+		Value:     schemas.Subkey{CKID: subACCID},
+		Author:    ownerCCID,
+		CreatedAt: time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC),
+	}, ownerPriv)
+
+	// subkey B: enacted by subkey A instead of the master key
+	keyBURI := "cckv://" + ownerCCID + "/subkeys/b"
+	enactBSD := signDocumentWithSubkey(t, Document[schemas.Subkey]{
+		Kind:      "record",
+		Key:       keyBURI,
+		Schema:    schemas.SubkeyURL,
+		Value:     schemas.Subkey{CKID: subBCCID},
+		Author:    ownerCCID,
+		CreatedAt: time.Date(2025, 12, 2, 0, 0, 0, 0, time.UTC),
+	}, subAPriv, keyAURI)
+
+	sd := newSubkeyProof(t, ownerCCID, subBCCID, subBPriv, keyBURI, enactBSD)
+	resolver := mapResolver{keyAURI: enactASD, keyBURI: enactBSD}
+
+	err := sd.Verify(context.Background(), resolver)
+	if err == nil {
+		t.Fatal("Verify returned nil error for a subkey-signed enact document")
+	}
+	if !strings.Contains(err.Error(), "not allowed") {
+		t.Fatalf("Verify returned error %q, want a proof-type-not-allowed error", err.Error())
+	}
+}
+
+// CIP-13 §6 step 3: the enact document embedded in a revoked-subkey document
+// must also be master-key signed.
+func TestVerifySubkeyRevokedRejectsSubkeySignedEmbeddedEnact(t *testing.T) {
+	ownerCCID, ownerPriv := newTestIdentity(t)
+	subACCID, subAPriv := newTestIdentity(t)
+	subBCCID, subBPriv := newTestIdentity(t)
+
+	keyAURI := "cckv://" + ownerCCID + "/subkeys/a"
+	enactASD := signDocument(t, Document[schemas.Subkey]{
+		Kind:      "record",
+		Key:       keyAURI,
+		Schema:    schemas.SubkeyURL,
+		Value:     schemas.Subkey{CKID: subACCID},
+		Author:    ownerCCID,
+		CreatedAt: time.Date(2025, 12, 1, 0, 0, 0, 0, time.UTC),
+	}, ownerPriv)
+
+	keyBURI := "cckv://" + ownerCCID + "/subkeys/b"
+	enactBSD := signDocumentWithSubkey(t, Document[schemas.Subkey]{
+		Kind:      "record",
+		Key:       keyBURI,
+		Schema:    schemas.SubkeyURL,
+		Value:     schemas.Subkey{CKID: subBCCID},
+		Author:    ownerCCID,
+		CreatedAt: time.Date(2025, 12, 2, 0, 0, 0, 0, time.UTC),
+	}, subAPriv, keyAURI)
+
+	// record signed by subkey B inside what would be its validity period
+	sd := newSubkeyProof(t, ownerCCID, subBCCID, subBPriv, keyBURI, enactBSD)
+
+	// owner-signed revocation embedding the subkey-signed enact
+	revokedSD := revokedSubkeySD(t, ownerCCID, ownerPriv, keyBURI, enactBSD,
+		time.Date(2026, 2, 1, 0, 0, 0, 0, time.UTC))
+	resolver := mapResolver{keyAURI: enactASD, keyBURI: revokedSD}
+
+	if err := sd.Verify(context.Background(), resolver); err == nil {
+		t.Fatal("Verify returned nil error for a revoked-subkey embedding a subkey-signed enact")
+	}
+}
+
+func TestVerifyWithProofTypes(t *testing.T) {
+	ccid, priv := newTestIdentity(t)
+	sd := signDocument(t, Document[testRecordValue]{
+		Kind:      "record",
+		Key:       "cckv://" + ccid + "/example",
+		Value:     testRecordValue{Foo: "bar"},
+		Author:    ccid,
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}, priv)
+
+	if err := sd.VerifyWithProofTypes(context.Background(), nil, []string{ProofTypeEcrecover}); err != nil {
+		t.Fatalf("VerifyWithProofTypes returned error for an allowed proof type: %v", err)
+	}
+	if err := sd.VerifyWithProofTypes(context.Background(), nil, []string{ProofTypeSubkey}); err == nil {
+		t.Fatal("VerifyWithProofTypes returned nil error for a disallowed proof type")
+	}
+	// nil = no restriction
+	if err := sd.VerifyWithProofTypes(context.Background(), nil, nil); err != nil {
+		t.Fatalf("VerifyWithProofTypes returned error with nil restriction: %v", err)
+	}
+}
+
 // CIP-13 §4.1: after revocation, a signature made inside the subkey's validity
 // period (enact createdAt .. revocation createdAt) must still verify.
 func TestVerifySubkeyRevokedSignatureWithinValidityPeriod(t *testing.T) {

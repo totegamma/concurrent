@@ -13,6 +13,8 @@ import (
 	"net"
 	"net/http"
 	"net/url"
+	"slices"
+	"strings"
 	"sync"
 	"time"
 
@@ -180,6 +182,12 @@ type Options struct {
 	// verification is unnecessary, e.g. resolving routing hints, where
 	// the final data is verified separately once actually used.
 	SkipVerify bool
+
+	// AllowedProofTypes restricts which proof types the fetched document may
+	// carry (nil = no restriction). E.g. CIP-13 requires subkey enact
+	// documents to be ecrecover-direct signed, so the auth middleware fetches
+	// them with []string{concrnt.ProofTypeEcrecover}.
+	AllowedProofTypes []string
 }
 
 type QueryParams struct {
@@ -559,6 +567,16 @@ func (c *Client) GetRecord(ctx context.Context, uri string, opts *Options, resul
 	}
 
 	if opts == nil || !opts.SkipVerify {
+		// The top-level proof-type restriction is a plain field check on the
+		// document we already hold, so it is enforced here directly — the
+		// verification cache below then only ever records unrestricted
+		// verifications and stays valid for restricted and unrestricted
+		// callers alike.
+		if opts != nil && opts.AllowedProofTypes != nil && !slices.Contains(opts.AllowedProofTypes, sd.Proof.Type) {
+			err := fmt.Errorf("proof type %s is not allowed for resource %s (allowed: %s)", sd.Proof.Type, uri, strings.Join(opts.AllowedProofTypes, ", "))
+			span.RecordError(err)
+			return err
+		}
 		// GetResource caches the raw (unverified) signed document, so cache
 		// hits would re-pay signature verification on every call — remember
 		// successful verifications separately, keyed by content hash so a

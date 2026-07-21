@@ -111,6 +111,7 @@ type commitApplyResult struct {
 type RecordUsecase struct {
 	repo      RecordRepository
 	residence ResidenceRepository
+	server    *ServerUsecase
 	config    *domain.Config
 	client    *client.Client
 	signal    SignalService
@@ -123,6 +124,7 @@ type RecordUsecase struct {
 func NewRecordUsecase(
 	repo RecordRepository,
 	residence ResidenceRepository,
+	server *ServerUsecase,
 	config *domain.Config,
 	client *client.Client,
 	signal SignalService,
@@ -133,6 +135,7 @@ func NewRecordUsecase(
 	return &RecordUsecase{
 		repo:      repo,
 		residence: residence,
+		server:    server,
 		config:    config,
 		client:    client,
 		signal:    signal,
@@ -202,6 +205,15 @@ func GetReferrerFromReferences(sd concrnt.SignedDocument, requesterID string) *s
 func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.SignedDocument, mode domain.CommitMode) (*concrnt.SignedDocument, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.Commit")
 	defer span.End()
+
+	// CIP-1 §4.1: the signed serialization must not exceed 32 KiB. Checked
+	// before anything else — including the system-service-account bypass —
+	// because sd.Document is exactly what CreateCommitLog persists.
+	if len(sd.Document) > domain.MaxDocumentSize {
+		err := domain.ValidationError{Field: "document", Message: fmt.Sprintf("document exceeds the maximum size of %d bytes", domain.MaxDocumentSize)}
+		span.RecordError(err)
+		return nil, err
+	}
 
 	var doc concrnt.Document[any]
 	err := json.Unmarshal([]byte(sd.Document), &doc)
@@ -520,6 +532,27 @@ func (uc *RecordUsecase) saveEntity(ctx context.Context, tx RepositoryTx, docume
 		} else if documentID <= documentIDFor(existing.SignedDocument.Document, existingDoc.CreatedAt) {
 			return &commitApplyResult{result: &sd, owners: []string{entity.Author}}, nil
 		}
+	}
+
+	// CIP-0 §9: only interact with servers on the same layer. Fail-closed: an
+	// entity is only stored when its home server resolves and is green (same
+	// layer, not tagged _blocked). For the local domain Resolve returns
+	// GetThisServer, which is trivially green.
+	entityServer, err := uc.server.Resolve(ctx, entity.Value.Domain, nil)
+	if err != nil {
+		err = errors.Join(domain.ValidationError{Field: "value.domain", Message: "failed to resolve the entity's domain"}, err)
+		span.RecordError(err)
+		return nil, err
+	}
+	if entityServer.Layer() != uc.config.Layer {
+		err := domain.ValidationError{Field: "value.domain", Message: "the entity's domain is on a different layer"}
+		span.RecordError(err)
+		return nil, err
+	}
+	if serverTag := entityServer.Tag(); serverTag.Has("_blocked") {
+		err := domain.ValidationError{Field: "value.domain", Message: "the entity's domain is blocked"}
+		span.RecordError(err)
+		return nil, err
 	}
 
 	if entity.Value.Domain == uc.config.FQDN {
@@ -1125,6 +1158,18 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 		span.RecordError(err)
 		return nil, err
 	}
+	// CIP-0 §7: a cckv key component is 1..1024 bytes. An empty key
+	// (cckv://<owner>) addresses the entity itself, not a record slot.
+	if parsedKey.Key == "" {
+		err := domain.ValidationError{Field: "key", Message: "record key must not be empty"}
+		span.RecordError(err)
+		return nil, err
+	}
+	if len(parsedKey.Key) > domain.MaxRecordKeySize {
+		err := domain.ValidationError{Field: "key", Message: fmt.Sprintf("record key exceeds the maximum size of %d bytes", domain.MaxRecordKeySize)}
+		span.RecordError(err)
+		return nil, err
+	}
 
 	var policies *string
 	if parsed.Policy != nil {
@@ -1242,6 +1287,18 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx, documentID string, ip string, requester domain.Entity, parsed concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.CreateAssociation")
 	defer span.End()
+
+	// CIP-9: an association is addressable only by its ccfs URI, never a key.
+	if parsed.Key != "" {
+		err := domain.ValidationError{Field: "key", Message: "association documents must not have a key"}
+		span.RecordError(err)
+		return nil, err
+	}
+	if parsed.AssociationVariant != nil && len(*parsed.AssociationVariant) > domain.MaxAssociationVariantSize {
+		err := domain.ValidationError{Field: "associationVariant", Message: fmt.Sprintf("associationVariant exceeds the maximum size of %d bytes", domain.MaxAssociationVariantSize)}
+		span.RecordError(err)
+		return nil, err
+	}
 
 	stack, err := uc.repo.GetHierarchicalRecordPolicies(ctx, *parsed.Associate)
 	if err != nil {

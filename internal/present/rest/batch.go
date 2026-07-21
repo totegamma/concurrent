@@ -13,6 +13,10 @@ import (
 	"github.com/labstack/echo/v4"
 )
 
+// maxBatchParts caps how many application/http parts a single batch request
+// may carry, bounding the fan-out a single request can trigger.
+const maxBatchParts = 1024
+
 type batchRequestPart struct {
 	contentID string
 	request   *http.Request
@@ -41,10 +45,6 @@ func batchHandler(app *echo.Echo, customHandlers ...batchCustomHandler) echo.Han
 		mr := multipart.NewReader(req.Body, boundary)
 
 		parts := make([]batchRequestPart, 0)
-		c.Response().Header().Set("Content-Type", "multipart/mixed; boundary="+boundary)
-		mw := multipart.NewWriter(c.Response().Writer)
-		mw.SetBoundary(boundary)
-		defer mw.Close()
 
 		for {
 			part, err := mr.NextPart()
@@ -69,11 +69,23 @@ func batchHandler(app *echo.Echo, customHandlers ...batchCustomHandler) echo.Han
 				return echo.NewHTTPError(http.StatusBadRequest, "failed to parse part as HTTP request")
 			}
 
+			if len(parts) >= maxBatchParts {
+				return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("batch exceeds the maximum of %d parts", maxBatchParts))
+			}
+
 			parts = append(parts, batchRequestPart{
 				contentID: contentID,
 				request:   pr.WithContext(req.Context()),
 			})
 		}
+
+		// The multipart writer is only set up once parsing has fully
+		// succeeded: its deferred Close would otherwise commit a 200
+		// response and swallow any parse-error status returned above.
+		c.Response().Header().Set("Content-Type", "multipart/mixed; boundary="+boundary)
+		mw := multipart.NewWriter(c.Response().Writer)
+		mw.SetBoundary(boundary)
+		defer mw.Close()
 
 		responses := make(map[string]*http.Response, len(parts))
 		handlerParts := make([][]batchRequestPart, len(customHandlers))

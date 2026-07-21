@@ -28,3 +28,18 @@ const (
 	// freeze entity accept-if-newer).
 	MaxFutureSkew = 12 * time.Hour
 )
+
+// Protocol size limits enforced at commit time.
+const (
+	// MaxDocumentSize bounds the UTF-8 serialization of a document (the signed
+	// string itself, CIP-1 §4.1). Applied to every committer including system
+	// service accounts: nothing larger is ever written to the DB.
+	MaxDocumentSize = 32768
+
+	// MaxAssociationVariantSize bounds associationVariant in bytes (CIP-9).
+	MaxAssociationVariantSize = 512
+
+	// MaxRecordKeySize bounds the key component of a record's cckv URI in
+	// bytes (CIP-0 §7: 1..1024 bytes).
+	MaxRecordKeySize = 1024
+)

@@ -1,10 +1,13 @@
 package rest
 
 import (
+	"bytes"
 	"context"
 	"fmt"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/textproto"
 	"sync"
 	"testing"
 
@@ -149,3 +152,47 @@ func TestChunklineItrMissingIsNotFound(t *testing.T) {
 }
 
 var _ usecase.ChunklineRepository = (*batchChunklineRepo)(nil)
+
+// A batch carrying more than maxBatchParts application/http parts is rejected
+// with a 400 before any part is dispatched.
+func TestBatchHandlerRejectsTooManyParts(t *testing.T) {
+	repo := &batchChunklineRepo{}
+	handler := NewHandler(
+		domain.Config{},
+		nil,
+		nil,
+		usecase.NewChunklineUsecase(repo, nil, nil),
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	app := echo.New()
+	handler.RegisterRoutes(app, app.Group(""))
+
+	server := httptest.NewServer(app)
+	t.Cleanup(server.Close)
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	for i := 0; i <= maxBatchParts; i++ {
+		pw, err := mw.CreatePart(textproto.MIMEHeader{
+			"Content-Type": {"application/http"},
+			"Content-ID":   {fmt.Sprintf("%d", i)},
+		})
+		require.NoError(t, err)
+		_, err = fmt.Fprintf(pw, "GET %s/chunkline/itr/100?uri=cckv://example.test/timeline/0 HTTP/1.1\r\nHost: example.test\r\n\r\n", apiPrefix)
+		require.NoError(t, err)
+	}
+	require.NoError(t, mw.Close())
+
+	batchPath, err := concrnt.RenderURITemplate(Endpoints["net.concrnt.core.batch"], map[string]string{})
+	require.NoError(t, err)
+
+	resp, err := server.Client().Post(server.URL+batchPath, "multipart/mixed; boundary="+mw.Boundary(), &buf)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.Empty(t, repo.calls, "no part should be dispatched")
+}

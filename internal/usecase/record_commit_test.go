@@ -13,6 +13,7 @@ import (
 	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/impl/interop"
 	"github.com/concrnt/concrnt/internal/domain"
+	"github.com/concrnt/concrnt/internal/service"
 	"github.com/concrnt/concrnt/policy"
 	"github.com/concrnt/concrnt/schemas"
 )
@@ -73,6 +74,29 @@ func (s fixedResidenceRepo) GetEntityByCCID(ctx context.Context, ccid string) (*
 		return nil, domain.ErrNotFound
 	}
 	return s.entity, nil
+}
+
+// testServerRepo serves a fixed server descriptor for every lookup.
+type testServerRepo struct {
+	server *domain.Server
+}
+
+func (s testServerRepo) Resolve(ctx context.Context, identifier string, hint *string) (*domain.Server, error) {
+	if s.server == nil {
+		return nil, domain.ErrNotFound
+	}
+	return s.server, nil
+}
+
+func (s testServerRepo) List(ctx context.Context) ([]*concrnt.WellKnownConcrnt, error) {
+	return nil, nil
+}
+
+// newTestServerUsecase wires a ServerUsecase that resolves every remote domain
+// to a green (same-layer, unblocked) server.
+func newTestServerUsecase(cfg *domain.Config) *ServerUsecase {
+	server := &domain.Server{WellKnown: concrnt.WellKnownConcrnt{Layer: cfg.Layer}}
+	return NewServerUsecase(testServerRepo{server: server}, cfg, concrnt.SoftwareInfo{}, service.NewModuleManager(map[string]string{}, nil), nil)
 }
 
 type nopPolicyService struct{}
@@ -152,10 +176,12 @@ func signedCommitDocument(t *testing.T, kind string) concrnt.SignedDocument {
 // entity document has a none proof, so a remote server refuses to import it)
 // must fail with an error, not a nil-pointer panic.
 func TestCommitUnresolvableRequesterReturnsError(t *testing.T) {
+	cfg := &domain.Config{FQDN: "example.com"}
 	uc := NewRecordUsecase(
 		stubRecordRepo{},
 		stubResidenceRepo{},
-		&domain.Config{FQDN: "example.com"},
+		newTestServerUsecase(cfg),
+		cfg,
 		nil,
 		nil,
 		nil,
@@ -218,6 +244,7 @@ func TestCommitEntityAcceptIfNewer(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &recordingRecordRepo{}
+			cfg := &domain.Config{FQDN: "example.com"}
 			uc := NewRecordUsecase(
 				repo,
 				fixedResidenceRepo{entity: &domain.Entity{
@@ -225,7 +252,8 @@ func TestCommitEntityAcceptIfNewer(t *testing.T) {
 					Domain:         "remote.example.net",
 					SignedDocument: &stored,
 				}},
-				&domain.Config{FQDN: "example.com"},
+				newTestServerUsecase(cfg),
+				cfg,
 				nil,
 				nil,
 				nil,
@@ -290,10 +318,12 @@ func TestCommitDocumentReferenceInlineTargetOffline(t *testing.T) {
 	}
 
 	repo := &recordingRecordRepo{}
+	cfg := &domain.Config{FQDN: "example.com"}
 	uc := NewRecordUsecase(
 		repo,
 		fixedResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: "remote.example.net"}},
-		&domain.Config{FQDN: "example.com"},
+		newTestServerUsecase(cfg),
+		cfg,
 		nil, // no client: verification must not need the network
 		nopSignalService{},
 		nopPolicyService{},
@@ -353,6 +383,7 @@ func newRecordCommitUsecase(ccid string, cfg *domain.Config, repo RecordReposito
 	return NewRecordUsecase(
 		repo,
 		fixedResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: cfg.FQDN}},
+		newTestServerUsecase(cfg),
 		cfg,
 		nil,
 		nopSignalService{},
@@ -689,5 +720,169 @@ func TestCommitAssociationUniqueIncludesBody(t *testing.T) {
 	}
 	if repo.uniques[0] != repo.uniques[2] {
 		t.Fatal("associations with identical bodies must share a unique key")
+	}
+}
+
+// CIP-1 §4.1: an oversized document is rejected for everyone, including
+// system service accounts — nothing larger than 32 KiB may reach the DB.
+func TestCommitRejectsOversizedDocument(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+
+	sd := signTestDocument(t, concrnt.Document[any]{
+		Kind:      "record",
+		Key:       concrnt.CCURI{Scheme: "cckv", Owner: ccid, Key: "posts/1"}.String(),
+		Value:     strings.Repeat("x", domain.MaxDocumentSize),
+		Author:    ccid,
+		Schema:    "https://example.com/post.json",
+		CreatedAt: time.Now(),
+	}, priv)
+
+	for _, tc := range []struct {
+		name string
+		ctx  context.Context
+	}{
+		{"regular commit", context.Background()},
+		{"system service account", context.WithValue(context.Background(), interop.ServiceAccountTypeCtxKey, "system")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &recordingRecordRepo{}
+			uc := newRecordCommitUsecase(ccid, cfg, repo, nil)
+			_, err := uc.Commit(tc.ctx, "127.0.0.1", sd, domain.CommitModeExecute)
+			if err == nil || !strings.Contains(err.Error(), "maximum size") {
+				t.Fatalf("expected size rejection, got %v", err)
+			}
+			if repo.createRecordCalled {
+				t.Fatal("CreateRecord should not be called for an oversized document")
+			}
+		})
+	}
+}
+
+// CIP-9: an association document must not carry a key, and its
+// associationVariant is capped at 512 bytes.
+func TestCommitAssociationConstraints(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+	associate := concrnt.CCURI{Scheme: "cckv", Owner: ccid, Key: "posts/1"}.String()
+
+	commit := func(t *testing.T, mutate func(*concrnt.Document[any])) error {
+		t.Helper()
+		doc := concrnt.Document[any]{
+			Kind:      "association",
+			Associate: &associate,
+			Value:     map[string]any{"messageId": "m1"},
+			Author:    ccid,
+			Schema:    "https://example.com/a/reply.json",
+			CreatedAt: time.Now(),
+		}
+		mutate(&doc)
+		uc := newRecordCommitUsecase(ccid, cfg, &associationRecordingRepo{}, nil)
+		_, err := uc.Commit(context.Background(), "127.0.0.1", signTestDocument(t, doc, priv), domain.CommitModeDryRun)
+		return err
+	}
+
+	if err := commit(t, func(doc *concrnt.Document[any]) {
+		doc.Key = concrnt.CCURI{Scheme: "cckv", Owner: ccid, Key: "assoc/1"}.String()
+	}); err == nil || !strings.Contains(err.Error(), "must not have a key") {
+		t.Fatalf("expected keyed association rejection, got %v", err)
+	}
+
+	long := strings.Repeat("v", domain.MaxAssociationVariantSize+1)
+	if err := commit(t, func(doc *concrnt.Document[any]) { doc.AssociationVariant = &long }); err == nil || !strings.Contains(err.Error(), "associationVariant") {
+		t.Fatalf("expected oversized variant rejection, got %v", err)
+	}
+
+	max := strings.Repeat("v", domain.MaxAssociationVariantSize)
+	if err := commit(t, func(doc *concrnt.Document[any]) { doc.AssociationVariant = &max }); err != nil {
+		t.Fatalf("512-byte variant should commit, got %v", err)
+	}
+}
+
+// CIP-0 §7: a record's cckv key component is 1..1024 bytes.
+func TestCommitRecordKeyConstraints(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+
+	commit := func(t *testing.T, key string) (*recordingRecordRepo, error) {
+		t.Helper()
+		sd := signTestDocument(t, concrnt.Document[any]{
+			Kind:      "record",
+			Key:       key,
+			Author:    ccid,
+			Schema:    "https://example.com/post.json",
+			CreatedAt: time.Now(),
+		}, priv)
+		repo := &recordingRecordRepo{}
+		uc := newRecordCommitUsecase(ccid, cfg, repo, nil)
+		_, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute)
+		return repo, err
+	}
+
+	if _, err := commit(t, concrnt.CCURI{Scheme: "cckv", Owner: ccid}.String()); err == nil || !strings.Contains(err.Error(), "empty") {
+		t.Fatalf("expected empty-key rejection, got %v", err)
+	}
+
+	if _, err := commit(t, concrnt.CCURI{Scheme: "cckv", Owner: ccid, Key: strings.Repeat("k", domain.MaxRecordKeySize+1)}.String()); err == nil || !strings.Contains(err.Error(), "maximum size") {
+		t.Fatalf("expected oversized-key rejection, got %v", err)
+	}
+
+	repo, err := commit(t, concrnt.CCURI{Scheme: "cckv", Owner: ccid, Key: strings.Repeat("k", domain.MaxRecordKeySize)}.String())
+	if err != nil {
+		t.Fatalf("1024-byte key should commit, got %v", err)
+	}
+	if !repo.createRecordCalled {
+		t.Fatal("CreateRecord was not called for a max-length key")
+	}
+}
+
+// saveEntity is fail-closed on the entity's home server: the entity is only
+// stored when its server resolves, sits on the same layer, and is not tagged
+// _blocked. (The green path is covered by TestCommitEntityAcceptIfNewer.)
+func TestCommitEntityRequiresGreenServer(t *testing.T) {
+	ccid, priv := newIdentity(t)
+
+	cases := []struct {
+		name    string
+		server  *domain.Server
+		wantErr string
+	}{
+		{"unresolvable server", nil, "failed to resolve"},
+		{"layer mismatch", &domain.Server{WellKnown: concrnt.WellKnownConcrnt{Layer: "othernet"}}, "different layer"},
+		{"blocked server", &domain.Server{TagString: "_blocked", WellKnown: concrnt.WellKnownConcrnt{Layer: "mainnet"}}, "blocked"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			repo := &recordingRecordRepo{}
+			cfg := &domain.Config{FQDN: "example.com", Layer: "mainnet"}
+			serverUC := NewServerUsecase(testServerRepo{server: tc.server}, cfg, concrnt.SoftwareInfo{}, service.NewModuleManager(map[string]string{}, nil), nil)
+			uc := NewRecordUsecase(
+				repo,
+				fixedResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: "remote.example.net"}},
+				serverUC,
+				cfg,
+				nil,
+				nil,
+				nil,
+				nil,
+				nil,
+			)
+
+			sd := signTestDocument(t, concrnt.Document[schemas.Entity]{
+				Kind:      "entity",
+				Value:     schemas.Entity{Domain: "remote.example.net"},
+				Author:    ccid,
+				CreatedAt: time.Now(),
+			}, priv)
+
+			_, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute)
+			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
+				t.Fatalf("expected %q error, got %v", tc.wantErr, err)
+			}
+			if repo.createEntityCalled {
+				t.Fatal("CreateEntity should not be called for a non-green server")
+			}
+		})
 	}
 }

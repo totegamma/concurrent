@@ -179,6 +179,7 @@ func newRangeDeleteUsecase(ccid string, cfg *domain.Config, repo RecordRepositor
 	return NewRecordUsecase(
 		repo,
 		fixedResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: cfg.FQDN}},
+		newTestServerUsecase(cfg),
 		cfg,
 		client.New(cfg.FQDN),
 		nopSignalService{},
@@ -384,6 +385,7 @@ func TestDeleteRecordRangeRemoteMatchesReferences(t *testing.T) {
 	uc := NewRecordUsecase(
 		nil,
 		fixedResidenceRepo{entity: &requester},
+		newTestServerUsecase(cfg),
 		cfg,
 		client.New(cfg.FQDN),
 		nopSignalService{},

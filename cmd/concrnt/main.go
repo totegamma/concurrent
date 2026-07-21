@@ -203,7 +203,7 @@ func main() {
 
 	residenceRepo := postgres.NewResidenceRepository(db, cl, domainConfig)
 	recordRepo := postgres.NewRecordRepository(db)
-	recordUC := usecase.NewRecordUsecase(recordRepo, residenceRepo, &domainConfig, cl, redisPubsub, policy, deliveryQueue, redisKVS)
+	recordUC := usecase.NewRecordUsecase(recordRepo, residenceRepo, serverUC, &domainConfig, cl, redisPubsub, policy, deliveryQueue, redisKVS)
 	residenceUC := usecase.NewResidenceUsecase(residenceRepo, recordUC, &domainConfig)
 
 	chunklineRepo := postgres.NewChunklineRepository(db)

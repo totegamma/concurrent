@@ -538,21 +538,27 @@ func (uc *RecordUsecase) saveEntity(ctx context.Context, tx RepositoryTx, docume
 	// entity is only stored when its home server resolves and is green (same
 	// layer, not tagged _blocked). For the local domain Resolve returns
 	// GetThisServer, which is trivially green.
-	entityServer, err := uc.server.Resolve(ctx, entity.Value.Domain, nil)
-	if err != nil {
-		err = errors.Join(domain.ValidationError{Field: "value.domain", Message: "failed to resolve the entity's domain"}, err)
-		span.RecordError(err)
-		return nil, err
-	}
-	if entityServer.Layer() != uc.config.Layer {
-		err := domain.ValidationError{Field: "value.domain", Message: "the entity's domain is on a different layer"}
-		span.RecordError(err)
-		return nil, err
-	}
-	if serverTag := entityServer.Tag(); serverTag.Has("_blocked") {
-		err := domain.ValidationError{Field: "value.domain", Message: "the entity's domain is blocked"}
-		span.RecordError(err)
-		return nil, err
+	// None-proof documents are exempt: they only reach here via the system
+	// service account (Verify rejects them for everyone else), and migration
+	// imports replay historical entities whose home servers may be offline or
+	// still on v1.
+	if sd.Proof.Type != concrnt.ProofTypeNone {
+		entityServer, err := uc.server.Resolve(ctx, entity.Value.Domain, nil)
+		if err != nil {
+			err = errors.Join(domain.ValidationError{Field: "value.domain", Message: "failed to resolve the entity's domain"}, err)
+			span.RecordError(err)
+			return nil, err
+		}
+		if entityServer.Layer() != uc.config.Layer {
+			err := domain.ValidationError{Field: "value.domain", Message: "the entity's domain is on a different layer"}
+			span.RecordError(err)
+			return nil, err
+		}
+		if serverTag := entityServer.Tag(); serverTag.Has("_blocked") {
+			err := domain.ValidationError{Field: "value.domain", Message: "the entity's domain is blocked"}
+			span.RecordError(err)
+			return nil, err
+		}
 	}
 
 	if entity.Value.Domain == uc.config.FQDN {

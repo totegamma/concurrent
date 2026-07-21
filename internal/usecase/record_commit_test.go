@@ -886,3 +886,48 @@ func TestCommitEntityRequiresGreenServer(t *testing.T) {
 		})
 	}
 }
+
+// None-proof entity documents are exempt from the green-server check: they
+// only reach saveEntity via the system service account (migration/import),
+// where the entity's home server may be offline, on another layer, or still
+// on v1.
+func TestCommitEntityNoneProofSkipsGreenServerCheck(t *testing.T) {
+	ccid, _ := newIdentity(t)
+
+	repo := &recordingRecordRepo{}
+	cfg := &domain.Config{FQDN: "example.com", Layer: "mainnet"}
+	unresolvable := NewServerUsecase(testServerRepo{server: nil}, cfg, concrnt.SoftwareInfo{}, service.NewModuleManager(map[string]string{}, nil), nil)
+	uc := NewRecordUsecase(
+		repo,
+		fixedResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: "remote.example.net"}},
+		unresolvable,
+		cfg,
+		nil,
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	docBytes, err := json.Marshal(concrnt.Document[schemas.Entity]{
+		Kind:      "entity",
+		Value:     schemas.Entity{Domain: "remote.example.net"},
+		Author:    ccid,
+		CreatedAt: time.Now(),
+	})
+	if err != nil {
+		t.Fatalf("marshal document: %v", err)
+	}
+	sd := concrnt.SignedDocument{
+		Document: string(docBytes),
+		Proof:    concrnt.Proof{Type: concrnt.ProofTypeNone},
+	}
+
+	ctx := context.WithValue(context.Background(), interop.ServiceAccountTypeCtxKey, "system")
+	if _, err := uc.Commit(ctx, "127.0.0.1", sd, domain.CommitModeLocalOnlyExecute); err != nil {
+		t.Fatalf("Commit returned error: %v", err)
+	}
+	if !repo.createEntityCalled {
+		t.Fatal("CreateEntity was not called for a none-proof entity import")
+	}
+}

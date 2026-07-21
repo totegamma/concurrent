@@ -250,6 +250,7 @@ func (h *Handler) handleResolve(c echo.Context) error {
 			}
 			return presenter.InternalError(c, err)
 		}
+		c.Response().Header().Set(echo.HeaderContentType, "application/chunkline+json")
 		return presenter.OK(c, value)
 	default:
 		value, err := h.record.GetSigned(ctx, uri.String())

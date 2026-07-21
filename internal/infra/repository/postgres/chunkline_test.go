@@ -91,6 +91,53 @@ func TestChunklineLoadLocalBodySurvivesRecordCreatedAtDivergence(t *testing.T) {
 	}
 }
 
+// Chunks are half-open intervals [chunkID*600, (chunkID+1)*600) — a record
+// whose record_created_at is exactly the next chunk's start time belongs to
+// the next chunk, and one exactly at the chunk's start time belongs to it.
+func TestChunklineChunkBoundaryIsHalfOpen(t *testing.T) {
+	db, cleanup := testutil.CreateDB()
+	t.Cleanup(cleanup)
+
+	ctx := context.Background()
+	recordRepo := NewRecordRepository(db)
+	chunklineRepo := NewChunklineRepository(db)
+
+	parentURI := "cckv://con3owner/timeline"
+	chunkStart := time.Unix(30*600, 0).UTC()
+	inChunk := time.Unix(30*600+10, 0).UTC()
+	nextChunkStart := time.Unix(31*600, 0).UTC()
+
+	createChunklineRecord(t, ctx, recordRepo, "boundary-start", parentURI+"/boundary-start", chunkStart)
+	createChunklineRecord(t, ctx, recordRepo, "boundary-mid", parentURI+"/boundary-mid", inChunk)
+	createChunklineRecord(t, ctx, recordRepo, "boundary-next", parentURI+"/boundary-next", nextChunkStart)
+
+	itrs, err := chunklineRepo.LookupLocalItrs(ctx, []string{parentURI}, 30)
+	require.NoError(t, err)
+	require.EqualValues(t, 30, itrs[parentURI])
+
+	body, err := chunklineRepo.LoadLocalBody(ctx, parentURI, 30)
+	require.NoError(t, err)
+	require.Len(t, body, 2)
+	require.Equal(t, parentURI+"/boundary-mid", body[0].Href)
+	require.Equal(t, parentURI+"/boundary-start", body[1].Href)
+}
+
+func TestChunklineManifestEmptyFeedHasNullFirstChunk(t *testing.T) {
+	db, cleanup := testutil.CreateDB()
+	t.Cleanup(cleanup)
+
+	ctx := context.Background()
+	recordRepo := NewRecordRepository(db)
+	chunklineRepo := NewChunklineRepository(db)
+
+	feedURI := "cckv://con4owner/timeline"
+	createChunklineRecord(t, ctx, recordRepo, "empty-feed", feedURI, time.Unix(40*600, 0).UTC())
+
+	manifest, err := chunklineRepo.GetChunklineManifest(ctx, feedURI)
+	require.NoError(t, err)
+	require.Nil(t, manifest.FirstChunk)
+}
+
 func createChunklineRecord(t *testing.T, ctx context.Context, repo usecase.RecordRepository, id string, key string, createdAt time.Time) {
 	t.Helper()
 

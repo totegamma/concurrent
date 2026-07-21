@@ -65,14 +65,14 @@ type Document[T any] struct {
 
 	OnUpdate *string `json:"onUpdate,omitempty"` // forget, retain(default)
 
-	// CIP-5
+	// CIP-7
 	Distributes *[]string `json:"distributes,omitempty"`
 
-	// CIP-6
+	// CIP-9
 	Associate          *string `json:"associate,omitempty"`
 	AssociationVariant *string `json:"associationVariant,omitempty"`
 
-	// CIP-8
+	// CIP-12
 	Policy *Policy `json:"policy,omitempty"`
 }
 

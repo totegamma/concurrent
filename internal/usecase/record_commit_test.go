@@ -5,7 +5,6 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
-	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -20,27 +19,31 @@ import (
 
 type stubRecordRepo struct{ RecordRepository }
 
+func (stubRecordRepo) HasCommitLog(ctx context.Context, id string) (bool, error) {
+	return false, nil
+}
+
 type stubResidenceRepo struct{ ResidenceRepository }
 
 func (stubResidenceRepo) GetEntityByCCID(ctx context.Context, ccid string) (*domain.Entity, error) {
 	return nil, domain.ErrNotFound
 }
 
-type fakeTx struct{}
-
-func (fakeTx) Commit(ctx context.Context) error   { return nil }
-func (fakeTx) Rollback(ctx context.Context) error { return nil }
-
 // recordingRecordRepo satisfies the write path of RecordRepository in memory
-// and records which mutations were attempted.
+// and records which mutations were attempted. commitLogs seeds the ids
+// HasCommitLog answers true for (already-committed documents).
 type recordingRecordRepo struct {
 	RecordRepository
+	commitLogs         map[string]bool
 	createEntityCalled bool
 	createRecordCalled bool
+	txs                []*recordingTx
 }
 
 func (r *recordingRecordRepo) BeginTx(ctx context.Context) (RepositoryTx, error) {
-	return fakeTx{}, nil
+	tx := &recordingTx{}
+	r.txs = append(r.txs, tx)
+	return tx, nil
 }
 func (r *recordingRecordRepo) CreateCommitLog(ctx context.Context, tx RepositoryTx, id string, ip string, document string, proof any) error {
 	return nil
@@ -48,9 +51,12 @@ func (r *recordingRecordRepo) CreateCommitLog(ctx context.Context, tx Repository
 func (r *recordingRecordRepo) CreateCommitOwners(ctx context.Context, tx RepositoryTx, id string, owners []string) error {
 	return nil
 }
-func (r *recordingRecordRepo) CreateEntity(ctx context.Context, tx RepositoryTx, ccid string, alias *string, domain string, documentID string) error {
+func (r *recordingRecordRepo) HasCommitLog(ctx context.Context, id string) (bool, error) {
+	return r.commitLogs[id], nil
+}
+func (r *recordingRecordRepo) CreateEntity(ctx context.Context, tx RepositoryTx, ccid string, alias *string, domain string, documentID string) (bool, error) {
 	r.createEntityCalled = true
-	return nil
+	return true, nil
 }
 func (r *recordingRecordRepo) CreateRecord(ctx context.Context, tx RepositoryTx, documentID string, key string, owner string, schema string, onUpdate *string, policies *string, distributions []string, redirect *string, createdAt time.Time) error {
 	r.createRecordCalled = true
@@ -206,7 +212,9 @@ func TestCommitUnresolvableRequesterReturnsError(t *testing.T) {
 
 // Entity commits are accept-if-newer: a document older than (or as old as)
 // the stored one succeeds as a no-op instead of clobbering the newer
-// affiliation; only a strictly newer document reaches the repository.
+// affiliation; only a strictly newer document reaches the repository. The
+// no-op must also roll the commit transaction back — a rejected-as-older
+// document leaves no commit_log behind.
 func TestCommitEntityAcceptIfNewer(t *testing.T) {
 	priv := make([]byte, 32)
 	if _, err := rand.Read(priv); err != nil {
@@ -267,6 +275,12 @@ func TestCommitEntityAcceptIfNewer(t *testing.T) {
 			}
 			if repo.createEntityCalled != tc.wantCreateEntity {
 				t.Fatalf("CreateEntity called = %v, want %v", repo.createEntityCalled, tc.wantCreateEntity)
+			}
+			if len(repo.txs) != 1 {
+				t.Fatalf("expected 1 tx, got %d", len(repo.txs))
+			}
+			if repo.txs[0].committed != tc.wantCreateEntity || repo.txs[0].rolledBack == tc.wantCreateEntity {
+				t.Fatalf("tx state = %+v, want committed = %v", repo.txs[0], tc.wantCreateEntity)
 			}
 		})
 	}
@@ -339,24 +353,11 @@ func TestCommitDocumentReferenceInlineTargetOffline(t *testing.T) {
 	}
 }
 
-// stubKVS records Set calls and answers Exists from the keys it holds.
+// stubKVS records SetAdd calls.
 type stubKVS struct {
-	keys      map[string]bool
-	setKeys   []string
 	addedSets []string
 }
 
-func (s *stubKVS) Set(ctx context.Context, key string, value string, ttl time.Duration) error {
-	s.setKeys = append(s.setKeys, key)
-	if s.keys == nil {
-		s.keys = map[string]bool{}
-	}
-	s.keys[key] = true
-	return nil
-}
-func (s *stubKVS) Exists(ctx context.Context, key string) (bool, error) {
-	return s.keys[key], nil
-}
 func (s *stubKVS) SetAdd(ctx context.Context, key string, value string, ttl time.Duration) error {
 	s.addedSets = append(s.addedSets, key)
 	return nil
@@ -456,132 +457,88 @@ func TestCommitBackdateWindow(t *testing.T) {
 	})
 }
 
-// ccfsURIOf derives the ccfs URI a signed document commits under, the same way
-// Commit does: CDID from the document body + createdAt, owner from the key.
-func ccfsURIOf(t *testing.T, sd concrnt.SignedDocument, owner string) string {
+// documentIDOf derives the documentID a signed document commits under, the
+// same way Commit does: CDID from the document body + createdAt.
+func documentIDOf(t *testing.T, sd concrnt.SignedDocument) string {
 	t.Helper()
 	var doc concrnt.Document[any]
 	if err := json.Unmarshal([]byte(sd.Document), &doc); err != nil {
 		t.Fatalf("unmarshal document: %v", err)
 	}
-	return concrnt.CCURI{
-		Scheme: "ccfs",
-		Owner:  owner,
-		Type:   concrnt.CCFSTypeConcrnt,
-		CDID:   documentIDFor(sd.Document, doc.CreatedAt),
-	}.String()
+	return documentIDFor(sd.Document, doc.CreatedAt)
 }
 
-// The tombstone is keyed by the document's ccfs URI (content id): replaying
-// the exact deleted document is rejected, while a fresh document at the same
-// cckv key commits normally — deleting a key must not make it unusable.
-func TestCommitRejectsTombstonedDocument(t *testing.T) {
+// A document already in commit_logs was fully applied once: redelivery is a
+// no-op success, nothing reaches the repository again. This is the replay
+// guard — deleted and superseded documents stay in commit_logs, so a captured
+// copy can't be replayed back in — while a fresh document at the same cckv
+// key has a different CDID and commits normally.
+func TestCommitSkipsAlreadyCommittedDocument(t *testing.T) {
 	ccid, priv := newIdentity(t)
 	cfg := &domain.Config{FQDN: "example.com"}
 
-	deleted := signedRecord(t, ccid, priv, time.Now().Add(-time.Hour))
-	kvs := &stubKVS{keys: map[string]bool{tombstoneKey(ccfsURIOf(t, deleted, ccid)): true}}
+	committed := signedRecord(t, ccid, priv, time.Now().Add(-time.Hour))
 
-	t.Run("replay of the deleted document", func(t *testing.T) {
-		repo := &recordingRecordRepo{}
-		uc := newRecordCommitUsecase(ccid, cfg, repo, kvs)
-		_, err := uc.Commit(context.Background(), "127.0.0.1", deleted, domain.CommitModeExecute)
-		if err == nil || !strings.Contains(err.Error(), "deleted") {
-			t.Fatalf("expected tombstone rejection, got %v", err)
+	t.Run("redelivery of a committed document", func(t *testing.T) {
+		repo := &recordingRecordRepo{commitLogs: map[string]bool{documentIDOf(t, committed): true}}
+		uc := newRecordCommitUsecase(ccid, cfg, repo, nil)
+		result, err := uc.Commit(context.Background(), "127.0.0.1", committed, domain.CommitModeExecute)
+		if err != nil {
+			t.Fatalf("redelivery must succeed, got %v", err)
+		}
+		if result == nil {
+			t.Fatal("redelivery must return the document")
 		}
 		if repo.createRecordCalled {
-			t.Fatal("CreateRecord should not be called for a tombstoned document")
+			t.Fatal("CreateRecord should not be called for an already-committed document")
+		}
+		if len(repo.txs) != 0 {
+			t.Fatal("no transaction may be opened for an already-committed document")
 		}
 	})
 
 	t.Run("fresh document at the same key", func(t *testing.T) {
-		repo := &recordingRecordRepo{}
-		uc := newRecordCommitUsecase(ccid, cfg, repo, kvs)
+		repo := &recordingRecordRepo{commitLogs: map[string]bool{documentIDOf(t, committed): true}}
+		uc := newRecordCommitUsecase(ccid, cfg, repo, nil)
 		fresh := signedRecord(t, ccid, priv, time.Now())
 		if _, err := uc.Commit(context.Background(), "127.0.0.1", fresh, domain.CommitModeExecute); err != nil {
 			t.Fatalf("Commit returned error: %v", err)
 		}
 		if !repo.createRecordCalled {
-			t.Fatal("CreateRecord was not called for a fresh document at a deleted key")
+			t.Fatal("CreateRecord was not called for a fresh document at a committed key")
 		}
 	})
 }
 
-// System service accounts bypass the replay guards entirely: an old,
-// tombstoned commit still applies (this is the migration/import path).
-func TestCommitSystemAccountBypassesReplayGuards(t *testing.T) {
+// System service accounts bypass the backdate window (the migration/import
+// path replays old documents), but not the already-committed skip: a
+// re-imported document is still a no-op.
+func TestCommitSystemAccountBypassesBackdateWindow(t *testing.T) {
 	ccid, priv := newIdentity(t)
 	cfg := &domain.Config{FQDN: "example.com"}
-	repo := &recordingRecordRepo{}
+	ctx := context.WithValue(context.Background(), interop.ServiceAccountTypeCtxKey, "system")
 
 	sd := signedRecord(t, ccid, priv, time.Now().Add(-100*24*time.Hour))
-	kvs := &stubKVS{keys: map[string]bool{tombstoneKey(ccfsURIOf(t, sd, ccid)): true}}
-	uc := newRecordCommitUsecase(ccid, cfg, repo, kvs)
 
-	ctx := context.WithValue(context.Background(), interop.ServiceAccountTypeCtxKey, "system")
-	if _, err := uc.Commit(ctx, "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
-		t.Fatalf("system commit returned error: %v", err)
-	}
-	if !repo.createRecordCalled {
-		t.Fatal("CreateRecord was not called for a system-account commit")
-	}
-}
-
-// overwritableRecordRepo serves a stored signed document for one cckv key,
-// simulating an existing record about to be overwritten.
-type overwritableRecordRepo struct {
-	recordingRecordRepo
-	key      string
-	existing *concrnt.SignedDocument
-}
-
-func (r *overwritableRecordRepo) GetSignedDocument(ctx context.Context, uri string) (*concrnt.SignedDocument, error) {
-	if uri == r.key && r.existing != nil {
-		return r.existing, nil
-	}
-	return nil, domain.ErrNotFound
-}
-
-// Overwriting a record tombstones the superseded version's ccfs URI (so the
-// old version can't be replayed back in), while an idempotent redelivery of
-// the stored document itself must not tombstone the live version.
-func TestCommitOverwriteTombstonesOldVersion(t *testing.T) {
-	ccid, priv := newIdentity(t)
-	cfg := &domain.Config{FQDN: "example.com"}
-	key := concrnt.CCURI{Scheme: "cckv", Owner: ccid, Key: "posts/1"}.String()
-
-	old := signedRecord(t, ccid, priv, time.Now().Add(-time.Hour))
-	oldCCFS := ccfsURIOf(t, old, ccid)
-	old.CCKV = &key
-	old.CCFS = &oldCCFS
-
-	t.Run("overwrite tombstones the old version", func(t *testing.T) {
-		repo := &overwritableRecordRepo{key: key, existing: &old}
-		kvs := &stubKVS{}
-		uc := newRecordCommitUsecase(ccid, cfg, repo, kvs)
-
-		fresh := signedRecord(t, ccid, priv, time.Now())
-		if _, err := uc.Commit(context.Background(), "127.0.0.1", fresh, domain.CommitModeExecute); err != nil {
-			t.Fatalf("Commit returned error: %v", err)
+	t.Run("old document applies", func(t *testing.T) {
+		repo := &recordingRecordRepo{}
+		uc := newRecordCommitUsecase(ccid, cfg, repo, nil)
+		if _, err := uc.Commit(ctx, "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+			t.Fatalf("system commit returned error: %v", err)
 		}
 		if !repo.createRecordCalled {
-			t.Fatal("CreateRecord was not called for an overwrite")
-		}
-		if !slices.Contains(kvs.setKeys, tombstoneKey(oldCCFS)) {
-			t.Fatalf("old version's ccfs was not tombstoned, set keys: %v", kvs.setKeys)
+			t.Fatal("CreateRecord was not called for a system-account commit")
 		}
 	})
 
-	t.Run("idempotent redelivery does not tombstone itself", func(t *testing.T) {
-		repo := &overwritableRecordRepo{key: key, existing: &old}
-		kvs := &stubKVS{}
-		uc := newRecordCommitUsecase(ccid, cfg, repo, kvs)
-
-		if _, err := uc.Commit(context.Background(), "127.0.0.1", old, domain.CommitModeExecute); err != nil {
-			t.Fatalf("Commit returned error: %v", err)
+	t.Run("already-committed document still no-ops", func(t *testing.T) {
+		repo := &recordingRecordRepo{commitLogs: map[string]bool{documentIDOf(t, sd): true}}
+		uc := newRecordCommitUsecase(ccid, cfg, repo, nil)
+		if _, err := uc.Commit(ctx, "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+			t.Fatalf("system redelivery must succeed, got %v", err)
 		}
-		if len(kvs.setKeys) != 0 {
-			t.Fatalf("redelivery of the stored document tombstoned keys: %v", kvs.setKeys)
+		if repo.createRecordCalled {
+			t.Fatal("CreateRecord should not be called for a re-imported document")
 		}
 	})
 }

@@ -63,14 +63,14 @@ func (r *RecordRepository) CreateEntity(
 	alias *string,
 	domain string,
 	documentID string,
-) error {
+) (bool, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.CreateEntity")
 	defer span.End()
 
 	db, err := getRecordTx(ctx, tx)
 	if err != nil {
 		span.RecordError(err)
-		return err
+		return false, err
 	}
 
 	modelEntity := models.Entity{
@@ -85,15 +85,36 @@ func (r *RecordRepository) CreateEntity(
 	// newer document (and breaks exact-createdAt ties deterministically). This
 	// makes newer-wins atomic at the row lock, closing the read-then-write race
 	// between the usecase-level accept-if-newer check and this upsert.
-	if err := db.Clauses(clause.OnConflict{
+	result := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "id"}},
 		DoUpdates: clause.AssignmentColumns([]string{"alias", "domain", "document_id"}),
 		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("entities.document_id < excluded.document_id")}},
-	}).Create(&modelEntity).Error; err != nil {
-		return err
+	}).Create(&modelEntity)
+	if result.Error != nil {
+		return false, result.Error
 	}
 
-	return nil
+	return result.RowsAffected > 0, nil
+}
+
+func (r *RecordRepository) HasCommitLog(ctx context.Context, id string) (bool, error) {
+	ctx, span := tracer.Start(ctx, "Repository.Record.HasCommitLog")
+	defer span.End()
+
+	var commitLog models.CommitLog
+	err := r.db.WithContext(ctx).
+		Select("id").
+		Where("id = ?", id).
+		Take(&commitLog).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		span.RecordError(err)
+		return false, err
+	}
+
+	return true, nil
 }
 
 func (r *RecordRepository) CreateCommitLog(ctx context.Context, tx usecase.RepositoryTx, id string, ip string, document string, proof any) error {

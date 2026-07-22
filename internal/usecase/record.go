@@ -30,7 +30,10 @@ type RecordRepository interface {
 
 	CreateCommitLog(ctx context.Context, tx RepositoryTx, id string, ip string, document string, proof any) error
 	CreateCommitOwners(ctx context.Context, tx RepositoryTx, id string, owners []string) error
-	CreateEntity(ctx context.Context, tx RepositoryTx, ccid string, alias *string, domain string, documentID string) error
+	HasCommitLog(ctx context.Context, id string) (bool, error)
+	// CreateEntity reports whether the upsert applied — false when the stored
+	// entity already carries a newer-or-equal documentID (accept-if-newer).
+	CreateEntity(ctx context.Context, tx RepositoryTx, ccid string, alias *string, domain string, documentID string) (bool, error)
 	CreateRecord(ctx context.Context, tx RepositoryTx, documentID string, key string, owner string, schema string, onUpdate *string, policies *string, distributions []string, redirect *string, createdAt time.Time) error
 	CreateAssociation(ctx context.Context, tx RepositoryTx, documentID string, targetURI string, owner string, author string, schema string, variant *string, unique string, createdAt time.Time) (bool, error)
 	Acknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) error
@@ -91,13 +94,10 @@ type PolicyService interface {
 	Eval(ctx context.Context, req policy.RequestContext, stack []concrnt.Policy, action string, key string) error
 }
 
-// KVS is a general-purpose key-value store (set-with-TTL, existence check,
-// TTL'd string sets), used here to hold deletion tombstones and per-timeline
+// KVS is a store of TTL'd string sets, used here to hold per-timeline
 // removed-item advertisements. Implemented by internal/infra/kvs.Redis; nil in
 // offline tooling/tests.
 type KVS interface {
-	Set(ctx context.Context, key string, value string, ttl time.Duration) error
-	Exists(ctx context.Context, key string) (bool, error)
 	SetAdd(ctx context.Context, key string, value string, ttl time.Duration) error
 	SetMembers(ctx context.Context, key string) ([]string, error)
 }
@@ -106,6 +106,10 @@ type commitApplyResult struct {
 	result        *concrnt.SignedDocument
 	owners        []string
 	postProcesses []PostProcessAction
+	// noop marks an apply that changed nothing (accept-if-newer loss): the
+	// whole tx is rolled back — commit_log included — and success returned,
+	// so rejected-as-older documents never enter the history.
+	noop bool
 }
 
 type RecordUsecase struct {
@@ -144,28 +148,6 @@ func NewRecordUsecase(
 		kvs:       kvs,
 		cache:     cache.New(10*time.Minute, 15*time.Minute),
 	}
-}
-
-// tombstoneKey namespaces a deleted-document marker in the KVS.
-func tombstoneKey(uri string) string { return "tombstone:" + uri }
-
-// markKeyDeleted tombstones a deleted (or overwritten) document's ccfs URI for
-// the backdate window, so a captured copy of that exact document can't be
-// replayed back in. Keying by content id rather than cckv key leaves the key
-// itself reusable for fresh documents.
-func (uc *RecordUsecase) markKeyDeleted(ctx context.Context, uri string) error {
-	if uc.kvs == nil {
-		return nil
-	}
-	return uc.kvs.Set(ctx, tombstoneKey(uri), "1", domain.MaxBackdate)
-}
-
-// isKeyDeleted reports whether a document URI is currently tombstoned.
-func (uc *RecordUsecase) isKeyDeleted(ctx context.Context, uri string) (bool, error) {
-	if uc.kvs == nil {
-		return false, nil
-	}
-	return uc.kvs.Exists(ctx, tombstoneKey(uri))
 }
 
 // documentIDFor derives a document's content+time CDID, the id it is stored
@@ -224,6 +206,24 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 
 	documentID := documentIDFor(sd.Document, doc.CreatedAt)
 
+	// A document already in commit_logs was fully applied once; re-delivery
+	// (client retry, federation redelivery, dump re-import) is a no-op
+	// success. This is also the replay guard: deleted and superseded
+	// documents stay in commit_logs, so a captured copy can't be replayed
+	// back in. Once a gc'd commit_log falls out, the backdate window below
+	// rejects the document instead. Checked before signature verification —
+	// documentID is derived from the full document bytes, so a hit reveals
+	// nothing the requester doesn't already hold, and verification can be
+	// expensive (remote subkey fetches).
+	alreadyCommitted, err := uc.repo.HasCommitLog(ctx, documentID)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+	if alreadyCommitted {
+		return &sd, nil
+	}
+
 	serviceAccountType, _ := ctx.Value(interop.ServiceAccountTypeCtxKey).(string)
 	isServiceAccount := serviceAccountType == "system"
 
@@ -240,7 +240,7 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 	// System service accounts (migration/import via conctl) carry the server's
 	// own key and legitimately replay unsigned (none-proof) historical
 	// documents with backdated timestamps, so they skip signature verification
-	// and the replay guards below. Every other committer is verified:
+	// and the backdate window below. Every other committer is verified:
 	//   - document-reference proofs verify against the recursively-verified
 	//     inline copy in References (the author vouching for their own
 	//     document), so commits stay valid even when the referenced document's
@@ -264,8 +264,8 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		// repository dump (LocalOnlyExecute never re-federates) may replay
 		// historical documents past the backdate window — their own, and
 		// documents by others that target their content (e.g. inbound
-		// associations carried over in the dump). Signature verification and
-		// the deleted-document tombstone below still apply.
+		// associations carried over in the dump). Signature verification
+		// still applies.
 		backdateExempt := false
 		if mode == domain.CommitModeLocalOnlyExecute {
 			if authenticated, ok := ctx.Value(interop.RequesterCtxKey).(domain.Entity); ok {
@@ -283,51 +283,16 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 			}
 		}
 
-		// Replay guards: reject documents older than the backdate window, and
-		// reject re-committing a document that was explicitly deleted (or
-		// superseded by an overwrite) within it. Together they make a deletion
-		// permanent against replay — a captured document is either still
-		// tombstoned or already too old to accept. The tombstone is keyed by
-		// the document's ccfs URI (content id), not its cckv key, so a deleted
-		// key stays reusable: only the exact deleted document is rejected,
-		// while a fresh document at the same key has a different CDID and
-		// commits normally.
+		// Reject documents older than the backdate window. Together with the
+		// commit_logs check above this makes a deletion permanent against
+		// replay — a captured document is either still in commit_logs (and
+		// no-ops) or already too old to accept. This is also what keeps a
+		// future gc of flagged commit_logs safe, provided the retention
+		// period is at least MaxBackdate.
 		if !backdateExempt && doc.CreatedAt.Before(time.Now().Add(-domain.MaxBackdate)) {
 			err := domain.ValidationError{Field: "createdAt", Message: "createdAt is older than the allowed backdate window"}
 			span.RecordError(err)
 			return nil, err
-		}
-		// The ccfs owner must be derived exactly as at creation time: records
-		// use the key's owner (createRecord), associations the associate's
-		// owner (createAssociation). Unparseable keys skip the check — they
-		// are rejected downstream anyway.
-		ccfsOwner := ""
-		if doc.Key != "" {
-			if parsed, err := concrnt.ParseCCURI(doc.Key); err == nil {
-				ccfsOwner = parsed.Owner
-			}
-		} else if doc.Associate != nil {
-			if parsed, err := concrnt.ParseCCURI(*doc.Associate); err == nil {
-				ccfsOwner = parsed.Owner
-			}
-		}
-		if ccfsOwner != "" {
-			ccfs := concrnt.CCURI{
-				Scheme: "ccfs",
-				Owner:  ccfsOwner,
-				Type:   concrnt.CCFSTypeConcrnt,
-				CDID:   documentID,
-			}.String()
-			deleted, err := uc.isKeyDeleted(ctx, ccfs)
-			if err != nil {
-				span.RecordError(err)
-				return nil, err
-			}
-			if deleted {
-				err := domain.ValidationError{Field: "document", Message: "cannot re-commit an explicitly deleted document"}
-				span.RecordError(err)
-				return nil, err
-			}
 		}
 	}
 
@@ -460,6 +425,12 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		return nil, err
 	}
 
+	// Nothing was applied (accept-if-newer loss): let the deferred rollback
+	// discard the tx — commit_log included — and just report success.
+	if applyResult.noop {
+		return applyResult.result, nil
+	}
+
 	if err := uc.repo.CreateCommitOwners(ctx, tx, documentID, applyResult.owners); err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -530,7 +501,7 @@ func (uc *RecordUsecase) saveEntity(ctx context.Context, tx RepositoryTx, docume
 			// corrupt stored document: log and let the incoming one overwrite it
 			slog.Error("failed to decode stored entity document, overwriting", "ccid", entity.Author, "error", err.Error())
 		} else if documentID <= documentIDFor(existing.SignedDocument.Document, existingDoc.CreatedAt) {
-			return &commitApplyResult{result: &sd, owners: []string{entity.Author}}, nil
+			return &commitApplyResult{result: &sd, noop: true}, nil
 		}
 	}
 
@@ -597,10 +568,15 @@ func (uc *RecordUsecase) saveEntity(ctx context.Context, tx RepositoryTx, docume
 		}
 	}
 
-	err = uc.repo.CreateEntity(ctx, tx, entity.Author, entity.Value.Alias, entity.Value.Domain, documentID)
+	applied, err := uc.repo.CreateEntity(ctx, tx, entity.Author, entity.Value.Alias, entity.Value.Domain, documentID)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
+	}
+	// Lost the newer-wins recheck under the row lock to a concurrent writer:
+	// same accept-if-newer no-op as the fast path above.
+	if !applied {
+		return &commitApplyResult{result: &sd, noop: true}, nil
 	}
 
 	return &commitApplyResult{result: &sd, owners: []string{entity.Author}}, nil
@@ -852,24 +828,6 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 
 			if mode != domain.CommitModeExecute {
 				continue
-			}
-
-			// Tombstone the deleted document's ccfs URI (content id) so a
-			// captured copy of it can't be replayed back in during the
-			// backdate window (see the replay guard in Commit), while its
-			// cckv key stays reusable for fresh documents. GetSignedDocument
-			// and QueryRecordSubtree compose CCFS for cckv lookups too, so
-			// this covers cckv- and ccfs-addressed record deletes and
-			// association deletes alike. Appended as a post-process so it
-			// only runs once the delete has actually committed.
-			if uc.kvs != nil {
-				tombstoneURI := targetURI
-				if targetSD.CCFS != nil {
-					tombstoneURI = *targetSD.CCFS
-				}
-				postProcesses = append(postProcesses, func(ctx context.Context) error {
-					return uc.markKeyDeleted(ctx, tombstoneURI)
-				})
 			}
 
 			if uc.kvs != nil && removedTimeline != "" {
@@ -1234,22 +1192,6 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 	}
 
 	postProcesses := []PostProcessAction{}
-
-	// Overwrite: tombstone the superseded version's ccfs URI so a captured
-	// copy of it can't be replayed back in (rollback) during the backdate
-	// window — this is what keeps a later delete of this key permanent even
-	// against older versions. Skipped when the incoming document is the
-	// stored one itself: idempotent redelivery must not tombstone the live
-	// version. Appended as a post-process so it only runs once the overwrite
-	// has actually committed.
-	if mode == domain.CommitModeExecute && uc.kvs != nil && existingSD != nil && existingSD.CCFS != nil {
-		oldCCFS := *existingSD.CCFS
-		if parsedOld, err := concrnt.ParseCCURI(oldCCFS); err == nil && parsedOld.CDID != documentID {
-			postProcesses = append(postProcesses, func(ctx context.Context) error {
-				return uc.markKeyDeleted(ctx, oldCCFS)
-			})
-		}
-	}
 
 	if mode == domain.CommitModeExecute {
 		postProcesses = append(postProcesses, func(ctx context.Context) error {

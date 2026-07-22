@@ -92,6 +92,9 @@ func (r *rangeDeleteRepo) BeginTx(ctx context.Context) (RepositoryTx, error) {
 func (r *rangeDeleteRepo) CreateCommitLog(ctx context.Context, tx RepositoryTx, id string, ip string, document string, proof any) error {
 	return nil
 }
+func (r *rangeDeleteRepo) HasCommitLog(ctx context.Context, id string) (bool, error) {
+	return false, nil
+}
 func (r *rangeDeleteRepo) CreateCommitOwners(ctx context.Context, tx RepositoryTx, id string, owners []string) error {
 	return nil
 }
@@ -193,7 +196,7 @@ const rangeBaseURI = "cckv://example.com/profiles/main/lists/l1"
 
 // A subtree range delete ("...l1*") enumerates with includeSelf, evaluates the
 // policy on every target, deletes them all in one batch, commits, and then
-// tombstones and announces each deleted target.
+// announces each deleted target.
 func TestCommitRangeDeleteSubtree(t *testing.T) {
 	ccid, priv := newIdentity(t)
 	cfg := &domain.Config{FQDN: "example.com"}
@@ -228,13 +231,6 @@ func TestCommitRangeDeleteSubtree(t *testing.T) {
 	}
 	if len(repo.txs) != 1 || !repo.txs[0].committed || repo.txs[0].rolledBack {
 		t.Fatalf("unexpected tx state: %+v", repo.txs)
-	}
-
-	// every deleted target is tombstoned by its ccfs URI
-	for _, target := range targets {
-		if !slices.Contains(kvs.setKeys, tombstoneKey(*target.CCFS)) {
-			t.Fatalf("missing tombstone for %s, set keys: %v", *target.CCFS, kvs.setKeys)
-		}
 	}
 
 	// one "deleted" event per target, addressed to the concrete URI
@@ -272,8 +268,8 @@ func TestCommitRangeDeleteChildrenOnly(t *testing.T) {
 }
 
 // A single denied target fails the whole range delete: nothing is deleted, the
-// transaction (commitlog included) is rolled back, and no tombstone or signal
-// is emitted.
+// transaction (commitlog included) is rolled back, and no advertisement or
+// signal is emitted.
 func TestCommitRangeDeleteDenyRollsBackEverything(t *testing.T) {
 	ccid, priv := newIdentity(t)
 	cfg := &domain.Config{FQDN: "example.com"}
@@ -300,8 +296,8 @@ func TestCommitRangeDeleteDenyRollsBackEverything(t *testing.T) {
 	if len(repo.txs) != 1 || repo.txs[0].committed || !repo.txs[0].rolledBack {
 		t.Fatalf("transaction must be rolled back, got %+v", repo.txs)
 	}
-	if len(kvs.setKeys) != 0 {
-		t.Fatalf("no tombstone may be set on denial, got %v", kvs.setKeys)
+	if len(kvs.addedSets) != 0 {
+		t.Fatalf("no removed-item advertisement may be set on denial, got %v", kvs.addedSets)
 	}
 	if len(delivery.jobs) != 0 {
 		t.Fatalf("no delivery may be enqueued on denial, got %d jobs", len(delivery.jobs))

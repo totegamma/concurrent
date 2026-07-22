@@ -70,6 +70,31 @@ func (e RedirectError) Is(target error) bool {
 
 var ErrRedirect = RedirectError{}
 
+// MisdirectedError indicates a commit whose target this server is not
+// authoritative for (CIP-3 §3.1) — mapped to HTTP 421 Misdirected Request.
+type MisdirectedError struct {
+	Target string
+}
+
+func (e MisdirectedError) Error() string {
+	if e.Target == "" {
+		return "this server is not authoritative for the commit target"
+	}
+	return fmt.Sprintf("this server is not authoritative for %s", e.Target)
+}
+
+// Is enables errors.Is matching on MisdirectedError.
+func (e MisdirectedError) Is(target error) bool {
+	_, ok := target.(MisdirectedError)
+	if ok {
+		return true
+	}
+	_, ok = target.(*MisdirectedError)
+	return ok
+}
+
+var ErrMisdirected = MisdirectedError{}
+
 type ValidationError struct {
 	Field   string
 	Message string

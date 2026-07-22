@@ -1023,7 +1023,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 		// leads and becomes the reported result
 		return &commitApplyResult{result: &targets[0], owners: uc.localEntityOwners(ctx, requester), postProcesses: postProcesses}, nil
 
-	} else { // remote entity. only emit signals.
+	} else { // delete propagated from the target's authoritative server (CIP-4 §6.1)
 
 		// recover the concrete targets from References: for a range the
 		// origin server enqueues one delivery job per deleted target, each
@@ -1051,20 +1051,197 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 			refURIs = []string{rawTarget}
 		}
 
+		// A propagated delete may only remove the auto-generated distribution
+		// References (CIP-7 §4.1) this server holds for the deleted target —
+		// never arbitrary local documents — and only after the inlined target
+		// verifies. Any confirmation failure rejects the whole commit.
+		hasLocalDestination := false
+		ownerCandidates := []string{}
 		postProcesses := []PostProcessAction{}
 		for _, targetURI := range refURIs {
 			targetSD := sd.References[targetURI]
 
-			document := concrnt.Document[any]{}
-			err = json.Unmarshal([]byte(targetSD.Document), &document)
+			// CIP-4 §6.1 (1): the inlined copy must be structurally and
+			// cryptographically valid on its own
+			if err := targetSD.Verify(ctx, uc.resolver()); err != nil {
+				span.RecordError(err)
+				return nil, errors.Join(domain.ValidationError{Field: "references", Message: "inlined delete target failed verification"}, err)
+			}
+
+			var targetDoc concrnt.Document[any]
+			err = json.Unmarshal([]byte(targetSD.Document), &targetDoc)
 			if err != nil {
 				span.RecordError(err)
 				return nil, err
 			}
 
+			// derive the target's identities the same way commit does: cckv
+			// from its key, ccfs from the namespace owner + content CDID
+			targetCDID := documentIDFor(targetSD.Document, targetDoc.CreatedAt)
+			ccfsOwner := targetDoc.Author
+			if targetDoc.Key != "" {
+				parsedKey, err := concrnt.ParseCCURI(targetDoc.Key)
+				if err != nil {
+					span.RecordError(err)
+					return nil, domain.ValidationError{Field: "references", Message: "inlined delete target has an unparseable key"}
+				}
+				ccfsOwner = parsedKey.Owner
+			} else if targetDoc.Associate != nil {
+				parsedAssoc, err := concrnt.ParseCCURI(*targetDoc.Associate)
+				if err != nil {
+					span.RecordError(err)
+					return nil, domain.ValidationError{Field: "references", Message: "inlined delete target has an unparseable associate"}
+				}
+				ccfsOwner = parsedAssoc.Owner
+			}
+			targetCCFS := concrnt.CCURI{
+				Scheme: "ccfs",
+				Owner:  ccfsOwner,
+				Type:   concrnt.CCFSTypeConcrnt,
+				CDID:   targetCDID,
+			}.String()
+
+			// CIP-4 §6.1 (1): the derived identity must match the References
+			// key URI — an unrelated document can't be smuggled in under it
+			if targetURI != targetDoc.Key && targetURI != targetCCFS {
+				err := domain.ValidationError{Field: "references", Message: "inlined delete target identity does not match its reference URI"}
+				span.RecordError(err)
+				return nil, err
+			}
+
+			// CIP-4 §6.1 (2): only the target's author may delete it this way
+			if targetDoc.Author != deletedoc.Author {
+				err := domain.PermissionError{Reason: "delete author does not match the target document author"}
+				span.RecordError(err)
+				return nil, err
+			}
+
+			// CIP-4 §6.1 (3): only destinations named in the target's signed
+			// distributes — and managed by this server — may be touched
+			for _, dest := range distributionsFromPtr(targetDoc.Distributes) {
+				destHost, err := uc.client.ResolveResourceHost(ctx, dest)
+				if err != nil {
+					span.RecordError(err)
+					continue
+				}
+				if destHost != uc.config.FQDN {
+					continue
+				}
+				hasLocalDestination = true
+				if parsedDest, err := concrnt.ParseCCURI(dest); err == nil {
+					ownerCandidates = append(ownerCandidates, parsedDest.Owner)
+				}
+
+				// CIP-4 §6.1 (4): the deletable row is exactly the
+				// auto-generated Reference <dest>/<target CDID> whose href
+				// points at the target. An already-absent row is an idempotent
+				// redelivery, not a failure.
+				refKey, err := url.JoinPath(dest, targetCDID)
+				if err != nil {
+					span.RecordError(err)
+					return nil, err
+				}
+				refSD, err := uc.repo.GetSignedDocument(ctx, refKey)
+				if errors.Is(err, domain.ErrNotFound) {
+					continue
+				}
+				if err != nil {
+					span.RecordError(err)
+					return nil, err
+				}
+				var refDoc concrnt.Document[schemas.Reference]
+				err = json.Unmarshal([]byte(refSD.Document), &refDoc)
+				if err != nil {
+					span.RecordError(err)
+					return nil, err
+				}
+				if refDoc.Schema != schemas.ReferenceURL ||
+					(refDoc.Value.Href != targetURI && refDoc.Value.Href != targetDoc.Key && refDoc.Value.Href != targetCCFS) {
+					err := domain.ValidationError{Field: "value", Message: "stored document is not a distribution reference for the delete target"}
+					span.RecordError(err)
+					return nil, err
+				}
+
+				// CIP-4 §6.1 (5): deleting the Reference must pass policy
+				var refDocAny concrnt.Document[any]
+				err = json.Unmarshal([]byte(refSD.Document), &refDocAny)
+				if err != nil {
+					span.RecordError(err)
+					return nil, err
+				}
+				stack, err := uc.repo.GetHierarchicalRecordPolicies(ctx, refKey)
+				if err != nil {
+					span.RecordError(err)
+					return nil, err
+				}
+				err = uc.policy.Eval(
+					ctx,
+					policy.RequestContext{
+						Requester: requester,
+						Self:      refDocAny,
+					},
+					stack,
+					policyDeleteAction(refDocAny),
+					refKey,
+				)
+				if err != nil {
+					span.RecordError(err)
+					return nil, err
+				}
+
+				// capture the chunkline membership before the delete cascades
+				// the record_keys row away, then actually remove the row
+				var removedTimeline, removedItemID string
+				if mode == domain.CommitModeExecute && uc.kvs != nil {
+					tl, id, err := uc.repo.GetTimelineRemoval(ctx, refKey)
+					if err != nil {
+						span.RecordError(err) // non-fatal: the deleted item just lingers in caches
+					} else {
+						removedTimeline, removedItemID = tl, id
+					}
+				}
+				if err := uc.repo.DeleteRecordByKey(ctx, tx, refKey); err != nil {
+					span.RecordError(err)
+					return nil, err
+				}
+
+				if mode != domain.CommitModeExecute {
+					continue
+				}
+
+				// tombstone the deleted Reference (this server is its
+				// authoritative holder), TTL anchored per CIP-3 §3.4
+				latestCreatedAt := deletedoc.CreatedAt
+				for _, ts := range []time.Time{targetDoc.CreatedAt, refDoc.CreatedAt} {
+					if ts.After(latestCreatedAt) {
+						latestCreatedAt = ts
+					}
+				}
+				if uc.kvs != nil {
+					tombstoneURI := refKey
+					if refSD.CCFS != nil {
+						tombstoneURI = *refSD.CCFS
+					}
+					anchor := latestCreatedAt
+					postProcesses = append(postProcesses, func(ctx context.Context) error {
+						return uc.markKeyDeleted(ctx, tombstoneURI, anchor)
+					})
+				}
+				if uc.kvs != nil && removedTimeline != "" {
+					tl, id := removedTimeline, removedItemID
+					postProcesses = append(postProcesses, func(ctx context.Context) error {
+						return uc.kvs.SetAdd(ctx, removedItemsKey(tl), id, removedItemsTTL)
+					})
+				}
+			}
+
+			if mode != domain.CommitModeExecute {
+				continue
+			}
+
 			destinations := []string{targetURI}
-			if document.Distributes != nil {
-				destinations = append(destinations, *document.Distributes...)
+			if targetDoc.Distributes != nil {
+				destinations = append(destinations, *targetDoc.Distributes...)
 			}
 
 			for _, dest := range destinations {
@@ -1084,8 +1261,8 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 				)
 			}
 
-			if document.Associate != nil {
-				associatedURI := *document.Associate
+			if targetDoc.Associate != nil {
+				associatedURI := *targetDoc.Associate
 				associatedSD, ok := sd.References[associatedURI]
 				if !ok {
 					slog.Error("associated document not found in references for remote delete", slog.String("associated_uri", associatedURI))
@@ -1126,8 +1303,27 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 			}
 		}
 
+		// CIP-3 §3.1: a propagated delete is only this server's to process
+		// when the verified distributes name a destination managed here
+		if !hasLocalDestination {
+			err := domain.MisdirectedError{Target: rawTarget}
+			span.RecordError(err)
+			return nil, err
+		}
+
+		owners, err := uc.localCommitOwners(ctx, ownerCandidates...)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+		for _, owner := range uc.localEntityOwners(ctx, requester) {
+			if !slices.Contains(owners, owner) {
+				owners = append(owners, owner)
+			}
+		}
+
 		result := sd.References[refURIs[0]]
-		return &commitApplyResult{result: &result, owners: uc.localEntityOwners(ctx, requester), postProcesses: postProcesses}, nil
+		return &commitApplyResult{result: &result, owners: owners, postProcesses: postProcesses}, nil
 	}
 }
 

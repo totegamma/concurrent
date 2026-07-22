@@ -899,6 +899,137 @@ func TestCommitAssociationUniqueIncludesBody(t *testing.T) {
 	}
 }
 
+// recordingSignalService captures every published realtime event.
+type recordingSignalService struct {
+	events []concrnt.Event
+}
+
+func (s *recordingSignalService) Publish(ctx context.Context, channel string, event concrnt.Event) error {
+	s.events = append(s.events, event)
+	return nil
+}
+
+// anonymousDenyPolicyService denies read actions for the zero (anonymous)
+// entity and allows everything else, recording every evaluated action.
+type anonymousDenyPolicyService struct {
+	actions []string
+}
+
+func (p *anonymousDenyPolicyService) Eval(ctx context.Context, req policy.RequestContext, stack []concrnt.Policy, action string, key string) error {
+	p.actions = append(p.actions, action)
+	if strings.HasSuffix(action, ":read") {
+		if requester, ok := req.Requester.(domain.Entity); ok && requester.ID == "" {
+			return domain.PermissionError{Reason: "anonymous read denied"}
+		}
+	}
+	return nil
+}
+
+// CIP-11 §3.2: realtime events are redacted against the anonymous baseline at
+// publish time — a document anonymous readers may not read is stripped from
+// the event's documents field, while the event envelope itself is delivered.
+func TestCreatedEventRedactedForAnonymous(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+
+	run := func(t *testing.T, pol PolicyService) concrnt.Event {
+		t.Helper()
+		signal := &recordingSignalService{}
+		uc := NewRecordUsecase(
+			&recordingRecordRepo{},
+			fixedResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: cfg.FQDN}},
+			newTestServerUsecase(cfg),
+			cfg,
+			nil,
+			signal,
+			pol,
+			nil,
+			nil,
+		)
+		sd := signedRecord(t, ccid, priv, time.Now())
+		if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+			t.Fatalf("Commit returned error: %v", err)
+		}
+		if len(signal.events) != 1 {
+			t.Fatalf("expected 1 published event, got %d", len(signal.events))
+		}
+		return signal.events[0]
+	}
+
+	t.Run("protected document is stripped", func(t *testing.T) {
+		event := run(t, &anonymousDenyPolicyService{})
+		if len(event.References) != 0 {
+			t.Fatalf("documents must be redacted, got %v", event.References)
+		}
+		if event.Type != "created" || event.URI == "" || event.Timestamp.IsZero() {
+			t.Fatalf("event envelope must be delivered intact: %+v", event)
+		}
+	})
+
+	t.Run("public document is delivered in full", func(t *testing.T) {
+		event := run(t, nopPolicyService{})
+		if len(event.References) != 1 {
+			t.Fatalf("documents must be preserved, got %v", event.References)
+		}
+	})
+}
+
+// The associated event is likewise redacted (action association:read), while
+// the delivery payload — the signed document remote servers must verify —
+// stays complete.
+func TestAssociatedEventRedactedForAnonymous(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+
+	target := concrnt.CCURI{Scheme: "cckv", Owner: ccid, Key: "posts/1"}.String()
+	targetSD := signedRecord(t, ccid, priv, time.Now().Add(-time.Minute))
+
+	assocSD := signTestDocument(t, concrnt.Document[any]{
+		Kind:      "association",
+		Associate: &target,
+		Value:     map[string]any{"messageId": "m1"},
+		Author:    ccid,
+		Schema:    "https://example.com/a/reply.json",
+		CreatedAt: time.Now(),
+	}, priv)
+	assocSD.References = map[string]concrnt.SignedDocument{target: targetSD}
+
+	pol := &anonymousDenyPolicyService{}
+	delivery := &recordingDeliveryQueue{}
+	uc := NewRecordUsecase(
+		&associationRecordingRepo{},
+		fixedResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: cfg.FQDN, SignedDocument: &concrnt.SignedDocument{Document: "{}"}}},
+		newTestServerUsecase(cfg),
+		cfg,
+		nil,
+		nopSignalService{},
+		pol,
+		delivery,
+		nil,
+	)
+
+	if _, err := uc.Commit(context.Background(), "127.0.0.1", assocSD, domain.CommitModeExecute); err != nil {
+		t.Fatalf("Commit returned error: %v", err)
+	}
+	if len(delivery.jobs) == 0 {
+		t.Fatal("expected at least one delivery job")
+	}
+	for _, job := range delivery.jobs {
+		if job.Event == nil {
+			continue
+		}
+		if len(job.Event.References) != 0 {
+			t.Fatalf("event documents must be redacted, got %v", job.Event.References)
+		}
+		if len(job.Payload.References) == 0 {
+			t.Fatal("delivery payload references must stay complete")
+		}
+	}
+	if !slices.Contains(pol.actions, "association:read") {
+		t.Fatalf("expected an association:read evaluation, got %v", pol.actions)
+	}
+}
+
 // CIP-1 §4.1: an oversized document is rejected for everyone, including
 // system service accounts — nothing larger than 32 KiB may reach the DB.
 func TestCommitRejectsOversizedDocument(t *testing.T) {

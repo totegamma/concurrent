@@ -113,9 +113,6 @@ func TestDeletePropagationRemovesDistributionReference(t *testing.T) {
 	if !slices.Equal(repo.deletedURIs, []string{refKey}) {
 		t.Fatalf("deleted URIs = %v, want [%s]", repo.deletedURIs, refKey)
 	}
-	if !slices.Contains(kvs.setKeys, tombstoneKey(*refSD.CCFS)) {
-		t.Fatalf("reference row was not tombstoned, set keys: %v", kvs.setKeys)
-	}
 	deletedEvents := 0
 	for _, job := range delivery.jobs {
 		if job.Event != nil && job.Event.Type == "deleted" {

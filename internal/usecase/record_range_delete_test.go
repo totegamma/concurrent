@@ -6,7 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"slices"
-	"strings"
 	"testing"
 	"time"
 
@@ -79,19 +78,47 @@ type subtreeQueryCall struct {
 // enumeration arguments and every delete attempt.
 type rangeDeleteRepo struct {
 	RecordRepository
-	subtree     []concrnt.SignedDocument
-	queryCalls  []subtreeQueryCall
-	deletedURIs []string
-	txs         []*recordingTx
+	subtree      []concrnt.SignedDocument
+	queryCalls   []subtreeQueryCall
+	deletedURIs  []string
+	txs          []*recordingTx
+	pendingIDs   []string
+	committedIDs map[string]bool
 }
 
 func (r *rangeDeleteRepo) BeginTx(ctx context.Context) (RepositoryTx, error) {
 	tx := &recordingTx{}
 	r.txs = append(r.txs, tx)
-	return tx, nil
+	return &rangeDeleteTx{recordingTx: tx, repo: r}, nil
 }
 func (r *rangeDeleteRepo) CreateCommitLog(ctx context.Context, tx RepositoryTx, id string, ip string, document string, proof any) error {
+	r.pendingIDs = append(r.pendingIDs, id)
 	return nil
+}
+func (r *rangeDeleteRepo) HasCommitLog(ctx context.Context, id string) (bool, error) {
+	return r.committedIDs[id], nil
+}
+
+// rangeDeleteTx applies the repo's pending commit-log rows on commit and
+// discards them on rollback, mirroring the real repository.
+type rangeDeleteTx struct {
+	*recordingTx
+	repo *rangeDeleteRepo
+}
+
+func (t *rangeDeleteTx) Commit(ctx context.Context) error {
+	if t.repo.committedIDs == nil {
+		t.repo.committedIDs = map[string]bool{}
+	}
+	for _, id := range t.repo.pendingIDs {
+		t.repo.committedIDs[id] = true
+	}
+	t.repo.pendingIDs = nil
+	return t.recordingTx.Commit(ctx)
+}
+func (t *rangeDeleteTx) Rollback(ctx context.Context) error {
+	t.repo.pendingIDs = nil
+	return t.recordingTx.Rollback(ctx)
 }
 func (r *rangeDeleteRepo) CreateCommitOwners(ctx context.Context, tx RepositoryTx, id string, owners []string) error {
 	return nil
@@ -236,13 +263,6 @@ func TestCommitRangeDeleteSubtree(t *testing.T) {
 		t.Fatalf("unexpected tx state: %+v", repo.txs)
 	}
 
-	// every deleted target is tombstoned by its ccfs URI
-	for _, target := range targets {
-		if !slices.Contains(kvs.setKeys, tombstoneKey(*target.CCFS)) {
-			t.Fatalf("missing tombstone for %s, set keys: %v", *target.CCFS, kvs.setKeys)
-		}
-	}
-
 	// one "deleted" event per target, addressed to the concrete URI
 	deletedEventURIs := []string{}
 	for _, job := range delivery.jobs {
@@ -306,8 +326,8 @@ func TestCommitRangeDeleteDenyRollsBackEverything(t *testing.T) {
 	if len(repo.txs) != 1 || repo.txs[0].committed || !repo.txs[0].rolledBack {
 		t.Fatalf("transaction must be rolled back, got %+v", repo.txs)
 	}
-	if len(kvs.setKeys) != 0 {
-		t.Fatalf("no tombstone may be set on denial, got %v", kvs.setKeys)
+	if len(kvs.addedSets) != 0 {
+		t.Fatalf("no removed-item may be advertised on denial, got %v", kvs.addedSets)
 	}
 	if len(delivery.jobs) != 0 {
 		t.Fatalf("no delivery may be enqueued on denial, got %d jobs", len(delivery.jobs))
@@ -380,78 +400,32 @@ func TestCommitRejectsAsteriskInRecordKey(t *testing.T) {
 	}
 }
 
-// A committed delete tombstones the delete command itself (CIP-3 §3.4): the
-// target tombstones don't identify the command, so without it a captured
-// delete of a reusable cckv key could be replayed to remove a newer document
-// created there later.
-func TestCommitDeleteReplayIsRejected(t *testing.T) {
+// A committed delete's own commit_logs row makes its replay a no-op (CIP-3
+// §3.4): a captured delete of a reusable cckv key can't be replayed to remove
+// a newer document created there later.
+func TestCommitDeleteReplayIsNoOp(t *testing.T) {
 	ccid, priv := newIdentity(t)
 	cfg := &domain.Config{FQDN: "example.com"}
 	repo := &rangeDeleteRepo{subtree: []concrnt.SignedDocument{subtreeRecord(t, rangeBaseURI)}}
-	kvs := &stubKVS{}
-	uc := newRangeDeleteUsecase(ccid, cfg, repo, &denyKeysPolicyService{}, &recordingDeliveryQueue{}, kvs)
+	uc := newRangeDeleteUsecase(ccid, cfg, repo, &denyKeysPolicyService{}, &recordingDeliveryQueue{}, nil)
 
 	sd := signedDelete(t, ccid, priv, rangeBaseURI+"*")
 	if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
 		t.Fatalf("Commit returned error: %v", err)
 	}
 
-	var deleteDoc concrnt.Document[any]
-	if err := json.Unmarshal([]byte(sd.Document), &deleteDoc); err != nil {
-		t.Fatalf("unmarshal delete document: %v", err)
-	}
-	selfCCFS := concrnt.CCURI{
-		Scheme: "ccfs",
-		Owner:  "example.com",
-		Type:   concrnt.CCFSTypeConcrnt,
-		CDID:   documentIDFor(sd.Document, deleteDoc.CreatedAt),
-	}.String()
-	if !slices.Contains(kvs.setKeys, tombstoneKey(selfCCFS)) {
-		t.Fatalf("delete command was not tombstoned, set keys: %v", kvs.setKeys)
-	}
-
 	// a fresh document has since been created at the key; replaying the
-	// captured delete must be rejected before it reaches deleteRecord
+	// captured delete succeeds as a no-op without reaching deleteRecord
 	deletedBefore := len(repo.deletedURIs)
-	_, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute)
-	if err == nil || !strings.Contains(err.Error(), "deleted") {
-		t.Fatalf("expected replay rejection, got %v", err)
+	if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+		t.Fatalf("replayed delete must succeed as a no-op, got %v", err)
 	}
 	if len(repo.deletedURIs) != deletedBefore {
 		t.Fatalf("replayed delete removed documents: %v", repo.deletedURIs)
 	}
-}
-
-// Tombstone TTLs are anchored on the later of the processing time and the
-// affected documents' createdAt (CIP-3 §3.4): a target stamped near the
-// future-skew limit must stay tombstoned past its own backdate window, and a
-// range delete applies the latest involved timestamp to every tombstone.
-func TestCommitDeleteTombstoneTTLOrigin(t *testing.T) {
-	ccid, priv := newIdentity(t)
-	cfg := &domain.Config{FQDN: "example.com"}
-
-	skew := 11 * time.Hour
-	repo := &rangeDeleteRepo{subtree: []concrnt.SignedDocument{
-		subtreeRecord(t, rangeBaseURI),
-		subtreeRecordAt(t, rangeBaseURI+"/a", time.Now().Add(skew)),
-	}}
-	kvs := &stubKVS{}
-	uc := newRangeDeleteUsecase(ccid, cfg, repo, &denyKeysPolicyService{}, &recordingDeliveryQueue{}, kvs)
-
-	sd := signedDelete(t, ccid, priv, rangeBaseURI+"*")
-	if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
-		t.Fatalf("Commit returned error: %v", err)
-	}
-
-	// two targets + the delete command itself
-	if len(kvs.setTTLs) != 3 {
-		t.Fatalf("expected 3 tombstones, got %v", kvs.setTTLs)
-	}
-	want := domain.MaxBackdate + skew
-	for key, ttl := range kvs.setTTLs {
-		if ttl < want-time.Minute || ttl > want+time.Minute {
-			t.Fatalf("tombstone %s has ttl %v, want ~%v", key, ttl, want)
-		}
+	// the replay is skipped before a transaction is even opened
+	if len(repo.txs) != 1 {
+		t.Fatalf("expected 1 transaction, got %d", len(repo.txs))
 	}
 }
 

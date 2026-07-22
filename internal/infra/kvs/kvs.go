@@ -7,9 +7,9 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
-// Redis is a small general-purpose key-value store over redis: set-with-TTL
-// and existence checks. Higher layers build specific stores (e.g. deletion
-// tombstones) on top of it.
+// Redis is a small general-purpose key-value store over redis: set-with-TTL,
+// existence checks, and TTL'd string sets. Higher layers build specific
+// stores (e.g. the chunkline removed-items advertisement) on top of it.
 type Redis struct {
 	rdb *redis.Client
 }

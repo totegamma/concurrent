@@ -23,6 +23,12 @@ type CommitOwner struct {
 //     postgres.RecordRepository.GetSignedDocument/Delete.
 //   - idx_commit_logs_gc_candidate (gc_candidate): marks commits for later GC
 //     scans; set by postgres.RecordRepository.CreateRecord when replacing a key.
+//
+// Rows also back the commit replay guard (usecase.Commit via HasCommitLog):
+// an ID present here is a permanent no-op on re-commit. A GC batch therefore
+// MUST NOT delete rows younger than domain.MaxBackdate+domain.MaxFutureSkew —
+// older rows are safe to collect, since the backdate window rejects their
+// replay anyway.
 type CommitLog struct {
 	ID          string    `json:"id" gorm:"primaryKey;type:text"`
 	IP          string    `json:"ip" gorm:"type:text"`

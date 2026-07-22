@@ -20,12 +20,12 @@ const (
 // Commit-time validation bounds on a document's author-signed createdAt.
 const (
 	// MaxBackdate is how far in the past a non-service-account commit's
-	// createdAt may be. Documents older than now-MaxBackdate are rejected, and
-	// explicitly deleted (or overwritten) documents have their ccfs URI
-	// (content id) tombstoned for exactly this long — so a captured document
-	// is always either still tombstoned or already too old to accept, which
-	// makes a deletion permanent against replay while leaving the cckv key
-	// itself reusable for fresh documents.
+	// createdAt may be. Documents older than now-MaxBackdate are rejected;
+	// together with the commit_logs replay guard (a once-committed document
+	// ID is a permanent no-op) this makes deletions permanent against replay
+	// while leaving the cckv key itself reusable for fresh documents. Any
+	// future commit-log GC must keep rows younger than
+	// MaxBackdate+MaxFutureSkew, or replays become possible again.
 	MaxBackdate = 7 * 24 * time.Hour
 
 	// MaxFutureSkew is how far ahead of server time a committed createdAt may

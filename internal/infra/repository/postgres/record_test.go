@@ -364,6 +364,15 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		require.Zero(t, count)
 		require.NoError(t, db.Model(&models.Record{}).Where("document_id = ?", "rollback-record").Count(&count).Error)
 		require.Zero(t, count)
+
+		// the replay guard sees committed rows only: a rolled-back commit
+		// (e.g. an accept-if-newer no-op) leaves no trace
+		has, err := repo.HasCommitLog(ctx, "rollback-record")
+		require.NoError(t, err)
+		require.False(t, has)
+		has, err = repo.HasCommitLog(ctx, "record-2")
+		require.NoError(t, err)
+		require.True(t, has)
 	})
 
 	t.Run("delete removes record payload and keeps commits", func(t *testing.T) {

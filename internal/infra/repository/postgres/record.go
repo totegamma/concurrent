@@ -129,6 +129,24 @@ func (r *RecordRepository) CreateCommitLog(ctx context.Context, tx usecase.Repos
 	return nil
 }
 
+// HasCommitLog reports whether a document ID was already committed here. It
+// backs the commit replay guard (CIP-3 §3.4): rows are written in the same
+// transaction as the commit and never expire, so any future commit-log GC must
+// keep rows younger than MaxBackdate+MaxFutureSkew or replays become possible
+// again.
+func (r *RecordRepository) HasCommitLog(ctx context.Context, id string) (bool, error) {
+	ctx, span := tracer.Start(ctx, "Repository.Record.HasCommitLog")
+	defer span.End()
+
+	var count int64
+	err := r.db.WithContext(ctx).Model(&models.CommitLog{}).Where("id = ?", id).Count(&count).Error
+	if err != nil {
+		span.RecordError(err)
+		return false, err
+	}
+	return count > 0, nil
+}
+
 func (r *RecordRepository) CreateCommitOwners(ctx context.Context, tx usecase.RepositoryTx, id string, owners []string) error {
 	ctx, span := tracer.Start(ctx, "Repository.Record.CreateCommitOwners")
 	defer span.End()

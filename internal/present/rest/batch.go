@@ -27,7 +27,7 @@ type batchCustomHandler struct {
 	handle func(req *http.Request, parts []batchRequestPart) map[string]*http.Response
 }
 
-func batchHandler(app *echo.Echo, customHandlers ...batchCustomHandler) echo.HandlerFunc {
+func batchHandler(app *echo.Echo, fqdn string, customHandlers ...batchCustomHandler) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		req := c.Request()
 		ct := req.Header.Get("Content-Type")
@@ -45,6 +45,8 @@ func batchHandler(app *echo.Echo, customHandlers ...batchCustomHandler) echo.Han
 		mr := multipart.NewReader(req.Body, boundary)
 
 		parts := make([]batchRequestPart, 0)
+		seenIDs := make(map[string]bool)
+		responses := make(map[string]*http.Response)
 
 		for {
 			part, err := mr.NextPart()
@@ -60,6 +62,13 @@ func batchHandler(app *echo.Echo, customHandlers ...batchCustomHandler) echo.Han
 				continue
 			}
 			contentID := part.Header.Get("Content-ID")
+			if contentID == "" {
+				return echo.NewHTTPError(http.StatusBadRequest, "part is missing a Content-ID")
+			}
+			if seenIDs[contentID] {
+				return echo.NewHTTPError(http.StatusBadRequest, "duplicate Content-ID: "+contentID)
+			}
+			seenIDs[contentID] = true
 
 			reader := bufio.NewReader(part)
 
@@ -73,9 +82,34 @@ func batchHandler(app *echo.Echo, customHandlers ...batchCustomHandler) echo.Han
 				return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("batch exceeds the maximum of %d parts", maxBatchParts))
 			}
 
+			// Parts run under the outer request's authentication context
+			// (inherited via WithContext below); credentials carried inside
+			// a part must not be re-evaluated by the middleware chain when
+			// the part is dispatched.
+			pr.Header.Del("Authorization")
+			pr.Header.Del("Captcha")
+			pr.Header.Del("Cookie")
+
+			pr = pr.WithContext(req.Context())
+
+			if pr.URL.Scheme != "" || pr.URL.Host != "" {
+				if !strings.EqualFold(pr.URL.Host, fqdn) {
+					responses[contentID] = newBatchTextResponse(http.StatusMisdirectedRequest, "request target host does not match this server")
+					parts = append(parts, batchRequestPart{
+						contentID: contentID,
+						request:   pr,
+					})
+					continue
+				}
+				pr.Host = pr.URL.Host
+				pr.URL.Scheme = ""
+				pr.URL.Host = ""
+				pr.RequestURI = pr.URL.RequestURI()
+			}
+
 			parts = append(parts, batchRequestPart{
 				contentID: contentID,
-				request:   pr.WithContext(req.Context()),
+				request:   pr,
 			})
 		}
 
@@ -87,11 +121,13 @@ func batchHandler(app *echo.Echo, customHandlers ...batchCustomHandler) echo.Han
 		mw.SetBoundary(boundary)
 		defer mw.Close()
 
-		responses := make(map[string]*http.Response, len(parts))
 		handlerParts := make([][]batchRequestPart, len(customHandlers))
 		defaultParts := make([]batchRequestPart, 0, len(parts))
 
 		for _, part := range parts {
+			if _, done := responses[part.contentID]; done {
+				continue
+			}
 			handled := false
 			for i, handler := range customHandlers {
 				if handler.match(part.request) {

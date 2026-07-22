@@ -1219,12 +1219,14 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 
 	if mode == domain.CommitModeExecute {
 		postProcesses = append(postProcesses, func(ctx context.Context) error {
-			return uc.signal.Publish(ctx, resultURI, concrnt.Event{
+			// runs post-commit, so the anonymous read evaluation sees the
+			// just-stored record's own policy
+			return uc.signal.Publish(ctx, resultURI, uc.redactEventForAnonymous(ctx, concrnt.Event{
 				Type:       "created",
 				URI:        resultURI,
 				References: map[string]concrnt.SignedDocument{resultURI: sd},
 				Timestamp:  createdAt,
-			})
+			}))
 		})
 	}
 
@@ -1415,20 +1417,24 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 			}
 			postProcesses = append(postProcesses,
 				func(ctx context.Context) error {
+					// only the realtime event is redacted for anonymous
+					// readers — the delivery payload is the signed document
+					// remote servers must verify in full
+					event := uc.redactEventForAnonymous(ctx, concrnt.Event{
+						Type:        "associated",
+						URI:         target,
+						Association: &ccfs,
+						Timestamp:   time.Now(),
+						References: map[string]concrnt.SignedDocument{
+							ccfs: sd,
+						},
+					})
 					return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
 						ResolveURI: channel,
 						Payload:    remoteSD,
 						Local:      domain.DeliveryLocalPublish,
 						Remote:     remoteKind,
-						Event: &concrnt.Event{
-							Type:        "associated",
-							URI:         target,
-							Association: &ccfs,
-							Timestamp:   time.Now(),
-							References: map[string]concrnt.SignedDocument{
-								ccfs: sd,
-							},
-						},
+						Event:      &event,
 					})
 				},
 			)
@@ -1795,6 +1801,11 @@ func (uc *RecordUsecase) GetSigned(ctx context.Context, uri string) (*concrnt.Si
 }
 
 func (uc *RecordUsecase) checkReadAccess(ctx context.Context, uri string, sd concrnt.SignedDocument) error {
+	requester, _ := ctx.Value(interop.RequesterCtxKey).(domain.Entity)
+	return uc.checkReadAccessAs(ctx, uri, sd, requester)
+}
+
+func (uc *RecordUsecase) checkReadAccessAs(ctx context.Context, uri string, sd concrnt.SignedDocument, requester domain.Entity) error {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.CheckReadAccess")
 	defer span.End()
 
@@ -1811,13 +1822,18 @@ func (uc *RecordUsecase) checkReadAccess(ctx context.Context, uri string, sd con
 		return err
 	}
 
-	stack, err := uc.repo.GetHierarchicalRecordPolicies(ctx, uri)
+	// Associations have no record_keys row of their own; their policy stack is
+	// rooted at the associated document (CIP-12 §5.3), same as deleteRecord.
+	policyRoot := uri
+	if doc.Associate != nil {
+		policyRoot = *doc.Associate
+	}
+
+	stack, err := uc.repo.GetHierarchicalRecordPolicies(ctx, policyRoot)
 	if err != nil {
 		span.RecordError(err)
 		stack = []concrnt.Policy{}
 	}
-
-	requester, _ := ctx.Value(interop.RequesterCtxKey).(domain.Entity)
 
 	err = uc.policy.Eval(
 		ctx,
@@ -1835,6 +1851,27 @@ func (uc *RecordUsecase) checkReadAccess(ctx context.Context, uri string, sd con
 	}
 
 	return nil
+}
+
+// redactEventForAnonymous strips realtime-event documents an anonymous
+// requester may not read (CIP-11 §3.2): subscriptions carry no authentication,
+// so this guest-baseline policy evaluation at publish time is the enforcement
+// mechanism. Evaluated once per event here rather than per subscriber; the
+// event itself (type/uri/timestamp) is always delivered. Unevaluable
+// documents are redacted (fail closed).
+func (uc *RecordUsecase) redactEventForAnonymous(ctx context.Context, event concrnt.Event) concrnt.Event {
+	if len(event.References) == 0 {
+		return event
+	}
+	readable := make(map[string]concrnt.SignedDocument, len(event.References))
+	for uri, refSD := range event.References {
+		if err := uc.checkReadAccessAs(ctx, uri, refSD, domain.Entity{}); err != nil {
+			continue
+		}
+		readable[uri] = refSD
+	}
+	event.References = readable
+	return event
 }
 
 func policyCreateAction(doc concrnt.Document[any]) string {

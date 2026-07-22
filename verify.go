@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/concrnt/concrnt/cdid"
 	"github.com/concrnt/concrnt/schemas"
 )
 
@@ -250,6 +251,60 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 
 		if targetDoc.Author != doc.Author {
 			return errors.New("referenced document author does not match signed document author")
+		}
+
+		// CIP-6: the resolved/inlined target must actually be the document the
+		// href identifies — author match alone would let any same-author
+		// document inlined under References[href] stand in for it.
+		hrefURI, err := ParseCCURI(*sd.Proof.Href)
+		if err != nil {
+			return errors.Join(errors.New("invalid href for document-reference proof"), err)
+		}
+		switch {
+		case hrefURI.Scheme == "cckv" && hrefURI.Key != "":
+			targetKey, err := ParseCCURI(targetDoc.Key)
+			if err != nil || targetKey.Scheme != "cckv" || targetKey.Key == "" {
+				return errors.New("referenced document key is not a keyed cckv uri")
+			}
+			if targetKey.Owner != hrefURI.Owner || targetKey.Key != hrefURI.Key {
+				return errors.New("referenced document key does not match proof href")
+			}
+		case hrefURI.Scheme == "cckv":
+			// keyless href = entity reference: the target is the owner's own
+			// entity document
+			if targetDoc.Author != hrefURI.Owner {
+				return errors.New("referenced document author does not match entity href owner")
+			}
+		case hrefURI.Scheme == "ccfs" && hrefURI.Type == CCFSTypeConcrnt:
+			hash := GetHash([]byte(targetSD.Document))
+			var hash10 [10]byte
+			copy(hash10[:], hash[:10])
+			if cdid.New(hash10, targetDoc.CreatedAt).String() != hrefURI.CDID {
+				return errors.New("referenced document cdid does not match proof href")
+			}
+			// owner mirrors the commit path: key owner for records, associate
+			// owner for associations/acks, author for entity documents
+			expectedOwner := targetDoc.Author
+			if targetDoc.Key != "" {
+				targetKey, err := ParseCCURI(targetDoc.Key)
+				if err != nil {
+					return errors.Join(errors.New("referenced document key is not a valid cc uri"), err)
+				}
+				expectedOwner = targetKey.Owner
+			} else if targetDoc.Associate != nil {
+				targetAssociate, err := ParseCCURI(*targetDoc.Associate)
+				if err != nil {
+					return errors.Join(errors.New("referenced document associate is not a valid cc uri"), err)
+				}
+				expectedOwner = targetAssociate.Owner
+			}
+			if expectedOwner != hrefURI.Owner {
+				return errors.New("referenced document owner does not match proof href owner")
+			}
+		default:
+			// http(s)/blob and anything else cannot be bound to a document
+			// identity — such references need a direct or subkey signature
+			return fmt.Errorf("document-reference proof href must be a cckv or ccfs concrnt uri, got %s", *sd.Proof.Href)
 		}
 		return nil
 

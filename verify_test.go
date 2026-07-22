@@ -10,6 +10,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/concrnt/concrnt/cdid"
 	"github.com/concrnt/concrnt/schemas"
 )
 
@@ -787,5 +788,259 @@ func TestVerifyUnsupportedProofType(t *testing.T) {
 
 	if err := sd.Verify(context.Background(), nil); err == nil {
 		t.Fatal("Verify returned nil error for unsupported proof type")
+	}
+}
+
+// The href must be bound to the target's identity: a correctly-signed but
+// *different* document by the same author inlined under References[href] must
+// not satisfy the proof.
+func TestVerifyDocumentReferenceRejectsSameAuthorOtherDocument(t *testing.T) {
+	ownerCCID, ownerPriv := newTestIdentity(t)
+
+	targetURI := "cckv://" + ownerCCID + "/target"
+	otherSD := signDocument(t, Document[testRecordValue]{
+		Kind:      "record",
+		Key:       "cckv://" + ownerCCID + "/other",
+		Value:     testRecordValue{Foo: "legit but unrelated"},
+		Author:    ownerCCID,
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}, ownerPriv)
+
+	refDoc := Document[schemas.Reference]{
+		Kind:      "record",
+		Key:       "cckv://" + ownerCCID + "/ref",
+		Value:     schemas.Reference{Href: targetURI},
+		Author:    ownerCCID,
+		Schema:    schemas.ReferenceURL,
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	refDocBytes, err := json.Marshal(refDoc)
+	if err != nil {
+		t.Fatalf("marshal reference document: %v", err)
+	}
+	sd := SignedDocument{
+		Document:   string(refDocBytes),
+		Proof:      Proof{Type: ProofTypeDocumentReference, Href: &targetURI},
+		References: map[string]SignedDocument{targetURI: otherSD},
+	}
+
+	if err := sd.Verify(context.Background(), nil); err == nil {
+		t.Fatal("Verify returned nil error for a same-author document smuggled in under a different href")
+	}
+}
+
+// A distribution Reference as the commit path produces it for associations:
+// keyless target with an associate, href = ccfs://<associate owner>/concrnt/<cdid>.
+func TestVerifyDocumentReferenceCCFSValid(t *testing.T) {
+	ownerCCID, ownerPriv := newTestIdentity(t)
+
+	associate := "cckv://" + ownerCCID
+	targetSD := signDocument(t, Document[testRecordValue]{
+		Kind:      "association",
+		Value:     testRecordValue{Foo: "bar"},
+		Author:    ownerCCID,
+		Associate: &associate,
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}, ownerPriv)
+
+	hash := GetHash([]byte(targetSD.Document))
+	var hash10 [10]byte
+	copy(hash10[:], hash[:10])
+	documentID := cdid.New(hash10, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)).String()
+	href := "ccfs://" + ownerCCID + "/concrnt/" + documentID
+
+	refDoc := Document[schemas.Reference]{
+		Kind:      "record",
+		Key:       "cckv://" + ownerCCID + "/ref",
+		Value:     schemas.Reference{Href: href},
+		Author:    ownerCCID,
+		Schema:    schemas.ReferenceURL,
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	refDocBytes, err := json.Marshal(refDoc)
+	if err != nil {
+		t.Fatalf("marshal reference document: %v", err)
+	}
+	sd := SignedDocument{
+		Document:   string(refDocBytes),
+		Proof:      Proof{Type: ProofTypeDocumentReference, Href: &href},
+		References: map[string]SignedDocument{href: targetSD},
+	}
+
+	if err := sd.Verify(context.Background(), nil); err != nil {
+		t.Fatalf("Verify returned error: %v", err)
+	}
+}
+
+func TestVerifyDocumentReferenceCCFSRejectsCDIDMismatch(t *testing.T) {
+	ownerCCID, ownerPriv := newTestIdentity(t)
+
+	associate := "cckv://" + ownerCCID
+	targetSD := signDocument(t, Document[testRecordValue]{
+		Kind:      "association",
+		Value:     testRecordValue{Foo: "bar"},
+		Author:    ownerCCID,
+		Associate: &associate,
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}, ownerPriv)
+
+	otherSD := signDocument(t, Document[testRecordValue]{
+		Kind:      "association",
+		Value:     testRecordValue{Foo: "different content"},
+		Author:    ownerCCID,
+		Associate: &associate,
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}, ownerPriv)
+
+	// href identifies otherSD, but targetSD is what gets inlined under it
+	hash := GetHash([]byte(otherSD.Document))
+	var hash10 [10]byte
+	copy(hash10[:], hash[:10])
+	documentID := cdid.New(hash10, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)).String()
+	href := "ccfs://" + ownerCCID + "/concrnt/" + documentID
+
+	refDoc := Document[schemas.Reference]{
+		Kind:      "record",
+		Key:       "cckv://" + ownerCCID + "/ref",
+		Value:     schemas.Reference{Href: href},
+		Author:    ownerCCID,
+		Schema:    schemas.ReferenceURL,
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	refDocBytes, err := json.Marshal(refDoc)
+	if err != nil {
+		t.Fatalf("marshal reference document: %v", err)
+	}
+	sd := SignedDocument{
+		Document:   string(refDocBytes),
+		Proof:      Proof{Type: ProofTypeDocumentReference, Href: &href},
+		References: map[string]SignedDocument{href: targetSD},
+	}
+
+	if err := sd.Verify(context.Background(), nil); err == nil {
+		t.Fatal("Verify returned nil error for a ccfs href whose cdid does not match the inlined document")
+	}
+}
+
+func TestVerifyDocumentReferenceCCFSRejectsOwnerMismatch(t *testing.T) {
+	ownerCCID, ownerPriv := newTestIdentity(t)
+	otherCCID, _ := newTestIdentity(t)
+
+	associate := "cckv://" + ownerCCID
+	targetSD := signDocument(t, Document[testRecordValue]{
+		Kind:      "association",
+		Value:     testRecordValue{Foo: "bar"},
+		Author:    ownerCCID,
+		Associate: &associate,
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}, ownerPriv)
+
+	// correct cdid, but the href claims a different owner than the associate's
+	hash := GetHash([]byte(targetSD.Document))
+	var hash10 [10]byte
+	copy(hash10[:], hash[:10])
+	documentID := cdid.New(hash10, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)).String()
+	href := "ccfs://" + otherCCID + "/concrnt/" + documentID
+
+	refDoc := Document[schemas.Reference]{
+		Kind:      "record",
+		Key:       "cckv://" + ownerCCID + "/ref",
+		Value:     schemas.Reference{Href: href},
+		Author:    ownerCCID,
+		Schema:    schemas.ReferenceURL,
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	refDocBytes, err := json.Marshal(refDoc)
+	if err != nil {
+		t.Fatalf("marshal reference document: %v", err)
+	}
+	sd := SignedDocument{
+		Document:   string(refDocBytes),
+		Proof:      Proof{Type: ProofTypeDocumentReference, Href: &href},
+		References: map[string]SignedDocument{href: targetSD},
+	}
+
+	if err := sd.Verify(context.Background(), nil); err == nil {
+		t.Fatal("Verify returned nil error for a ccfs href whose owner does not match the inlined document")
+	}
+}
+
+// A keyless cckv href is an entity reference: the target must be the owner's
+// own (self-authored) document.
+func TestVerifyDocumentReferenceEntityHrefValid(t *testing.T) {
+	ownerCCID, ownerPriv := newTestIdentity(t)
+
+	href := "cckv://" + ownerCCID
+	targetSD := signDocument(t, Document[testRecordValue]{
+		Kind:      "entity",
+		Value:     testRecordValue{Foo: "profile"},
+		Author:    ownerCCID,
+		Schema:    schemas.EntityURL,
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}, ownerPriv)
+
+	refDoc := Document[schemas.Reference]{
+		Kind:      "record",
+		Key:       "cckv://" + ownerCCID + "/ref",
+		Value:     schemas.Reference{Href: href},
+		Author:    ownerCCID,
+		Schema:    schemas.ReferenceURL,
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	refDocBytes, err := json.Marshal(refDoc)
+	if err != nil {
+		t.Fatalf("marshal reference document: %v", err)
+	}
+	sd := SignedDocument{
+		Document:   string(refDocBytes),
+		Proof:      Proof{Type: ProofTypeDocumentReference, Href: &href},
+		References: map[string]SignedDocument{href: targetSD},
+	}
+
+	if err := sd.Verify(context.Background(), nil); err != nil {
+		t.Fatalf("Verify returned error: %v", err)
+	}
+}
+
+// http(s) and ccfs blob hrefs cannot be bound to a document identity, so a
+// document-reference proof over them must always fail — such references need
+// a direct or subkey signature.
+func TestVerifyDocumentReferenceRejectsUnbindableHrefs(t *testing.T) {
+	ownerCCID, ownerPriv := newTestIdentity(t)
+
+	for _, href := range []string{
+		"https://example.com/some-page",
+		"ccfs://" + ownerCCID + "/blob/" + strings.Repeat("ab", 32),
+	} {
+		targetSD := signDocument(t, Document[testRecordValue]{
+			Kind:      "record",
+			Key:       "cckv://" + ownerCCID + "/target",
+			Value:     testRecordValue{Foo: "bar"},
+			Author:    ownerCCID,
+			CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		}, ownerPriv)
+
+		refDoc := Document[schemas.Reference]{
+			Kind:      "record",
+			Key:       "cckv://" + ownerCCID + "/ref",
+			Value:     schemas.Reference{Href: href},
+			Author:    ownerCCID,
+			Schema:    schemas.ReferenceURL,
+			CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+		}
+		refDocBytes, err := json.Marshal(refDoc)
+		if err != nil {
+			t.Fatalf("marshal reference document: %v", err)
+		}
+		href := href
+		sd := SignedDocument{
+			Document:   string(refDocBytes),
+			Proof:      Proof{Type: ProofTypeDocumentReference, Href: &href},
+			References: map[string]SignedDocument{href: targetSD},
+		}
+
+		if err := sd.Verify(context.Background(), nil); err == nil {
+			t.Fatalf("Verify returned nil error for unbindable href %s", href)
+		}
 	}
 }

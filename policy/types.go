@@ -66,13 +66,11 @@ type ConcrntCaller interface {
 }
 
 type RequestContext struct {
-	Requester       any            `json:"requester"`
-	RequesterDomain any            `json:"requester_domain"`
-	Parent          any            `json:"parent"`
-	Self            any            `json:"self"`
-	Params          map[string]any `json:"params"`
-	Globals         any            `json:"globals"`
-	Caller          ConcrntCaller  `json:"-"`
+	Requester any            `json:"requester"`
+	Self      any            `json:"self"`
+	Params    map[string]any `json:"params"`
+	Globals   any            `json:"globals"`
+	Caller    ConcrntCaller  `json:"-"`
 }
 
 type PolicyDocument struct {

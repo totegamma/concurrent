@@ -409,6 +409,18 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		}
 	}
 
+	// CIP-3 §3.1: commits whose target this server does not manage are
+	// rejected with 421. System service accounts (migration/import) replay
+	// foreign-authored history and skip the check like the other guards;
+	// CommitModeCacheRemoteEntity is GetEntity's internal re-entry for caching
+	// remote entity documents, which are foreign by definition.
+	if !isServiceAccount && mode != domain.CommitModeCacheRemoteEntity {
+		if err := uc.checkCommitAuthority(ctx, doc, sd); err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+	}
+
 	var applyCommit func(tx RepositoryTx) (*commitApplyResult, error)
 
 	switch doc.Kind {
@@ -438,6 +450,14 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 			span.RecordError(err)
 			return nil, err
 		}
+		// CIP-3 §3.1: an ack is only this server's to process when it manages
+		// either party. A both-remote ack was previously relayed without being
+		// stored; the spec now requires a 421 instead.
+		if !isServiceAccount && !uc.IsLocalEntity(ctx, requester) && !uc.IsLocalEntity(ctx, targetUser) {
+			err := domain.MisdirectedError{Target: targetUserID}
+			span.RecordError(err)
+			return nil, err
+		}
 		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
 			return uc.acknowledge(ctx, tx, documentID, ip, *requester, *targetUser, doc, sd, mode)
 		}
@@ -450,6 +470,11 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		}
 		targetUser, err := uc.GetEntity(ctx, targetUserID)
 		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+		if !isServiceAccount && !uc.IsLocalEntity(ctx, requester) && !uc.IsLocalEntity(ctx, targetUser) {
+			err := domain.MisdirectedError{Target: targetUserID}
 			span.RecordError(err)
 			return nil, err
 		}
@@ -527,6 +552,87 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 	}
 
 	return applyResult.result, nil
+}
+
+// isAuthoritativeOwner reports whether the owner part of uri belongs to this
+// server (CIP-0 name resolution): CCIDs resolve via the entity's domain,
+// CSIDs compare against the server's own CSID, and literal-host owners
+// against the FQDN.
+func (uc *RecordUsecase) isAuthoritativeOwner(ctx context.Context, uri string) (bool, error) {
+	parsed, err := concrnt.ParseCCURI(uri)
+	if err != nil {
+		return false, err
+	}
+	switch {
+	case concrnt.IsCCID(parsed.Owner):
+		entity, err := uc.GetEntity(ctx, concrnt.CCURI{Scheme: "cckv", Owner: parsed.Owner, Hint: parsed.Hint}.String())
+		if err != nil {
+			return false, err
+		}
+		return uc.IsLocalEntity(ctx, entity), nil
+	case concrnt.IsCSID(parsed.Owner):
+		return parsed.Owner == uc.config.CSID, nil
+	default:
+		return parsed.Owner == uc.config.FQDN, nil
+	}
+}
+
+// checkCommitAuthority rejects commits whose target this server does not
+// manage with a MisdirectedError (CIP-3 §3.1) — including targets whose owner
+// cannot be resolved at all, since this server demonstrably isn't their home.
+// Delete commits are gated inside deleteRecord instead: their authority
+// depends on the verified distributes of the inlined target (CIP-4 §6.1).
+// Ack/unack are gated in their dispatch arms, where both parties' entities
+// are already resolved. Distribution Reference proxy-commits (CIP-7) need no
+// exception: their key owner is the local destination owner.
+func (uc *RecordUsecase) checkCommitAuthority(ctx context.Context, doc concrnt.Document[any], sd concrnt.SignedDocument) error {
+	switch doc.Kind {
+	case "record":
+		if doc.Key == "" {
+			return nil // rejected downstream
+		}
+		local, err := uc.isAuthoritativeOwner(ctx, doc.Key)
+		if err != nil {
+			return errors.Join(domain.MisdirectedError{Target: doc.Key}, err)
+		}
+		if !local {
+			return domain.MisdirectedError{Target: doc.Key}
+		}
+	case "association":
+		if doc.Associate == nil {
+			return nil // rejected downstream
+		}
+		local, err := uc.isAuthoritativeOwner(ctx, *doc.Associate)
+		if err == nil && local {
+			return nil
+		}
+		// Implementation exception beyond CIP-3 §3.1's list: association
+		// fan-out (createAssociation) delivers the association to the target's
+		// distribution channels as a commit whose associate owner is foreign.
+		// Accept it when the inlined target's distributes name a channel
+		// managed here — mirroring the delete-propagation rule (CIP-4 §6.1);
+		// the inlined target is verified in createAssociation before use.
+		if targetSD, ok := sd.References[*doc.Associate]; ok {
+			var targetDoc concrnt.Document[any]
+			if json.Unmarshal([]byte(targetSD.Document), &targetDoc) == nil {
+				for _, dest := range distributionsFromPtr(targetDoc.Distributes) {
+					if destLocal, err := uc.isAuthoritativeOwner(ctx, dest); err == nil && destLocal {
+						return nil
+					}
+				}
+			}
+		}
+		return domain.MisdirectedError{Target: *doc.Associate}
+	case "entity":
+		var entity concrnt.Document[schemas.Entity]
+		if err := json.Unmarshal([]byte(sd.Document), &entity); err != nil {
+			return err
+		}
+		if entity.Value.Domain != uc.config.FQDN {
+			return domain.MisdirectedError{Target: entity.Value.Domain}
+		}
+	}
+	return nil
 }
 
 func (uc *RecordUsecase) saveEntity(ctx context.Context, tx RepositoryTx, documentID string, sd concrnt.SignedDocument) (*commitApplyResult, error) {
@@ -2049,7 +2155,9 @@ func (uc *RecordUsecase) GetEntity(ctx context.Context, uri string) (*domain.Ent
 			return nil, err
 		}
 
-		_, err = uc.Commit(ctx, hint, sd, domain.CommitModeExecute)
+		// CommitModeCacheRemoteEntity: this caches a *remote* entity document,
+		// which the CIP-3 §3.1 authority check would otherwise 421
+		_, err = uc.Commit(ctx, hint, sd, domain.CommitModeCacheRemoteEntity)
 		if err != nil {
 			return nil, err
 		}

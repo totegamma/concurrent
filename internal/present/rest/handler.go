@@ -149,6 +149,9 @@ func (h *Handler) handleCommit(c echo.Context) error {
 		if errors.Is(err, domain.ErrPermissionDenied) {
 			return presenter.Forbidden(c, "permission denied")
 		}
+		if errors.Is(err, domain.ErrMisdirected) {
+			return presenter.Misdirected(c, err)
+		}
 		if errors.Is(err, domain.ErrValidation) {
 			return presenter.BadRequest(c, err)
 		}

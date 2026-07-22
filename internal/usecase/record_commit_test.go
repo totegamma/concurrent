@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -261,8 +262,10 @@ func TestCommitEntityAcceptIfNewer(t *testing.T) {
 				nil,
 			)
 
+			// foreign-domain entity documents only commit through GetEntity's
+			// internal caching mode since the CIP-3 §3.1 authority check
 			sd := newEntityDoc(tc.createdAt)
-			if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+			if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeCacheRemoteEntity); err != nil {
 				t.Fatalf("Commit returned error: %v", err)
 			}
 			if repo.createEntityCalled != tc.wantCreateEntity {
@@ -321,7 +324,9 @@ func TestCommitDocumentReferenceInlineTargetOffline(t *testing.T) {
 	cfg := &domain.Config{FQDN: "example.com"}
 	uc := NewRecordUsecase(
 		repo,
-		fixedResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: "remote.example.net"}},
+		// the key owner must be local (CIP-3 §3.1) — the offline part of this
+		// scenario is the *referenced* document's origin, not the key owner
+		fixedResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: cfg.FQDN}},
 		newTestServerUsecase(cfg),
 		cfg,
 		nil, // no client: verification must not need the network
@@ -899,6 +904,132 @@ func TestCommitAssociationUniqueIncludesBody(t *testing.T) {
 	}
 }
 
+// CIP-3 §3.1: commits whose target this server does not manage are rejected
+// with 421 (MisdirectedError) before any write or relay.
+func TestCommitMisdirectedTargets(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+
+	t.Run("record with foreign key owner", func(t *testing.T) {
+		repo := &recordingRecordRepo{}
+		uc := NewRecordUsecase(
+			repo,
+			fixedResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: "remote.example.net"}},
+			newTestServerUsecase(cfg),
+			cfg,
+			nil,
+			nopSignalService{},
+			nopPolicyService{},
+			nil,
+			nil,
+		)
+		sd := signedRecord(t, ccid, priv, time.Now())
+		_, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute)
+		if !errors.Is(err, domain.ErrMisdirected) {
+			t.Fatalf("expected misdirected error, got %v", err)
+		}
+		if repo.createRecordCalled {
+			t.Fatal("CreateRecord must not be called for a misdirected commit")
+		}
+	})
+
+	t.Run("foreign entity via the HTTP path", func(t *testing.T) {
+		repo := &recordingRecordRepo{}
+		uc := NewRecordUsecase(
+			repo,
+			fixedResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: "remote.example.net"}},
+			newTestServerUsecase(cfg),
+			cfg,
+			nil,
+			nil,
+			nil,
+			nil,
+			nil,
+		)
+		sd := signTestDocument(t, concrnt.Document[schemas.Entity]{
+			Kind:      "entity",
+			Value:     schemas.Entity{Domain: "remote.example.net"},
+			Author:    ccid,
+			CreatedAt: time.Now(),
+		}, priv)
+		_, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute)
+		if !errors.Is(err, domain.ErrMisdirected) {
+			t.Fatalf("expected misdirected error, got %v", err)
+		}
+		if repo.createEntityCalled {
+			t.Fatal("CreateEntity must not be called for a foreign entity commit")
+		}
+	})
+
+	t.Run("both-remote ack is rejected without relaying", func(t *testing.T) {
+		targetCCID, _ := newIdentity(t)
+		residence := mapResidenceRepo{entities: map[string]*domain.Entity{
+			ccid:       {ID: ccid, Domain: "remote.example.net", SignedDocument: &concrnt.SignedDocument{Document: "{}"}},
+			targetCCID: {ID: targetCCID, Domain: "elsewhere.example.net"},
+		}}
+		repo := &ackRecordingRepo{updated: true}
+		delivery := &recordingDeliveryQueue{}
+		uc := NewRecordUsecase(repo, residence, newTestServerUsecase(cfg), cfg, nil, nopSignalService{}, nopPolicyService{}, delivery, nil)
+
+		assoc := concrnt.CCURI{Scheme: "cckv", Owner: targetCCID}.String()
+		sd := signTestDocument(t, concrnt.Document[any]{
+			Kind:      "ack",
+			Associate: &assoc,
+			Author:    ccid,
+			Schema:    "https://schema.concrnt.net/ack.json",
+			CreatedAt: time.Now(),
+		}, priv)
+
+		_, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute)
+		if !errors.Is(err, domain.ErrMisdirected) {
+			t.Fatalf("expected misdirected error, got %v", err)
+		}
+		if repo.acknowledgeCalled {
+			t.Fatal("Acknowledge must not be called for a both-remote ack")
+		}
+		if len(delivery.jobs) != 0 {
+			t.Fatalf("a both-remote ack must not be relayed, got %d jobs", len(delivery.jobs))
+		}
+	})
+
+	t.Run("association fan-out to a local channel is accepted", func(t *testing.T) {
+		ownerCCID, ownerPriv := newIdentity(t)
+		targetKey := concrnt.CCURI{Scheme: "cckv", Owner: ownerCCID, Key: "posts/1"}.String()
+		distributes := []string{"cckv://example.com/timelines/home"}
+		targetSD := signTestDocument(t, concrnt.Document[any]{
+			Kind:        "record",
+			Key:         targetKey,
+			Value:       map[string]any{"body": "x"},
+			Author:      ownerCCID,
+			Schema:      "https://example.com/post.json",
+			CreatedAt:   time.Now().Add(-time.Minute),
+			Distributes: &distributes,
+		}, ownerPriv)
+
+		residence := mapResidenceRepo{entities: map[string]*domain.Entity{
+			ccid:      {ID: ccid, Domain: "remote.example.net", SignedDocument: &concrnt.SignedDocument{Document: "{}"}},
+			ownerCCID: {ID: ownerCCID, Domain: "remote.example.net"},
+		}}
+		repo := &importRecordingRepo{}
+		delivery := &recordingDeliveryQueue{}
+		uc := NewRecordUsecase(repo, residence, newTestServerUsecase(cfg), cfg, nil, nopSignalService{}, nopPolicyService{}, delivery, nil)
+
+		sd := signTestDocument(t, concrnt.Document[any]{
+			Kind:      "association",
+			Associate: &targetKey,
+			Value:     map[string]any{"messageId": "m1"},
+			Author:    ccid,
+			Schema:    "https://example.com/a/reply.json",
+			CreatedAt: time.Now(),
+		}, priv)
+		sd.References = map[string]concrnt.SignedDocument{targetKey: targetSD}
+
+		if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+			t.Fatalf("Commit returned error: %v", err)
+		}
+	})
+}
+
 // recordingSignalService captures every published realtime event.
 type recordingSignalService struct {
 	events []concrnt.Event
@@ -1183,7 +1314,9 @@ func TestCommitEntityRequiresGreenServer(t *testing.T) {
 				CreatedAt: time.Now(),
 			}, priv)
 
-			_, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute)
+			// foreign-domain entities only reach saveEntity through GetEntity's
+			// caching mode since the CIP-3 §3.1 authority check
+			_, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeCacheRemoteEntity)
 			if err == nil || !strings.Contains(err.Error(), tc.wantErr) {
 				t.Fatalf("expected %q error, got %v", tc.wantErr, err)
 			}

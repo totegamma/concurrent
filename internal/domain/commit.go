@@ -9,6 +9,12 @@ const (
 	CommitModeExecute
 	CommitModeDryRun
 	CommitModeLocalOnlyExecute
+	// CommitModeCacheRemoteEntity is the internal re-entry GetEntity uses to
+	// cache a fetched remote entity document. It behaves like Execute but
+	// skips the CIP-3 §3.1 authority check, which would otherwise reject
+	// every foreign-domain entity commit with 421 and break remote
+	// resolution. Never accepted from the HTTP surface.
+	CommitModeCacheRemoteEntity
 )
 
 // Commit-time validation bounds on a document's author-signed createdAt.

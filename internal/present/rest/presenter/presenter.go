@@ -41,6 +41,13 @@ func Forbidden(c echo.Context, msg string) error {
 	return c.JSON(http.StatusForbidden, errorResponse{Error: msg})
 }
 
+// Misdirected maps a commit whose target this server is not authoritative for
+// (CIP-3 §3.1) to HTTP 421 Misdirected Request.
+func Misdirected(c echo.Context, err error) error {
+	slog.Warn("misdirected request", slog.String("error", err.Error()))
+	return c.JSON(http.StatusMisdirectedRequest, errorResponse{Error: err.Error()})
+}
+
 func Redirect(c echo.Context, location string, body any) error {
 	slog.Info("redirecting", slog.String("location", location))
 	c.Response().Header().Set(echo.HeaderLocation, location)

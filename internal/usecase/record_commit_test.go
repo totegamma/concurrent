@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"slices"
 	"strings"
 	"testing"
@@ -810,6 +811,66 @@ func TestCommitAssociationUniqueIncludesBody(t *testing.T) {
 	if repo.uniques[0] != repo.uniques[2] {
 		t.Fatal("associations with identical bodies must share a unique key")
 	}
+}
+
+// CIP-3 §3.1: alias-form owners (@<FQDN>) are rejected in every
+// authority-bearing commit field — key, associate, delete target, and
+// distributes entries — with a 400, while the resolve path still accepts
+// aliases.
+func TestCommitRejectsAliasOwners(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+
+	commit := func(t *testing.T, mutate func(doc *concrnt.Document[any])) error {
+		t.Helper()
+		doc := concrnt.Document[any]{
+			Kind:      "record",
+			Key:       concrnt.CCURI{Scheme: "cckv", Owner: ccid, Key: "posts/1"}.String(),
+			Author:    ccid,
+			Schema:    "https://example.com/post.json",
+			CreatedAt: time.Now(),
+		}
+		mutate(&doc)
+		repo := &recordingRecordRepo{}
+		uc := newRecordCommitUsecase(ccid, cfg, repo, nil)
+		_, err := uc.Commit(context.Background(), "127.0.0.1", signTestDocument(t, doc, priv), domain.CommitModeExecute)
+		if err != nil && repo.createRecordCalled {
+			t.Fatal("CreateRecord must not be called for a rejected commit")
+		}
+		return err
+	}
+
+	alias := "cckv://@alice.example.net/foo"
+
+	for name, mutate := range map[string]func(doc *concrnt.Document[any]){
+		"key": func(doc *concrnt.Document[any]) { doc.Key = alias },
+		"associate": func(doc *concrnt.Document[any]) {
+			doc.Kind = "association"
+			doc.Key = ""
+			doc.Associate = &alias
+		},
+		"delete target": func(doc *concrnt.Document[any]) {
+			doc.Kind = "delete"
+			doc.Key = ""
+			doc.Value = alias + "*"
+		},
+		"distributes": func(doc *concrnt.Document[any]) {
+			doc.Distributes = &[]string{alias}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			err := commit(t, mutate)
+			if !errors.Is(err, domain.ErrValidation) || !strings.Contains(err.Error(), "alias") {
+				t.Fatalf("expected alias rejection, got %v", err)
+			}
+		})
+	}
+
+	t.Run("plain owners still commit", func(t *testing.T) {
+		if err := commit(t, func(doc *concrnt.Document[any]) {}); err != nil {
+			t.Fatalf("Commit returned error: %v", err)
+		}
+	})
 }
 
 // capturingPolicyService records every evaluation's action and context.

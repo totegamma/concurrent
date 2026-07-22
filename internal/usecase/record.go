@@ -212,6 +212,15 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 
 	documentID := documentIDFor(sd.Document, doc.CreatedAt)
 
+	// CIP-3 §3.1: authority-bearing fields must not use alias-form owners
+	// (@<FQDN>) — a signed routing identifier must not depend on mutable DNS.
+	// Entry validation like the size check above: applies to every committer.
+	// The resolve path (GetEntity) still accepts aliases.
+	if err := rejectAliasOwners(doc); err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
 	// A document already in commit_logs was fully applied once; re-delivery
 	// (client retry, federation redelivery, dump re-import) is a no-op
 	// success. This is also the replay guard: deleted and superseded
@@ -474,6 +483,44 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 	}
 
 	return applyResult.result, nil
+}
+
+// rejectAliasOwners rejects alias-form owners (@<FQDN>, CIP-0 §7.2) in the
+// authority-bearing fields of a commit — key, associate, the delete target,
+// and each distributes entry (CIP-3 §3.1). Unparseable URIs pass through:
+// they are rejected downstream where the field actually matters.
+func rejectAliasOwners(doc concrnt.Document[any]) error {
+	check := func(field, uri string) error {
+		parsed, err := concrnt.ParseCCURI(uri)
+		if err == nil && strings.HasPrefix(parsed.Owner, "@") {
+			return domain.ValidationError{Field: field, Message: "alias-form owners are not allowed in commits"}
+		}
+		return nil
+	}
+	if doc.Key != "" {
+		if err := check("key", doc.Key); err != nil {
+			return err
+		}
+	}
+	if doc.Associate != nil {
+		if err := check("associate", *doc.Associate); err != nil {
+			return err
+		}
+	}
+	if doc.Kind == "delete" {
+		if target, ok := doc.Value.(string); ok {
+			base := strings.TrimSuffix(strings.TrimSuffix(target, "*"), "/")
+			if err := check("value", base); err != nil {
+				return err
+			}
+		}
+	}
+	for _, dest := range distributionsFromPtr(doc.Distributes) {
+		if err := check("distributes", dest); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (uc *RecordUsecase) saveEntity(ctx context.Context, tx RepositoryTx, documentID string, sd concrnt.SignedDocument) (*commitApplyResult, error) {

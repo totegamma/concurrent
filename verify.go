@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/concrnt/concrnt/cdid"
 	"github.com/concrnt/concrnt/schemas"
 )
 
@@ -250,6 +251,60 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 
 		if targetDoc.Author != doc.Author {
 			return errors.New("referenced document author does not match signed document author")
+		}
+
+		// CIP-6 §5.1 step 6: the target's identity must match href. The
+		// author check alone would let a different validly-signed document by
+		// the same author be inlined via References to prove an unrelated
+		// href. Never skipped for inlined targets. The hint part is a
+		// resolution aid, not identity, so cckv keys compare by owner+key.
+		parsedHref, err := ParseCCURI(*sd.Proof.Href)
+		if err != nil {
+			return errors.Join(errors.New("invalid href in document-reference proof"), err)
+		}
+		switch {
+		case parsedHref.Scheme == "cckv" && parsedHref.Key != "":
+			parsedKey, err := ParseCCURI(targetDoc.Key)
+			if err != nil || parsedKey.Owner != parsedHref.Owner || parsedKey.Key != parsedHref.Key {
+				return errors.New("referenced document key does not match proof href")
+			}
+		case parsedHref.Scheme == "cckv":
+			// key-less entity reference: the target must be the owner's own
+			// entity document
+			if targetDoc.Author != parsedHref.Owner {
+				return errors.New("referenced entity author does not match proof href owner")
+			}
+		case parsedHref.Scheme == "ccfs" && parsedHref.Type == CCFSTypeConcrnt:
+			hash := GetHash([]byte(targetSD.Document))
+			var hash10 [10]byte
+			copy(hash10[:], hash[:10])
+			if cdid.New(hash10, targetDoc.CreatedAt).String() != parsedHref.CDID {
+				return errors.New("referenced document CDID does not match proof href")
+			}
+			// ccfs identity owner is the namespace owner, derived as at
+			// commit time: the key's owner for records, the associate's owner
+			// for associations, the author itself for entity documents
+			owner := targetDoc.Author
+			if targetDoc.Key != "" {
+				parsedKey, err := ParseCCURI(targetDoc.Key)
+				if err != nil {
+					return errors.New("referenced document has an unparseable key")
+				}
+				owner = parsedKey.Owner
+			} else if targetDoc.Associate != nil {
+				parsedAssoc, err := ParseCCURI(*targetDoc.Associate)
+				if err != nil {
+					return errors.New("referenced document has an unparseable associate")
+				}
+				owner = parsedAssoc.Owner
+			}
+			if owner != parsedHref.Owner {
+				return errors.New("referenced document owner does not match proof href owner")
+			}
+		default:
+			// HTTP(S) or blob targets have no derivable document identity; such
+			// references need a direct or subkey signature (CIP-6 §5.1)
+			return errors.New("document-reference proof cannot attest this href scheme")
 		}
 		return nil
 

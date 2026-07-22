@@ -316,54 +316,72 @@ func (r *RecordRepository) CreateAssociation(ctx context.Context, tx usecase.Rep
 	return result.RowsAffected > 0, nil
 }
 
-func (r *RecordRepository) Acknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) error {
+func (r *RecordRepository) Acknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.Acknowledge")
 	defer span.End()
 
 	db, err := getRecordTx(ctx, tx)
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	ack := models.Ack{
+	return upsertAckIfNewer(ctx, db, models.Ack{
 		From:       from,
 		To:         to,
 		Schema:     schema,
 		DocumentID: documentID,
 		Valid:      true,
 		CreatedAt:  createdAt,
-	}
-
-	return db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "schema"}},
-		DoUpdates: clause.Assignments(map[string]any{"valid": true, "document_id": documentID}),
-	}).Create(&ack).Error
-
+	})
 }
 
-func (r *RecordRepository) UnAcknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) error {
+// upsertAckIfNewer stores an ack/unack transition only when its document_id (a
+// time-prefixed, content-hashed, sortable CDID) is newer than the stored one
+// (CIP-10 §4), reporting whether anything changed. A replayed older or
+// identical document is a silent no-op — checked in Go under a row lock, so an
+// identical redelivery never re-inserts its own primary key. The conditional
+// upsert re-checks the ordering for the row-not-found race between two first
+// writers.
+func upsertAckIfNewer(ctx context.Context, db *gorm.DB, ack models.Ack) (bool, error) {
+	var existing models.Ack
+	err := db.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where(`"from" = ? AND "to" = ? AND schema = ?`, ack.From, ack.To, ack.Schema).
+		Take(&existing).Error
+	if err != nil && err != gorm.ErrRecordNotFound {
+		return false, err
+	}
+	if err == nil && ack.DocumentID <= existing.DocumentID {
+		return false, nil
+	}
+
+	result := db.Clauses(clause.OnConflict{
+		Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "schema"}},
+		DoUpdates: clause.Assignments(map[string]any{"valid": ack.Valid, "document_id": ack.DocumentID, "created_at": ack.CreatedAt}),
+		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("acks.document_id < excluded.document_id")}},
+	}).Create(&ack)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected > 0, nil
+}
+
+func (r *RecordRepository) UnAcknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.Unacknowledge")
 	defer span.End()
 
 	db, err := getRecordTx(ctx, tx)
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	ack := models.Ack{
+	return upsertAckIfNewer(ctx, db, models.Ack{
 		From:       from,
 		To:         to,
 		Schema:     schema,
 		DocumentID: documentID,
 		Valid:      false,
 		CreatedAt:  createdAt,
-	}
-
-	return db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "schema"}},
-		DoUpdates: clause.Assignments(map[string]any{"valid": false, "document_id": documentID}),
-	}).Create(&ack).Error
-
+	})
 }
 
 func (r *RecordRepository) GetHierarchicalRecordPolicies(ctx context.Context, uri string) ([]concrnt.Policy, error) {

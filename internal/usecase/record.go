@@ -33,8 +33,8 @@ type RecordRepository interface {
 	CreateEntity(ctx context.Context, tx RepositoryTx, ccid string, alias *string, domain string, documentID string) error
 	CreateRecord(ctx context.Context, tx RepositoryTx, documentID string, key string, owner string, schema string, onUpdate *string, policies *string, distributions []string, redirect *string, createdAt time.Time) error
 	CreateAssociation(ctx context.Context, tx RepositoryTx, documentID string, targetURI string, owner string, author string, schema string, variant *string, unique string, createdAt time.Time) (bool, error)
-	Acknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) error
-	UnAcknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) error
+	Acknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error)
+	UnAcknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error)
 	DeleteRecordByKey(ctx context.Context, tx RepositoryTx, targetURI string) error
 	DeleteRecordByDocumentID(ctx context.Context, tx RepositoryTx, documentID string) error
 	DeleteAssociation(ctx context.Context, tx RepositoryTx, documentID string) error
@@ -1614,6 +1614,11 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 	ctx, span := tracer.Start(ctx, "Usecase.Record.Acknowledge")
 	defer span.End()
 
+	// CIP-10 §4: only a newer transition (by CDID order) may change the stored
+	// state. When the upsert reports no change — a replayed older or identical
+	// ack — the commit is a no-op success and must not proxy-deliver or
+	// distribute either.
+	updated := true
 	if uc.IsLocalEntity(ctx, &requester) || uc.IsLocalEntity(ctx, &targetUser) {
 		parsedAssociate, err := concrnt.ParseCCURI(*doc.Associate)
 		if err != nil {
@@ -1626,7 +1631,7 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 			return nil, err
 		}
 
-		err = uc.repo.Acknowledge(ctx, tx, documentID, doc.Author, parsedAssociate.Owner, doc.Schema, doc.CreatedAt)
+		updated, err = uc.repo.Acknowledge(ctx, tx, documentID, doc.Author, parsedAssociate.Owner, doc.Schema, doc.CreatedAt)
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
@@ -1641,7 +1646,7 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 	}.String()
 
 	postProcesses := []PostProcessAction{}
-	if !uc.IsLocalEntity(ctx, &targetUser) && mode == domain.CommitModeExecute {
+	if updated && !uc.IsLocalEntity(ctx, &targetUser) && mode == domain.CommitModeExecute {
 
 		requesterSD, err := uc.GetSigned(ctx, requester.CCKVWithHint())
 		if err != nil {
@@ -1668,7 +1673,7 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 		)
 	}
 
-	if uc.IsLocalEntity(ctx, &requester) {
+	if updated && uc.IsLocalEntity(ctx, &requester) {
 		actions, err := uc.createReferenceDistributionActions(ctx, ip, documentID, doc.Author, ccfs, requester, sd, distributionsFromPtr(doc.Distributes), mode)
 		if err != nil {
 			span.RecordError(err)
@@ -1694,6 +1699,8 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, doc
 	ctx, span := tracer.Start(ctx, "Usecase.Record.UnAcknowledge")
 	defer span.End()
 
+	// see acknowledge: older-or-equal transitions are side-effect-free no-ops
+	updated := true
 	if uc.IsLocalEntity(ctx, &requester) || uc.IsLocalEntity(ctx, &targetUser) {
 		parsedAssociate, err := concrnt.ParseCCURI(*doc.Associate)
 		if err != nil {
@@ -1706,7 +1713,7 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, doc
 			return nil, err
 		}
 
-		err = uc.repo.UnAcknowledge(ctx, tx, documentID, doc.Author, parsedAssociate.Owner, doc.Schema, doc.CreatedAt)
+		updated, err = uc.repo.UnAcknowledge(ctx, tx, documentID, doc.Author, parsedAssociate.Owner, doc.Schema, doc.CreatedAt)
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
@@ -1721,7 +1728,7 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, doc
 	}.String()
 
 	postProcesses := []PostProcessAction{}
-	if !uc.IsLocalEntity(ctx, &targetUser) && mode == domain.CommitModeExecute {
+	if updated && !uc.IsLocalEntity(ctx, &targetUser) && mode == domain.CommitModeExecute {
 		requesterSD, err := uc.GetSigned(ctx, requester.CCKVWithHint())
 		if err != nil {
 			span.RecordError(err)
@@ -1747,7 +1754,7 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, doc
 		)
 	}
 
-	if uc.IsLocalEntity(ctx, &requester) {
+	if updated && uc.IsLocalEntity(ctx, &requester) {
 		actions, err := uc.createReferenceDistributionActions(ctx, ip, documentID, doc.Author, ccfs, requester, sd, distributionsFromPtr(doc.Distributes), mode)
 		if err != nil {
 			span.RecordError(err)

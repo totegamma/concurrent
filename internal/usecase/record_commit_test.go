@@ -689,6 +689,100 @@ func (r *importRecordingRepo) QueryByParent(ctx context.Context, parent, schema 
 	return nil, nil
 }
 
+// ackRecordingRepo satisfies the ack/unack write path and reports a
+// configurable updated/no-op result.
+type ackRecordingRepo struct {
+	recordingRecordRepo
+	updated           bool
+	acknowledgeCalled bool
+}
+
+func (r *ackRecordingRepo) Acknowledge(ctx context.Context, tx RepositoryTx, documentID, from, to, schema string, createdAt time.Time) (bool, error) {
+	r.acknowledgeCalled = true
+	return r.updated, nil
+}
+func (r *ackRecordingRepo) UnAcknowledge(ctx context.Context, tx RepositoryTx, documentID, from, to, schema string, createdAt time.Time) (bool, error) {
+	r.acknowledgeCalled = true
+	return r.updated, nil
+}
+func (r *ackRecordingRepo) QueryByParent(ctx context.Context, parent, schema string, since, until *time.Time, limit int, order string) ([]concrnt.SignedDocument, error) {
+	return nil, nil
+}
+
+// mapResidenceRepo serves entities from a fixed ccid->entity map.
+type mapResidenceRepo struct {
+	ResidenceRepository
+	entities map[string]*domain.Entity
+}
+
+func (m mapResidenceRepo) GetEntityByCCID(ctx context.Context, ccid string) (*domain.Entity, error) {
+	if e, ok := m.entities[ccid]; ok {
+		return e, nil
+	}
+	return nil, domain.ErrNotFound
+}
+
+// CIP-10 §4: an ack/unack transition the repository reports as older-or-equal
+// (no state change) is a no-op success without side effects — in particular no
+// proxy delivery to the remote target's server. A newer transition still
+// proxy-delivers.
+func TestCommitAckNoOpSkipsSideEffects(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	targetCCID, _ := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+
+	requester := &domain.Entity{ID: ccid, Domain: cfg.FQDN, SignedDocument: &concrnt.SignedDocument{Document: "{}"}}
+	target := &domain.Entity{ID: targetCCID, Domain: "remote.example.net"}
+	residence := mapResidenceRepo{entities: map[string]*domain.Entity{ccid: requester, targetCCID: target}}
+
+	assoc := concrnt.CCURI{Scheme: "cckv", Owner: targetCCID}.String()
+	sd := signTestDocument(t, concrnt.Document[any]{
+		Kind:      "ack",
+		Associate: &assoc,
+		Author:    ccid,
+		Schema:    "https://schema.concrnt.net/ack.json",
+		CreatedAt: time.Now(),
+	}, priv)
+
+	commitAck := func(t *testing.T, updated bool) (*ackRecordingRepo, *recordingDeliveryQueue) {
+		t.Helper()
+		repo := &ackRecordingRepo{updated: updated}
+		delivery := &recordingDeliveryQueue{}
+		uc := NewRecordUsecase(
+			repo,
+			residence,
+			newTestServerUsecase(cfg),
+			cfg,
+			nil,
+			nopSignalService{},
+			nopPolicyService{},
+			delivery,
+			nil,
+		)
+		if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+			t.Fatalf("Commit returned error: %v", err)
+		}
+		if !repo.acknowledgeCalled {
+			t.Fatal("Acknowledge was not called")
+		}
+		return repo, delivery
+	}
+
+	t.Run("stale transition enqueues nothing", func(t *testing.T) {
+		_, delivery := commitAck(t, false)
+		if len(delivery.jobs) != 0 {
+			t.Fatalf("no delivery may be enqueued for a stale ack, got %d jobs", len(delivery.jobs))
+		}
+	})
+
+	t.Run("newer transition proxy-delivers", func(t *testing.T) {
+		_, delivery := commitAck(t, true)
+		if len(delivery.jobs) != 1 || delivery.jobs[0].Host != target.Domain {
+			t.Fatalf("expected one proxy delivery to %s, got %+v", target.Domain, delivery.jobs)
+		}
+	})
+}
+
 // Self-service migration: an authenticated requester importing a repository
 // dump (LocalOnlyExecute) is exempt from the backdate window for their own
 // documents and for others' documents targeting their content. The exemption

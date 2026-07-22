@@ -273,17 +273,23 @@ func TestRecordRepositoryWrites(t *testing.T) {
 			CreatedAt: time.Date(2026, 4, 5, 6, 7, 8, 0, time.UTC),
 			Associate: &key,
 		})
+		// document IDs are sortable CDIDs; "ack-1on" < "ack-2off" mimics the
+		// chronological order of the two transitions
 		ackCreatedAt := time.Date(2026, 4, 5, 6, 7, 8, 0, time.UTC)
-		withRepositoryTx(t, ctx, repo, "ack-on", "127.0.0.1", ackSD, []string{"con1author", "con1owner"}, func(tx usecase.RepositoryTx) error {
-			return repo.Acknowledge(ctx, tx, "ack-on", "con1author", "con1owner", ackSchema, ackCreatedAt)
+		var ackUpdated bool
+		withRepositoryTx(t, ctx, repo, "ack-1on", "127.0.0.1", ackSD, []string{"con1author", "con1owner"}, func(tx usecase.RepositoryTx) error {
+			var err error
+			ackUpdated, err = repo.Acknowledge(ctx, tx, "ack-1on", "con1author", "con1owner", ackSchema, ackCreatedAt)
+			return err
 		})
+		require.True(t, ackUpdated)
 
 		var ack models.Ack
 		require.NoError(t, db.Where(`"from" = ? AND "to" = ? AND schema = ?`, "con1author", "con1owner", ackSchema).Take(&ack).Error)
 		require.True(t, ack.Valid)
-		require.Equal(t, "ack-on", ack.DocumentID)
-		requireCommitOwner(t, db, "ack-on", "con1author")
-		requireCommitOwner(t, db, "ack-on", "con1owner")
+		require.Equal(t, "ack-1on", ack.DocumentID)
+		requireCommitOwner(t, db, "ack-1on", "con1author")
+		requireCommitOwner(t, db, "ack-1on", "con1owner")
 
 		unackSD := repositorySignedDocument(t, concrnt.Document[map[string]string]{
 			Kind:      "unack",
@@ -293,16 +299,45 @@ func TestRecordRepositoryWrites(t *testing.T) {
 			CreatedAt: ackCreatedAt,
 			Associate: &key,
 		})
-		withRepositoryTx(t, ctx, repo, "ack-off", "127.0.0.1", unackSD, []string{"con1author", "con1owner"}, func(tx usecase.RepositoryTx) error {
-			return repo.UnAcknowledge(ctx, tx, "ack-off", "con1author", "con1owner", ackSchema, ackCreatedAt)
+		var unackUpdated bool
+		withRepositoryTx(t, ctx, repo, "ack-2off", "127.0.0.1", unackSD, []string{"con1author", "con1owner"}, func(tx usecase.RepositoryTx) error {
+			var err error
+			unackUpdated, err = repo.UnAcknowledge(ctx, tx, "ack-2off", "con1author", "con1owner", ackSchema, ackCreatedAt)
+			return err
 		})
+		require.True(t, unackUpdated)
 
 		var unack models.Ack
 		require.NoError(t, db.Where(`"from" = ? AND "to" = ? AND schema = ?`, "con1author", "con1owner", ackSchema).Take(&unack).Error)
 		require.False(t, unack.Valid)
-		require.Equal(t, "ack-off", unack.DocumentID)
-		requireCommitOwner(t, db, "ack-off", "con1author")
-		requireCommitOwner(t, db, "ack-off", "con1owner")
+		require.Equal(t, "ack-2off", unack.DocumentID)
+		requireCommitOwner(t, db, "ack-2off", "con1author")
+		requireCommitOwner(t, db, "ack-2off", "con1owner")
+
+		// CIP-10 §4: a replayed older ack ("ack-1on" < stored "ack-2off") must
+		// not roll the state back — the upsert reports no change
+		var staleUpdated bool
+		withRepositoryTx(t, ctx, repo, "ack-1on", "127.0.0.1", ackSD, []string{"con1author", "con1owner"}, func(tx usecase.RepositoryTx) error {
+			var err error
+			staleUpdated, err = repo.Acknowledge(ctx, tx, "ack-1on", "con1author", "con1owner", ackSchema, ackCreatedAt)
+			return err
+		})
+		require.False(t, staleUpdated)
+
+		var afterReplay models.Ack
+		require.NoError(t, db.Where(`"from" = ? AND "to" = ? AND schema = ?`, "con1author", "con1owner", ackSchema).Take(&afterReplay).Error)
+		require.False(t, afterReplay.Valid)
+		require.Equal(t, "ack-2off", afterReplay.DocumentID)
+
+		// an identical redelivery of the stored transition is likewise a no-op
+		// success, not a primary-key conflict
+		var redelivered bool
+		withRepositoryTx(t, ctx, repo, "ack-2off", "127.0.0.1", unackSD, []string{"con1author", "con1owner"}, func(tx usecase.RepositoryTx) error {
+			var err error
+			redelivered, err = repo.UnAcknowledge(ctx, tx, "ack-2off", "con1author", "con1owner", ackSchema, ackCreatedAt)
+			return err
+		})
+		require.False(t, redelivered)
 	})
 
 	t.Run("rollback removes commit and record", func(t *testing.T) {

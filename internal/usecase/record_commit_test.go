@@ -343,6 +343,7 @@ func TestCommitDocumentReferenceInlineTargetOffline(t *testing.T) {
 type stubKVS struct {
 	keys      map[string]bool
 	setKeys   []string
+	setTTLs   map[string]time.Duration
 	addedSets []string
 }
 
@@ -352,6 +353,10 @@ func (s *stubKVS) Set(ctx context.Context, key string, value string, ttl time.Du
 		s.keys = map[string]bool{}
 	}
 	s.keys[key] = true
+	if s.setTTLs == nil {
+		s.setTTLs = map[string]time.Duration{}
+	}
+	s.setTTLs[key] = ttl
 	return nil
 }
 func (s *stubKVS) Exists(ctx context.Context, key string) (bool, error) {
@@ -584,6 +589,36 @@ func TestCommitOverwriteTombstonesOldVersion(t *testing.T) {
 			t.Fatalf("redelivery of the stored document tombstoned keys: %v", kvs.setKeys)
 		}
 	})
+}
+
+// An overwrite tombstone's TTL is anchored on the superseded version's
+// createdAt when that lies in the future (CIP-3 §3.4): a version stamped near
+// the future-skew limit must stay tombstoned past its own backdate window.
+func TestCommitOverwriteTombstoneTTLOrigin(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+	key := concrnt.CCURI{Scheme: "cckv", Owner: ccid, Key: "posts/1"}.String()
+
+	skew := 11 * time.Hour
+	old := signedRecord(t, ccid, priv, time.Now().Add(skew))
+	oldCCFS := ccfsURIOf(t, old, ccid)
+	old.CCKV = &key
+	old.CCFS = &oldCCFS
+
+	repo := &overwritableRecordRepo{key: key, existing: &old}
+	kvs := &stubKVS{}
+	uc := newRecordCommitUsecase(ccid, cfg, repo, kvs)
+
+	fresh := signedRecord(t, ccid, priv, time.Now().Add(skew+30*time.Minute))
+	if _, err := uc.Commit(context.Background(), "127.0.0.1", fresh, domain.CommitModeExecute); err != nil {
+		t.Fatalf("Commit returned error: %v", err)
+	}
+
+	want := domain.MaxBackdate + skew
+	ttl := kvs.setTTLs[tombstoneKey(oldCCFS)]
+	if ttl < want-time.Minute || ttl > want+time.Minute {
+		t.Fatalf("overwrite tombstone ttl = %v, want ~%v", ttl, want)
+	}
 }
 
 // associationRecordingRepo captures the unique key passed to CreateAssociation.

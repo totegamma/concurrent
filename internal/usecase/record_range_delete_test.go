@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -138,13 +139,18 @@ func (d *recordingDeliveryQueue) Enqueue(ctx context.Context, job domain.Deliver
 // serves them: document JSON plus CCKV and CCFS URIs.
 func subtreeRecord(t *testing.T, uri string) concrnt.SignedDocument {
 	t.Helper()
+	return subtreeRecordAt(t, uri, time.Now())
+}
+
+func subtreeRecordAt(t *testing.T, uri string, createdAt time.Time) concrnt.SignedDocument {
+	t.Helper()
 	doc := concrnt.Document[map[string]string]{
 		Kind:      "record",
 		Key:       uri,
 		Value:     map[string]string{"body": "x"},
 		Author:    "example.com",
 		Schema:    "https://example.com/item.json",
-		CreatedAt: time.Now(),
+		CreatedAt: createdAt,
 	}
 	docBytes, err := json.Marshal(doc)
 	if err != nil {
@@ -371,6 +377,81 @@ func TestCommitRejectsAsteriskInRecordKey(t *testing.T) {
 	}
 	if repo.createRecordCalled {
 		t.Fatal("CreateRecord must not be called for a key containing '*'")
+	}
+}
+
+// A committed delete tombstones the delete command itself (CIP-3 §3.4): the
+// target tombstones don't identify the command, so without it a captured
+// delete of a reusable cckv key could be replayed to remove a newer document
+// created there later.
+func TestCommitDeleteReplayIsRejected(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+	repo := &rangeDeleteRepo{subtree: []concrnt.SignedDocument{subtreeRecord(t, rangeBaseURI)}}
+	kvs := &stubKVS{}
+	uc := newRangeDeleteUsecase(ccid, cfg, repo, &denyKeysPolicyService{}, &recordingDeliveryQueue{}, kvs)
+
+	sd := signedDelete(t, ccid, priv, rangeBaseURI+"*")
+	if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+		t.Fatalf("Commit returned error: %v", err)
+	}
+
+	var deleteDoc concrnt.Document[any]
+	if err := json.Unmarshal([]byte(sd.Document), &deleteDoc); err != nil {
+		t.Fatalf("unmarshal delete document: %v", err)
+	}
+	selfCCFS := concrnt.CCURI{
+		Scheme: "ccfs",
+		Owner:  "example.com",
+		Type:   concrnt.CCFSTypeConcrnt,
+		CDID:   documentIDFor(sd.Document, deleteDoc.CreatedAt),
+	}.String()
+	if !slices.Contains(kvs.setKeys, tombstoneKey(selfCCFS)) {
+		t.Fatalf("delete command was not tombstoned, set keys: %v", kvs.setKeys)
+	}
+
+	// a fresh document has since been created at the key; replaying the
+	// captured delete must be rejected before it reaches deleteRecord
+	deletedBefore := len(repo.deletedURIs)
+	_, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute)
+	if err == nil || !strings.Contains(err.Error(), "deleted") {
+		t.Fatalf("expected replay rejection, got %v", err)
+	}
+	if len(repo.deletedURIs) != deletedBefore {
+		t.Fatalf("replayed delete removed documents: %v", repo.deletedURIs)
+	}
+}
+
+// Tombstone TTLs are anchored on the later of the processing time and the
+// affected documents' createdAt (CIP-3 §3.4): a target stamped near the
+// future-skew limit must stay tombstoned past its own backdate window, and a
+// range delete applies the latest involved timestamp to every tombstone.
+func TestCommitDeleteTombstoneTTLOrigin(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+
+	skew := 11 * time.Hour
+	repo := &rangeDeleteRepo{subtree: []concrnt.SignedDocument{
+		subtreeRecord(t, rangeBaseURI),
+		subtreeRecordAt(t, rangeBaseURI+"/a", time.Now().Add(skew)),
+	}}
+	kvs := &stubKVS{}
+	uc := newRangeDeleteUsecase(ccid, cfg, repo, &denyKeysPolicyService{}, &recordingDeliveryQueue{}, kvs)
+
+	sd := signedDelete(t, ccid, priv, rangeBaseURI+"*")
+	if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+		t.Fatalf("Commit returned error: %v", err)
+	}
+
+	// two targets + the delete command itself
+	if len(kvs.setTTLs) != 3 {
+		t.Fatalf("expected 3 tombstones, got %v", kvs.setTTLs)
+	}
+	want := domain.MaxBackdate + skew
+	for key, ttl := range kvs.setTTLs {
+		if ttl < want-time.Minute || ttl > want+time.Minute {
+			t.Fatalf("tombstone %s has ttl %v, want ~%v", key, ttl, want)
+		}
 	}
 }
 

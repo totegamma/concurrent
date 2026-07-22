@@ -205,6 +205,17 @@ func (r *RecordRepository) CreateRecord(
 		return err
 	}
 
+	// Accept-if-newer (CIP-3 §3.4), re-checked under the row lock: record_id
+	// is a time-prefixed, content-hashed, sortable CDID, so this keeps the
+	// newer document and breaks exact-createdAt ties deterministically. The
+	// usecase-level check is read-then-write and only an optimization; this
+	// one is authoritative. Older-or-equal documents are a silent no-op — in
+	// particular the GC below must never fire for them, since it would collect
+	// the live newer record.
+	if oldRecordKey.RecordID != nil && documentID <= *oldRecordKey.RecordID {
+		return nil
+	}
+
 	// ParentのRecordKeyを探す
 	parentRK, err := getOrCreateParentRecordKey(ctx, db, key)
 	if err != nil {
@@ -230,9 +241,14 @@ func (r *RecordRepository) CreateRecord(
 		CleanOnUpdate:   cleanOnUpdate,
 	}
 
+	// The conditional update covers the row-not-found race two concurrent
+	// first writers can hit (no row existed to lock above): whoever loses the
+	// insert falls into DO UPDATE, which must still be newer-wins. A NULL
+	// record_id is a parent placeholder row and always loses to a real record.
 	err = db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "uri"}},
 		DoUpdates: clause.Assignments(map[string]any{"record_id": documentID, "parent_id": pid, "record_created_at": createdAt, "clean_on_update": cleanOnUpdate}),
+		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("record_keys.record_id IS NULL OR record_keys.record_id < excluded.record_id")}},
 	}).Create(&rk).Error
 	if err != nil {
 		span.RecordError(err)

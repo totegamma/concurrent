@@ -1191,6 +1191,34 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 		return nil, err
 	}
 
+	// Accept-if-newer (CIP-3 §3.4), same as saveEntity: a key overwrite only
+	// happens when the incoming documentID (time-prefixed sortable CDID) is
+	// greater than the stored one. Older-or-equal replays succeed as a no-op —
+	// no storage, no tombstone, no delivery — so a captured old version can't
+	// roll the key back and tombstone the live document. CreateRecord re-checks
+	// the same ordering under a row lock as the authoritative guard.
+	if existingSD != nil && documentID <= documentIDFor(existingSD.Document, existingDoc.CreatedAt) {
+		parsedKey, err := concrnt.ParseCCURI(parsed.Key)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+		owners, err := uc.localCommitOwners(ctx, parsedKey.Owner)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+		sd.CCKV = &parsed.Key
+		ccfs := concrnt.CCURI{
+			Scheme: "ccfs",
+			Owner:  parsedKey.Owner,
+			Type:   concrnt.CCFSTypeConcrnt,
+			CDID:   documentID,
+		}.String()
+		sd.CCFS = &ccfs
+		return &commitApplyResult{result: &sd, owners: owners}, nil
+	}
+
 	err = uc.policy.Eval(
 		ctx,
 		policy.RequestContext{

@@ -40,20 +40,20 @@ func TestRecordRepositoryWrites(t *testing.T) {
 			Distributes: &distributions,
 		})
 		onUpdate := "forget"
-		withRepositoryTx(t, ctx, repo, "record-old", "127.0.0.1", oldSD, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
-			return repo.CreateRecord(ctx, tx, "record-old", key, "con1owner", "https://schema.example/post.json", &onUpdate, nil, distributions, nil, createdAt)
+		withRepositoryTx(t, ctx, repo, "record-1", "127.0.0.1", oldSD, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
+			return repo.CreateRecord(ctx, tx, "record-1", key, "con1owner", "https://schema.example/post.json", &onUpdate, nil, distributions, nil, createdAt)
 		})
 
 		var commit models.CommitLog
-		require.NoError(t, db.Where("id = ?", "record-old").Take(&commit).Error)
+		require.NoError(t, db.Where("id = ?", "record-1").Take(&commit).Error)
 		require.Equal(t, oldSD.Document, commit.Document)
 		require.JSONEq(t, `{"type":"none"}`, commit.Proof)
 		require.False(t, commit.GcCandidate)
 
-		requireCommitOwner(t, db, "record-old", "con1owner")
+		requireCommitOwner(t, db, "record-1", "con1owner")
 
 		var record models.Record
-		require.NoError(t, db.Where("document_id = ?", "record-old").Take(&record).Error)
+		require.NoError(t, db.Where("document_id = ?", "record-1").Take(&record).Error)
 		require.Equal(t, "con1owner", record.Owner)
 		require.Equal(t, "https://schema.example/post.json", record.Schema)
 		require.Equal(t, distributions, []string(record.Distributions))
@@ -62,7 +62,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		var recordKey models.RecordKey
 		require.NoError(t, db.Where("uri = ?", key).Take(&recordKey).Error)
 		require.NotNil(t, recordKey.RecordID)
-		require.Equal(t, "record-old", *recordKey.RecordID)
+		require.Equal(t, "record-1", *recordKey.RecordID)
 		require.NotNil(t, recordKey.RecordCreatedAt)
 		require.True(t, recordKey.RecordCreatedAt.Equal(createdAt))
 
@@ -80,27 +80,54 @@ func TestRecordRepositoryWrites(t *testing.T) {
 			Schema:    "https://schema.example/post.v2.json",
 			CreatedAt: newCreatedAt,
 		})
-		withRepositoryTx(t, ctx, repo, "record-new", "127.0.0.1", newSD, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
-			return repo.CreateRecord(ctx, tx, "record-new", key, "con1owner", "https://schema.example/post.v2.json", &onUpdate, nil, []string{}, nil, newCreatedAt)
+		withRepositoryTx(t, ctx, repo, "record-2", "127.0.0.1", newSD, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
+			return repo.CreateRecord(ctx, tx, "record-2", key, "con1owner", "https://schema.example/post.v2.json", &onUpdate, nil, []string{}, nil, newCreatedAt)
 		})
 
 		require.NoError(t, db.Where("uri = ?", key).Take(&recordKey).Error)
 		require.NotNil(t, recordKey.RecordID)
-		require.Equal(t, "record-new", *recordKey.RecordID)
+		require.Equal(t, "record-2", *recordKey.RecordID)
 		require.NotNil(t, recordKey.RecordCreatedAt)
 		require.True(t, recordKey.RecordCreatedAt.Equal(newCreatedAt))
 
-		require.NoError(t, db.Where("id = ?", "record-old").Take(&commit).Error)
+		require.NoError(t, db.Where("id = ?", "record-1").Take(&commit).Error)
 		require.True(t, commit.GcCandidate)
 
 		var oldRecordCount int64
-		require.NoError(t, db.Model(&models.Record{}).Where("document_id = ?", "record-old").Count(&oldRecordCount).Error)
+		require.NoError(t, db.Model(&models.Record{}).Where("document_id = ?", "record-1").Count(&oldRecordCount).Error)
 		require.Zero(t, oldRecordCount)
 
 		var newRecord models.Record
-		require.NoError(t, db.Where("document_id = ?", "record-new").Take(&newRecord).Error)
+		require.NoError(t, db.Where("document_id = ?", "record-2").Take(&newRecord).Error)
 		require.Equal(t, "https://schema.example/post.v2.json", newRecord.Schema)
 		require.True(t, newRecord.CreatedAt.Equal(newCreatedAt))
+	})
+
+	t.Run("older document is a no-op", func(t *testing.T) {
+		// accept-if-newer (CIP-3 §3.4): "record-0" sorts before the stored
+		// "record-2", so this write must not take effect nor GC the live record
+		staleCreatedAt := time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC)
+		staleSD := repositorySignedDocument(t, concrnt.Document[map[string]string]{
+			Kind:      "record",
+			Key:       key,
+			Value:     map[string]string{"body": "stale"},
+			Author:    "con1author",
+			Schema:    "https://schema.example/post.json",
+			CreatedAt: staleCreatedAt,
+		})
+		onUpdate := "forget"
+		withRepositoryTx(t, ctx, repo, "record-0", "127.0.0.1", staleSD, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
+			return repo.CreateRecord(ctx, tx, "record-0", key, "con1owner", "https://schema.example/post.json", &onUpdate, nil, []string{}, nil, staleCreatedAt)
+		})
+
+		var recordKey models.RecordKey
+		require.NoError(t, db.Where("uri = ?", key).Take(&recordKey).Error)
+		require.NotNil(t, recordKey.RecordID)
+		require.Equal(t, "record-2", *recordKey.RecordID)
+
+		var commit models.CommitLog
+		require.NoError(t, db.Where("id = ?", "record-2").Take(&commit).Error)
+		require.False(t, commit.GcCandidate)
 	})
 
 	t.Run("create reference record", func(t *testing.T) {

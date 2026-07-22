@@ -591,6 +591,53 @@ func TestCommitOverwriteTombstonesOldVersion(t *testing.T) {
 	})
 }
 
+// Accept-if-newer (CIP-3 §3.4): an older document arriving at a key holding a
+// newer one succeeds as a no-op — the stored document stays and nothing is
+// tombstoned — so a captured old version can't roll the key back and tombstone
+// the live document. An identical redelivery is likewise a no-op.
+func TestCommitRecordAcceptIfNewer(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+	key := concrnt.CCURI{Scheme: "cckv", Owner: ccid, Key: "posts/1"}.String()
+
+	stored := signedRecord(t, ccid, priv, time.Now())
+	storedCCFS := ccfsURIOf(t, stored, ccid)
+	stored.CCKV = &key
+	stored.CCFS = &storedCCFS
+
+	t.Run("older document is a no-op", func(t *testing.T) {
+		repo := &overwritableRecordRepo{key: key, existing: &stored}
+		kvs := &stubKVS{}
+		uc := newRecordCommitUsecase(ccid, cfg, repo, kvs)
+
+		old := signedRecord(t, ccid, priv, time.Now().Add(-time.Hour))
+		result, err := uc.Commit(context.Background(), "127.0.0.1", old, domain.CommitModeExecute)
+		if err != nil {
+			t.Fatalf("Commit returned error: %v", err)
+		}
+		if repo.createRecordCalled {
+			t.Fatal("CreateRecord must not be called for an older document")
+		}
+		if len(kvs.setKeys) != 0 {
+			t.Fatalf("no tombstone may be set for an older document, got %v", kvs.setKeys)
+		}
+		if result == nil || result.CCKV == nil || *result.CCKV != key {
+			t.Fatalf("unexpected result: %+v", result)
+		}
+	})
+
+	t.Run("identical redelivery is a no-op", func(t *testing.T) {
+		repo := &overwritableRecordRepo{key: key, existing: &stored}
+		uc := newRecordCommitUsecase(ccid, cfg, repo, &stubKVS{})
+		if _, err := uc.Commit(context.Background(), "127.0.0.1", stored, domain.CommitModeExecute); err != nil {
+			t.Fatalf("Commit returned error: %v", err)
+		}
+		if repo.createRecordCalled {
+			t.Fatal("CreateRecord must not be called for an identical redelivery")
+		}
+	})
+}
+
 // An overwrite tombstone's TTL is anchored on the superseded version's
 // createdAt when that lies in the future (CIP-3 §3.4): a version stamped near
 // the future-skew limit must stay tombstoned past its own backdate window.

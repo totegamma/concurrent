@@ -125,7 +125,7 @@ func (h *Handler) RegisterRoutes(app *echo.Echo, e *echo.Group) {
 	// api.GET("/internal/signal/subscriptions", h.handleCurrentSubs)
 	// api.OPTIONS("/internal/signal/subscriptions", h.handleNop)
 
-	api.POST("/batch", batchHandler(app, h.chunklineItrBatchHandler()))
+	api.POST("/batch", batchHandler(app, h.config.FQDN, h.chunklineItrBatchHandler()))
 
 }
 

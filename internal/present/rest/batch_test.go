@@ -1,9 +1,12 @@
 package rest
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"fmt"
+	"io"
+	"mime"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -152,6 +155,158 @@ func TestChunklineItrMissingIsNotFound(t *testing.T) {
 }
 
 var _ usecase.ChunklineRepository = (*batchChunklineRepo)(nil)
+
+// CIP-14 §5: a duplicate Content-ID rejects the whole batch with a 400 before
+// any part is executed.
+func TestBatchHandlerRejectsDuplicateContentID(t *testing.T) {
+	repo := &batchChunklineRepo{}
+	handler := NewHandler(
+		domain.Config{},
+		nil,
+		nil,
+		usecase.NewChunklineUsecase(repo, nil, nil),
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	app := echo.New()
+	handler.RegisterRoutes(app, app.Group(""))
+
+	server := httptest.NewServer(app)
+	t.Cleanup(server.Close)
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	for range 2 {
+		pw, err := mw.CreatePart(textproto.MIMEHeader{
+			"Content-Type": {"application/http"},
+			"Content-ID":   {"dup"},
+		})
+		require.NoError(t, err)
+		_, err = fmt.Fprintf(pw, "GET %s/chunkline/itr/100?uri=cckv://example.test/timeline/0 HTTP/1.1\r\nHost: example.test\r\n\r\n", apiPrefix)
+		require.NoError(t, err)
+	}
+	require.NoError(t, mw.Close())
+
+	batchPath, err := concrnt.RenderURITemplate(Endpoints["net.concrnt.core.batch"], map[string]string{})
+	require.NoError(t, err)
+
+	resp, err := server.Client().Post(server.URL+batchPath, "multipart/mixed; boundary="+mw.Boundary(), &buf)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusBadRequest, resp.StatusCode)
+	require.Empty(t, repo.calls, "no part should be dispatched")
+}
+
+// CIP-14 §8: authentication is evaluated once on the outer request —
+// credential headers inside parts are stripped before dispatch, so a part
+// cannot smuggle its own identity.
+func TestBatchHandlerStripsPartCredentials(t *testing.T) {
+	handler := NewHandler(
+		domain.Config{},
+		nil,
+		nil,
+		usecase.NewChunklineUsecase(&batchChunklineRepo{}, nil, nil),
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	app := echo.New()
+	handler.RegisterRoutes(app, app.Group(""))
+	app.GET("/echo-auth", func(c echo.Context) error {
+		return c.String(http.StatusOK, c.Request().Header.Get("Authorization"))
+	})
+
+	server := httptest.NewServer(app)
+	t.Cleanup(server.Close)
+
+	req0, err := http.NewRequest("GET", server.URL+"/echo-auth", nil)
+	require.NoError(t, err)
+	req0.Header.Set("Authorization", "Bearer sneaky-part-token")
+
+	batchPath, err := concrnt.RenderURITemplate(Endpoints["net.concrnt.core.batch"], map[string]string{})
+	require.NoError(t, err)
+
+	responses, err := client.DoBatchRequestWithClient(context.Background(), server.Client(), server.URL+batchPath, map[string]*http.Request{"0": req0})
+	require.NoError(t, err)
+	require.Len(t, responses, 1)
+	require.Equal(t, http.StatusOK, responses["0"].StatusCode)
+
+	body, err := io.ReadAll(responses["0"].Body)
+	require.NoError(t, err)
+	require.Empty(t, string(body), "part Authorization header must be stripped before dispatch")
+}
+
+// CIP-14 §5: an absolute-form part target is only accepted when its host is
+// this server's own FQDN (converted to origin-form); other hosts fail with a
+// per-part error — the batch endpoint is not a proxy.
+func TestBatchHandlerAbsoluteFormTargets(t *testing.T) {
+	repo := &batchChunklineRepo{}
+	handler := NewHandler(
+		domain.Config{FQDN: "example.test"},
+		nil,
+		nil,
+		usecase.NewChunklineUsecase(repo, nil, nil),
+		nil,
+		nil,
+		nil,
+		nil,
+	)
+
+	app := echo.New()
+	handler.RegisterRoutes(app, app.Group(""))
+
+	server := httptest.NewServer(app)
+	t.Cleanup(server.Close)
+
+	var buf bytes.Buffer
+	mw := multipart.NewWriter(&buf)
+	writePart := func(contentID, target string) {
+		pw, err := mw.CreatePart(textproto.MIMEHeader{
+			"Content-Type": {"application/http"},
+			"Content-ID":   {contentID},
+		})
+		require.NoError(t, err)
+		_, err = fmt.Fprintf(pw, "GET %s HTTP/1.1\r\nHost: example.test\r\n\r\n", target)
+		require.NoError(t, err)
+	}
+	itrPath := apiPrefix + "/chunkline/itr/100?uri=cckv://example.test/timeline/0"
+	writePart("own", "http://example.test"+itrPath)
+	writePart("foreign", "http://other.example.net"+itrPath)
+	require.NoError(t, mw.Close())
+
+	batchPath, err := concrnt.RenderURITemplate(Endpoints["net.concrnt.core.batch"], map[string]string{})
+	require.NoError(t, err)
+
+	resp, err := server.Client().Post(server.URL+batchPath, "multipart/mixed; boundary="+mw.Boundary(), &buf)
+	require.NoError(t, err)
+	defer resp.Body.Close()
+	require.Equal(t, http.StatusOK, resp.StatusCode)
+
+	_, params, err := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	require.NoError(t, err)
+	mr := multipart.NewReader(resp.Body, params["boundary"])
+
+	statuses := map[string]int{}
+	for {
+		part, err := mr.NextPart()
+		if err == io.EOF {
+			break
+		}
+		require.NoError(t, err)
+		pr, err := http.ReadResponse(bufio.NewReader(part), nil)
+		require.NoError(t, err)
+		statuses[part.Header.Get("Content-ID")] = pr.StatusCode
+		pr.Body.Close()
+	}
+
+	require.Equal(t, http.StatusOK, statuses["own"], "own-host absolute-form target must be served")
+	require.Equal(t, http.StatusMisdirectedRequest, statuses["foreign"], "foreign-host absolute-form target must be rejected")
+}
 
 // A batch carrying more than maxBatchParts application/http parts is rejected
 // with a 400 before any part is dispatched.

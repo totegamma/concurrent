@@ -20,6 +20,7 @@ const maxBatchParts = 1024
 type batchRequestPart struct {
 	contentID string
 	request   *http.Request
+	reject    *http.Response // pre-resolved error response, skips dispatch
 }
 
 type batchCustomHandler struct {
@@ -27,7 +28,7 @@ type batchCustomHandler struct {
 	handle func(req *http.Request, parts []batchRequestPart) map[string]*http.Response
 }
 
-func batchHandler(app *echo.Echo, customHandlers ...batchCustomHandler) echo.HandlerFunc {
+func batchHandler(app *echo.Echo, fqdn string, customHandlers ...batchCustomHandler) echo.HandlerFunc {
 	return func(c echo.Context) error {
 		req := c.Request()
 		ct := req.Header.Get("Content-Type")
@@ -45,6 +46,7 @@ func batchHandler(app *echo.Echo, customHandlers ...batchCustomHandler) echo.Han
 		mr := multipart.NewReader(req.Body, boundary)
 
 		parts := make([]batchRequestPart, 0)
+		seenContentIDs := make(map[string]bool)
 
 		for {
 			part, err := mr.NextPart()
@@ -61,6 +63,14 @@ func batchHandler(app *echo.Echo, customHandlers ...batchCustomHandler) echo.Han
 			}
 			contentID := part.Header.Get("Content-ID")
 
+			// CIP-14 §5: Content-IDs must be unique — a duplicate rejects the
+			// whole batch before any part is executed (this loop runs to
+			// completion before dispatch starts)
+			if seenContentIDs[contentID] {
+				return echo.NewHTTPError(http.StatusBadRequest, "duplicate Content-ID in batch")
+			}
+			seenContentIDs[contentID] = true
+
 			reader := bufio.NewReader(part)
 
 			pr, err := http.ReadRequest(reader)
@@ -73,9 +83,32 @@ func batchHandler(app *echo.Echo, customHandlers ...batchCustomHandler) echo.Han
 				return echo.NewHTTPError(http.StatusBadRequest, fmt.Sprintf("batch exceeds the maximum of %d parts", maxBatchParts))
 			}
 
+			// CIP-14 §8: authentication is evaluated once on the outer request
+			// (whose context each part inherits below); credential headers
+			// inside parts are stripped so they can't re-run the auth
+			// middleware with a different identity.
+			pr.Header.Del("Authorization")
+			pr.Header.Del("Cookie")
+
+			// CIP-14 §5: an absolute-form target must point at this server —
+			// the batch endpoint is not a proxy for other hosts (SSRF
+			// prevention). Matching targets are converted to origin-form;
+			// others fail with a per-part error.
+			var reject *http.Response
+			if pr.URL.IsAbs() {
+				if strings.EqualFold(pr.URL.Hostname(), fqdn) {
+					pr.URL.Scheme = ""
+					pr.URL.Host = ""
+					pr.RequestURI = pr.URL.RequestURI()
+				} else {
+					reject = newBatchTextResponse(http.StatusMisdirectedRequest, "absolute-form target does not match this server")
+				}
+			}
+
 			parts = append(parts, batchRequestPart{
 				contentID: contentID,
 				request:   pr.WithContext(req.Context()),
+				reject:    reject,
 			})
 		}
 
@@ -92,6 +125,10 @@ func batchHandler(app *echo.Echo, customHandlers ...batchCustomHandler) echo.Han
 		defaultParts := make([]batchRequestPart, 0, len(parts))
 
 		for _, part := range parts {
+			if part.reject != nil {
+				responses[part.contentID] = part.reject
+				continue
+			}
 			handled := false
 			for i, handler := range customHandlers {
 				if handler.match(part.request) {

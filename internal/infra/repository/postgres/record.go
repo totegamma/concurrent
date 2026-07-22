@@ -466,9 +466,13 @@ func (r *RecordRepository) GetHierarchicalRecordPolicies(ctx context.Context, ur
 		}
 	}
 
+	// CIP-12 §5.3: layers are emitted root-first, the target resource itself
+	// last (hierarchy is already built [root, ..., leaf]). With the evaluator's
+	// strong=first-wins / weak=last-wins folding this makes strong conclusions
+	// prefer the outer (global-side) layers and weak conclusions the resource
+	// itself.
 	policies := []concrnt.Policy{}
-	for i := len(hierarchy) - 1; i >= 0; i-- {
-		uri := hierarchy[i]
+	for _, uri := range hierarchy {
 		if t, ok := tupleMap[uri]; ok {
 			var policyDoc concrnt.Policy
 			err := json.Unmarshal([]byte(*t.Policy), &policyDoc)

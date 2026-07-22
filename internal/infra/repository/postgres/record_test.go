@@ -608,6 +608,50 @@ func TestRecordSubtreeQueryAndDelete(t *testing.T) {
 
 }
 
+// CIP-12 §5.3: the hierarchical policy stack is emitted root-first with the
+// target resource itself last.
+func TestHierarchicalRecordPoliciesRootFirst(t *testing.T) {
+	db, cleanup := testutil.CreateDB()
+	t.Cleanup(cleanup)
+
+	ctx := context.Background()
+	repo := NewRecordRepository(db)
+
+	policyJSON := `{"entries":[{"url":"https://example.com/p.json"}]}`
+	keys := []string{
+		"cckv://con1powner/l1",
+		"cckv://con1powner/l1/l2",
+		"cckv://con1powner/l1/l2/l3",
+	}
+	for i, key := range keys {
+		id := fmt.Sprintf("policy-record-%d", i)
+		createdAt := time.Date(2026, 6, 1, 0, 0, i, 0, time.UTC)
+		sd := repositorySignedDocument(t, concrnt.Document[map[string]string]{
+			Kind:      "record",
+			Key:       key,
+			Value:     map[string]string{"body": "x"},
+			Author:    "con1powner",
+			Schema:    "https://schema.example/post.json",
+			CreatedAt: createdAt,
+		})
+		p := policyJSON
+		withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, []string{"con1powner"}, func(tx usecase.RepositoryTx) error {
+			applied, err := repo.CreateRecord(ctx, tx, id, key, "con1powner", "https://schema.example/post.json", nil, &p, []string{}, nil, createdAt)
+			require.True(t, applied)
+			return err
+		})
+	}
+
+	stack, err := repo.GetHierarchicalRecordPolicies(ctx, keys[2])
+	require.NoError(t, err)
+
+	sources := make([]string, len(stack))
+	for i, layer := range stack {
+		sources[i] = layer.Source
+	}
+	require.Equal(t, keys, sources, "layers must be emitted root-first, self last")
+}
+
 func withRepositoryTx(t *testing.T, ctx context.Context, repo usecase.RecordRepository, id string, ip string, sd concrnt.SignedDocument, owners []string, fn func(tx usecase.RepositoryTx) error) {
 	t.Helper()
 

@@ -296,3 +296,34 @@ func TestEvaluateStackAggregatesReasons(t *testing.T) {
 	assert.Equal(t, DENY, conclusion)
 	assert.Contains(t, gotReason, reason)
 }
+
+// CIP-12 §5.3/§6.3: the stack evaluates global → root → … → self. Strong
+// conclusions (allow/deny) are first-wins, so the outer (global-side) layer
+// wins; weak conclusions (ok/ng) are last-wins, so the layer closest to the
+// resource itself wins.
+func TestEvaluateStackOrderSemantics(t *testing.T) {
+	alwaysTrue := Expr{Operator: "IsNotEmpty", Args: []Expr{{Operator: "Const", Const: "x"}}}
+	emit := func(c Conclusion) Policy {
+		return Policy{Statements: []Statement{{Action: "record:read", Key: "*", Emit: c, Condition: alwaysTrue}}}
+	}
+
+	t.Run("weak ng on the ancestor loses to weak ok on self", func(t *testing.T) {
+		stack := PolicyStack{
+			{{Policy: emit(NG)}}, // ancestor (outer)
+			{{Policy: emit(OK)}}, // the resource itself (last)
+		}
+		conclusion, _, err := EvaluateStack(context.Background(), RequestContext{}, stack, "record:read", "cckv://owner/key")
+		assert.NoError(t, err)
+		assert.Equal(t, OK, conclusion)
+	})
+
+	t.Run("strong deny on the outer layer beats allow on self", func(t *testing.T) {
+		stack := PolicyStack{
+			{{Policy: emit(DENY)}},  // global (first)
+			{{Policy: emit(ALLOW)}}, // the resource itself
+		}
+		conclusion, _, err := EvaluateStack(context.Background(), RequestContext{}, stack, "record:read", "cckv://owner/key")
+		assert.NoError(t, err)
+		assert.Equal(t, DENY, conclusion)
+	})
+}

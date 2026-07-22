@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"encoding/hex"
 	"encoding/json"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -808,6 +809,60 @@ func TestCommitAssociationUniqueIncludesBody(t *testing.T) {
 	}
 	if repo.uniques[0] != repo.uniques[2] {
 		t.Fatal("associations with identical bodies must share a unique key")
+	}
+}
+
+// capturingPolicyService records every evaluation's action and context.
+type capturingPolicyService struct {
+	actions  []string
+	contexts []policy.RequestContext
+}
+
+func (p *capturingPolicyService) Eval(ctx context.Context, req policy.RequestContext, stack []concrnt.Policy, action string, key string) error {
+	p.actions = append(p.actions, action)
+	p.contexts = append(p.contexts, req)
+	return nil
+}
+
+// CIP-12 §5.3.0: updating a key evaluates the *stored* document as self — the
+// submitted document (and any permissive policy field it carries) must not
+// influence its own authorization.
+func TestCommitUpdateEvaluatesStoredSelf(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+
+	storedAt := time.Now().Add(-time.Hour).UTC().Truncate(time.Second)
+	stored := signedRecord(t, ccid, priv, storedAt)
+
+	repo := &recordingRecordRepo{storedSD: &stored}
+	pol := &capturingPolicyService{}
+	uc := NewRecordUsecase(
+		repo,
+		fixedResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: cfg.FQDN}},
+		newTestServerUsecase(cfg),
+		cfg,
+		nil,
+		nopSignalService{},
+		pol,
+		nil,
+		nil,
+	)
+
+	fresh := signedRecord(t, ccid, priv, time.Now())
+	if _, err := uc.Commit(context.Background(), "127.0.0.1", fresh, domain.CommitModeExecute); err != nil {
+		t.Fatalf("Commit returned error: %v", err)
+	}
+
+	idx := slices.Index(pol.actions, "record:update")
+	if idx < 0 {
+		t.Fatalf("expected a record:update evaluation, got %v", pol.actions)
+	}
+	self, ok := pol.contexts[idx].Self.(concrnt.Document[any])
+	if !ok {
+		t.Fatalf("unexpected self type %T", pol.contexts[idx].Self)
+	}
+	if !self.CreatedAt.Equal(storedAt) {
+		t.Fatalf("policy self must be the stored document (createdAt %v), got %v", storedAt, self.CreatedAt)
 	}
 }
 

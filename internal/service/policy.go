@@ -128,71 +128,55 @@ func (s *PolicyService) resolvePolicyStack(ctx context.Context, stack []concrnt.
 	ctx, span := tracer.Start(ctx, "Policy.Service.resolvePolicyStack")
 	defer span.End()
 
-	var prepend *concrnt.Policy
-
-	// insert virtual parent
-	for i, layer := range stack {
-		if layer.VirtualParents == nil {
-			continue
-		}
-
-		insertEntries := func(entries []concrnt.PolicyEntry) {
-			if i == 0 {
-				if prepend == nil {
-					// generate parent url
-					split := strings.Split(layer.Source, "/")
-					if len(split) == 0 {
-						span.AddEvent("invalid policy source format", trace.WithAttributes(attribute.String("source", layer.Source)))
-						return
-					}
-
-					parentURL := strings.Join(split[:len(split)-1], "/")
-
-					prepend = &concrnt.Policy{
-						Source:  parentURL,
-						Entries: entries,
-					}
-				} else {
-					prepend.Entries = append(prepend.Entries, entries...)
-				}
+	// CIP-12 §5.3: a virtual parent (the declaring resource's distribution
+	// destinations) forms its own layer inserted immediately before the layer
+	// that declares it — one layer per hierarchy level, never merged into an
+	// ancestor's. Its Source is the declaring layer's parent path, so the
+	// referenced policy's relative keys ('.', '*', './*') rewrite to a prefix
+	// that matches the evaluated record key.
+	resolved := make([]concrnt.Policy, 0, len(stack))
+	for _, layer := range stack {
+		if layer.VirtualParents != nil && len(*layer.VirtualParents) > 0 {
+			split := strings.Split(layer.Source, "/")
+			if len(split) == 0 {
+				span.AddEvent("invalid policy source format", trace.WithAttributes(attribute.String("source", layer.Source)))
 			} else {
-				stack[i-1].Entries = append(stack[i-1].Entries, entries...)
+				virtual := concrnt.Policy{Source: strings.Join(split[:len(split)-1], "/")}
+				for _, parent := range *layer.VirtualParents {
+					var doc concrnt.Document[any]
+					// The virtual-parent policy record itself is not sensitive data
+					// used for anything but building the evaluation stack, so strict
+					// signature verification is unnecessary here. It is cached (10-min
+					// resource TTL): every commit distributed to a timeline evaluates
+					// this policy, so an uncached fetch here means one HTTP round trip
+					// per distribution — bulk imports would otherwise hammer it (and,
+					// via gateway remapping, the server itself). A timeline policy
+					// change taking up to the cache TTL to apply is acceptable.
+					err := s.client.GetRecord(ctx, parent, &client.Options{SkipVerify: true}, &doc)
+					if err != nil {
+						span.RecordError(err)
+						virtual.Entries = append(virtual.Entries, concrnt.PolicyEntry{Errored: true})
+						continue
+					}
+
+					if doc.Policy == nil {
+						span.AddEvent("policy reference has no policies", trace.WithAttributes(attribute.String("ref", parent)))
+						continue
+					}
+
+					virtual.Entries = append(virtual.Entries, doc.Policy.Entries...)
+				}
+				if len(virtual.Entries) > 0 {
+					resolved = append(resolved, virtual)
+				}
 			}
 		}
-
-		for _, parent := range *layer.VirtualParents {
-			var doc concrnt.Document[any]
-			// The virtual-parent policy record itself is not sensitive data
-			// used for anything but building the evaluation stack, so strict
-			// signature verification is unnecessary here. It is cached (10-min
-			// resource TTL): every commit distributed to a timeline evaluates
-			// this policy, so an uncached fetch here means one HTTP round trip
-			// per distribution — bulk imports would otherwise hammer it (and,
-			// via gateway remapping, the server itself). A timeline policy
-			// change taking up to the cache TTL to apply is acceptable.
-			err := s.client.GetRecord(ctx, parent, &client.Options{SkipVerify: true}, &doc)
-			if err != nil {
-				span.RecordError(err)
-				insertEntries([]concrnt.PolicyEntry{{Errored: true}})
-				continue
-			}
-
-			if doc.Policy == nil {
-				span.AddEvent("policy reference has no policies", trace.WithAttributes(attribute.String("ref", parent)))
-				continue
-			}
-
-			insertEntries(doc.Policy.Entries)
-		}
-	}
-
-	if prepend != nil {
-		stack = append([]concrnt.Policy{*prepend}, stack...)
+		resolved = append(resolved, layer)
 	}
 
 	result := policy.PolicyStack{}
 
-	for _, layer := range stack {
+	for _, layer := range resolved {
 		policyLayer := []policy.EvaluationSet{}
 		for _, p := range layer.Entries {
 
@@ -290,13 +274,11 @@ func (s *PolicyService) Eval(ctx context.Context, req policy.RequestContext, sta
 	policyStack = append(policyStack, additionalStack...)
 
 	requestContext := policy.RequestContext{
-		Requester:       req.Requester,
-		RequesterDomain: req.RequesterDomain,
-		Parent:          req.Parent,
-		Self:            req.Self,
-		Params:          req.Params,
-		Globals:         s.globalParameters,
-		Caller:          s,
+		Requester: req.Requester,
+		Self:      req.Self,
+		Params:    req.Params,
+		Globals:   s.globalParameters,
+		Caller:    s,
 	}
 
 	conclusion, reason, error := policy.EvaluateStack(ctx, requestContext, policyStack, action, key)

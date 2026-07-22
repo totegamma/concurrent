@@ -34,10 +34,16 @@ type RecordRepository interface {
 	// CreateEntity reports whether the upsert applied — false when the stored
 	// entity already carries a newer-or-equal documentID (accept-if-newer).
 	CreateEntity(ctx context.Context, tx RepositoryTx, ccid string, alias *string, domain string, documentID string) (bool, error)
-	CreateRecord(ctx context.Context, tx RepositoryTx, documentID string, key string, owner string, schema string, onUpdate *string, policies *string, distributions []string, redirect *string, createdAt time.Time) error
+	// CreateRecord reports whether the write applied — false when the key's
+	// stored record already carries a newer-or-equal documentID
+	// (accept-if-newer).
+	CreateRecord(ctx context.Context, tx RepositoryTx, documentID string, key string, owner string, schema string, onUpdate *string, policies *string, distributions []string, redirect *string, createdAt time.Time) (bool, error)
 	CreateAssociation(ctx context.Context, tx RepositoryTx, documentID string, targetURI string, owner string, author string, schema string, variant *string, unique string, createdAt time.Time) (bool, error)
-	Acknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) error
-	UnAcknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) error
+	// Acknowledge / UnAcknowledge report whether the transition applied —
+	// false when the stored (from, to, schema) state already carries a
+	// newer-or-equal documentID (accept-if-newer).
+	Acknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error)
+	UnAcknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error)
 	DeleteRecordByKey(ctx context.Context, tx RepositoryTx, targetURI string) error
 	DeleteRecordByDocumentID(ctx context.Context, tx RepositoryTx, documentID string) error
 	DeleteAssociation(ctx context.Context, tx RepositoryTx, documentID string) error
@@ -1082,6 +1088,18 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 			span.RecordError(err)
 			return nil, err
 		}
+		// Accept-if-newer fast path (CIP-3 §3.4), same rule as saveEntity: a
+		// document only replaces the stored one when its documentID (time-
+		// prefixed, content-hashed CDID) is greater. Older-or-equal replays
+		// succeed as a no-op before policy eval and key validation, so a stale
+		// replay can't fail on checks that changed since — and, critically,
+		// can't roll the key back or tombstone the newer stored version.
+		// CreateRecord re-checks the same ordering under the RecordKey row
+		// lock, so this check is only an optimization, not the authoritative
+		// guard against concurrent writers.
+		if documentID <= documentIDFor(existingSD.Document, existingDoc.CreatedAt) {
+			return &commitApplyResult{result: &sd, noop: true}, nil
+		}
 		action = "record:update"
 		policySelf = existingDoc
 	} else if !errors.Is(err, domain.ErrNotFound) {
@@ -1185,10 +1203,16 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 	}
 
 	resultURI := parsed.Key
-	err = uc.repo.CreateRecord(ctx, tx, documentID, parsed.Key, parsedKey.Owner, schema, parsed.OnUpdate, policies, distributions, redirect, createdAt)
+	applied, err := uc.repo.CreateRecord(ctx, tx, documentID, parsed.Key, parsedKey.Owner, schema, parsed.OnUpdate, policies, distributions, redirect, createdAt)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
+	}
+	// A concurrent commit won the key between the fast-path check above and
+	// the row lock: the stored record is newer-or-equal, so this one is the
+	// same accept-if-newer no-op as the fast path.
+	if !applied {
+		return &commitApplyResult{result: &sd, noop: true}, nil
 	}
 
 	postProcesses := []PostProcessAction{}
@@ -1467,6 +1491,7 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 	ctx, span := tracer.Start(ctx, "Usecase.Record.Acknowledge")
 	defer span.End()
 
+	applied := true
 	if uc.IsLocalEntity(ctx, &requester) || uc.IsLocalEntity(ctx, &targetUser) {
 		parsedAssociate, err := concrnt.ParseCCURI(*doc.Associate)
 		if err != nil {
@@ -1479,11 +1504,18 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 			return nil, err
 		}
 
-		err = uc.repo.Acknowledge(ctx, tx, documentID, doc.Author, parsedAssociate.Owner, doc.Schema, doc.CreatedAt)
+		applied, err = uc.repo.Acknowledge(ctx, tx, documentID, doc.Author, parsedAssociate.Owner, doc.Schema, doc.CreatedAt)
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
 		}
+	}
+
+	// CIP-10 §4 accept-if-newer loss: the stored (from, to, schema) state
+	// already carries a newer-or-equal document, so this one changes nothing —
+	// no proxy delivery, no distribution, and the commit tx rolls back.
+	if !applied {
+		return &commitApplyResult{result: &sd, noop: true}, nil
 	}
 
 	ccfs := concrnt.CCURI{
@@ -1547,6 +1579,7 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, doc
 	ctx, span := tracer.Start(ctx, "Usecase.Record.UnAcknowledge")
 	defer span.End()
 
+	applied := true
 	if uc.IsLocalEntity(ctx, &requester) || uc.IsLocalEntity(ctx, &targetUser) {
 		parsedAssociate, err := concrnt.ParseCCURI(*doc.Associate)
 		if err != nil {
@@ -1559,11 +1592,17 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, doc
 			return nil, err
 		}
 
-		err = uc.repo.UnAcknowledge(ctx, tx, documentID, doc.Author, parsedAssociate.Owner, doc.Schema, doc.CreatedAt)
+		applied, err = uc.repo.UnAcknowledge(ctx, tx, documentID, doc.Author, parsedAssociate.Owner, doc.Schema, doc.CreatedAt)
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
 		}
+	}
+
+	// Same accept-if-newer loss handling as acknowledge: an older unack must
+	// not roll a newer stored transition back, nor trigger any side effects.
+	if !applied {
+		return &commitApplyResult{result: &sd, noop: true}, nil
 	}
 
 	ccfs := concrnt.CCURI{

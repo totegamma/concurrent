@@ -189,14 +189,32 @@ func (r *RecordRepository) CreateRecord(
 	distributions []string,
 	redirect *string,
 	createdAt time.Time,
-) error {
+) (bool, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.CreateRecord")
 	defer span.End()
 
 	db, err := getRecordTx(ctx, tx)
 	if err != nil {
 		span.RecordError(err)
-		return err
+		return false, err
+	}
+
+	// Lock the RecordKey before writing anything. document_id is a
+	// time-prefixed, content-hashed, lexicographically sortable CDID, so this
+	// keeps the newer document (CIP-3 §3.4 accept-if-newer, deterministic on
+	// exact-createdAt ties) atomically at the row lock — closing the
+	// read-then-write race between the usecase-level check and this write,
+	// same as CreateEntity's conditional upsert.
+	var oldRecordKey models.RecordKey
+	err = db.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where("uri = ?", key).
+		Take(&oldRecordKey).Error
+	if err != nil && err != gorm.ErrRecordNotFound {
+		span.RecordError(err)
+		return false, err
+	}
+	if oldRecordKey.RecordID != nil && documentID <= *oldRecordKey.RecordID {
+		return false, nil
 	}
 
 	record := models.Record{
@@ -213,24 +231,14 @@ func (r *RecordRepository) CreateRecord(
 		DoNothing: true,
 	}).Create(&record).Error; err != nil {
 		span.RecordError(err)
-		return err
-	}
-
-	// update RecordKey
-	var oldRecordKey models.RecordKey
-	err = db.Clauses(clause.Locking{Strength: "UPDATE"}).
-		Where("uri = ?", key).
-		Take(&oldRecordKey).Error
-	if err != nil && err != gorm.ErrRecordNotFound {
-		span.RecordError(err)
-		return err
+		return false, err
 	}
 
 	// ParentのRecordKeyを探す
 	parentRK, err := getOrCreateParentRecordKey(ctx, db, key)
 	if err != nil {
 		span.RecordError(err)
-		return err
+		return false, err
 	}
 
 	var pid *int64
@@ -257,7 +265,7 @@ func (r *RecordRepository) CreateRecord(
 	}).Create(&rk).Error
 	if err != nil {
 		span.RecordError(err)
-		return err
+		return false, err
 	}
 
 	// 古いRecordKeyが指していたCommitのGCフラグを立て、Recordは消す
@@ -266,15 +274,15 @@ func (r *RecordRepository) CreateRecord(
 			Where("id = ?", oldRecordKey.RecordID).
 			Update("gc_candidate", true).Error; err != nil {
 			span.RecordError(err)
-			return err
+			return false, err
 		}
 		if err := db.Delete(&models.Record{}, "document_id = ?", oldRecordKey.RecordID).Error; err != nil {
 			span.RecordError(err)
-			return err
+			return false, err
 		}
 	}
 
-	return nil
+	return true, nil
 
 }
 
@@ -321,13 +329,13 @@ func (r *RecordRepository) CreateAssociation(ctx context.Context, tx usecase.Rep
 	return result.RowsAffected > 0, nil
 }
 
-func (r *RecordRepository) Acknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) error {
+func (r *RecordRepository) Acknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.Acknowledge")
 	defer span.End()
 
 	db, err := getRecordTx(ctx, tx)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	ack := models.Ack{
@@ -339,20 +347,31 @@ func (r *RecordRepository) Acknowledge(ctx context.Context, tx usecase.Repositor
 		CreatedAt:  createdAt,
 	}
 
-	return db.Clauses(clause.OnConflict{
+	// CIP-10 §4: only a strictly newer document may move the (from, to,
+	// schema) state. document_id is a time-prefixed, lexicographically
+	// sortable CDID, so the conditional upsert keeps the newer transition and
+	// makes a replayed older ack a no-op (RowsAffected 0).
+	result := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "schema"}},
-		DoUpdates: clause.Assignments(map[string]any{"valid": true, "document_id": documentID}),
-	}).Create(&ack).Error
+		DoUpdates: clause.Assignments(map[string]any{"valid": true, "document_id": documentID, "created_at": createdAt}),
+		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("acks.document_id < excluded.document_id")}},
+	}).Create(&ack)
+	if result.Error != nil {
+		span.RecordError(result.Error)
+		return false, result.Error
+	}
+
+	return result.RowsAffected > 0, nil
 
 }
 
-func (r *RecordRepository) UnAcknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) error {
+func (r *RecordRepository) UnAcknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.Unacknowledge")
 	defer span.End()
 
 	db, err := getRecordTx(ctx, tx)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	ack := models.Ack{
@@ -364,10 +383,19 @@ func (r *RecordRepository) UnAcknowledge(ctx context.Context, tx usecase.Reposit
 		CreatedAt:  createdAt,
 	}
 
-	return db.Clauses(clause.OnConflict{
+	// Same accept-if-newer conditional as Acknowledge: an older unack must
+	// not roll an established newer ack back.
+	result := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "schema"}},
-		DoUpdates: clause.Assignments(map[string]any{"valid": false, "document_id": documentID}),
-	}).Create(&ack).Error
+		DoUpdates: clause.Assignments(map[string]any{"valid": false, "document_id": documentID, "created_at": createdAt}),
+		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("acks.document_id < excluded.document_id")}},
+	}).Create(&ack)
+	if result.Error != nil {
+		span.RecordError(result.Error)
+		return false, result.Error
+	}
+
+	return result.RowsAffected > 0, nil
 
 }
 

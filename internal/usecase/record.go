@@ -706,10 +706,20 @@ func (uc *RecordUsecase) createReferenceDistributionActions(ctx context.Context,
 // deleteRecord handles both a plain delete and the trailing-asterisk range
 // notation ("...item*" = item plus its subtree, "...item/*" = subtree only) —
 // a plain delete is simply a range whose enumeration is the single addressed
-// document. The delete policy is evaluated on every target before anything is
-// removed, and any failure — including a single policy denial — makes the
-// commit transaction roll back in full, commitlog included: deletion is
-// all-or-nothing.
+// document. When this server is authoritative for the target key, the target
+// rows are removed and the delete is fanned out to every distribute
+// destination; on the receiving (non-authoritative) side the targets are
+// recovered from References. In both cases the distribute reference records
+// this server holds (created by createReferenceDistributionActions) are
+// deleted in the same transaction and advertised via /chunkline/removed, and
+// a delete that concerns neither the target key nor any locally-held
+// distributed copy is a no-op success. The delete policy is evaluated on
+// every authoritative target before anything is removed, and any failure —
+// including a single policy denial — makes the commit transaction roll back
+// in full, commitlog included: deletion is all-or-nothing. The one exception
+// is a policy denial on a reference-record sweep: that row is skipped (kept,
+// the pre-sweep status quo), so a destination timeline's policy can never
+// block deleting the record itself.
 func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requester domain.Entity, sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.Delete")
 	defer span.End()
@@ -735,12 +745,16 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 		return nil, err
 	}
 
-	if targetHost == uc.config.FQDN {
+	authoritative := targetHost == uc.config.FQDN
 
-		// enumerate the targets: the subtree for a range, the single
-		// addressed document otherwise
-		var targets []concrnt.SignedDocument
-		var targetURIs []string // per-target address (cckv/ccfs URI) deletion and policy key on
+	// enumerate the targets: the stored subtree/document when this server is
+	// authoritative for the target key, the References entries otherwise (for
+	// a range the origin server enqueues one delivery job per deleted target,
+	// each carrying that target in References, so matching References against
+	// the range is how a receiving server learns the target list)
+	var targets []concrnt.SignedDocument
+	var targetURIs []string // per-target address (cckv/ccfs URI) deletion and policy key on
+	if authoritative {
 		if isRange {
 			targets, err = uc.repo.QueryRecordSubtree(ctx, rangeBase, includeSelf)
 			if err != nil {
@@ -764,16 +778,41 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 			targets = []concrnt.SignedDocument{*targetSD}
 			targetURIs = []string{rawTarget}
 		}
-
-		// evaluate the delete policy on every target before removing anything
-		targetDocs := make([]concrnt.Document[any], len(targets))
-		for i, target := range targets {
-			err = json.Unmarshal([]byte(target.Document), &targetDocs[i])
-			if err != nil {
-				span.RecordError(err)
-				return nil, err
+	} else {
+		if isRange {
+			for refURI := range sd.References {
+				if (includeSelf && refURI == rangeBase) || strings.HasPrefix(refURI, rangeBase+"/") {
+					targetURIs = append(targetURIs, refURI)
+				}
 			}
+			slices.Sort(targetURIs)
+		} else if _, ok := sd.References[rawTarget]; ok {
+			targetURIs = []string{rawTarget}
+		}
+		// no matching reference: this delete concerns nothing this server can
+		// act on — pass it through as a no-op success (commitlog included, so
+		// a later delivery that does carry the targets is not deduplicated away)
+		if len(targetURIs) == 0 {
+			return &commitApplyResult{result: &sd, noop: true}, nil
+		}
+		for _, targetURI := range targetURIs {
+			targets = append(targets, sd.References[targetURI])
+		}
+	}
 
+	targetDocs := make([]concrnt.Document[any], len(targets))
+	for i, target := range targets {
+		err = json.Unmarshal([]byte(target.Document), &targetDocs[i])
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+	}
+
+	// evaluate the delete policy on every authoritative target before
+	// removing anything
+	if authoritative {
+		for i := range targets {
 			policyRoot := targetURIs[i]
 			if targetDocs[i].Associate != nil {
 				policyRoot = *targetDocs[i].Associate
@@ -800,15 +839,24 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 				return nil, err
 			}
 		}
+	}
 
-		postProcesses := []PostProcessAction{}
-		for i := range targets {
-			targetSD := &targets[i]
-			targetDoc := targetDocs[i]
-			targetURI := targetURIs[i]
+	remoteKind := domain.DeliveryRemoteNone
+	if authoritative {
+		// only the authoritative server re-federates the delete; a receiving
+		// server acts on its own copies and signals its own subscribers
+		remoteKind = domain.DeliveryRemoteCommit
+	}
 
-			var removedTimeline, removedItemID string
+	postProcesses := []PostProcessAction{}
+	for i := range targets {
+		targetSD := &targets[i]
+		targetDoc := targetDocs[i]
+		targetURI := targetURIs[i]
 
+		var removedTimeline, removedItemID string
+
+		if authoritative {
 			switch targetDoc.Kind {
 			case "record":
 
@@ -878,208 +926,187 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 				span.RecordError(err)
 				return nil, err
 			}
+		}
 
-			if mode != domain.CommitModeExecute {
+		// sweep the reference records createReferenceDistributionActions left
+		// on this server: their key is destination + "/" + the target's
+		// documentID, so a row existing under that key is exactly "this
+		// destination was distributed to and lives here" — remote and
+		// never-delivered destinations fall out as not-found
+		docID := documentIDFor(targetSD.Document, targetDoc.CreatedAt)
+		for _, dest := range distributionsFromPtr(targetDoc.Distributes) {
+			refKey, err := url.JoinPath(dest, docID)
+			if err != nil {
+				slog.Error("failed to join path for distribution sweep", slog.String("destination", dest), slog.String("document_id", docID), slog.String("error", err.Error()))
 				continue
 			}
 
-			if uc.kvs != nil && removedTimeline != "" {
-				tl, id := removedTimeline, removedItemID
-				postProcesses = append(postProcesses, func(ctx context.Context) error {
-					return uc.kvs.SetAdd(ctx, removedItemsKey(tl), id, removedItemsTTL)
-				})
+			refSD, err := uc.repo.GetSignedDocument(ctx, refKey)
+			if errors.Is(err, domain.ErrNotFound) {
+				continue
 			}
-
-			destinations := []string{targetURI}
-			if targetDoc.Distributes != nil {
-				destinations = append(destinations, *targetDoc.Distributes...)
-			}
-			for _, dest := range destinations {
-				remoteSD := concrnt.SignedDocument{
-					Document: sd.Document,
-					Proof:    sd.Proof,
-					References: map[string]concrnt.SignedDocument{
-						targetURI: *targetSD,
-					},
-				}
-				postProcesses = append(
-					postProcesses,
-					func(ctx context.Context) error {
-						return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
-							ResolveURI: dest,
-							Payload:    remoteSD,
-							Local:      domain.DeliveryLocalPublish,
-							Remote:     domain.DeliveryRemoteCommit,
-							Event: &concrnt.Event{
-								Type:      "deleted",
-								URI:       targetURI,
-								Timestamp: time.Now(),
-							},
-						})
-					},
-				)
-			}
-
-			if targetDoc.Associate != nil {
-				associatedURI := *targetDoc.Associate
-				associatedSD, err := uc.repo.GetSignedDocument(ctx, associatedURI)
-				if err != nil {
-					slog.Error("failed to fetch associated document for signal", slog.String("associated_uri", associatedURI), slog.String("error", err.Error()))
-					span.RecordError(err)
-					return nil, err
-				}
-
-				var associatedDoc concrnt.Document[any]
-				err = json.Unmarshal([]byte(associatedSD.Document), &associatedDoc)
-				if err != nil {
-					slog.Error("failed to unmarshal associated document for signal", slog.String("associated_uri", associatedURI), slog.String("error", err.Error()))
-					span.RecordError(err)
-					return nil, err
-				}
-
-				destinations := []string{associatedURI}
-				if associatedDoc.Distributes != nil {
-					destinations = append(destinations, *associatedDoc.Distributes...)
-				}
-
-				for _, dest := range destinations {
-					remoteSD := concrnt.SignedDocument{
-						Document: sd.Document,
-						Proof:    sd.Proof,
-						References: map[string]concrnt.SignedDocument{
-							targetURI:     *targetSD,
-							associatedURI: *associatedSD,
-						},
-					}
-					postProcesses = append(postProcesses,
-						func(ctx context.Context) error {
-							return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
-								ResolveURI: dest,
-								Payload:    remoteSD,
-								Local:      domain.DeliveryLocalPublish,
-								Remote:     domain.DeliveryRemoteCommit,
-								Event: &concrnt.Event{
-									Type:      "unassociated",
-									URI:       associatedURI,
-									Timestamp: time.Now(),
-								},
-							})
-						},
-					)
-				}
-			}
-		}
-
-		// targets are URI-ordered, so with includeSelf the base record itself
-		// leads and becomes the reported result
-		return &commitApplyResult{result: &targets[0], owners: uc.localEntityOwners(ctx, requester), postProcesses: postProcesses}, nil
-
-	} else { // remote entity. only emit signals.
-
-		// recover the concrete targets from References: for a range the
-		// origin server enqueues one delivery job per deleted target, each
-		// carrying that target in References, so matching References against
-		// the range is how this server learns the target list
-		var refURIs []string
-		if isRange {
-			for refURI := range sd.References {
-				if (includeSelf && refURI == rangeBase) || strings.HasPrefix(refURI, rangeBase+"/") {
-					refURIs = append(refURIs, refURI)
-				}
-			}
-			if len(refURIs) == 0 {
-				err := errors.New("no reference matched range delete target")
-				span.RecordError(err)
-				return nil, err
-			}
-			slices.Sort(refURIs)
-		} else {
-			if _, ok := sd.References[rawTarget]; !ok {
-				err := errors.New("target document not found in references for remote delete")
-				span.RecordError(err)
-				return nil, err
-			}
-			refURIs = []string{rawTarget}
-		}
-
-		postProcesses := []PostProcessAction{}
-		for _, targetURI := range refURIs {
-			targetSD := sd.References[targetURI]
-
-			document := concrnt.Document[any]{}
-			err = json.Unmarshal([]byte(targetSD.Document), &document)
 			if err != nil {
 				span.RecordError(err)
 				return nil, err
 			}
 
-			destinations := []string{targetURI}
-			if document.Distributes != nil {
-				destinations = append(destinations, *document.Distributes...)
+			var refDoc concrnt.Document[any]
+			err = json.Unmarshal([]byte(refSD.Document), &refDoc)
+			if err != nil {
+				span.RecordError(err)
+				return nil, err
+			}
+
+			stack, err := uc.repo.GetHierarchicalRecordPolicies(ctx, refKey)
+			if err != nil {
+				span.RecordError(err)
+				return nil, err
+			}
+
+			err = uc.policy.Eval(
+				ctx,
+				policy.RequestContext{
+					Requester: requester,
+					Self:      refDoc,
+				},
+				stack,
+				policyDeleteAction(refDoc),
+				refKey,
+			)
+			if errors.Is(err, domain.ErrPermissionDenied) {
+				slog.Info("reference record kept: destination policy denied the delete", slog.String("ref_key", refKey), slog.String("requester", requester.ID))
+				continue
+			}
+			if err != nil {
+				span.RecordError(err)
+				return nil, err
+			}
+
+			if mode == domain.CommitModeExecute && uc.kvs != nil {
+				tl, id, err := uc.repo.GetTimelineRemoval(ctx, refKey)
+				if err != nil {
+					span.RecordError(err) // non-fatal: the deleted item just lingers in caches
+				} else if tl != "" {
+					postProcesses = append(postProcesses, func(ctx context.Context) error {
+						return uc.kvs.SetAdd(ctx, removedItemsKey(tl), id, removedItemsTTL)
+					})
+				}
+			}
+
+			err = uc.repo.DeleteRecordByKey(ctx, tx, refKey)
+			if err != nil {
+				span.RecordError(err)
+				return nil, err
+			}
+		}
+
+		if mode != domain.CommitModeExecute {
+			continue
+		}
+
+		if uc.kvs != nil && removedTimeline != "" {
+			tl, id := removedTimeline, removedItemID
+			postProcesses = append(postProcesses, func(ctx context.Context) error {
+				return uc.kvs.SetAdd(ctx, removedItemsKey(tl), id, removedItemsTTL)
+			})
+		}
+
+		destinations := []string{targetURI}
+		if targetDoc.Distributes != nil {
+			destinations = append(destinations, *targetDoc.Distributes...)
+		}
+		for _, dest := range destinations {
+			remoteSD := concrnt.SignedDocument{
+				Document: sd.Document,
+				Proof:    sd.Proof,
+				References: map[string]concrnt.SignedDocument{
+					targetURI: *targetSD,
+				},
+			}
+			postProcesses = append(
+				postProcesses,
+				func(ctx context.Context) error {
+					return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
+						ResolveURI: dest,
+						Payload:    remoteSD,
+						Local:      domain.DeliveryLocalPublish,
+						Remote:     remoteKind,
+						Event: &concrnt.Event{
+							Type:      "deleted",
+							URI:       targetURI,
+							Timestamp: time.Now(),
+						},
+					})
+				},
+			)
+		}
+
+		if targetDoc.Associate != nil {
+			associatedURI := *targetDoc.Associate
+
+			var associatedSD *concrnt.SignedDocument
+			if authoritative {
+				associatedSD, err = uc.repo.GetSignedDocument(ctx, associatedURI)
+				if err != nil {
+					slog.Error("failed to fetch associated document for signal", slog.String("associated_uri", associatedURI), slog.String("error", err.Error()))
+					span.RecordError(err)
+					return nil, err
+				}
+			} else {
+				ref, ok := sd.References[associatedURI]
+				if !ok {
+					err := errors.New("associated document not found in references for remote delete")
+					slog.Error("associated document not found in references for remote delete", slog.String("associated_uri", associatedURI))
+					span.RecordError(err)
+					return nil, err
+				}
+				associatedSD = &ref
+			}
+
+			var associatedDoc concrnt.Document[any]
+			err = json.Unmarshal([]byte(associatedSD.Document), &associatedDoc)
+			if err != nil {
+				slog.Error("failed to unmarshal associated document for signal", slog.String("associated_uri", associatedURI), slog.String("error", err.Error()))
+				span.RecordError(err)
+				return nil, err
+			}
+
+			destinations := []string{associatedURI}
+			if associatedDoc.Distributes != nil {
+				destinations = append(destinations, *associatedDoc.Distributes...)
 			}
 
 			for _, dest := range destinations {
+				remoteSD := concrnt.SignedDocument{
+					Document: sd.Document,
+					Proof:    sd.Proof,
+					References: map[string]concrnt.SignedDocument{
+						targetURI:     *targetSD,
+						associatedURI: *associatedSD,
+					},
+				}
 				postProcesses = append(postProcesses,
 					func(ctx context.Context) error {
 						return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
 							ResolveURI: dest,
+							Payload:    remoteSD,
 							Local:      domain.DeliveryLocalPublish,
-							Remote:     domain.DeliveryRemoteNone,
+							Remote:     remoteKind,
 							Event: &concrnt.Event{
-								Type:      "deleted",
-								URI:       targetURI,
+								Type:      "unassociated",
+								URI:       associatedURI,
 								Timestamp: time.Now(),
 							},
 						})
 					},
 				)
 			}
-
-			if document.Associate != nil {
-				associatedURI := *document.Associate
-				associatedSD, ok := sd.References[associatedURI]
-				if !ok {
-					slog.Error("associated document not found in references for remote delete", slog.String("associated_uri", associatedURI))
-					span.RecordError(errors.New("associated document not found in references for remote delete"))
-					return nil, errors.New("associated document not found in references for remote delete")
-				}
-
-				var associatedDoc concrnt.Document[any]
-				err = json.Unmarshal([]byte(associatedSD.Document), &associatedDoc)
-				if err != nil {
-					slog.Error("failed to unmarshal associated document for signal", slog.String("associated_uri", associatedURI), slog.String("error", err.Error()))
-					span.RecordError(err)
-					return nil, err
-				}
-
-				destinations := []string{}
-				if associatedDoc.Distributes != nil {
-					destinations = append(destinations, *associatedDoc.Distributes...)
-				}
-				destinations = append(destinations, associatedURI)
-
-				for _, dest := range destinations {
-					postProcesses = append(postProcesses,
-						func(ctx context.Context) error {
-							return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
-								ResolveURI: dest,
-								Local:      domain.DeliveryLocalPublish,
-								Remote:     domain.DeliveryRemoteNone,
-								Event: &concrnt.Event{
-									Type:      "unassociated",
-									URI:       associatedURI,
-									Timestamp: time.Now(),
-								},
-							})
-						},
-					)
-				}
-			}
 		}
-
-		result := sd.References[refURIs[0]]
-		return &commitApplyResult{result: &result, owners: uc.localEntityOwners(ctx, requester), postProcesses: postProcesses}, nil
 	}
+
+	// targets are URI-ordered, so with includeSelf the base record itself
+	// leads and becomes the reported result
+	return &commitApplyResult{result: &targets[0], owners: uc.localEntityOwners(ctx, requester), postProcesses: postProcesses}, nil
 }
 
 // parseRangeDeleteTarget detects the trailing-asterisk range notation on a

@@ -75,10 +75,14 @@ type subtreeQueryCall struct {
 }
 
 // rangeDeleteRepo serves a fixed subtree enumeration and records the
-// enumeration arguments and every delete attempt.
+// enumeration arguments and every delete attempt. stored is what
+// GetSignedDocument serves per URI (delete targets, reference rows);
+// removals is what GetTimelineRemoval serves per key URI as (timeline, item).
 type rangeDeleteRepo struct {
 	RecordRepository
 	subtree     []concrnt.SignedDocument
+	stored      map[string]concrnt.SignedDocument
+	removals    map[string][2]string
 	queryCalls  []subtreeQueryCall
 	deletedURIs []string
 	txs         []*recordingTx
@@ -109,7 +113,16 @@ func (r *rangeDeleteRepo) DeleteRecordByKey(ctx context.Context, tx RepositoryTx
 	r.deletedURIs = append(r.deletedURIs, targetURI)
 	return nil
 }
+func (r *rangeDeleteRepo) GetSignedDocument(ctx context.Context, uri string) (*concrnt.SignedDocument, error) {
+	if sd, ok := r.stored[uri]; ok {
+		return &sd, nil
+	}
+	return nil, domain.NotFoundError{Resource: uri}
+}
 func (r *rangeDeleteRepo) GetTimelineRemoval(ctx context.Context, keyURI string) (string, string, error) {
+	if rm, ok := r.removals[keyURI]; ok {
+		return rm[0], rm[1], nil
+	}
 	return "", "", nil
 }
 
@@ -138,8 +151,9 @@ func (d *recordingDeliveryQueue) Enqueue(ctx context.Context, job domain.Deliver
 }
 
 // subtreeRecord builds a stored record fixture the way QueryRecordSubtree
-// serves them: document JSON plus CCKV and CCFS URIs.
-func subtreeRecord(t *testing.T, uri string) concrnt.SignedDocument {
+// serves them: document JSON plus CCKV and CCFS URIs. Optional trailing
+// arguments become the record's distribute destinations.
+func subtreeRecord(t *testing.T, uri string, distributes ...string) concrnt.SignedDocument {
 	t.Helper()
 	doc := concrnt.Document[map[string]string]{
 		Kind:      "record",
@@ -148,6 +162,9 @@ func subtreeRecord(t *testing.T, uri string) concrnt.SignedDocument {
 		Author:    "example.com",
 		Schema:    "https://example.com/item.json",
 		CreatedAt: time.Now(),
+	}
+	if len(distributes) > 0 {
+		doc.Distributes = &distributes
 	}
 	docBytes, err := json.Marshal(doc)
 	if err != nil {
@@ -379,7 +396,7 @@ func TestDeleteRecordRangeRemoteMatchesReferences(t *testing.T) {
 	requester := domain.Entity{ID: ccid, Domain: cfg.FQDN}
 	delivery := &recordingDeliveryQueue{}
 	uc := NewRecordUsecase(
-		nil,
+		&rangeDeleteRepo{},
 		fixedResidenceRepo{entity: &requester},
 		newTestServerUsecase(cfg),
 		cfg,
@@ -433,9 +450,283 @@ func TestDeleteRecordRangeRemoteMatchesReferences(t *testing.T) {
 		t.Fatalf("deleted events for %v, want %v", eventURIs, want)
 	}
 
-	// no matching reference at all is an error
+	// no matching reference at all passes through as a no-op success
 	sd.References = map[string]concrnt.SignedDocument{*unrelated.CCKV: unrelated}
-	if _, err := uc.deleteRecord(context.Background(), nil, requester, sd, domain.CommitModeExecute); err == nil {
-		t.Fatal("expected error when no reference matches the range")
+	res, err := uc.deleteRecord(context.Background(), nil, requester, sd, domain.CommitModeExecute)
+	if err != nil {
+		t.Fatalf("expected no-op success when no reference matches the range, got %v", err)
+	}
+	if !res.noop || len(res.postProcesses) != 0 {
+		t.Fatalf("expected noop result without post processes, got %+v", res)
+	}
+}
+
+// fixtureDocID derives the documentID a stored fixture is distributed under —
+// the same recomputation deleteRecord's reference-record sweep performs.
+func fixtureDocID(t *testing.T, sd concrnt.SignedDocument) string {
+	t.Helper()
+	var doc concrnt.Document[any]
+	if err := json.Unmarshal([]byte(sd.Document), &doc); err != nil {
+		t.Fatalf("unmarshal fixture document: %v", err)
+	}
+	return documentIDFor(sd.Document, doc.CreatedAt)
+}
+
+// referenceRecord builds the stored reference row that
+// createReferenceDistributionActions leaves at a distribute destination.
+func referenceRecord(t *testing.T, refKey, href string) concrnt.SignedDocument {
+	t.Helper()
+	doc := concrnt.Document[schemas.Reference]{
+		Kind:      "record",
+		Key:       refKey,
+		Value:     schemas.Reference{Href: href},
+		Author:    "example.com",
+		Schema:    schemas.ReferenceURL,
+		CreatedAt: time.Now(),
+	}
+	docBytes, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatalf("marshal reference fixture: %v", err)
+	}
+	k := refKey
+	return concrnt.SignedDocument{
+		CCKV:     &k,
+		Document: string(docBytes),
+		Proof:    concrnt.Proof{Type: concrnt.ProofTypeNone},
+	}
+}
+
+// Deleting a record whose distribute destination lives on this same server
+// sweeps the destination's reference row in the same commit: both rows are
+// deleted, the reference row's chunkline slot is advertised as removed, and
+// the fan-out re-federates the delete.
+func TestCommitDeleteSweepsLocalDistributeReference(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+
+	targetURI := "cckv://example.com/profiles/main/posts/p1"
+	dest := "cckv://example.com/timelines/t1"
+	target := subtreeRecord(t, targetURI, dest)
+	refKey := dest + "/" + fixtureDocID(t, target)
+
+	repo := &rangeDeleteRepo{
+		stored: map[string]concrnt.SignedDocument{
+			targetURI: target,
+			refKey:    referenceRecord(t, refKey, targetURI),
+		},
+		removals: map[string][2]string{refKey: {dest, targetURI}},
+	}
+	pol := &denyKeysPolicyService{}
+	delivery := &recordingDeliveryQueue{}
+	kvs := &stubKVS{}
+	uc := newRangeDeleteUsecase(ccid, cfg, repo, pol, delivery, kvs)
+
+	sd := signedDelete(t, ccid, priv, targetURI)
+	if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+		t.Fatalf("Commit returned error: %v", err)
+	}
+
+	if !slices.Equal(repo.deletedURIs, []string{targetURI, refKey}) {
+		t.Fatalf("deleted URIs = %v, want [%s %s]", repo.deletedURIs, targetURI, refKey)
+	}
+	if !slices.Equal(pol.evaled, []string{targetURI, refKey}) {
+		t.Fatalf("policy evaluated on %v, want [%s %s]", pol.evaled, targetURI, refKey)
+	}
+	if !slices.Equal(kvs.addedSets, []string{removedItemsKey(dest)}) {
+		t.Fatalf("removed-item advertisements = %v, want [%s]", kvs.addedSets, removedItemsKey(dest))
+	}
+	if len(repo.txs) != 1 || !repo.txs[0].committed {
+		t.Fatalf("unexpected tx state: %+v", repo.txs)
+	}
+	for _, job := range delivery.jobs {
+		if job.Remote != domain.DeliveryRemoteCommit {
+			t.Fatalf("authoritative fan-out must re-federate, got %+v", job)
+		}
+	}
+}
+
+// A delete arriving for a remote target sweeps the reference rows this server
+// holds for the target's distribute destinations: the row is deleted in the
+// same commit (commitlog kept), its chunkline slot is advertised as removed,
+// and the delete is not re-federated.
+func TestCommitDeleteRemoteTargetSweepsLocalReference(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+
+	base := "cckv://otherhost.example.net/lists/l1"
+	dest := "cckv://example.com/timelines/t1"
+	target := subtreeRecord(t, base, dest)
+	refKey := dest + "/" + fixtureDocID(t, target)
+
+	repo := &rangeDeleteRepo{
+		stored:   map[string]concrnt.SignedDocument{refKey: referenceRecord(t, refKey, base)},
+		removals: map[string][2]string{refKey: {dest, base}},
+	}
+	pol := &denyKeysPolicyService{}
+	delivery := &recordingDeliveryQueue{}
+	kvs := &stubKVS{}
+	uc := newRangeDeleteUsecase(ccid, cfg, repo, pol, delivery, kvs)
+
+	sd := signedDelete(t, ccid, priv, base)
+	sd.References = map[string]concrnt.SignedDocument{base: target}
+	if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+		t.Fatalf("Commit returned error: %v", err)
+	}
+
+	if !slices.Equal(repo.deletedURIs, []string{refKey}) {
+		t.Fatalf("deleted URIs = %v, want [%s]", repo.deletedURIs, refKey)
+	}
+	if !slices.Equal(pol.evaled, []string{refKey}) {
+		t.Fatalf("policy evaluated on %v, want [%s]", pol.evaled, refKey)
+	}
+	if !slices.Equal(kvs.addedSets, []string{removedItemsKey(dest)}) {
+		t.Fatalf("removed-item advertisements = %v, want [%s]", kvs.addedSets, removedItemsKey(dest))
+	}
+	if len(repo.txs) != 1 || !repo.txs[0].committed {
+		t.Fatalf("commitlog must be kept for a delete that acted locally, got %+v", repo.txs)
+	}
+	deletedEvents := 0
+	for _, job := range delivery.jobs {
+		if job.Remote != domain.DeliveryRemoteNone {
+			t.Fatalf("a receiving server must not re-federate the delete, got %+v", job)
+		}
+		if job.Event != nil && job.Event.Type == "deleted" {
+			deletedEvents++
+			if job.Event.URI != base {
+				t.Fatalf("deleted event URI = %s, want %s", job.Event.URI, base)
+			}
+		}
+	}
+	if deletedEvents == 0 {
+		t.Fatal("expected deleted events to be enqueued")
+	}
+}
+
+// A delete that concerns neither the target key nor anything in References is
+// passed through: no error, nothing deleted, nothing signalled, and the
+// commitlog is rolled back so a later delivery carrying the targets still
+// applies.
+func TestCommitDeleteUnrelatedIsNoop(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+	base := "cckv://otherhost.example.net/lists/l1"
+	unrelated := subtreeRecord(t, "cckv://otherhost.example.net/lists/l2/x")
+
+	for _, target := range []string{base, base + "*"} {
+		repo := &rangeDeleteRepo{}
+		delivery := &recordingDeliveryQueue{}
+		uc := newRangeDeleteUsecase(ccid, cfg, repo, &denyKeysPolicyService{}, delivery, nil)
+
+		sd := signedDelete(t, ccid, priv, target)
+		sd.References = map[string]concrnt.SignedDocument{*unrelated.CCKV: unrelated}
+		if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+			t.Fatalf("Commit(%s) returned error: %v", target, err)
+		}
+		if len(repo.deletedURIs) != 0 || len(delivery.jobs) != 0 {
+			t.Fatalf("nothing may be deleted or signalled for %s, got %v / %d jobs", target, repo.deletedURIs, len(delivery.jobs))
+		}
+		if len(repo.txs) != 1 || repo.txs[0].committed || !repo.txs[0].rolledBack {
+			t.Fatalf("commitlog must be rolled back for %s, got %+v", target, repo.txs)
+		}
+	}
+}
+
+// A delete for a remote target whose destinations left no rows here still
+// succeeds: the signals go out and the commitlog is kept, but nothing is
+// deleted.
+func TestCommitDeleteRemoteTargetWithoutLocalCopies(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+	base := "cckv://otherhost.example.net/lists/l1"
+	target := subtreeRecord(t, base, "cckv://example.com/timelines/t1")
+
+	repo := &rangeDeleteRepo{}
+	delivery := &recordingDeliveryQueue{}
+	uc := newRangeDeleteUsecase(ccid, cfg, repo, &denyKeysPolicyService{}, delivery, &stubKVS{})
+
+	sd := signedDelete(t, ccid, priv, base)
+	sd.References = map[string]concrnt.SignedDocument{base: target}
+	if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+		t.Fatalf("Commit returned error: %v", err)
+	}
+	if len(repo.deletedURIs) != 0 {
+		t.Fatalf("nothing may be deleted, got %v", repo.deletedURIs)
+	}
+	if len(repo.txs) != 1 || !repo.txs[0].committed {
+		t.Fatalf("commitlog must be kept, got %+v", repo.txs)
+	}
+	if len(delivery.jobs) == 0 {
+		t.Fatal("expected deleted events to be enqueued")
+	}
+}
+
+// A destination policy denying the sweep keeps only that reference row: the
+// target itself is still deleted and the commit succeeds.
+func TestCommitDeleteReferenceSweepDenyKeepsRow(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+
+	targetURI := "cckv://example.com/profiles/main/posts/p1"
+	dest := "cckv://example.com/timelines/t1"
+	target := subtreeRecord(t, targetURI, dest)
+	refKey := dest + "/" + fixtureDocID(t, target)
+
+	repo := &rangeDeleteRepo{
+		stored: map[string]concrnt.SignedDocument{
+			targetURI: target,
+			refKey:    referenceRecord(t, refKey, targetURI),
+		},
+		removals: map[string][2]string{refKey: {dest, targetURI}},
+	}
+	pol := &denyKeysPolicyService{deny: map[string]bool{refKey: true}}
+	kvs := &stubKVS{}
+	uc := newRangeDeleteUsecase(ccid, cfg, repo, pol, &recordingDeliveryQueue{}, kvs)
+
+	sd := signedDelete(t, ccid, priv, targetURI)
+	if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+		t.Fatalf("Commit returned error: %v", err)
+	}
+	if !slices.Equal(repo.deletedURIs, []string{targetURI}) {
+		t.Fatalf("only the target may be deleted, got %v", repo.deletedURIs)
+	}
+	if len(kvs.addedSets) != 0 {
+		t.Fatalf("a kept row must not be advertised as removed, got %v", kvs.addedSets)
+	}
+	if len(repo.txs) != 1 || !repo.txs[0].committed {
+		t.Fatalf("unexpected tx state: %+v", repo.txs)
+	}
+}
+
+// A range delete arriving for a remote base sweeps every locally-held
+// reference row of every recovered target.
+func TestCommitDeleteRemoteRangeSweepsAllReferences(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+
+	base := "cckv://otherhost.example.net/lists/l1"
+	dest := "cckv://example.com/timelines/t1"
+	self := subtreeRecord(t, base, dest)
+	child := subtreeRecord(t, base+"/a", dest)
+	refKeySelf := dest + "/" + fixtureDocID(t, self)
+	refKeyChild := dest + "/" + fixtureDocID(t, child)
+
+	repo := &rangeDeleteRepo{
+		stored: map[string]concrnt.SignedDocument{
+			refKeySelf:  referenceRecord(t, refKeySelf, base),
+			refKeyChild: referenceRecord(t, refKeyChild, base+"/a"),
+		},
+	}
+	uc := newRangeDeleteUsecase(ccid, cfg, repo, &denyKeysPolicyService{}, &recordingDeliveryQueue{}, nil)
+
+	sd := signedDelete(t, ccid, priv, base+"*")
+	sd.References = map[string]concrnt.SignedDocument{
+		base:        self,
+		base + "/a": child,
+	}
+	if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+		t.Fatalf("Commit returned error: %v", err)
+	}
+	if !slices.Equal(repo.deletedURIs, []string{refKeySelf, refKeyChild}) {
+		t.Fatalf("deleted URIs = %v, want [%s %s]", repo.deletedURIs, refKeySelf, refKeyChild)
 	}
 }

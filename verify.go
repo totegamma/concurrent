@@ -271,7 +271,11 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 			}
 		case hrefURI.Scheme == "cckv":
 			// keyless href = entity reference: the target is the owner's own
-			// entity document
+			// entity document — a same-author keyed record must not stand in
+			// for it
+			if targetDoc.Kind != "entity" {
+				return errors.New("referenced document for entity href is not an entity document")
+			}
 			if targetDoc.Author != hrefURI.Owner {
 				return errors.New("referenced document author does not match entity href owner")
 			}

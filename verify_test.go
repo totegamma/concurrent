@@ -1002,6 +1002,44 @@ func TestVerifyDocumentReferenceEntityHrefValid(t *testing.T) {
 	}
 }
 
+// A same-author document that is not an entity document must not stand in for
+// an entity reference: the author-match alone would let any self-authored
+// record pass under a keyless href.
+func TestVerifyDocumentReferenceEntityHrefRejectsNonEntityTarget(t *testing.T) {
+	ownerCCID, ownerPriv := newTestIdentity(t)
+
+	href := "cckv://" + ownerCCID
+	targetSD := signDocument(t, Document[testRecordValue]{
+		Kind:      "record",
+		Key:       "cckv://" + ownerCCID + "/some-record",
+		Value:     testRecordValue{Foo: "not a profile"},
+		Author:    ownerCCID,
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}, ownerPriv)
+
+	refDoc := Document[schemas.Reference]{
+		Kind:      "record",
+		Key:       "cckv://" + ownerCCID + "/ref",
+		Value:     schemas.Reference{Href: href},
+		Author:    ownerCCID,
+		Schema:    schemas.ReferenceURL,
+		CreatedAt: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	}
+	refDocBytes, err := json.Marshal(refDoc)
+	if err != nil {
+		t.Fatalf("marshal reference document: %v", err)
+	}
+	sd := SignedDocument{
+		Document:   string(refDocBytes),
+		Proof:      Proof{Type: ProofTypeDocumentReference, Href: &href},
+		References: map[string]SignedDocument{href: targetSD},
+	}
+
+	if err := sd.Verify(context.Background(), nil); err == nil {
+		t.Fatal("Verify returned nil error for an entity href backed by a non-entity document")
+	}
+}
+
 // http(s) and ccfs blob hrefs cannot be bound to a document identity, so a
 // document-reference proof over them must always fail — such references need
 // a direct or subkey signature.

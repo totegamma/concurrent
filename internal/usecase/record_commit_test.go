@@ -1002,6 +1002,80 @@ func TestCreatedEventRedactedForAnonymous(t *testing.T) {
 	})
 }
 
+// uriDenyPolicyService denies anonymous reads of a single key and allows
+// everything else.
+type uriDenyPolicyService struct {
+	denyKey string
+}
+
+func (p *uriDenyPolicyService) Eval(ctx context.Context, req policy.RequestContext, stack []concrnt.Policy, action string, key string) error {
+	if strings.HasSuffix(action, ":read") && key == p.denyKey {
+		if requester, ok := req.Requester.(domain.Entity); ok && requester.ID == "" {
+			return domain.PermissionError{Reason: "anonymous read denied"}
+		}
+	}
+	return nil
+}
+
+// Nested references inside an event document (e.g. the distributed original
+// embedded in a timeline reference) are gated by the same anonymous baseline:
+// unreadable entries are stripped, readable ones survive with anything nested
+// deeper removed outright.
+func TestEventNestedReferencesRedactedForAnonymous(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+
+	protectedURI := concrnt.CCURI{Scheme: "cckv", Owner: ccid, Key: "posts/protected"}.String()
+	publicURI := concrnt.CCURI{Scheme: "cckv", Owner: ccid, Key: "posts/public"}.String()
+	deepURI := concrnt.CCURI{Scheme: "cckv", Owner: ccid, Key: "posts/deep"}.String()
+	itemURI := concrnt.CCURI{Scheme: "cckv", Owner: ccid, Key: "timelines/home/items/x"}.String()
+
+	publicSD := signedRecord(t, ccid, priv, time.Now())
+	publicSD.References = map[string]concrnt.SignedDocument{deepURI: signedRecord(t, ccid, priv, time.Now())}
+	itemSD := signedRecord(t, ccid, priv, time.Now())
+	itemSD.References = map[string]concrnt.SignedDocument{
+		protectedURI: signedRecord(t, ccid, priv, time.Now()),
+		publicURI:    publicSD,
+	}
+
+	uc := NewRecordUsecase(
+		&recordingRecordRepo{},
+		fixedResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: cfg.FQDN}},
+		newTestServerUsecase(cfg),
+		cfg,
+		nil,
+		nopSignalService{},
+		&uriDenyPolicyService{denyKey: protectedURI},
+		nil,
+		nil,
+	)
+
+	event := uc.redactEventForAnonymous(context.Background(), concrnt.Event{
+		Type:       "created",
+		URI:        itemURI,
+		References: map[string]concrnt.SignedDocument{itemURI: itemSD},
+		Timestamp:  time.Now(),
+	})
+
+	got, ok := event.References[itemURI]
+	if !ok {
+		t.Fatalf("readable item must survive redaction, got %v", event.References)
+	}
+	if _, leaked := got.References[protectedURI]; leaked {
+		t.Fatal("anonymous-unreadable nested reference must be stripped")
+	}
+	kept, ok := got.References[publicURI]
+	if !ok {
+		t.Fatalf("readable nested reference must survive, got %v", got.References)
+	}
+	if kept.References != nil {
+		t.Fatalf("depth-2 references must be removed outright, got %v", kept.References)
+	}
+	if len(itemSD.References[publicURI].References) == 0 {
+		t.Fatal("redaction must not mutate the source event (delivery payloads share it)")
+	}
+}
+
 // The associated event is likewise redacted (action association:read), while
 // the delivery payload — the signed document remote servers must verify —
 // stays complete.

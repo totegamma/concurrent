@@ -1942,6 +1942,22 @@ func (uc *RecordUsecase) redactEventForAnonymous(ctx context.Context, event conc
 		if err := uc.checkReadAccessAs(ctx, uri, refSD, domain.Entity{}); err != nil {
 			continue
 		}
+		// Nested references embed further documents (e.g. the distributed
+		// original inside a timeline reference) that the loop above never
+		// sees — apply the same anonymous gate to them, and drop anything
+		// nested deeper outright.
+		var kept map[string]concrnt.SignedDocument
+		for nestedURI, nestedSD := range refSD.References {
+			if err := uc.checkReadAccessAs(ctx, nestedURI, nestedSD, domain.Entity{}); err != nil {
+				continue
+			}
+			nestedSD.References = nil
+			if kept == nil {
+				kept = make(map[string]concrnt.SignedDocument, len(refSD.References))
+			}
+			kept[nestedURI] = nestedSD
+		}
+		refSD.References = kept
 		readable[uri] = refSD
 	}
 	event.References = readable

@@ -259,13 +259,22 @@ func (r *RecordRepository) CreateRecord(
 		CleanOnUpdate:   cleanOnUpdate,
 	}
 
-	err = db.Clauses(clause.OnConflict{
+	// The FOR UPDATE fast-path above cannot lock a RecordKey row that does not
+	// exist yet, so two concurrent commits to a fresh key both pass it. The
+	// conditional upsert closes that window the same way CreateEntity does:
+	// only a strictly newer document may take the key. IS NULL keeps normal
+	// writes to parent placeholder rows (RecordID nil) working.
+	result := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "uri"}},
 		DoUpdates: clause.Assignments(map[string]any{"record_id": documentID, "parent_id": pid, "record_created_at": createdAt, "clean_on_update": cleanOnUpdate}),
-	}).Create(&rk).Error
-	if err != nil {
-		span.RecordError(err)
-		return false, err
+		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("record_keys.record_id IS NULL OR record_keys.record_id < excluded.record_id")}},
+	}).Create(&rk)
+	if result.Error != nil {
+		span.RecordError(result.Error)
+		return false, result.Error
+	}
+	if result.RowsAffected == 0 {
+		return false, nil
 	}
 
 	// 古いRecordKeyが指していたCommitのGCフラグを立て、Recordは消す
@@ -459,9 +468,12 @@ func (r *RecordRepository) GetHierarchicalRecordPolicies(ctx context.Context, ur
 		return nil, err
 	}
 
+	// A level with no policy of its own still matters when it distributes: its
+	// virtual parents (the destination timelines' policies) must reach the
+	// stack, so emit it as an empty layer rather than dropping it.
 	tupleMap := make(map[string]tuple)
 	for _, res := range entries {
-		if res.Policy != nil {
+		if res.Policy != nil || len(res.Distributions) > 0 {
 			tupleMap[res.Uri] = res
 		}
 	}
@@ -475,10 +487,12 @@ func (r *RecordRepository) GetHierarchicalRecordPolicies(ctx context.Context, ur
 	for _, uri := range hierarchy {
 		if t, ok := tupleMap[uri]; ok {
 			var policyDoc concrnt.Policy
-			err := json.Unmarshal([]byte(*t.Policy), &policyDoc)
-			if err != nil {
-				span.RecordError(err)
-				return nil, err
+			if t.Policy != nil {
+				err := json.Unmarshal([]byte(*t.Policy), &policyDoc)
+				if err != nil {
+					span.RecordError(err)
+					return nil, err
+				}
 			}
 
 			policyDoc.Source = uri

@@ -652,6 +652,182 @@ func TestHierarchicalRecordPoliciesRootFirst(t *testing.T) {
 	require.Equal(t, keys, sources, "layers must be emitted root-first, self last")
 }
 
+// A level with no policy of its own but with distributions must still be
+// emitted — as an empty layer carrying its virtual parents — otherwise the
+// destination timelines' policies never reach the stack (CIP-12 §5.3).
+func TestHierarchicalRecordPoliciesEmitsPolicylessDistributingLevel(t *testing.T) {
+	db, cleanup := testutil.CreateDB()
+	t.Cleanup(cleanup)
+
+	ctx := context.Background()
+	repo := NewRecordRepository(db)
+
+	policyJSON := `{"entries":[{"url":"https://example.com/p.json"}]}`
+	parentKey := "cckv://con1downer/d1"
+	leafKey := "cckv://con1downer/d1/post"
+	timeline := "cckv://con1tl/timelines/home"
+
+	for i, tc := range []struct {
+		key           string
+		policies      *string
+		distributions []string
+	}{
+		{parentKey, &policyJSON, []string{}},
+		{leafKey, nil, []string{timeline}},
+	} {
+		id := fmt.Sprintf("distributing-record-%d", i)
+		createdAt := time.Date(2026, 6, 2, 0, 0, i, 0, time.UTC)
+		sd := repositorySignedDocument(t, concrnt.Document[map[string]string]{
+			Kind:      "record",
+			Key:       tc.key,
+			Value:     map[string]string{"body": "x"},
+			Author:    "con1downer",
+			Schema:    "https://schema.example/post.json",
+			CreatedAt: createdAt,
+		})
+		withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, []string{"con1downer"}, func(tx usecase.RepositoryTx) error {
+			applied, err := repo.CreateRecord(ctx, tx, id, tc.key, "con1downer", "https://schema.example/post.json", nil, tc.policies, tc.distributions, nil, createdAt)
+			require.True(t, applied)
+			return err
+		})
+	}
+
+	stack, err := repo.GetHierarchicalRecordPolicies(ctx, leafKey)
+	require.NoError(t, err)
+
+	require.Len(t, stack, 2)
+	require.Equal(t, parentKey, stack[0].Source)
+	require.Equal(t, leafKey, stack[1].Source)
+	require.Empty(t, stack[1].Entries, "a policyless level is an empty layer")
+	require.NotNil(t, stack[1].VirtualParents)
+	require.Equal(t, []string{timeline}, *stack[1].VirtualParents)
+}
+
+// A parent placeholder row (record_id IS NULL) must not trip the conditional
+// upsert: writing a record to a key that so far only exists as a placeholder
+// parent must apply.
+func TestCreateRecordAppliesOverParentPlaceholder(t *testing.T) {
+	db, cleanup := testutil.CreateDB()
+	t.Cleanup(cleanup)
+
+	ctx := context.Background()
+	repo := NewRecordRepository(db)
+
+	parentKey := "cckv://con1ph/parent"
+	childKey := "cckv://con1ph/parent/child"
+
+	commit := func(id, key string, createdAt time.Time) {
+		sd := repositorySignedDocument(t, concrnt.Document[map[string]string]{
+			Kind:      "record",
+			Key:       key,
+			Value:     map[string]string{"body": "x"},
+			Author:    "con1ph",
+			Schema:    "https://schema.example/post.json",
+			CreatedAt: createdAt,
+		})
+		withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, []string{"con1ph"}, func(tx usecase.RepositoryTx) error {
+			applied, err := repo.CreateRecord(ctx, tx, id, key, "con1ph", "https://schema.example/post.json", nil, nil, []string{}, nil, createdAt)
+			require.True(t, applied)
+			return err
+		})
+	}
+
+	// committing the child materializes the parent as a placeholder
+	commit("placeholder-child", childKey, time.Date(2026, 6, 3, 0, 0, 0, 0, time.UTC))
+
+	var rk models.RecordKey
+	require.NoError(t, db.Where("uri = ?", parentKey).Take(&rk).Error)
+	require.Nil(t, rk.RecordID, "the parent must exist as a placeholder")
+
+	commit("placeholder-parent", parentKey, time.Date(2026, 6, 3, 0, 0, 1, 0, time.UTC))
+
+	rk = models.RecordKey{}
+	require.NoError(t, db.Where("uri = ?", parentKey).Take(&rk).Error)
+	require.NotNil(t, rk.RecordID)
+	require.Equal(t, "placeholder-parent", *rk.RecordID)
+}
+
+// SELECT ... FOR UPDATE cannot lock a RecordKey row that does not exist yet,
+// so two commits racing on a fresh key both pass the fast-path — the
+// conditional ON CONFLICT clause is what keeps the newer document. The older
+// commit must come back unapplied whether it lands while the newer one is
+// still in flight (blocked on the unique index) or after it committed.
+func TestCreateRecordFreshKeyConditionalUpsert(t *testing.T) {
+	db, cleanup := testutil.CreateDB()
+	t.Cleanup(cleanup)
+
+	ctx := context.Background()
+	repo := NewRecordRepository(db)
+
+	key := "cckv://con1race/fresh"
+	newID, newAt := "race-2-new", time.Date(2026, 6, 4, 0, 0, 1, 0, time.UTC)
+	oldID, oldAt := "race-1-old", time.Date(2026, 6, 4, 0, 0, 0, 0, time.UTC)
+	signedFor := func(createdAt time.Time) concrnt.SignedDocument {
+		return repositorySignedDocument(t, concrnt.Document[map[string]string]{
+			Kind:      "record",
+			Key:       key,
+			Value:     map[string]string{"body": "x"},
+			Author:    "con1race",
+			Schema:    "https://schema.example/post.json",
+			CreatedAt: createdAt,
+		})
+	}
+
+	// the newer commit inserts the fresh RecordKey but holds its tx open, so
+	// the older commit can neither see nor lock the row
+	tx1, err := repo.BeginTx(ctx)
+	require.NoError(t, err)
+	sdNew := signedFor(newAt)
+	require.NoError(t, repo.CreateCommitLog(ctx, tx1, newID, "127.0.0.1", sdNew.Document, sdNew.Proof))
+	applied, err := repo.CreateRecord(ctx, tx1, newID, key, "con1race", "https://schema.example/post.json", nil, nil, []string{}, nil, newAt)
+	require.NoError(t, err)
+	require.True(t, applied)
+
+	type outcome struct {
+		applied bool
+		err     error
+	}
+	done := make(chan outcome, 1)
+	go func() {
+		tx2, err := repo.BeginTx(ctx)
+		if err != nil {
+			done <- outcome{err: err}
+			return
+		}
+		sdOld := signedFor(oldAt)
+		if err := repo.CreateCommitLog(ctx, tx2, oldID, "127.0.0.1", sdOld.Document, sdOld.Proof); err != nil {
+			_ = tx2.Rollback(ctx)
+			done <- outcome{err: err}
+			return
+		}
+		applied, err := repo.CreateRecord(ctx, tx2, oldID, key, "con1race", "https://schema.example/post.json", nil, nil, []string{}, nil, oldAt)
+		if err != nil {
+			_ = tx2.Rollback(ctx)
+			done <- outcome{err: err}
+			return
+		}
+		if applied {
+			done <- outcome{applied: applied, err: tx2.Commit(ctx)}
+			return
+		}
+		_ = tx2.Rollback(ctx)
+		done <- outcome{applied: applied}
+	}()
+
+	// let the older commit reach the unique-index wait, then land the newer one
+	time.Sleep(200 * time.Millisecond)
+	require.NoError(t, tx1.Commit(ctx))
+
+	res := <-done
+	require.NoError(t, res.err)
+	require.False(t, res.applied, "the older document must lose the fresh-key race")
+
+	var rk models.RecordKey
+	require.NoError(t, db.Where("uri = ?", key).Take(&rk).Error)
+	require.NotNil(t, rk.RecordID)
+	require.Equal(t, newID, *rk.RecordID)
+}
+
 func withRepositoryTx(t *testing.T, ctx context.Context, repo usecase.RecordRepository, id string, ip string, sd concrnt.SignedDocument, owners []string, fn func(tx usecase.RepositoryTx) error) {
 	t.Helper()
 

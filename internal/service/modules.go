@@ -75,7 +75,9 @@ func (m *ModuleManager) UpdateEndpointRoutine() {
 		}
 
 		for key, endpoint := range info.Endpoints {
-			endpoint = path.Join(service.Path, endpoint)
+			if !service.PreservePath {
+				endpoint = path.Join(service.Path, endpoint)
+			}
 			endpoints[key] = endpoint
 		}
 	}

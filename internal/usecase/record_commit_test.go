@@ -693,7 +693,7 @@ type importRecordingRepo struct {
 	associationRecordingRepo
 }
 
-func (r *importRecordingRepo) QueryByParent(ctx context.Context, parent, schema string, since, until *time.Time, limit int, order string) ([]concrnt.SignedDocument, error) {
+func (r *importRecordingRepo) QueryByParent(ctx context.Context, parent, schema string, since, until *time.Time, limit int, order string) ([]QueryRow, error) {
 	return nil, nil
 }
 

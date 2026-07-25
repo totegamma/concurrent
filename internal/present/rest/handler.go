@@ -62,9 +62,9 @@ var Endpoints = map[string]string{
 	"net.concrnt.core.commit":             apiPrefix + "/commit",
 	"net.concrnt.core.resolve":            apiPrefix + "/resolve?uri={uri}",
 	"net.concrnt.core.query":              apiPrefix + "/query{?prefix,schema,since,until,limit,order,parent}",
-	"net.concrnt.core.associations":       apiPrefix + "/associations{?uri,schema,variant,author}",
+	"net.concrnt.core.associations":       apiPrefix + "/associations{?uri,schema,variant,author,since,until,limit,order}",
 	"net.concrnt.core.association-counts": apiPrefix + "/association-counts{?uri,schema}",
-	"net.concrnt.core.acknowledges":       apiPrefix + "/acknowledges{?from,to,schema}",
+	"net.concrnt.core.acknowledges":       apiPrefix + "/acknowledges{?from,to,schema,since,until,limit,order}",
 	"net.concrnt.core.acknowledge-counts": apiPrefix + "/acknowledge-counts{?from,to,schema}",
 	"net.concrnt.core.realtime":           apiPrefix + "/realtime",
 	"net.concrnt.core.abuse":              apiPrefix + "/abuse",
@@ -273,59 +273,84 @@ func (h *Handler) handleResolve(c echo.Context) error {
 
 }
 
+// queryWindow holds the paging parameters shared by the query, associations
+// and acknowledges endpoints (CIP-5 §3.1).
+type queryWindow struct {
+	since *time.Time
+	until *time.Time
+	limit int
+	order string
+}
+
+func parseQueryWindow(c echo.Context) (queryWindow, error) {
+	w := queryWindow{limit: 10, order: "desc"}
+
+	sinceStr := c.QueryParam("since")
+	if sinceStr != "" {
+		parsed, err := time.Parse(time.RFC3339, sinceStr)
+		if err != nil {
+			return w, errors.New("invalid since parameter")
+		}
+		w.since = &parsed
+	}
+
+	untilStr := c.QueryParam("until")
+	if untilStr != "" {
+		parsed, err := time.Parse(time.RFC3339, untilStr)
+		if err != nil {
+			return w, errors.New("invalid until parameter")
+		}
+		w.until = &parsed
+	}
+
+	limitStr := c.QueryParam("limit")
+	if limitStr != "" {
+		limitInt, err := strconv.Atoi(limitStr)
+		if err != nil {
+			return w, errors.New("invalid limit parameter")
+		}
+		w.limit = limitInt
+	}
+	if w.limit < 1 {
+		w.limit = 1
+	}
+	if w.limit > 100 {
+		w.limit = 100
+	}
+
+	order := c.QueryParam("order")
+	if order != "" {
+		if order != "asc" && order != "desc" {
+			return w, errors.New("invalid order parameter")
+		}
+		w.order = order
+	}
+
+	return w, nil
+}
+
 func (h *Handler) handleQuery(c echo.Context) error {
 	ctx := c.Request().Context()
 
 	prefix := c.QueryParam("prefix")
 	parent := c.QueryParam("parent")
 
+	if (prefix == "") == (parent == "") {
+		return presenter.BadRequestMessage(c, "exactly one of prefix or parent must be specified")
+	}
+
 	schema := c.QueryParam("schema")
 
-	var since *time.Time
-	sinceStr := c.QueryParam("since")
-	if sinceStr != "" {
-		parsed, err := time.Parse(time.RFC3339, sinceStr)
-		if err != nil {
-			return presenter.BadRequestMessage(c, "invalid since parameter")
-		}
-		since = &parsed
+	w, err := parseQueryWindow(c)
+	if err != nil {
+		return presenter.BadRequestMessage(c, err.Error())
 	}
 
-	var until *time.Time
-	untilStr := c.QueryParam("until")
-	if untilStr != "" {
-		parsed, err := time.Parse(time.RFC3339, untilStr)
-		if err != nil {
-			return presenter.BadRequestMessage(c, "invalid until parameter")
-		}
-		until = &parsed
-	}
-
-	limit := 10
-	limitStr := c.QueryParam("limit")
-	if limitStr != "" {
-		limitInt, err := strconv.Atoi(limitStr)
-		if err != nil {
-			return presenter.BadRequestMessage(c, "invalid limit parameter")
-		}
-		limit = limitInt
-	}
-	if limit > 100 {
-		limit = 100
-	}
-
-	order := c.QueryParam("order")
-	if order == "" {
-		order = "desc"
-	} else if order != "asc" && order != "desc" {
-		return presenter.BadRequestMessage(c, "invalid order parameter")
-	}
-
-	results, err := h.record.Query(ctx, prefix, parent, schema, since, until, limit, order)
+	result, err := h.record.Query(ctx, prefix, parent, schema, w.since, w.until, w.limit, w.order)
 	if err != nil {
 		return presenter.InternalError(c, err)
 	}
-	return presenter.OK(c, results)
+	return presenter.OK(c, result)
 }
 
 func (h *Handler) handleChunklineItr(c echo.Context) error {
@@ -637,11 +662,16 @@ func (h *Handler) handleAssociations(c echo.Context) error {
 		return presenter.BadRequestMessage(c, "uri parameter is required")
 	}
 
-	records, err := h.record.GetAssociatedRecords(ctx, uri, schema, variant, author)
+	w, err := parseQueryWindow(c)
+	if err != nil {
+		return presenter.BadRequestMessage(c, err.Error())
+	}
+
+	result, err := h.record.GetAssociatedRecords(ctx, uri, schema, variant, author, w.since, w.until, w.limit, w.order)
 	if err != nil {
 		return presenter.InternalError(c, err)
 	}
-	return presenter.OK(c, records)
+	return presenter.OK(c, result)
 
 }
 
@@ -795,11 +825,16 @@ func (h *Handler) handleAcknowledges(c echo.Context) error {
 		return presenter.BadRequestMessage(c, "from and to parameters are required")
 	}
 
-	records, err := h.record.GetAcknowledgeRecords(ctx, from, to, schema)
+	w, err := parseQueryWindow(c)
+	if err != nil {
+		return presenter.BadRequestMessage(c, err.Error())
+	}
+
+	result, err := h.record.GetAcknowledgeRecords(ctx, from, to, schema, w.since, w.until, w.limit, w.order)
 	if err != nil {
 		return presenter.InternalError(c, err)
 	}
-	return presenter.OK(c, records)
+	return presenter.OK(c, result)
 }
 
 func (h *Handler) handleAcknowledgeCounts(c echo.Context) error {

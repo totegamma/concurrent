@@ -67,6 +67,14 @@ func (s *PolicyService) ConcrntCall(ctx context.Context, resolver string, api st
 		return nil, err
 	}
 
+	// List endpoints return the paged envelope (CIP-5 §3.2); policy
+	// expressions like IsNotEmpty operate on the item list (CIP-12 §4.2.5).
+	if envelope, ok := result.(map[string]any); ok {
+		if items, ok := envelope["items"]; ok {
+			return items, nil
+		}
+	}
+
 	return result, nil
 }
 

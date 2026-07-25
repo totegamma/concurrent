@@ -67,14 +67,23 @@ type RecordRepository interface {
 
 	GetDistributions(ctx context.Context, uri string) ([]string, error)
 
-	GetAcknowledgeRecords(ctx context.Context, from, to, schema string) ([]concrnt.SignedDocument, error)
+	GetAcknowledgeRecords(ctx context.Context, from, to, schema string, since, until *time.Time, limit int, order string) ([]QueryRow, error)
 	GetAcknowledgeRecordCounts(ctx context.Context, from, to, schema string) (map[string]int64, error)
-	GetAssociatedRecords(ctx context.Context, targetURI, schema, variant, author string) ([]concrnt.SignedDocument, error)
+	GetAssociatedRecords(ctx context.Context, targetURI, schema, variant, author string, since, until *time.Time, limit int, order string) ([]QueryRow, error)
 	GetAssociatedRecordCountsBySchema(ctx context.Context, targetURI string) (map[string]int64, error)
 	GetAssociatedRecordCountsByVariant(ctx context.Context, targetURI, schema string) (*utils.OrderedKVMap[int64], error)
 
-	QueryByPrefix(ctx context.Context, prefix, schema string, since, until *time.Time, limit int, order string) ([]concrnt.SignedDocument, error)
-	QueryByParent(ctx context.Context, parent, schema string, since, until *time.Time, limit int, order string) ([]concrnt.SignedDocument, error)
+	QueryByPrefix(ctx context.Context, prefix, schema string, since, until *time.Time, limit int, order string) ([]QueryRow, error)
+	QueryByParent(ctx context.Context, parent, schema string, since, until *time.Time, limit int, order string) ([]QueryRow, error)
+}
+
+// QueryRow is a raw list-query result row paired with its effective sort key
+// (the DB-side created_at the repository ordered by). Pagination cursors are
+// derived from this key, so it must be carried alongside the document rather
+// than re-parsed from it.
+type QueryRow struct {
+	Row       concrnt.SignedDocument
+	CreatedAt time.Time
 }
 
 type RepositoryTx interface {
@@ -1985,16 +1994,46 @@ func policyDeleteAction(doc concrnt.Document[any]) string {
 	return "record:delete"
 }
 
-func (uc *RecordUsecase) GetAcknowledgeRecords(ctx context.Context, from, to, schema string) ([]concrnt.SignedDocument, error) {
-	return uc.repo.GetAcknowledgeRecords(ctx, from, to, schema)
+// paginateWindow derives pagination cursors from rows fetched with limit+1:
+// the peeked row past the window becomes next, the window head becomes prev.
+// Cursors are computed before any read-access filtering so that clients can
+// page past rows that get filtered out.
+func paginateWindow(rows []QueryRow, limit int) ([]concrnt.SignedDocument, *time.Time, *time.Time) {
+	var prev, next *time.Time
+	if len(rows) > limit {
+		next = &rows[limit].CreatedAt
+		rows = rows[:limit]
+	}
+	if len(rows) > 0 {
+		prev = &rows[0].CreatedAt
+	}
+	items := make([]concrnt.SignedDocument, 0, len(rows))
+	for _, row := range rows {
+		items = append(items, row.Row)
+	}
+	return items, prev, next
+}
+
+func (uc *RecordUsecase) GetAcknowledgeRecords(ctx context.Context, from, to, schema string, since, until *time.Time, limit int, order string) (concrnt.QueryResult, error) {
+	rows, err := uc.repo.GetAcknowledgeRecords(ctx, from, to, schema, since, until, limit+1, order)
+	if err != nil {
+		return concrnt.QueryResult{}, err
+	}
+	items, prev, next := paginateWindow(rows, limit)
+	return concrnt.QueryResult{Items: items, Prev: prev, Next: next}, nil
 }
 
 func (uc *RecordUsecase) GetAcknowledgeRecordCounts(ctx context.Context, from, to, schema string) (map[string]int64, error) {
 	return uc.repo.GetAcknowledgeRecordCounts(ctx, from, to, schema)
 }
 
-func (uc *RecordUsecase) GetAssociatedRecords(ctx context.Context, targetURI, schema, variant, author string) ([]concrnt.SignedDocument, error) {
-	return uc.repo.GetAssociatedRecords(ctx, targetURI, schema, variant, author)
+func (uc *RecordUsecase) GetAssociatedRecords(ctx context.Context, targetURI, schema, variant, author string, since, until *time.Time, limit int, order string) (concrnt.QueryResult, error) {
+	rows, err := uc.repo.GetAssociatedRecords(ctx, targetURI, schema, variant, author, since, until, limit+1, order)
+	if err != nil {
+		return concrnt.QueryResult{}, err
+	}
+	items, prev, next := paginateWindow(rows, limit)
+	return concrnt.QueryResult{Items: items, Prev: prev, Next: next}, nil
 }
 
 func (uc *RecordUsecase) GetAssociatedRecordCountsBySchema(ctx context.Context, targetURI string) (map[string]int64, error) {
@@ -2011,32 +2050,34 @@ func (uc *RecordUsecase) Query(
 	since, until *time.Time,
 	limit int,
 	order string,
-) ([]concrnt.SignedDocument, error) {
+) (concrnt.QueryResult, error) {
 	var (
-		results []concrnt.SignedDocument
-		err     error
+		rows []QueryRow
+		err  error
 	)
 
 	if prefix != "" && parent != "" {
-		return nil, errors.New("prefix and parent cannot be specified at the same time")
+		return concrnt.QueryResult{}, errors.New("prefix and parent cannot be specified at the same time")
 	}
 
 	if prefix != "" {
-		results, err = uc.repo.QueryByPrefix(ctx, prefix, schema, since, until, limit, order)
+		rows, err = uc.repo.QueryByPrefix(ctx, prefix, schema, since, until, limit+1, order)
 	} else if parent != "" {
-		results, err = uc.repo.QueryByParent(ctx, parent, schema, since, until, limit, order)
+		rows, err = uc.repo.QueryByParent(ctx, parent, schema, since, until, limit+1, order)
 	} else {
-		return nil, errors.New("either prefix or parent must be specified")
+		return concrnt.QueryResult{}, errors.New("either prefix or parent must be specified")
 	}
 
 	if err != nil {
-		return nil, err
+		return concrnt.QueryResult{}, err
 	}
 
-	filtered := make([]concrnt.SignedDocument, 0, len(results))
-	for _, sd := range results {
+	items, prev, next := paginateWindow(rows, limit)
+
+	filtered := make([]concrnt.SignedDocument, 0, len(items))
+	for _, sd := range items {
 		if sd.CCKV == nil {
-			return nil, errors.New("queried record has no cckv")
+			return concrnt.QueryResult{}, errors.New("queried record has no cckv")
 		}
 
 		err := uc.checkReadAccess(ctx, *sd.CCKV, sd)
@@ -2044,13 +2085,13 @@ func (uc *RecordUsecase) Query(
 			if errors.Is(err, domain.ErrPermissionDenied) {
 				continue
 			}
-			return nil, err
+			return concrnt.QueryResult{}, err
 		}
 
 		filtered = append(filtered, sd)
 	}
 
-	return filtered, nil
+	return concrnt.QueryResult{Items: filtered, Prev: prev, Next: next}, nil
 }
 
 func (uc *RecordUsecase) DumpCommitLogs(ctx context.Context) (string, error) {
@@ -2171,8 +2212,8 @@ func (uc *RecordUsecase) getBlockingUsers(ctx context.Context, userID string) ([
 	prefix := blockingKey + "/"
 
 	ids := make([]string, len(blockingUsers))
-	for i, sd := range blockingUsers {
-		id := strings.TrimPrefix(*sd.CCKV, prefix)
+	for i, row := range blockingUsers {
+		id := strings.TrimPrefix(*row.Row.CCKV, prefix)
 		ids[i] = id
 	}
 

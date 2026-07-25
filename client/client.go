@@ -652,46 +652,46 @@ func (r *optionsResolver) ResolveSignedDocument(ctx context.Context, uri string)
 	return sd, nil
 }
 
-func (c *Client) Query(ctx context.Context, resolver string, params QueryParams) ([]concrnt.SignedDocument, error) {
+func (c *Client) Query(ctx context.Context, resolver string, params QueryParams) (concrnt.QueryResult, error) {
 	ctx, span := tracer.Start(ctx, "Client.Query")
 	defer span.End()
 
 	if params.Prefix != "" && params.Parent != "" {
 		err := errors.New("prefix and parent cannot be specified at the same time")
 		span.RecordError(err)
-		return nil, err
+		return concrnt.QueryResult{}, err
 	}
 
 	if params.Order != "" && params.Order != "asc" && params.Order != "desc" {
 		err := fmt.Errorf("invalid order parameter: %s", params.Order)
 		span.RecordError(err)
-		return nil, err
+		return concrnt.QueryResult{}, err
 	}
 
 	domain, err := c.resolveResolver(ctx, resolver)
 	if err != nil {
 		err := errors.Join(fmt.Errorf("failed to resolve resolver %s", resolver), err)
 		span.RecordError(err)
-		return nil, err
+		return concrnt.QueryResult{}, err
 	}
 	if domain == "" {
 		err := errors.New("resolver cannot be empty")
 		span.RecordError(err)
-		return nil, err
+		return concrnt.QueryResult{}, err
 	}
 
 	server, err := c.GetServer(ctx, domain, nil)
 	if err != nil {
 		err := errors.Join(fmt.Errorf("failed to get server for resolver %s", domain), err)
 		span.RecordError(err)
-		return nil, err
+		return concrnt.QueryResult{}, err
 	}
 
 	desc, ok := server.Endpoints["net.concrnt.core.query"]
 	if !ok {
 		err := errors.Join(fmt.Errorf("query endpoint not found in server %s", server.Domain), ErrEndpointMissing)
 		span.RecordError(err)
-		return nil, err
+		return concrnt.QueryResult{}, err
 	}
 
 	args := map[string]string{}
@@ -721,10 +721,10 @@ func (c *Client) Query(ctx context.Context, resolver string, params QueryParams)
 	if err != nil {
 		err := errors.Join(fmt.Errorf("failed to render query endpoint template for server %s", server.Domain), err)
 		span.RecordError(err)
-		return nil, err
+		return concrnt.QueryResult{}, err
 	}
 	if !c.IsOnline(server.Domain) {
-		return nil, fmt.Errorf("Domain is offline")
+		return concrnt.QueryResult{}, fmt.Errorf("Domain is offline")
 	}
 	url := "https://" + server.Domain + path
 
@@ -732,7 +732,7 @@ func (c *Client) Query(ctx context.Context, resolver string, params QueryParams)
 	if err != nil {
 		err := errors.Join(fmt.Errorf("failed to create request for query to %s", url), err)
 		span.RecordError(err)
-		return nil, err
+		return concrnt.QueryResult{}, err
 	}
 	req.Header.Set("Accept", "application/json")
 
@@ -741,25 +741,25 @@ func (c *Client) Query(ctx context.Context, resolver string, params QueryParams)
 		c.markOfflineIfTimeout(server.Domain, "querying", err)
 		err := errors.Join(fmt.Errorf("failed to perform query to %s", url), err)
 		span.RecordError(err)
-		return nil, err
+		return concrnt.QueryResult{}, err
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
 		err := fmt.Errorf("failed to query %s: status code %d", url, resp.StatusCode)
 		span.RecordError(err)
-		return nil, err
+		return concrnt.QueryResult{}, err
 	}
 
-	var results []concrnt.SignedDocument
-	err = json.NewDecoder(resp.Body).Decode(&results)
+	var result concrnt.QueryResult
+	err = json.NewDecoder(resp.Body).Decode(&result)
 	if err != nil {
 		err := errors.Join(fmt.Errorf("failed to decode query response from %s", url), err)
 		span.RecordError(err)
-		return nil, err
+		return concrnt.QueryResult{}, err
 	}
 
-	return results, nil
+	return result, nil
 }
 
 // Call invokes a named concrnt API (an entry in the target server's

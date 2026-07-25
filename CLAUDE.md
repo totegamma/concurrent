@@ -83,7 +83,7 @@ present/rest (Echo handlers)  ->  usecase (business logic, interfaces for deps) 
 - **`internal/worker`** — background loops: `Subscriber` (subscribes to realtime channels
   across the federation), `NotificationReactor` (turns notifications into Web Push via
   `webpush-go`, gated on `vapidPublicKey`/`vapidPrivateKey` being configured).
-- **`policy/`** — the CIP-8 policy evaluation engine: policies are stacks of layers, each
+- **`policy/`** — the CIP-12 policy evaluation engine: policies are stacks of layers, each
   layer a set of statements (`action`, glob-style `key` match, boolean `Condition` expr,
   `emit` conclusion). `EvaluateStack` folds layers with `UNSET`/`ALLOW`/`DENY` combining
   logic (first non-UNSET `DENY` or `ALLOW` short-circuits); `EvaluatePolicy`/`Eval` handle
@@ -106,7 +106,7 @@ present/rest (Echo handlers)  ->  usecase (business logic, interfaces for deps) 
 - **Root package `concrnt`** (`types.go`, `utils.go`, `crypto.go`) — the wire-level
   protocol types shared across every layer: `SignedDocument`/`Document[T]`/`Proof` (the
   CIP-1 document envelope and its ecrecover/subkey/document-reference proof types),
-  `Policy`/`PolicyEntry` (CIP-8), `Event`/`RealtimeRequest` (realtime pub/sub payloads),
+  `Policy`/`PolicyEntry` (CIP-12), `Event`/`RealtimeRequest` (realtime pub/sub payloads),
   `CCURI` (parses/formats `cckv://` and `ccfs://` URIs), and secp256k1 signing/verification
   built on `go-ethereum`'s crypto plus `cosmos-sdk`'s key types.
 

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/lib/pq"
+	"go.opentelemetry.io/otel/trace"
 	"gorm.io/gorm"
 	"gorm.io/gorm/clause"
 
@@ -802,7 +803,10 @@ func (r *RecordRepository) GetDistributions(ctx context.Context, uri string) ([]
 func (r *RecordRepository) GetAssociatedRecords(
 	ctx context.Context,
 	targetURI, schema, variant, author string,
-) ([]concrnt.SignedDocument, error) {
+	since, until *time.Time,
+	limit int,
+	order string,
+) ([]usecase.QueryRow, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.GetAssociatedRecords")
 	defer span.End()
 
@@ -823,12 +827,28 @@ func (r *RecordRepository) GetAssociatedRecords(
 	if author != "" {
 		query = query.Where("associations.author = ?", author)
 	}
+	if since != nil {
+		query = query.Where("associations.created_at >= ?", *since)
+	}
+	if until != nil {
+		query = query.Where("associations.created_at <= ?", *until)
+	}
+
+	if order == "desc" {
+		query = query.Order("associations.created_at DESC, associations.document_id DESC")
+	} else {
+		query = query.Order("associations.created_at ASC, associations.document_id ASC")
+	}
+
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
 
 	if err := query.Find(&associations).Error; err != nil {
 		return nil, err
 	}
 
-	sds := make([]concrnt.SignedDocument, len(associations))
+	rows := make([]usecase.QueryRow, len(associations))
 	for i, assoc := range associations {
 		var proof concrnt.Proof
 		err := json.Unmarshal([]byte(assoc.Document.Proof), &proof)
@@ -839,14 +859,17 @@ func (r *RecordRepository) GetAssociatedRecords(
 
 		ccfs := concrnt.ComposeCCFSURI(assoc.Owner, concrnt.CCFSTypeConcrnt, assoc.DocumentID)
 
-		sds[i] = concrnt.SignedDocument{
-			CCFS:     &ccfs,
-			Document: assoc.Document.Document,
-			Proof:    proof,
+		rows[i] = usecase.QueryRow{
+			Row: concrnt.SignedDocument{
+				CCFS:     &ccfs,
+				Document: assoc.Document.Document,
+				Proof:    proof,
+			},
+			CreatedAt: assoc.CreatedAt,
 		}
 	}
 
-	return sds, nil
+	return rows, nil
 }
 
 func (r *RecordRepository) GetAssociatedRecordCountsBySchema(ctx context.Context, targetURI string) (map[string]int64, error) {
@@ -920,7 +943,7 @@ func (r *RecordRepository) QueryByPrefix(
 	since, until *time.Time,
 	limit int,
 	order string,
-) ([]concrnt.SignedDocument, error) {
+) ([]usecase.QueryRow, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.Query")
 	defer span.End()
 
@@ -942,9 +965,9 @@ func (r *RecordRepository) QueryByPrefix(
 	}
 
 	if order == "desc" {
-		query = query.Order("r.created_at DESC")
+		query = query.Order("r.created_at DESC, r.document_id DESC")
 	} else {
-		query = query.Order("r.created_at ASC")
+		query = query.Order("r.created_at ASC, r.document_id ASC")
 	}
 
 	if limit > 0 {
@@ -956,7 +979,13 @@ func (r *RecordRepository) QueryByPrefix(
 		return nil, err
 	}
 
-	sds := make([]concrnt.SignedDocument, 0, len(rks))
+	return recordKeysToQueryRows(rks, span)
+}
+
+// recordKeysToQueryRows converts preloaded record keys into query rows
+// carrying the created_at sort key the query ordered by.
+func recordKeysToQueryRows(rks []models.RecordKey, span trace.Span) ([]usecase.QueryRow, error) {
+	rows := make([]usecase.QueryRow, 0, len(rks))
 	for _, rk := range rks {
 		var proof concrnt.Proof
 		err := json.Unmarshal([]byte(rk.Record.Document.Proof), &proof)
@@ -967,15 +996,18 @@ func (r *RecordRepository) QueryByPrefix(
 
 		ccfs := concrnt.ComposeCCFSURI(rk.Record.Owner, concrnt.CCFSTypeConcrnt, rk.Record.DocumentID)
 
-		sds = append(sds, concrnt.SignedDocument{
-			CCKV:     &rk.URI,
-			CCFS:     &ccfs,
-			Document: rk.Record.Document.Document,
-			Proof:    proof,
+		rows = append(rows, usecase.QueryRow{
+			Row: concrnt.SignedDocument{
+				CCKV:     &rk.URI,
+				CCFS:     &ccfs,
+				Document: rk.Record.Document.Document,
+				Proof:    proof,
+			},
+			CreatedAt: rk.Record.CreatedAt,
 		})
 	}
 
-	return sds, nil
+	return rows, nil
 }
 
 // likeEscaper escapes LIKE metacharacters so a key containing '%' or '_'
@@ -1036,7 +1068,7 @@ func (r *RecordRepository) QueryByParent(
 	since, until *time.Time,
 	limit int,
 	order string,
-) ([]concrnt.SignedDocument, error) {
+) ([]usecase.QueryRow, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.QueryByParent")
 	defer span.End()
 
@@ -1058,9 +1090,9 @@ func (r *RecordRepository) QueryByParent(
 	}
 
 	if order == "desc" {
-		query = query.Order("r.created_at DESC")
+		query = query.Order("r.created_at DESC, r.document_id DESC")
 	} else {
-		query = query.Order("r.created_at ASC")
+		query = query.Order("r.created_at ASC, r.document_id ASC")
 	}
 
 	if limit > 0 {
@@ -1072,29 +1104,10 @@ func (r *RecordRepository) QueryByParent(
 		return nil, err
 	}
 
-	sds := make([]concrnt.SignedDocument, 0, len(rks))
-	for _, rk := range rks {
-		var proof concrnt.Proof
-		err := json.Unmarshal([]byte(rk.Record.Document.Proof), &proof)
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
-
-		ccfs := concrnt.ComposeCCFSURI(rk.Record.Owner, concrnt.CCFSTypeConcrnt, rk.Record.DocumentID)
-
-		sds = append(sds, concrnt.SignedDocument{
-			CCKV:     &rk.URI,
-			CCFS:     &ccfs,
-			Document: rk.Record.Document.Document,
-			Proof:    proof,
-		})
-	}
-
-	return sds, nil
+	return recordKeysToQueryRows(rks, span)
 }
 
-func (r *RecordRepository) GetAcknowledgeRecords(ctx context.Context, from, to, schema string) ([]concrnt.SignedDocument, error) {
+func (r *RecordRepository) GetAcknowledgeRecords(ctx context.Context, from, to, schema string, since, until *time.Time, limit int, order string) ([]usecase.QueryRow, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.GetAcknowledgeRecords")
 	defer span.End()
 
@@ -1117,13 +1130,30 @@ func (r *RecordRepository) GetAcknowledgeRecords(ctx context.Context, from, to, 
 		query = query.Where("acks.valid = ?", true)
 	}
 
-	err := query.Order("acks.created_at ASC").Find(&acks).Error
+	if since != nil {
+		query = query.Where("acks.created_at >= ?", *since)
+	}
+	if until != nil {
+		query = query.Where("acks.created_at <= ?", *until)
+	}
+
+	if order == "desc" {
+		query = query.Order("acks.created_at DESC, acks.document_id DESC")
+	} else {
+		query = query.Order("acks.created_at ASC, acks.document_id ASC")
+	}
+
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+
+	err := query.Find(&acks).Error
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
 
-	result := make([]concrnt.SignedDocument, len(acks))
+	rows := make([]usecase.QueryRow, len(acks))
 	for i, ack := range acks {
 		var proof concrnt.Proof
 		err := json.Unmarshal([]byte(ack.Document.Proof), &proof)
@@ -1134,14 +1164,17 @@ func (r *RecordRepository) GetAcknowledgeRecords(ctx context.Context, from, to, 
 
 		ccfs := concrnt.ComposeCCFSURI(ack.From, concrnt.CCFSTypeConcrnt, ack.DocumentID)
 
-		result[i] = concrnt.SignedDocument{
-			CCFS:     &ccfs,
-			Document: ack.Document.Document,
-			Proof:    proof,
+		rows[i] = usecase.QueryRow{
+			Row: concrnt.SignedDocument{
+				CCFS:     &ccfs,
+				Document: ack.Document.Document,
+				Proof:    proof,
+			},
+			CreatedAt: ack.CreatedAt,
 		}
 	}
 
-	return result, nil
+	return rows, nil
 }
 
 func (r *RecordRepository) GetAcknowledgeRecordCounts(ctx context.Context, from, to, schema string) (map[string]int64, error) {

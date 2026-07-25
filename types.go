@@ -103,6 +103,15 @@ type SignedDocument struct {
 	References map[string]SignedDocument `json:"references,omitempty"`
 }
 
+// QueryResult is the paged envelope returned by the query/associations/
+// acknowledges endpoints (CIP-5 §3.2). Prev and Next are datetime cursors
+// over the server-side sort key; nil means no more rows in that direction.
+type QueryResult struct {
+	Items []SignedDocument `json:"items"`
+	Prev  *time.Time       `json:"prev"`
+	Next  *time.Time       `json:"next"`
+}
+
 type RegisterRequest struct {
 	SignedDocument
 	Meta        any     `json:"meta,omitempty"`

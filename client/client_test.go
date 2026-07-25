@@ -258,7 +258,8 @@ func TestQuery(t *testing.T) {
 			assertQueryParam(t, r.Header.Get("User-Agent"), "concrnt-test/dev (Concrnt)")
 			assertQueryParam(t, r.Header.Get("Accept"), "application/json")
 
-			if err := json.NewEncoder(w).Encode(want); err != nil {
+			next := until.Add(-time.Hour)
+			if err := json.NewEncoder(w).Encode(concrnt.QueryResult{Items: want, Prev: &until, Next: &next}); err != nil {
 				t.Fatalf("encode query response: %v", err)
 			}
 		default:
@@ -283,14 +284,20 @@ func TestQuery(t *testing.T) {
 		t.Fatalf("Query returned error: %v", err)
 	}
 
-	if len(got) != 1 {
-		t.Fatalf("Query returned %d results, want 1", len(got))
+	if len(got.Items) != 1 {
+		t.Fatalf("Query returned %d results, want 1", len(got.Items))
 	}
-	if got[0].CCKV == nil || *got[0].CCKV != cckv {
-		t.Fatalf("Query returned CCKV %v, want %q", got[0].CCKV, cckv)
+	if got.Items[0].CCKV == nil || *got.Items[0].CCKV != cckv {
+		t.Fatalf("Query returned CCKV %v, want %q", got.Items[0].CCKV, cckv)
 	}
-	if got[0].Document != want[0].Document {
-		t.Fatalf("Query returned document %q, want %q", got[0].Document, want[0].Document)
+	if got.Items[0].Document != want[0].Document {
+		t.Fatalf("Query returned document %q, want %q", got.Items[0].Document, want[0].Document)
+	}
+	if got.Prev == nil || !got.Prev.Equal(until) {
+		t.Fatalf("Query returned prev %v, want %v", got.Prev, until)
+	}
+	if got.Next == nil || !got.Next.Equal(until.Add(-time.Hour)) {
+		t.Fatalf("Query returned next %v, want %v", got.Next, until.Add(-time.Hour))
 	}
 }
 

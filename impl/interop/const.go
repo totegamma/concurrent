@@ -13,3 +13,8 @@ const (
 	CaptchaVerifiedHeader    = "cc-captcha-verified"
 	ServiceAccountTypeHeader = "cc-service-account-type"
 )
+
+// EventChannelPrefix namespaces concrnt realtime events on the shared Redis
+// pubsub. Only the Redis channel name carries it — Event.Source and every
+// application-level prefix stay raw resource URIs.
+const EventChannelPrefix = "cc-event:"

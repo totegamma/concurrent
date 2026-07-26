@@ -590,6 +590,66 @@ func TestCommitBackdateWindow(t *testing.T) {
 	})
 }
 
+// Entity documents are exempt from the backdate window (CIP-3 §3.4): the
+// affiliation signature is long-lived and re-presented indefinitely, and
+// accept-if-newer already no-ops old replays. In exchange they must be
+// master-key signed (CIP-0 §8.2) — a subkey proof would let a leaked,
+// since-revoked subkey forge a backdated affiliation forever.
+func TestCommitEntityBackdateExemptRequiresDirectProof(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+
+	newEntitySD := func(createdAt time.Time) concrnt.SignedDocument {
+		return signTestDocument(t, concrnt.Document[schemas.Entity]{
+			Kind:      "entity",
+			Value:     schemas.Entity{Domain: "remote.example.net"},
+			Author:    ccid,
+			CreatedAt: createdAt,
+		}, priv)
+	}
+	newEntityUsecase := func(repo RecordRepository) *RecordUsecase {
+		return NewRecordUsecase(
+			repo,
+			fixedResidenceRepo{},
+			newTestServerUsecase(cfg),
+			cfg,
+			nil,
+			nopSignalService{},
+			nopPolicyService{},
+			nil,
+			nil,
+		)
+	}
+
+	t.Run("old entity document applies", func(t *testing.T) {
+		repo := &recordingRecordRepo{}
+		uc := newEntityUsecase(repo)
+		sd := newEntitySD(time.Now().Add(-domain.MaxBackdate - 30*24*time.Hour))
+		if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+			t.Fatalf("Commit returned error: %v", err)
+		}
+		if !repo.createEntityCalled {
+			t.Fatal("CreateEntity was not called for an old entity document")
+		}
+	})
+
+	t.Run("subkey proof rejected", func(t *testing.T) {
+		repo := &recordingRecordRepo{}
+		uc := newEntityUsecase(repo)
+		sd := newEntitySD(time.Now().Add(-time.Minute))
+		kid := concrnt.CCURI{Scheme: "cckv", Owner: ccid, Key: "subkeys/cck1dummy"}.String()
+		sd.Proof.Type = concrnt.ProofTypeSubkey
+		sd.Proof.Key = &kid
+		_, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute)
+		if err == nil || !strings.Contains(err.Error(), "must be signed with") {
+			t.Fatalf("expected proof-type rejection, got %v", err)
+		}
+		if repo.createEntityCalled {
+			t.Fatal("CreateEntity should not be called for a subkey-signed entity document")
+		}
+	})
+}
+
 // documentIDOf derives the documentID a signed document commits under, the
 // same way Commit does: CDID from the document body + createdAt.
 func documentIDOf(t *testing.T, sd concrnt.SignedDocument) string {

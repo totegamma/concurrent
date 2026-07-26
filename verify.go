@@ -36,6 +36,10 @@ var ErrNoneProofNotAllowed = errors.New("none proof type is not allowed")
 // check.
 var ErrUnsupportedProofType = errors.New("unsupported or unverifiable proof type")
 
+// ErrProofTypeNotAllowed indicates a proof type excluded by the caller's
+// allowed list (VerifyWithProofTypes) or by a nested requirement.
+var ErrProofTypeNotAllowed = errors.New("proof type is not allowed here")
+
 // maxVerifyDepth bounds how many linked documents (subkey / document-reference
 // proofs) Verify will follow, to protect against malicious, arbitrarily deep
 // proof chains.
@@ -76,7 +80,7 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 	}
 
 	if allowed != nil && !slices.Contains(allowed, sd.Proof.Type) {
-		return fmt.Errorf("proof type %s is not allowed here (allowed: %s)", sd.Proof.Type, strings.Join(allowed, ", "))
+		return fmt.Errorf("%w: %s (allowed: %s)", ErrProofTypeNotAllowed, sd.Proof.Type, strings.Join(allowed, ", "))
 	}
 
 	var doc Document[any]

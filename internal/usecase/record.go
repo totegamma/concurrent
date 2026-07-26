@@ -272,11 +272,23 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 	//   - subkey enact documents are always fetched from their authoritative
 	//     server inside Verify, so revoked subkeys can't be replayed inline.
 	if !isServiceAccount {
-		if err := sd.Verify(ctx, uc.resolver()); err != nil {
+		// Entity documents must be master-key signed (CIP-0 §8.2): affiliation
+		// is an account-level statement, and combined with the backdate
+		// exemption below a subkey proof would let a leaked, since-revoked
+		// subkey forge a backdated affiliation forever (CIP-13 §8 relies on
+		// the backdate window to bound exactly that).
+		var allowedProofs []string
+		if doc.Kind == "entity" {
+			allowedProofs = []string{concrnt.ProofTypeEcrecover}
+		}
+		if err := sd.VerifyWithProofTypes(ctx, uc.resolver(), allowedProofs); err != nil {
 			span.RecordError(err)
 			if errors.Is(err, concrnt.ErrNoneProofNotAllowed) {
 				slog.Error("Unauthorized commit with none proof", "error", err.Error())
 				return nil, errors.Join(domain.ValidationError{Field: "proof.type", Message: "none proof type is only allowed for system service accounts"}, err)
+			}
+			if doc.Kind == "entity" && errors.Is(err, concrnt.ErrProofTypeNotAllowed) {
+				return nil, errors.Join(domain.ValidationError{Field: "proof.type", Message: "entity documents must be signed with " + concrnt.ProofTypeEcrecover}, err)
 			}
 			if errors.Is(err, concrnt.ErrUnsupportedProofType) {
 				return nil, errors.Join(domain.ValidationError{Field: "proof.type", Message: "unsupported proof type: " + sd.Proof.Type}, err)
@@ -284,14 +296,19 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 			return nil, errors.Join(domain.ValidationError{Field: "proof", Message: "signature verification failed"}, err)
 		}
 
+		// Entity documents are exempt from the backdate window: an affiliation
+		// signature is long-lived and re-presented indefinitely (federated
+		// resolution commits fetched copies, GetEntity), accept-if-newer
+		// already no-ops old replays, and the master-key requirement above
+		// keeps the leaked-subkey backdating bound of CIP-13 §8 intact.
 		// Self-service migration: an authenticated user importing their own
 		// repository dump (LocalOnlyExecute never re-federates) may replay
 		// historical documents past the backdate window — their own, and
 		// documents by others that target their content (e.g. inbound
 		// associations carried over in the dump). Signature verification
 		// still applies.
-		backdateExempt := false
-		if mode == domain.CommitModeLocalOnlyExecute {
+		backdateExempt := doc.Kind == "entity"
+		if !backdateExempt && mode == domain.CommitModeLocalOnlyExecute {
 			if authenticated, ok := ctx.Value(interop.RequesterCtxKey).(domain.Entity); ok {
 				backdateExempt = doc.Author == authenticated.ID
 				if !backdateExempt && doc.Key != "" {

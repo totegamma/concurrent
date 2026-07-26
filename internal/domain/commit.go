@@ -19,7 +19,9 @@ const (
 	// (content id) tombstoned for exactly this long — so a captured document
 	// is always either still tombstoned or already too old to accept, which
 	// makes a deletion permanent against replay while leaving the cckv key
-	// itself reusable for fresh documents.
+	// itself reusable for fresh documents. Entity documents are exempt
+	// (CIP-3 §3.4): the affiliation signature is long-lived, and
+	// accept-if-newer makes old replays a no-op.
 	MaxBackdate = 7 * 24 * time.Hour
 
 	// MaxFutureSkew is how far ahead of server time a committed createdAt may

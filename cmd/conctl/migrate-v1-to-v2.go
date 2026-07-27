@@ -102,6 +102,16 @@ func ResolveMigrationTable(db *gorm.DB, v1id string) (string, error) {
 	return table.V2ID, nil
 }
 
+// v1のmessage IDからv2の実キーを引く。このDBで移行済みのmessageはサブプロファイルを含む
+// 実キーに解決できる。ソースDBに存在しないリモートのmessageはmainプロファイルで合成する。
+func resolvePostKey(destDB *gorm.DB, author string, messageID string) string {
+	key, err := ResolveMigrationTable(destDB, messageID)
+	if err == nil {
+		return key
+	}
+	return fmt.Sprintf("cckv://%s/concrnt.world/profiles/main/posts/%s", author, messageID)
+}
+
 func LoadMigrationInfo(db *gorm.DB, name string) (*MigrationInfo, error) {
 	var info MigrationInfo
 	result := db.First(&info, "name = ?", name)
@@ -593,7 +603,7 @@ func convertRecord(
 					fmt.Println("failed to unmarshal reply message document: ", err)
 					return "", err
 				}
-				replyDoc.Body.TargetURI = `cckv://` + replyDoc.Body.ReplyToMessageAuthor + `/concrnt.world/profiles/main/posts/` + replyDoc.Body.ReplyToMessageId
+				replyDoc.Body.TargetURI = resolvePostKey(destDB, replyDoc.Body.ReplyToMessageAuthor, replyDoc.Body.ReplyToMessageId)
 				body = replyDoc.Body
 			case "https://schema.concrnt.world/m/reroute.json":
 				var rerouteDoc core.MessageDocument[RerouteMessageSchema]
@@ -602,7 +612,7 @@ func convertRecord(
 					fmt.Println("failed to unmarshal reroute message document: ", err)
 					return "", err
 				}
-				rerouteDoc.Body.TargetURI = `cckv://` + rerouteDoc.Body.RerouteMessageAuthor + `/concrnt.world/profiles/main/posts/` + rerouteDoc.Body.RerouteMessageId
+				rerouteDoc.Body.TargetURI = resolvePostKey(destDB, rerouteDoc.Body.RerouteMessageAuthor, rerouteDoc.Body.RerouteMessageId)
 				body = rerouteDoc.Body
 			}
 
@@ -799,23 +809,23 @@ func convertRecord(
 			body := v1ass.Body
 			switch v1ass.Schema {
 			case "https://schema.concrnt.world/a/reply.json":
-				var replyAssoc ReplyAssociationSchema
+				var replyAssoc core.AssociationDocument[ReplyAssociationSchema]
 				err := json.Unmarshal([]byte(commit.Document), &replyAssoc)
 				if err != nil {
 					fmt.Println("failed to unmarshal reply association document: ", err)
 					return "", err
 				}
-				replyAssoc.TargetURI = `cckv://` + replyAssoc.MessageAuthor + `/concrnt.world/profiles/main/posts/` + replyAssoc.MessageId
-				body = replyAssoc
+				replyAssoc.Body.TargetURI = resolvePostKey(destDB, replyAssoc.Body.MessageAuthor, replyAssoc.Body.MessageId)
+				body = replyAssoc.Body
 			case "https://schema.concrnt.world/a/reroute.json":
-				var rerouteAssoc RerouteAssociationSchema
+				var rerouteAssoc core.AssociationDocument[RerouteAssociationSchema]
 				err := json.Unmarshal([]byte(commit.Document), &rerouteAssoc)
 				if err != nil {
 					fmt.Println("failed to unmarshal reroute association document: ", err)
 					return "", err
 				}
-				rerouteAssoc.TargetURI = `cckv://` + rerouteAssoc.MessageAuthor + `/concrnt.world/profiles/main/posts/` + rerouteAssoc.MessageId
-				body = rerouteAssoc
+				rerouteAssoc.Body.TargetURI = resolvePostKey(destDB, rerouteAssoc.Body.MessageAuthor, rerouteAssoc.Body.MessageId)
+				body = rerouteAssoc.Body
 			}
 
 			v2doc = &concrnt.Document[any]{

@@ -72,6 +72,10 @@ var createAccountCmd = &cobra.Command{
 			return err
 		}
 
+		// conctlはDB直結の信頼経路なので、registrationモード(invite/close)による
+		// 登録制限は適用しない
+		op.GlobalConfig.Registration = "open"
+
 		residenceRepo := postgres.NewResidenceRepository(op.DB, op.Client, op.GlobalConfig)
 		recordRepo := postgres.NewRecordRepository(op.DB)
 		serverRepo := postgres.NewServerRepository(&op.GlobalConfig, op.DB, op.Client)

@@ -19,6 +19,7 @@ var (
 	createAccountAlias   string
 	createAccountInfo    string
 	createAccountInviter string
+	createAccountPrivkey string
 )
 
 type nopSignal struct{}
@@ -56,7 +57,12 @@ var createAccountCmd = &cobra.Command{
 			return err
 		}
 
-		identity, err := generateIdentityMaterial()
+		var identity generatedIdentity
+		if createAccountPrivkey != "" {
+			identity, err = identityFromPrivateKey(createAccountPrivkey)
+		} else {
+			identity, err = generateIdentityMaterial()
+		}
 		if err != nil {
 			return err
 		}
@@ -97,7 +103,9 @@ var createAccountCmd = &cobra.Command{
 			fmt.Println("inviter:\t", *inviter)
 		}
 		fmt.Println("ccid:\t\t", identity.CCID)
-		fmt.Println("mnemonic:\t", identity.Mnemonic)
+		if identity.Mnemonic != "" {
+			fmt.Println("mnemonic:\t", identity.Mnemonic)
+		}
 		fmt.Println("privatekey:\t", identity.PrivateKey)
 		fmt.Println("publickey:\t", identity.PublicKey)
 
@@ -111,4 +119,5 @@ func init() {
 	createAccountCmd.Flags().StringVar(&createAccountAlias, "alias", "", "Optional alias to bind to the account")
 	createAccountCmd.Flags().StringVar(&createAccountInfo, "info", "null", "JSON value to store in entity meta.info")
 	createAccountCmd.Flags().StringVar(&createAccountInviter, "inviter", "", "Optional inviter CCID to store in entity meta")
+	createAccountCmd.Flags().StringVar(&createAccountPrivkey, "privatekey", "", "Use an existing secp256k1 private key (hex) instead of generating a new identity")
 }

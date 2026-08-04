@@ -64,6 +64,28 @@ func generateIdentityMaterial() (generatedIdentity, error) {
 	}, nil
 }
 
+func identityFromPrivateKey(privKeyHex string) (generatedIdentity, error) {
+	privKeyHex = strings.TrimSpace(privKeyHex)
+
+	ccid, err := concrnt.PrivKeyToAddr(privKeyHex, "con")
+	if err != nil {
+		return generatedIdentity{}, fmt.Errorf("invalid private key: %w", err)
+	}
+
+	privKeyBytes, err := hex.DecodeString(privKeyHex)
+	if err != nil {
+		return generatedIdentity{}, fmt.Errorf("invalid private key: %w", err)
+	}
+
+	privKey := &secp256k1.PrivKey{Key: privKeyBytes}
+
+	return generatedIdentity{
+		CCID:       ccid,
+		PrivateKey: privKeyHex,
+		PublicKey:  hex.EncodeToString(privKey.PubKey().Bytes()),
+	}, nil
+}
+
 func normalizeCreateAccountAlias(alias string) *string {
 	trimmed := strings.TrimSpace(alias)
 	trimmed = strings.TrimPrefix(trimmed, "@")

@@ -1047,12 +1047,22 @@ func convertRecord(
 				})
 			}
 
+			// v1 created profile timelines as t/empty.json (subprofile homes as
+			// t/subprofile.json), but native v2 clients create all of them as
+			// t/user.json — normalize so schema filters recognize migrated ones
+			schema := v1tl.Schema
+			if strings.HasSuffix(key, "/home-timeline") ||
+				strings.HasSuffix(key, "/notify-timeline") ||
+				strings.HasSuffix(key, "/activity-timeline") {
+				schema = "https://schema.concrnt.world/t/user.json"
+			}
+
 			v2doc = &concrnt.Document[any]{
 				Kind:      "record",
 				Key:       key,
 				Value:     v1tl.Body,
 				Author:    v1tl.Signer,
-				Schema:    v1tl.Schema,
+				Schema:    schema,
 				CreatedAt: v1tl.SignedAt,
 				Policy:    pol,
 			}

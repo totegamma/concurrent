@@ -1323,7 +1323,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 		postProcesses = append(postProcesses, func(ctx context.Context) error {
 			// runs post-commit, so the anonymous read evaluation sees the
 			// just-stored record's own policy
-			return uc.signal.Publish(ctx, resultURI, uc.redactEventForAnonymous(ctx, concrnt.Event{
+			return uc.signal.Publish(ctx, resultURI, uc.markEventForAnonymous(ctx, concrnt.Event{
 				Type:       "created",
 				URI:        resultURI,
 				References: map[string]concrnt.SignedDocument{resultURI: sd},
@@ -1519,10 +1519,10 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 			}
 			postProcesses = append(postProcesses,
 				func(ctx context.Context) error {
-					// only the realtime event is redacted for anonymous
-					// readers — the delivery payload is the signed document
-					// remote servers must verify in full
-					event := uc.redactEventForAnonymous(ctx, concrnt.Event{
+					// only the realtime event carries visibility flags — the
+					// delivery payload is the signed document remote servers
+					// must verify in full, so it stays untouched
+					event := uc.markEventForAnonymous(ctx, concrnt.Event{
 						Type:        "associated",
 						URI:         target,
 						Association: &ccfs,
@@ -1955,40 +1955,42 @@ func (uc *RecordUsecase) checkReadAccessAs(ctx context.Context, uri string, sd c
 	return nil
 }
 
-// redactEventForAnonymous strips realtime-event documents an anonymous
-// requester may not read (CIP-11 §3.2): subscriptions carry no authentication,
-// so this guest-baseline policy evaluation at publish time is the enforcement
-// mechanism. Evaluated once per event here rather than per subscriber; the
-// event itself (type/uri/timestamp) is always delivered. Unevaluable
-// documents are redacted (fail closed).
-func (uc *RecordUsecase) redactEventForAnonymous(ctx context.Context, event concrnt.Event) concrnt.Event {
+// markEventForAnonymous annotates every realtime-event document with the
+// internal IsPublic flag: whether an anonymous requester may read it
+// (CIP-11 §3.2 baseline). The full documents stay on the event so trusted
+// internal consumers (NotificationReactor, modules on the redis pubsub) see
+// everything; unauthenticated websocket subscribers get Event.PublicView,
+// which drops the documents flagged false. Evaluated once per event here
+// rather than per subscriber. Unevaluable documents are flagged not public
+// (fail closed). References nested deeper than one level are removed: the
+// public view would drop them anyway and no internal consumer reads them.
+// The passed event's documents are copied, never mutated in place — the
+// commit response and the delivery payload share the same underlying maps.
+func (uc *RecordUsecase) markEventForAnonymous(ctx context.Context, event concrnt.Event) concrnt.Event {
 	if len(event.References) == 0 {
 		return event
 	}
-	readable := make(map[string]concrnt.SignedDocument, len(event.References))
+	marked := make(map[string]concrnt.SignedDocument, len(event.References))
 	for uri, refSD := range event.References {
-		if err := uc.checkReadAccessAs(ctx, uri, refSD, domain.Entity{}); err != nil {
-			continue
-		}
+		public := uc.checkReadAccessAs(ctx, uri, refSD, domain.Entity{}) == nil
+		refSD.IsPublic = &public
 		// Nested references embed further documents (e.g. the distributed
 		// original inside a timeline reference) that the loop above never
-		// sees — apply the same anonymous gate to them, and drop anything
-		// nested deeper outright.
-		var kept map[string]concrnt.SignedDocument
-		for nestedURI, nestedSD := range refSD.References {
-			if err := uc.checkReadAccessAs(ctx, nestedURI, nestedSD, domain.Entity{}); err != nil {
-				continue
+		// sees — apply the same anonymous evaluation to them.
+		var nested map[string]concrnt.SignedDocument
+		if len(refSD.References) > 0 {
+			nested = make(map[string]concrnt.SignedDocument, len(refSD.References))
+			for nestedURI, nestedSD := range refSD.References {
+				nestedPublic := uc.checkReadAccessAs(ctx, nestedURI, nestedSD, domain.Entity{}) == nil
+				nestedSD.IsPublic = &nestedPublic
+				nestedSD.References = nil
+				nested[nestedURI] = nestedSD
 			}
-			nestedSD.References = nil
-			if kept == nil {
-				kept = make(map[string]concrnt.SignedDocument, len(refSD.References))
-			}
-			kept[nestedURI] = nestedSD
 		}
-		refSD.References = kept
-		readable[uri] = refSD
+		refSD.References = nested
+		marked[uri] = refSD
 	}
-	event.References = readable
+	event.References = marked
 	return event
 }
 

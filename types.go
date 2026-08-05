@@ -101,6 +101,14 @@ type SignedDocument struct {
 	Document   string                    `json:"document"`
 	Proof      Proof                     `json:"proof"`
 	References map[string]SignedDocument `json:"references,omitempty"`
+
+	// IsPublic is an internal, publish-time annotation (not part of the CCAPI
+	// wire format): whether an anonymous requester may read this document
+	// (CIP-11 §3.2 baseline). nil means unevaluated, which consumers must
+	// treat as not public. It exists only on the redis pubsub Event contract;
+	// Event.PublicView strips it at the websocket edge and it is never part of
+	// commit responses, query results or federation payloads.
+	IsPublic *bool `json:"isPublic,omitempty"`
 }
 
 // QueryResult is the paged envelope returned by the query/associations/
@@ -125,6 +133,83 @@ type Event struct {
 	Association *string                   `json:"association,omitempty"`
 	References  map[string]SignedDocument `json:"documents,omitempty"`
 	Timestamp   time.Time                 `json:"timestamp"`
+}
+
+// PublicView returns a copy of the event suitable for unauthenticated
+// consumers (CIP-11 §3.2): only documents marked anonymously readable are
+// kept, references nested deeper than one level are removed outright, and the
+// internal IsPublic flags are stripped. Unmarked (nil) documents are dropped
+// (fail closed). The receiver is not mutated.
+func (e Event) PublicView() Event {
+	if len(e.References) == 0 {
+		return e
+	}
+	readable := make(map[string]SignedDocument, len(e.References))
+	for uri, sd := range e.References {
+		if sd.IsPublic == nil || !*sd.IsPublic {
+			continue
+		}
+		sd.IsPublic = nil
+		var kept map[string]SignedDocument
+		for nestedURI, nestedSD := range sd.References {
+			if nestedSD.IsPublic == nil || !*nestedSD.IsPublic {
+				continue
+			}
+			nestedSD.IsPublic = nil
+			nestedSD.References = nil
+			if kept == nil {
+				kept = make(map[string]SignedDocument, len(sd.References))
+			}
+			kept[nestedURI] = nestedSD
+		}
+		sd.References = kept
+		readable[uri] = sd
+	}
+	e.References = readable
+	return e
+}
+
+// MarkAllPublic returns a copy of the event with every document (nested
+// included) flagged anonymously readable. Used when republishing events
+// received from a remote server's public realtime feed: whatever arrived has
+// already passed the remote edge's anonymous filter, so inbound content is
+// public by definition. The receiver is not mutated.
+func (e Event) MarkAllPublic() Event {
+	if len(e.References) == 0 {
+		return e
+	}
+	marked := make(map[string]SignedDocument, len(e.References))
+	for uri, sd := range e.References {
+		public := true
+		sd.IsPublic = &public
+		if len(sd.References) > 0 {
+			nested := make(map[string]SignedDocument, len(sd.References))
+			for nestedURI, nestedSD := range sd.References {
+				nestedPublic := true
+				nestedSD.IsPublic = &nestedPublic
+				nested[nestedURI] = nestedSD
+			}
+			sd.References = nested
+		}
+		marked[uri] = sd
+	}
+	e.References = marked
+	return e
+}
+
+// StripInternalFlags removes the internal IsPublic annotations at every
+// nesting level. Called on inbound documents so the spec-external flag never
+// echoes back on API responses. The receiver is not mutated.
+func (sd SignedDocument) StripInternalFlags() SignedDocument {
+	sd.IsPublic = nil
+	if len(sd.References) > 0 {
+		refs := make(map[string]SignedDocument, len(sd.References))
+		for uri, ref := range sd.References {
+			refs[uri] = ref.StripInternalFlags()
+		}
+		sd.References = refs
+	}
+	return sd
 }
 
 // NotificationPayload is the minimal push-notification body delivered to devices

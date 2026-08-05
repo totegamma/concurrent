@@ -141,6 +141,9 @@ func (h *Handler) handleCommit(c echo.Context) error {
 	if err != nil {
 		return presenter.BadRequest(c, err)
 	}
+	// isPublic is an internal annotation, not part of the CCAPI wire format —
+	// drop any client-supplied value so it never echoes back in the response
+	sd = sd.StripInternalFlags()
 
 	ip := c.RealIP()
 
@@ -791,7 +794,9 @@ func (h *Handler) handleRealtime(c echo.Context) error {
 		case <-ctx.Done():
 			return nil
 		case items := <-output:
-			err := ws.WriteJSON(items)
+			// realtime subscriptions carry no authentication, so every
+			// websocket client gets the anonymous baseline view (CIP-11 §3.2)
+			err := ws.WriteJSON(items.PublicView())
 			if err != nil {
 				slog.ErrorContext(
 					ctx, "Error writing message",

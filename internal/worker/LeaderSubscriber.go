@@ -843,7 +843,11 @@ func (s *LeaderSubscriber) runRelayer(ctx context.Context, cancel context.Cancel
 				continue
 			}
 
-			err = s.pubsub.Publish(ctx, event.Source, event)
+			// The remote edge already applied its anonymous filter to its
+			// public realtime feed, so whatever arrived is public by
+			// definition — flag it so the local websocket edge (fail-closed
+			// on unflagged documents) delivers it.
+			err = s.pubsub.Publish(ctx, event.Source, event.MarkAllPublic())
 			if err != nil {
 				slog.Error(
 					"fail to publish event to local signal service",

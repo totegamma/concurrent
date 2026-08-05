@@ -1018,10 +1018,10 @@ func (p *anonymousDenyPolicyService) Eval(ctx context.Context, req policy.Reques
 	return nil
 }
 
-// CIP-11 §3.2: realtime events are redacted against the anonymous baseline at
-// publish time — a document anonymous readers may not read is stripped from
-// the event's documents field, while the event envelope itself is delivered.
-func TestCreatedEventRedactedForAnonymous(t *testing.T) {
+// CIP-11 §3.2: realtime events are flagged against the anonymous baseline at
+// publish time — the documents stay on the event for internal consumers, and
+// each carries IsPublic so the websocket edge can filter (Event.PublicView).
+func TestCreatedEventMarkedForAnonymous(t *testing.T) {
 	ccid, priv := newIdentity(t)
 	cfg := &domain.Config{FQDN: "example.com"}
 
@@ -1049,20 +1049,36 @@ func TestCreatedEventRedactedForAnonymous(t *testing.T) {
 		return signal.events[0]
 	}
 
-	t.Run("protected document is stripped", func(t *testing.T) {
+	t.Run("protected document is kept but flagged not public", func(t *testing.T) {
 		event := run(t, &anonymousDenyPolicyService{})
-		if len(event.References) != 0 {
-			t.Fatalf("documents must be redacted, got %v", event.References)
+		if len(event.References) != 1 {
+			t.Fatalf("documents must stay on the event for internal consumers, got %v", event.References)
+		}
+		for _, ref := range event.References {
+			if ref.IsPublic == nil || *ref.IsPublic {
+				t.Fatalf("protected document must be flagged isPublic=false, got %+v", ref.IsPublic)
+			}
 		}
 		if event.Type != "created" || event.URI == "" || event.Timestamp.IsZero() {
 			t.Fatalf("event envelope must be delivered intact: %+v", event)
 		}
+		if len(event.PublicView().References) != 0 {
+			t.Fatal("the public view must drop the protected document")
+		}
 	})
 
-	t.Run("public document is delivered in full", func(t *testing.T) {
+	t.Run("public document is flagged public", func(t *testing.T) {
 		event := run(t, nopPolicyService{})
 		if len(event.References) != 1 {
 			t.Fatalf("documents must be preserved, got %v", event.References)
+		}
+		for _, ref := range event.References {
+			if ref.IsPublic == nil || !*ref.IsPublic {
+				t.Fatalf("public document must be flagged isPublic=true, got %+v", ref.IsPublic)
+			}
+		}
+		if len(event.PublicView().References) != 1 {
+			t.Fatal("the public view must keep the public document")
 		}
 	})
 }
@@ -1083,10 +1099,9 @@ func (p *uriDenyPolicyService) Eval(ctx context.Context, req policy.RequestConte
 }
 
 // Nested references inside an event document (e.g. the distributed original
-// embedded in a timeline reference) are gated by the same anonymous baseline:
-// unreadable entries are stripped, readable ones survive with anything nested
-// deeper removed outright.
-func TestEventNestedReferencesRedactedForAnonymous(t *testing.T) {
+// embedded in a timeline reference) are flagged by the same anonymous
+// baseline; anything nested deeper is removed outright.
+func TestEventNestedReferencesMarkedForAnonymous(t *testing.T) {
 	ccid, priv := newIdentity(t)
 	cfg := &domain.Config{FQDN: "example.com"}
 
@@ -1115,7 +1130,7 @@ func TestEventNestedReferencesRedactedForAnonymous(t *testing.T) {
 		nil,
 	)
 
-	event := uc.redactEventForAnonymous(context.Background(), concrnt.Event{
+	event := uc.markEventForAnonymous(context.Background(), concrnt.Event{
 		Type:       "created",
 		URI:        itemURI,
 		References: map[string]concrnt.SignedDocument{itemURI: itemSD},
@@ -1124,27 +1139,45 @@ func TestEventNestedReferencesRedactedForAnonymous(t *testing.T) {
 
 	got, ok := event.References[itemURI]
 	if !ok {
-		t.Fatalf("readable item must survive redaction, got %v", event.References)
+		t.Fatalf("item must stay on the event, got %v", event.References)
 	}
-	if _, leaked := got.References[protectedURI]; leaked {
-		t.Fatal("anonymous-unreadable nested reference must be stripped")
+	if got.IsPublic == nil || !*got.IsPublic {
+		t.Fatalf("readable item must be flagged isPublic=true, got %+v", got.IsPublic)
+	}
+	protected, ok := got.References[protectedURI]
+	if !ok {
+		t.Fatalf("nested reference must stay on the event, got %v", got.References)
+	}
+	if protected.IsPublic == nil || *protected.IsPublic {
+		t.Fatalf("anonymous-unreadable nested reference must be flagged isPublic=false, got %+v", protected.IsPublic)
 	}
 	kept, ok := got.References[publicURI]
 	if !ok {
 		t.Fatalf("readable nested reference must survive, got %v", got.References)
 	}
+	if kept.IsPublic == nil || !*kept.IsPublic {
+		t.Fatalf("readable nested reference must be flagged isPublic=true, got %+v", kept.IsPublic)
+	}
 	if kept.References != nil {
 		t.Fatalf("depth-2 references must be removed outright, got %v", kept.References)
 	}
-	if len(itemSD.References[publicURI].References) == 0 {
-		t.Fatal("redaction must not mutate the source event (delivery payloads share it)")
+	if len(itemSD.References[publicURI].References) == 0 || itemSD.References[publicURI].IsPublic != nil {
+		t.Fatal("marking must not mutate the source event (delivery payloads share it)")
+	}
+
+	public := event.PublicView()
+	if _, leaked := public.References[itemURI].References[protectedURI]; leaked {
+		t.Fatal("the public view must strip the unreadable nested reference")
+	}
+	if _, ok := public.References[itemURI].References[publicURI]; !ok {
+		t.Fatal("the public view must keep the readable nested reference")
 	}
 }
 
-// The associated event is likewise redacted (action association:read), while
+// The associated event is likewise flagged (action association:read), while
 // the delivery payload — the signed document remote servers must verify —
-// stays complete.
-func TestAssociatedEventRedactedForAnonymous(t *testing.T) {
+// stays complete and unflagged.
+func TestAssociatedEventMarkedForAnonymous(t *testing.T) {
 	ccid, priv := newIdentity(t)
 	cfg := &domain.Config{FQDN: "example.com"}
 
@@ -1185,11 +1218,27 @@ func TestAssociatedEventRedactedForAnonymous(t *testing.T) {
 		if job.Event == nil {
 			continue
 		}
-		if len(job.Event.References) != 0 {
-			t.Fatalf("event documents must be redacted, got %v", job.Event.References)
+		if len(job.Event.References) == 0 {
+			t.Fatal("event documents must stay on the event for internal consumers")
+		}
+		for _, ref := range job.Event.References {
+			if ref.IsPublic == nil || *ref.IsPublic {
+				t.Fatalf("anonymous-unreadable association must be flagged isPublic=false, got %+v", ref.IsPublic)
+			}
+		}
+		if len(job.Event.PublicView().References) != 0 {
+			t.Fatal("the public view must drop the protected association document")
 		}
 		if len(job.Payload.References) == 0 {
 			t.Fatal("delivery payload references must stay complete")
+		}
+		if job.Payload.IsPublic != nil {
+			t.Fatal("delivery payload must not carry internal flags")
+		}
+		for _, ref := range job.Payload.References {
+			if ref.IsPublic != nil {
+				t.Fatal("delivery payload references must not carry internal flags")
+			}
 		}
 	}
 	if !slices.Contains(pol.actions, "association:read") {

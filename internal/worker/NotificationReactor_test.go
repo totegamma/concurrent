@@ -94,6 +94,30 @@ func TestEventMatchesSchemasResolvesReference(t *testing.T) {
 	}
 }
 
+// The reactor is a trusted internal consumer: documents flagged not
+// anonymously readable (e.g. anything on a restrict-readers notification
+// timeline) must still match the subscription's schema filter — only the
+// public websocket edge filters on IsPublic.
+func TestEventMatchesSchemasIgnoresIsPublic(t *testing.T) {
+	const likeSchema = "https://schema.concrnt.world/a/like.json"
+	notPublic := false
+
+	event := concrnt.Event{
+		Type: "created",
+		URI:  "cckv://alice/notify-timeline/ref1",
+		References: map[string]concrnt.SignedDocument{
+			"cckv://alice/notify-timeline/ref1": {
+				Document: `{"schema":"` + schemas.ReferenceURL + `","value":{"href":"ccfs://bob/concrnt/like1","schema":"` + likeSchema + `"}}`,
+				IsPublic: &notPublic,
+			},
+		},
+	}
+
+	if !eventMatchesSchemas(event, []string{likeSchema}) {
+		t.Fatal("a document flagged isPublic=false must still match for the internal consumer")
+	}
+}
+
 // The push payload must be the minimal notification struct (uri/schema/author/
 // createdAt), not the whole Event, so it stays well under the 4096-byte
 // WebPush/FCM limit. uri must be the association document, and schema/author

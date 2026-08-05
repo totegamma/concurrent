@@ -258,20 +258,25 @@ func TestCommitEntityAcceptIfNewer(t *testing.T) {
 
 	// Recent so the always-on backdate window doesn't reject these commits.
 	storedAt := time.Now().Add(-time.Hour).UTC().Truncate(time.Second)
-	stored := newEntityDoc(storedAt)
 
 	cases := []struct {
 		name             string
+		storedAt         time.Time
 		createdAt        time.Time
 		wantCreateEntity bool
 	}{
-		{"older", storedAt.Add(-time.Hour), false},
-		{"same", storedAt, false},
-		{"newer", storedAt.Add(time.Hour), true},
+		{"older", storedAt, storedAt.Add(-time.Hour), false},
+		{"same", storedAt, storedAt, false},
+		{"newer", storedAt, storedAt.Add(time.Hour), true},
+		// A stored zero createdAt (a migration import from before the migrator
+		// set CreatedAt) must lose to any real commit: its CDID used to wrap
+		// around into the far future and win accept-if-newer forever.
+		{"stored zero createdAt", time.Time{}, storedAt, true},
 	}
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
+			stored := newEntityDoc(tc.storedAt)
 			repo := &recordingRecordRepo{}
 			cfg := &domain.Config{FQDN: "example.com"}
 			uc := NewRecordUsecase(

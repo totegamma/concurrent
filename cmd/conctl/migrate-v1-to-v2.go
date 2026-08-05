@@ -493,8 +493,9 @@ func transferEntities(db *gorm.DB, dest_db *gorm.DB) error {
 			Value: map[string]any{
 				"domain": domain,
 			},
-			Author: entity.ID,
-			Schema: schemas.EntityURL,
+			Author:    entity.ID,
+			Schema:    schemas.EntityURL,
+			CreatedAt: entity.CDate,
 		}
 
 		serializedDoc, err := json.Marshal(v2doc)

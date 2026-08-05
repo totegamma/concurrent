@@ -50,6 +50,30 @@ func TestTimeCDIDRoundTrip(t *testing.T) {
 	}
 }
 
+// Out-of-range times must clamp to the 48-bit millisecond range instead of
+// wrapping: a zero time.Time (negative unix time, e.g. an unset createdAt)
+// must sort before every real time, not into the far future.
+func TestTimeCDIDClampsOutOfRangeTimes(t *testing.T) {
+	data := [10]byte{0xff, 1, 2, 3, 4, 5, 6, 7, 8, 0xff}
+	now := time.Date(2026, 8, 5, 0, 0, 0, 0, time.UTC)
+
+	zero := New(data, time.Time{})
+	if got := zero.GetTime(); !got.Equal(time.UnixMilli(0)) {
+		t.Fatalf("zero time clamped to %v, want unix epoch", got)
+	}
+	if zero.String() >= New(data, now).String() {
+		t.Fatalf("zero-time CDID %q does not sort before now %q", zero.String(), New(data, now).String())
+	}
+
+	farFuture := New(data, time.Date(12000, 1, 1, 0, 0, 0, 0, time.UTC))
+	if got := farFuture.GetTime(); !got.Equal(time.UnixMilli(1<<48 - 1)) {
+		t.Fatalf("far-future time clamped to %v, want 48-bit max", got)
+	}
+	if farFuture.String() <= New(data, now).String() {
+		t.Fatalf("far-future CDID %q does not sort after now %q", farFuture.String(), New(data, now).String())
+	}
+}
+
 func TestHashCDIDRoundTrip(t *testing.T) {
 	c := MakeHash([]byte("hello concrnt"))
 

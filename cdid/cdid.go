@@ -60,7 +60,11 @@ func (c *CDID) setTime(t time.Time) {
 		return
 	}
 
-	m := uint64(t.Unix())*1e3 + uint64(t.Nanosecond()/int(time.Millisecond))
+	// Clamp to the 48-bit unix-millisecond range: string order on encoded
+	// CDIDs must follow time order, and out-of-range values (most notably the
+	// negative unix time of an unset zero time.Time) would otherwise wrap
+	// around into the far future.
+	m := min(max(t.UnixMilli(), 0), 1<<48-1)
 
 	c.time[0] = byte(m >> 40)
 	c.time[1] = byte(m >> 32)

@@ -469,6 +469,8 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 	// Nothing was applied (accept-if-newer loss): let the deferred rollback
 	// discard the tx — commit_log included — and just report success.
 	if applyResult.noop {
+		slog.Info("commit no-op (accept-if-newer loss)",
+			"documentID", documentID, "kind", doc.Kind, "author", doc.Author)
 		return applyResult.result, nil
 	}
 

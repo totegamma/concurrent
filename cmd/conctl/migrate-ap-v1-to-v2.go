@@ -155,7 +155,9 @@ func transferApEntities(fromDB, destDB *gorm.DB) {
 
 	entityCount, keyCount := 0, 0
 	for _, e := range entities {
-		id := strings.ToLower(e.ID)
+		// actor URI(https://<fqdn>/ap/acct/<id>)がAP上のidentityなので、
+		// v1のIDの大文字小文字をそのまま保持する(小文字化すると別actorになる)
+		id := e.ID
 
 		entity := v2ApEntity{
 			ID:      id,

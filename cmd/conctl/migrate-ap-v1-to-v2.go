@@ -275,7 +275,19 @@ func transferApFollowRecords(fromDB *gorm.DB) {
 		ccidByEntityID[e.ID] = strings.TrimSpace(e.CCID)
 	}
 
-	now := time.Now()
+	// query APIのカーソルはcreatedAtのみ(Postgres上はµs精度)なので、同一createdAtの
+	// レコードが1ページ(100件)を超えるとカーソルが前進できず、v2ブリッジの起動時
+	// ロードが先頭100件で止まる。全レコードに1µsずつずらしたユニークなcreatedAtを
+	// 振ってこれを避ける。再実行時はbaseが前回より新しいため、同一キーのレコードは
+	// accept-if-newerで全件置き換わる(修復もこのコマンドの再実行でよい)。
+	base := time.Now()
+	seq := 0
+	nextCreatedAt := func() time.Time {
+		t := base.Add(time.Duration(seq) * time.Microsecond)
+		seq++
+		return t
+	}
+
 	batch := ""
 	batchCount := 0
 	failedCount := 0
@@ -334,7 +346,7 @@ func transferApFollowRecords(fromDB *gorm.DB) {
 				"inbox":    f.SubscriberInbox,
 			},
 			apServiceCcid,
-			now,
+			nextCreatedAt(),
 		)
 		if err != nil {
 			fmt.Printf("  failed to serialize follower %s -> %s: %s\n", f.SubscriberPersonURL, f.PublisherUserID, err)
@@ -366,7 +378,7 @@ func transferApFollowRecords(fromDB *gorm.DB) {
 				"actorURI": f.PublisherPersonURL,
 			},
 			ccid,
-			now,
+			nextCreatedAt(),
 		)
 		if err != nil {
 			fmt.Printf("  failed to serialize follow %s -> %s: %s\n", f.SubscriberUserID, f.PublisherPersonURL, err)
@@ -389,7 +401,7 @@ func transferApFollowRecords(fromDB *gorm.DB) {
 				"status":   "accepted",
 			},
 			apServiceCcid,
-			now,
+			nextCreatedAt(),
 		)
 		if err != nil {
 			fmt.Printf("  failed to serialize accept-state %s -> %s: %s\n", f.SubscriberUserID, f.PublisherPersonURL, err)

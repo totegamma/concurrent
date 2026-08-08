@@ -67,10 +67,9 @@ func (v1ApFollower) TableName() string { return "ap_followers" }
 // drizzleが作成した列に合わせる。c_dateはDBデフォルト(now())に任せる。
 
 type v2ApEntity struct {
-	ID              string         `gorm:"column:id"`
-	CCID            string         `gorm:"column:ccid"`
-	ListenTimelines pq.StringArray `gorm:"column:listen_timelines;type:text[]"`
-	Enabled         bool           `gorm:"column:enabled"`
+	ID      string `gorm:"column:id"`
+	CCID    string `gorm:"column:ccid"`
+	Enabled bool   `gorm:"column:enabled"`
 }
 
 func (v2ApEntity) TableName() string { return "ap_entities" }
@@ -159,10 +158,9 @@ func transferApEntities(fromDB, destDB *gorm.DB) {
 		id := strings.ToLower(e.ID)
 
 		entity := v2ApEntity{
-			ID:              id,
-			CCID:            strings.TrimSpace(e.CCID),
-			ListenTimelines: pq.StringArray{},
-			Enabled:         e.Enabled,
+			ID:      id,
+			CCID:    strings.TrimSpace(e.CCID),
+			Enabled: e.Enabled,
 		}
 
 		privJWK, pubJWK, keyErr := rsaPrivPemToJwk(e.Privatekey)

@@ -129,6 +129,60 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		require.EqualValues(t, 1, newRecordCount)
 	})
 
+	// CIP-1 §5.7: omitting onUpdate means forget — replacing the key must drop
+	// the old record and mark its commit for GC. Only an explicit "retain"
+	// keeps the old generation.
+	t.Run("onUpdate defaults to forget, explicit retain keeps history", func(t *testing.T) {
+		for _, tc := range []struct {
+			name     string
+			onUpdate *string
+			forgets  bool
+		}{
+			{"default", nil, true},
+			{"retain", ptr("retain"), false},
+		} {
+			t.Run(tc.name, func(t *testing.T) {
+				key := "cckv://con1owner/timeline/onupdate-" + tc.name
+				oldID := "onupdate-" + tc.name + "-1-old"
+				newID := "onupdate-" + tc.name + "-2-new"
+				for i, id := range []string{oldID, newID} {
+					createdAt := time.Date(2026, 1, 2, 3, 4, 5+i, 0, time.UTC)
+					sd := repositorySignedDocument(t, concrnt.Document[map[string]string]{
+						Kind:      "record",
+						Key:       key,
+						Value:     map[string]string{"body": id},
+						Author:    "con1author",
+						Schema:    "https://schema.example/post.json",
+						CreatedAt: createdAt,
+						OnUpdate:  tc.onUpdate,
+					})
+					withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
+						applied, err := repo.CreateRecord(ctx, tx, id, key, "con1owner", "https://schema.example/post.json", tc.onUpdate, nil, []string{}, nil, createdAt)
+						require.True(t, applied)
+						return err
+					})
+				}
+
+				var recordKey models.RecordKey
+				require.NoError(t, db.Where("uri = ?", key).Take(&recordKey).Error)
+				require.NotNil(t, recordKey.RecordID)
+				require.Equal(t, newID, *recordKey.RecordID)
+
+				var commit models.CommitLog
+				require.NoError(t, db.Where("id = ?", oldID).Take(&commit).Error)
+				require.Equal(t, tc.forgets, commit.GcCandidate)
+
+				var oldRecordCount int64
+				require.NoError(t, db.Model(&models.Record{}).Where("document_id = ?", oldID).Count(&oldRecordCount).Error)
+				if tc.forgets {
+					require.Zero(t, oldRecordCount)
+				} else {
+					require.EqualValues(t, 1, oldRecordCount)
+				}
+			})
+		}
+	})
+
 	t.Run("create reference record", func(t *testing.T) {
 		targetURI := "cckv://con1target/timeline/post-2"
 		targetCreatedAt := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)
@@ -840,6 +894,10 @@ func withRepositoryTx(t *testing.T, ctx context.Context, repo usecase.RecordRepo
 		require.NoError(t, err)
 	}
 	require.NoError(t, tx.Commit(ctx))
+}
+
+func ptr[T any](v T) *T {
+	return &v
 }
 
 type fakeRecordTx struct{}

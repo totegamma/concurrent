@@ -246,10 +246,7 @@ func (r *RecordRepository) CreateRecord(
 	if parentRK != nil {
 		pid = &parentRK.ID
 	}
-	cleanOnUpdate := false
-	if onUpdate != nil {
-		cleanOnUpdate = *onUpdate == "forget"
-	}
+	cleanOnUpdate := onUpdate == nil || *onUpdate != "retain"
 
 	// RecordKeyを作る
 	rk := models.RecordKey{

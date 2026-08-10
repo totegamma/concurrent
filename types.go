@@ -63,7 +63,7 @@ type Document[T any] struct {
 
 	CreatedAt time.Time `json:"createdAt"`
 
-	OnUpdate *string `json:"onUpdate,omitempty"` // forget(default), retain
+	OnUpdate *string `json:"onUpdate,omitempty"` // forget(default), retain. ignored for kind=entity (always retained, CIP-0 §8.4)
 
 	// CIP-7
 	Distributes *[]string `json:"distributes,omitempty"`

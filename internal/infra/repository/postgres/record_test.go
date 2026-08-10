@@ -183,6 +183,36 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		}
 	})
 
+	// CIP-0 §8.4: entities are exempt from onUpdate — replacing an entity
+	// document must keep the old commit intact (no GC flag), even when the
+	// document itself declares onUpdate: forget.
+	t.Run("entity replacement retains the old document", func(t *testing.T) {
+		for i, id := range []string{"entity-1-old", "entity-2-new"} {
+			createdAt := time.Date(2026, 1, 2, 3, 4, 5+i, 0, time.UTC)
+			sd := repositorySignedDocument(t, concrnt.Document[schemas.Entity]{
+				Kind:      "entity",
+				Value:     schemas.Entity{Domain: "example.com"},
+				Author:    "con1entity",
+				Schema:    schemas.EntityURL,
+				CreatedAt: createdAt,
+				OnUpdate:  ptr("forget"),
+			})
+			withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, []string{"con1entity"}, func(tx usecase.RepositoryTx) error {
+				applied, err := repo.CreateEntity(ctx, tx, "con1entity", nil, "example.com", id)
+				require.True(t, applied)
+				return err
+			})
+		}
+
+		var entity models.Entity
+		require.NoError(t, db.Where("id = ?", "con1entity").Take(&entity).Error)
+		require.Equal(t, "entity-2-new", entity.DocumentID)
+
+		var oldCommit models.CommitLog
+		require.NoError(t, db.Where("id = ?", "entity-1-old").Take(&oldCommit).Error)
+		require.False(t, oldCommit.GcCandidate)
+	})
+
 	t.Run("create reference record", func(t *testing.T) {
 		targetURI := "cckv://con1target/timeline/post-2"
 		targetCreatedAt := time.Date(2026, 2, 3, 4, 5, 6, 0, time.UTC)

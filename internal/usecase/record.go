@@ -670,7 +670,7 @@ func distributionsFromPtr(distributions *[]string) []string {
 	return *distributions
 }
 
-func (uc *RecordUsecase) createReferenceDistributionActions(ctx context.Context, ip string, documentID string, author string, href string, requester domain.Entity, sd concrnt.SignedDocument, destinations []string, mode domain.CommitMode) ([]PostProcessAction, error) {
+func (uc *RecordUsecase) createReferenceDistributionActions(ctx context.Context, ip string, author string, href string, requester domain.Entity, sd concrnt.SignedDocument, destinations []string, mode domain.CommitMode) ([]PostProcessAction, error) {
 	if mode != domain.CommitModeExecute || len(destinations) == 0 {
 		return nil, nil
 	}
@@ -680,11 +680,16 @@ func (uc *RecordUsecase) createReferenceDistributionActions(ctx context.Context,
 		return nil, err
 	}
 
+	// the key segment is the hash-based CDID of the href, so a record keeps
+	// the same reference key across accept-if-newer overwrites and the new
+	// reference replaces the old row instead of piling up next to it
+	refSegment := cdid.MakeHash([]byte(href)).String()
+
 	postProcesses := make([]PostProcessAction, 0, len(destinations))
 	for _, destURI := range destinations {
-		key, err := url.JoinPath(destURI, documentID)
+		key, err := url.JoinPath(destURI, refSegment)
 		if err != nil {
-			slog.Error("failed to join path for distribution", slog.String("destination", destURI), slog.String("document_id", documentID), slog.String("error", err.Error()))
+			slog.Error("failed to join path for distribution", slog.String("destination", destURI), slog.String("href", href), slog.String("error", err.Error()))
 			continue
 		}
 
@@ -957,15 +962,38 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 		}
 
 		// sweep the reference records createReferenceDistributionActions left
-		// on this server: their key is destination + "/" + the target's
-		// documentID, so a row existing under that key is exactly "this
-		// destination was distributed to and lives here" — remote and
-		// never-delivered destinations fall out as not-found
-		docID := documentIDFor(targetSD.Document, targetDoc.CreatedAt)
-		for _, dest := range distributionsFromPtr(targetDoc.Distributes) {
-			refKey, err := url.JoinPath(dest, docID)
+		// on this server: their key is destination + "/" + the hash-based CDID
+		// of the target's href (its cckv key for records, its ccfs URI for
+		// keyless documents), so a row existing under that key is exactly
+		// "this destination was distributed to and lives here" — remote and
+		// never-delivered destinations fall out as not-found. The href is
+		// re-derived from the signed target document itself, mirroring the
+		// creation side, so it holds regardless of how the delete addressed
+		// the target (cckv or ccfs)
+		href := targetDoc.Key
+		if targetDoc.Kind != "record" {
+			if targetDoc.Associate == nil {
+				err := errors.New("unsupported document kind for distribution sweep: " + targetDoc.Kind)
+				span.RecordError(err)
+				return nil, err
+			}
+			parsedAssociate, err := concrnt.ParseCCURI(*targetDoc.Associate)
 			if err != nil {
-				slog.Error("failed to join path for distribution sweep", slog.String("destination", dest), slog.String("document_id", docID), slog.String("error", err.Error()))
+				span.RecordError(err)
+				return nil, err
+			}
+			href = concrnt.CCURI{
+				Scheme: "ccfs",
+				Owner:  parsedAssociate.Owner,
+				Type:   concrnt.CCFSTypeConcrnt,
+				CDID:   documentIDFor(targetSD.Document, targetDoc.CreatedAt),
+			}.String()
+		}
+		refSegment := cdid.MakeHash([]byte(href)).String()
+		for _, dest := range distributionsFromPtr(targetDoc.Distributes) {
+			refKey, err := url.JoinPath(dest, refSegment)
+			if err != nil {
+				slog.Error("failed to join path for distribution sweep", slog.String("destination", dest), slog.String("href", href), slog.String("error", err.Error()))
 				continue
 			}
 
@@ -1333,7 +1361,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 	}
 
 	if mode == domain.CommitModeExecute && parsed.Distributes != nil {
-		actions, err := uc.createReferenceDistributionActions(ctx, ip, documentID, parsed.Author, resultURI, requester, sd, *parsed.Distributes, mode)
+		actions, err := uc.createReferenceDistributionActions(ctx, ip, parsed.Author, resultURI, requester, sd, *parsed.Distributes, mode)
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
@@ -1456,7 +1484,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 		// 別documentIDの論理重複がタイムラインに二重に載る
 		created = inserted
 		if created && mode == domain.CommitModeExecute {
-			actions, err := uc.createReferenceDistributionActions(ctx, ip, documentID, parsed.Author, ccfs, requester, sd, distributionsFromPtr(parsed.Distributes), mode)
+			actions, err := uc.createReferenceDistributionActions(ctx, ip, parsed.Author, ccfs, requester, sd, distributionsFromPtr(parsed.Distributes), mode)
 			if err != nil {
 				span.RecordError(err)
 				return nil, err
@@ -1662,7 +1690,7 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 	}
 
 	if uc.IsLocalEntity(ctx, &requester) {
-		actions, err := uc.createReferenceDistributionActions(ctx, ip, documentID, doc.Author, ccfs, requester, sd, distributionsFromPtr(doc.Distributes), mode)
+		actions, err := uc.createReferenceDistributionActions(ctx, ip, doc.Author, ccfs, requester, sd, distributionsFromPtr(doc.Distributes), mode)
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
@@ -1748,7 +1776,7 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, doc
 	}
 
 	if uc.IsLocalEntity(ctx, &requester) {
-		actions, err := uc.createReferenceDistributionActions(ctx, ip, documentID, doc.Author, ccfs, requester, sd, distributionsFromPtr(doc.Distributes), mode)
+		actions, err := uc.createReferenceDistributionActions(ctx, ip, doc.Author, ccfs, requester, sd, distributionsFromPtr(doc.Distributes), mode)
 		if err != nil {
 			span.RecordError(err)
 			return nil, err

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/concrnt/concrnt"
+	"github.com/concrnt/concrnt/cdid"
 	"github.com/concrnt/concrnt/client"
 	"github.com/concrnt/concrnt/internal/domain"
 	"github.com/concrnt/concrnt/policy"
@@ -461,15 +462,11 @@ func TestDeleteRecordRangeRemoteMatchesReferences(t *testing.T) {
 	}
 }
 
-// fixtureDocID derives the documentID a stored fixture is distributed under —
-// the same recomputation deleteRecord's reference-record sweep performs.
-func fixtureDocID(t *testing.T, sd concrnt.SignedDocument) string {
-	t.Helper()
-	var doc concrnt.Document[any]
-	if err := json.Unmarshal([]byte(sd.Document), &doc); err != nil {
-		t.Fatalf("unmarshal fixture document: %v", err)
-	}
-	return documentIDFor(sd.Document, doc.CreatedAt)
+// refSegment derives the key segment a fixture is distributed under — the
+// hash-based CDID of its href, the same derivation deleteRecord's
+// reference-record sweep performs.
+func refSegment(href string) string {
+	return cdid.MakeHash([]byte(href)).String()
 }
 
 // referenceRecord builds the stored reference row that
@@ -507,7 +504,7 @@ func TestCommitDeleteSweepsLocalDistributeReference(t *testing.T) {
 	targetURI := "cckv://example.com/profiles/main/posts/p1"
 	dest := "cckv://example.com/timelines/t1"
 	target := subtreeRecord(t, targetURI, dest)
-	refKey := dest + "/" + fixtureDocID(t, target)
+	refKey := dest + "/" + refSegment(targetURI)
 
 	repo := &rangeDeleteRepo{
 		stored: map[string]concrnt.SignedDocument{
@@ -556,7 +553,7 @@ func TestCommitDeleteRemoteTargetSweepsLocalReference(t *testing.T) {
 	base := "cckv://otherhost.example.net/lists/l1"
 	dest := "cckv://example.com/timelines/t1"
 	target := subtreeRecord(t, base, dest)
-	refKey := dest + "/" + fixtureDocID(t, target)
+	refKey := dest + "/" + refSegment(base)
 
 	repo := &rangeDeleteRepo{
 		stored:   map[string]concrnt.SignedDocument{refKey: referenceRecord(t, refKey, base)},
@@ -669,7 +666,7 @@ func TestCommitDeleteReferenceSweepDenyKeepsRow(t *testing.T) {
 	targetURI := "cckv://example.com/profiles/main/posts/p1"
 	dest := "cckv://example.com/timelines/t1"
 	target := subtreeRecord(t, targetURI, dest)
-	refKey := dest + "/" + fixtureDocID(t, target)
+	refKey := dest + "/" + refSegment(targetURI)
 
 	repo := &rangeDeleteRepo{
 		stored: map[string]concrnt.SignedDocument{
@@ -707,8 +704,8 @@ func TestCommitDeleteRemoteRangeSweepsAllReferences(t *testing.T) {
 	dest := "cckv://example.com/timelines/t1"
 	self := subtreeRecord(t, base, dest)
 	child := subtreeRecord(t, base+"/a", dest)
-	refKeySelf := dest + "/" + fixtureDocID(t, self)
-	refKeyChild := dest + "/" + fixtureDocID(t, child)
+	refKeySelf := dest + "/" + refSegment(base)
+	refKeyChild := dest + "/" + refSegment(base+"/a")
 
 	repo := &rangeDeleteRepo{
 		stored: map[string]concrnt.SignedDocument{

@@ -2,12 +2,26 @@ package domain
 
 import "fmt"
 
+// Machine-readable error codes carried on API error responses, namespaced
+// like the CCAPI endpoint keys. Both the code and the message are API
+// contract once introduced.
+const (
+	ErrorCodeRegistrationNotFound = "net.concrnt.errors.registration-not-found"
+)
+
 // NotFoundError represents a missing resource. Message, when set, overrides
 // the derived text — for application-level responses whose exact wording is
-// part of the API contract (e.g. "Registration Not Found").
+// part of the API contract (e.g. "Registration Not Found"). Code, when set,
+// is surfaced by the presenter as the response's machine-readable code.
 type NotFoundError struct {
 	Resource string
 	Message  string
+	Code     string
+}
+
+// ErrorCode exposes the machine-readable code to the presenter layer.
+func (e NotFoundError) ErrorCode() string {
+	return e.Code
 }
 
 func (e NotFoundError) Error() string {

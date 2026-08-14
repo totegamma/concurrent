@@ -514,7 +514,7 @@ func (h *Handler) handleGetRegistration(c echo.Context) error {
 			return presenter.Forbidden(c, err.Error())
 		}
 		if errors.Is(err, domain.ErrNotFound) {
-			return presenter.NotFound(c, err.Error())
+			return presenter.NotFoundError(c, err)
 		}
 		return presenter.InternalError(c, err)
 	}
@@ -550,7 +550,7 @@ func (h *Handler) handleUpdateRegistration(c echo.Context) error {
 			return presenter.Forbidden(c, err.Error())
 		}
 		if errors.Is(err, domain.ErrNotFound) {
-			return presenter.NotFound(c, err.Error())
+			return presenter.NotFoundError(c, err)
 		}
 		return presenter.InternalError(c, err)
 	}

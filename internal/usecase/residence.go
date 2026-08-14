@@ -106,10 +106,14 @@ func (uc *ResidenceUsecase) GetRegistration(ctx context.Context) (*domain.Entity
 }
 
 // errRegistrationNotFound is the 404 for a requester with no registration on
-// this domain. The exact message is part of the API contract: it lets clients
-// tell an application-level "not registered" apart from a bare 404 produced by
-// a misconfigured server or proxy.
-var errRegistrationNotFound = domain.NotFoundError{Resource: "registration", Message: "Registration Not Found"}
+// this domain. The message and code are API contract: they let clients tell
+// an application-level "not registered" apart from a bare 404 produced by a
+// misconfigured server or proxy.
+var errRegistrationNotFound = domain.NotFoundError{
+	Resource: "registration",
+	Message:  "Registration Not Found",
+	Code:     domain.ErrorCodeRegistrationNotFound,
+}
 
 // UpdateRegistration replaces the requester's registration meta (info only —
 // inviter is set at registration time and never updatable, as in v1).

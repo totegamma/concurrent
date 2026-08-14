@@ -1,6 +1,7 @@
 package presenter
 
 import (
+	"errors"
 	"log/slog"
 	"net/http"
 
@@ -9,6 +10,17 @@ import (
 
 type errorResponse struct {
 	Error string `json:"error"`
+	Code  string `json:"code,omitempty"`
+}
+
+// errorCode extracts the machine-readable code from domain errors that carry
+// one (via an ErrorCode method); empty when the error has none.
+func errorCode(err error) string {
+	var coded interface{ ErrorCode() string }
+	if errors.As(err, &coded) {
+		return coded.ErrorCode()
+	}
+	return ""
 }
 
 // OK wraps a successful response.
@@ -29,6 +41,13 @@ func BadRequestMessage(c echo.Context, msg string) error {
 func NotFound(c echo.Context, msg string) error {
 	slog.Info("not found", slog.String("error", msg))
 	return c.JSON(http.StatusNotFound, errorResponse{Error: msg})
+}
+
+// NotFoundError renders a 404 from a domain error, carrying the error's
+// machine-readable code (if it has one) alongside the message.
+func NotFoundError(c echo.Context, err error) error {
+	slog.Info("not found", slog.String("error", err.Error()))
+	return c.JSON(http.StatusNotFound, errorResponse{Error: err.Error(), Code: errorCode(err)})
 }
 
 func InternalError(c echo.Context, err error) error {

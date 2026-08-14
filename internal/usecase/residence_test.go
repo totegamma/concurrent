@@ -113,18 +113,25 @@ func TestRegistrationMeta(t *testing.T) {
 		if err == nil || !errors.Is(err, domain.ErrNotFound) {
 			t.Fatalf("expected not found, got %v", err)
 		}
-		// the exact message is API contract: it marks the 404 as concrnt's
-		// application-level "not registered", not a proxy/misconfig 404
-		if err.Error() != "Registration Not Found" {
-			t.Fatalf("message = %q", err.Error())
+		// the message and code are API contract: they mark the 404 as
+		// concrnt's application-level "not registered", not a proxy/misconfig
+		// 404
+		assertRegistrationNotFound := func(err error) {
+			t.Helper()
+			if err.Error() != "Registration Not Found" {
+				t.Fatalf("message = %q", err.Error())
+			}
+			var nf domain.NotFoundError
+			if !errors.As(err, &nf) || nf.Code != domain.ErrorCodeRegistrationNotFound {
+				t.Fatalf("code = %q", nf.Code)
+			}
 		}
+		assertRegistrationNotFound(err)
 		err = uc.UpdateRegistration(authedCtx, nil)
 		if err == nil || !errors.Is(err, domain.ErrNotFound) {
 			t.Fatalf("expected not found, got %v", err)
 		}
-		if err.Error() != "Registration Not Found" {
-			t.Fatalf("message = %q", err.Error())
-		}
+		assertRegistrationNotFound(err)
 	})
 
 	t.Run("get returns own meta", func(t *testing.T) {

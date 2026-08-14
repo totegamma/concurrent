@@ -41,7 +41,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		})
 		onUpdate := "forget"
 		withRepositoryTx(t, ctx, repo, "record-1-old", "127.0.0.1", oldSD, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
-			applied, err := repo.CreateRecord(ctx, tx, "record-1-old", key, "con1owner", "https://schema.example/post.json", &onUpdate, nil, distributions, nil, createdAt)
+			applied, err := repo.CreateRecord(ctx, tx, "record-1-old", key, "con1owner", "con1owner", "https://schema.example/post.json", &onUpdate, nil, distributions, nil, createdAt)
 			require.True(t, applied)
 			return err
 		})
@@ -83,7 +83,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 			CreatedAt: newCreatedAt,
 		})
 		withRepositoryTx(t, ctx, repo, "record-2-new", "127.0.0.1", newSD, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
-			applied, err := repo.CreateRecord(ctx, tx, "record-2-new", key, "con1owner", "https://schema.example/post.v2.json", &onUpdate, nil, []string{}, nil, newCreatedAt)
+			applied, err := repo.CreateRecord(ctx, tx, "record-2-new", key, "con1owner", "con1owner", "https://schema.example/post.v2.json", &onUpdate, nil, []string{}, nil, newCreatedAt)
 			require.True(t, applied)
 			return err
 		})
@@ -110,10 +110,10 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		// roll the key back, and must not tombstone the stored newer version.
 		tx, err := repo.BeginTx(ctx)
 		require.NoError(t, err)
-		applied, err := repo.CreateRecord(ctx, tx, "record-0-stale", key, "con1owner", "https://schema.example/post.json", &onUpdate, nil, distributions, nil, createdAt)
+		applied, err := repo.CreateRecord(ctx, tx, "record-0-stale", key, "con1owner", "con1owner", "https://schema.example/post.json", &onUpdate, nil, distributions, nil, createdAt)
 		require.NoError(t, err)
 		require.False(t, applied)
-		applied, err = repo.CreateRecord(ctx, tx, "record-2-new", key, "con1owner", "https://schema.example/post.v2.json", &onUpdate, nil, []string{}, nil, newCreatedAt)
+		applied, err = repo.CreateRecord(ctx, tx, "record-2-new", key, "con1owner", "con1owner", "https://schema.example/post.v2.json", &onUpdate, nil, []string{}, nil, newCreatedAt)
 		require.NoError(t, err)
 		require.False(t, applied)
 		require.NoError(t, tx.Rollback(ctx))
@@ -157,7 +157,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 						OnUpdate:  tc.onUpdate,
 					})
 					withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
-						applied, err := repo.CreateRecord(ctx, tx, id, key, "con1owner", "https://schema.example/post.json", tc.onUpdate, nil, []string{}, nil, createdAt)
+						applied, err := repo.CreateRecord(ctx, tx, id, key, "con1owner", "con1owner", "https://schema.example/post.json", tc.onUpdate, nil, []string{}, nil, createdAt)
 						require.True(t, applied)
 						return err
 					})
@@ -240,7 +240,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		}
 
 		withRepositoryTx(t, ctx, repo, "reference-record", "127.0.0.1", refSD, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
-			_, err := repo.CreateRecord(ctx, tx, "reference-record", "cckv://con1owner/timeline/ref-1", "con1owner", "https://schema.example/target.json", nil, nil, []string{}, &targetURI, targetCreatedAt)
+			_, err := repo.CreateRecord(ctx, tx, "reference-record", "cckv://con1owner/timeline/ref-1", "con1owner", "con1owner", "https://schema.example/target.json", nil, nil, []string{}, &targetURI, targetCreatedAt)
 			return err
 		})
 
@@ -452,7 +452,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		require.NoError(t, err)
 		require.NoError(t, repo.CreateCommitLog(ctx, tx, "rollback-record", "127.0.0.1", rollbackSD.Document, rollbackSD.Proof))
 		require.NoError(t, repo.CreateCommitOwners(ctx, tx, "rollback-record", []string{"con1owner"}))
-		_, err = repo.CreateRecord(ctx, tx, "rollback-record", rollbackKey, "con1owner", "https://schema.example/post.json", nil, nil, []string{}, nil, time.Date(2026, 5, 6, 7, 8, 9, 0, time.UTC))
+		_, err = repo.CreateRecord(ctx, tx, "rollback-record", rollbackKey, "con1owner", "con1owner", "https://schema.example/post.json", nil, nil, []string{}, nil, time.Date(2026, 5, 6, 7, 8, 9, 0, time.UTC))
 		require.NoError(t, err)
 		require.NoError(t, tx.Rollback(ctx))
 
@@ -474,7 +474,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 			CreatedAt: time.Date(2026, 6, 7, 8, 9, 10, 0, time.UTC),
 		})
 		withRepositoryTx(t, ctx, repo, "delete-target", "127.0.0.1", deleteTargetSD, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
-			_, err := repo.CreateRecord(ctx, tx, "delete-target", deleteKey, "con1owner", "https://schema.example/post.json", nil, nil, []string{}, nil, time.Date(2026, 6, 7, 8, 9, 10, 0, time.UTC))
+			_, err := repo.CreateRecord(ctx, tx, "delete-target", deleteKey, "con1owner", "con1owner", "https://schema.example/post.json", nil, nil, []string{}, nil, time.Date(2026, 6, 7, 8, 9, 10, 0, time.UTC))
 			return err
 		})
 
@@ -538,10 +538,10 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		err = repo.CreateCommitOwners(ctx, fakeRecordTx{}, "invalid", []string{"con1owner"})
 		require.Error(t, err)
 
-		_, err = repo.CreateRecord(ctx, nil, "invalid", key, "con1owner", "https://schema.example/post.json", nil, nil, []string{}, nil, time.Now())
+		_, err = repo.CreateRecord(ctx, nil, "invalid", key, "con1owner", "con1owner", "https://schema.example/post.json", nil, nil, []string{}, nil, time.Now())
 		require.Error(t, err)
 
-		_, err = repo.CreateRecord(ctx, fakeRecordTx{}, "invalid", key, "con1owner", "https://schema.example/post.json", nil, nil, []string{}, nil, time.Now())
+		_, err = repo.CreateRecord(ctx, fakeRecordTx{}, "invalid", key, "con1owner", "con1owner", "https://schema.example/post.json", nil, nil, []string{}, nil, time.Now())
 		require.Error(t, err)
 
 		err = repo.DeleteRecordByKey(ctx, nil, key)
@@ -595,7 +595,7 @@ func TestRecordSubtreeQueryAndDelete(t *testing.T) {
 			CreatedAt: createdAt,
 		})
 		withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
-			_, err := repo.CreateRecord(ctx, tx, id, key, "con1owner", "https://schema.example/item.json", nil, nil, []string{}, nil, createdAt)
+			_, err := repo.CreateRecord(ctx, tx, id, key, "con1owner", "con1owner", "https://schema.example/item.json", nil, nil, []string{}, nil, createdAt)
 			return err
 		})
 	}
@@ -692,6 +692,73 @@ func TestRecordSubtreeQueryAndDelete(t *testing.T) {
 
 }
 
+// The query API's author filter narrows list queries to documents written by
+// one author — e.g. an AP outbox enumerating only the user's own posts out of
+// their timeline. All keys in a timeline live in the timeline owner's space,
+// so the discriminating column is the document author (which distribute
+// references preserve: the document-reference proof forces the reference
+// document's author to match the target's).
+func TestRecordQueryAuthorFilter(t *testing.T) {
+	db, cleanup := testutil.CreateDB()
+	t.Cleanup(cleanup)
+
+	ctx := context.Background()
+	repo := NewRecordRepository(db)
+
+	parent := "cckv://con1owner/tl"
+	entries := []struct {
+		key    string
+		author string
+	}{
+		{parent + "/e1", "con1alice"},
+		{parent + "/e2", "con1bob"},
+		{parent + "/e3", "con1alice"},
+	}
+	createdAt := time.Date(2026, 8, 14, 9, 10, 11, 0, time.UTC)
+	for i, e := range entries {
+		id := fmt.Sprintf("authorfilter-%d", i)
+		sd := repositorySignedDocument(t, concrnt.Document[map[string]string]{
+			Kind:      "record",
+			Key:       e.key,
+			Value:     map[string]string{"body": e.key},
+			Author:    e.author,
+			Schema:    "https://schema.example/item.json",
+			CreatedAt: createdAt.Add(time.Duration(i) * time.Second),
+		})
+		withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
+			_, err := repo.CreateRecord(ctx, tx, id, e.key, "con1owner", e.author, "https://schema.example/item.json", nil, nil, []string{}, nil, createdAt.Add(time.Duration(i)*time.Second))
+			return err
+		})
+	}
+
+	urisOfRows := func(rows []usecase.QueryRow) []string {
+		uris := make([]string, 0, len(rows))
+		for _, row := range rows {
+			require.NotNil(t, row.Row.CCKV)
+			uris = append(uris, *row.Row.CCKV)
+		}
+		return uris
+	}
+
+	t.Run("by parent with author", func(t *testing.T) {
+		rows, err := repo.QueryByParent(ctx, parent, "", "con1alice", nil, nil, 0, "asc")
+		require.NoError(t, err)
+		require.Equal(t, []string{parent + "/e1", parent + "/e3"}, urisOfRows(rows))
+	})
+
+	t.Run("by parent without author returns all", func(t *testing.T) {
+		rows, err := repo.QueryByParent(ctx, parent, "", "", nil, nil, 0, "asc")
+		require.NoError(t, err)
+		require.Equal(t, []string{parent + "/e1", parent + "/e2", parent + "/e3"}, urisOfRows(rows))
+	})
+
+	t.Run("by prefix with author", func(t *testing.T) {
+		rows, err := repo.QueryByPrefix(ctx, parent+"/", "", "con1bob", nil, nil, 0, "asc")
+		require.NoError(t, err)
+		require.Equal(t, []string{parent + "/e2"}, urisOfRows(rows))
+	})
+}
+
 // CIP-12 §5.3: the hierarchical policy stack is emitted root-first with the
 // target resource itself last.
 func TestHierarchicalRecordPoliciesRootFirst(t *testing.T) {
@@ -720,7 +787,7 @@ func TestHierarchicalRecordPoliciesRootFirst(t *testing.T) {
 		})
 		p := policyJSON
 		withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, []string{"con1powner"}, func(tx usecase.RepositoryTx) error {
-			applied, err := repo.CreateRecord(ctx, tx, id, key, "con1powner", "https://schema.example/post.json", nil, &p, []string{}, nil, createdAt)
+			applied, err := repo.CreateRecord(ctx, tx, id, key, "con1powner", "con1powner", "https://schema.example/post.json", nil, &p, []string{}, nil, createdAt)
 			require.True(t, applied)
 			return err
 		})
@@ -770,7 +837,7 @@ func TestHierarchicalRecordPoliciesEmitsPolicylessDistributingLevel(t *testing.T
 			CreatedAt: createdAt,
 		})
 		withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, []string{"con1downer"}, func(tx usecase.RepositoryTx) error {
-			applied, err := repo.CreateRecord(ctx, tx, id, tc.key, "con1downer", "https://schema.example/post.json", nil, tc.policies, tc.distributions, nil, createdAt)
+			applied, err := repo.CreateRecord(ctx, tx, id, tc.key, "con1downer", "con1downer", "https://schema.example/post.json", nil, tc.policies, tc.distributions, nil, createdAt)
 			require.True(t, applied)
 			return err
 		})
@@ -810,7 +877,7 @@ func TestCreateRecordAppliesOverParentPlaceholder(t *testing.T) {
 			CreatedAt: createdAt,
 		})
 		withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, []string{"con1ph"}, func(tx usecase.RepositoryTx) error {
-			applied, err := repo.CreateRecord(ctx, tx, id, key, "con1ph", "https://schema.example/post.json", nil, nil, []string{}, nil, createdAt)
+			applied, err := repo.CreateRecord(ctx, tx, id, key, "con1ph", "con1ph", "https://schema.example/post.json", nil, nil, []string{}, nil, createdAt)
 			require.True(t, applied)
 			return err
 		})
@@ -863,7 +930,7 @@ func TestCreateRecordFreshKeyConditionalUpsert(t *testing.T) {
 	require.NoError(t, err)
 	sdNew := signedFor(newAt)
 	require.NoError(t, repo.CreateCommitLog(ctx, tx1, newID, "127.0.0.1", sdNew.Document, sdNew.Proof))
-	applied, err := repo.CreateRecord(ctx, tx1, newID, key, "con1race", "https://schema.example/post.json", nil, nil, []string{}, nil, newAt)
+	applied, err := repo.CreateRecord(ctx, tx1, newID, key, "con1race", "con1race", "https://schema.example/post.json", nil, nil, []string{}, nil, newAt)
 	require.NoError(t, err)
 	require.True(t, applied)
 
@@ -884,7 +951,7 @@ func TestCreateRecordFreshKeyConditionalUpsert(t *testing.T) {
 			done <- outcome{err: err}
 			return
 		}
-		applied, err := repo.CreateRecord(ctx, tx2, oldID, key, "con1race", "https://schema.example/post.json", nil, nil, []string{}, nil, oldAt)
+		applied, err := repo.CreateRecord(ctx, tx2, oldID, key, "con1race", "con1race", "https://schema.example/post.json", nil, nil, []string{}, nil, oldAt)
 		if err != nil {
 			_ = tx2.Rollback(ctx)
 			done <- outcome{err: err}

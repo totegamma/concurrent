@@ -66,19 +66,25 @@ type RecordKey struct {
 //   - idx_records_schema_created_at_document_id (schema, created_at, document_id):
 //     schema/time-ordered record searches; used by postgres.RecordRepository
 //     QueryByPrefix and QueryByParent when schema/time filters are present.
+//   - idx_records_author_created_at_document_id (author, created_at, document_id):
+//     author/time-ordered record searches; used by postgres.RecordRepository
+//     QueryByPrefix and QueryByParent when the author filter is present.
 //   - idx_records_document_id_created_at (document_id, created_at): record join
 //     plus timestamp predicate support for record_keys-to-records joins that still
 //     need records.created_at.
 type Record struct {
-	DocumentID    string         `json:"id" gorm:"primaryKey;type:text;index:idx_records_schema_created_at_document_id,priority:3;index:idx_records_document_id_created_at,priority:1"`
+	DocumentID    string         `json:"id" gorm:"primaryKey;type:text;index:idx_records_schema_created_at_document_id,priority:3;index:idx_records_author_created_at_document_id,priority:3;index:idx_records_document_id_created_at,priority:1"`
 	Document      CommitLog      `json:"documnet" gorm:"foreignKey:DocumentID;references:ID;constraint:OnDelete:CASCADE;"`
 	Owner         string         `json:"owner" gorm:"type:text"`
+	// document author; NULL only on rows written before the column existed
+	// (backfilled by conctl op repair-record-authors)
+	Author        string         `json:"author" gorm:"type:text;index:idx_records_author_created_at_document_id,priority:1"`
 	Redirect      *string        `json:"redirect" gorm:"type:text"`
 	Schema        string         `json:"schema" gorm:"type:text;index:idx_records_schema_created_at_document_id,priority:1"`
 	Policies      *string        `json:"policies" gorm:"type:text"`
 	Distributions pq.StringArray `json:"distributions" gorm:"type:text[]"`
 	// user-provided creation time
-	CreatedAt time.Time `json:"createdAt" gorm:"type:timestamp with time zone;not null;index:idx_records_schema_created_at_document_id,priority:2;index:idx_records_document_id_created_at,priority:2"`
+	CreatedAt time.Time `json:"createdAt" gorm:"type:timestamp with time zone;not null;index:idx_records_schema_created_at_document_id,priority:2;index:idx_records_author_created_at_document_id,priority:2;index:idx_records_document_id_created_at,priority:2"`
 	// record creation time in the system
 	CDate time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 }

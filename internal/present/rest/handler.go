@@ -61,7 +61,7 @@ const apiPrefix = "/api/v2"
 var Endpoints = map[string]string{
 	"net.concrnt.core.commit":             apiPrefix + "/commit",
 	"net.concrnt.core.resolve":            apiPrefix + "/resolve?uri={uri}",
-	"net.concrnt.core.query":              apiPrefix + "/query{?prefix,schema,since,until,limit,order,parent}",
+	"net.concrnt.core.query":              apiPrefix + "/query{?prefix,schema,since,until,limit,order,parent,author}",
 	"net.concrnt.core.associations":       apiPrefix + "/associations{?uri,schema,variant,author,since,until,limit,order}",
 	"net.concrnt.core.association-counts": apiPrefix + "/association-counts{?uri,schema}",
 	"net.concrnt.core.acknowledges":       apiPrefix + "/acknowledges{?from,to,schema,since,until,limit,order}",
@@ -343,13 +343,14 @@ func (h *Handler) handleQuery(c echo.Context) error {
 	}
 
 	schema := c.QueryParam("schema")
+	author := c.QueryParam("author")
 
 	w, err := parseQueryWindow(c)
 	if err != nil {
 		return presenter.BadRequestMessage(c, err.Error())
 	}
 
-	result, err := h.record.Query(ctx, prefix, parent, schema, w.since, w.until, w.limit, w.order)
+	result, err := h.record.Query(ctx, prefix, parent, schema, author, w.since, w.until, w.limit, w.order)
 	if err != nil {
 		return presenter.InternalError(c, err)
 	}

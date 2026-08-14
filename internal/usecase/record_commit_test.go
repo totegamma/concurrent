@@ -68,7 +68,7 @@ func (r *recordingRecordRepo) CreateEntity(ctx context.Context, tx RepositoryTx,
 	r.createEntityCalled = true
 	return true, nil
 }
-func (r *recordingRecordRepo) CreateRecord(ctx context.Context, tx RepositoryTx, documentID string, key string, owner string, schema string, onUpdate *string, policies *string, distributions []string, redirect *string, createdAt time.Time) (bool, error) {
+func (r *recordingRecordRepo) CreateRecord(ctx context.Context, tx RepositoryTx, documentID string, key string, owner string, author string, schema string, onUpdate *string, policies *string, distributions []string, redirect *string, createdAt time.Time) (bool, error) {
 	r.createRecordCalled = true
 	return !r.recordStale, nil
 }
@@ -758,7 +758,7 @@ type importRecordingRepo struct {
 	associationRecordingRepo
 }
 
-func (r *importRecordingRepo) QueryByParent(ctx context.Context, parent, schema string, since, until *time.Time, limit int, order string) ([]QueryRow, error) {
+func (r *importRecordingRepo) QueryByParent(ctx context.Context, parent, schema, author string, since, until *time.Time, limit int, order string) ([]QueryRow, error) {
 	return nil, nil
 }
 

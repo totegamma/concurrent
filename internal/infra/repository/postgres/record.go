@@ -184,6 +184,7 @@ func (r *RecordRepository) CreateRecord(
 	documentID string,
 	key string,
 	owner string,
+	author string,
 	schema string,
 	onUpdate *string,
 	policies *string,
@@ -221,6 +222,7 @@ func (r *RecordRepository) CreateRecord(
 	record := models.Record{
 		DocumentID:    documentID,
 		Owner:         owner,
+		Author:        author,
 		Redirect:      redirect,
 		Schema:        schema,
 		Policies:      policies,
@@ -936,7 +938,7 @@ func (r *RecordRepository) GetAssociatedRecordCountsByVariant(ctx context.Contex
 
 func (r *RecordRepository) QueryByPrefix(
 	ctx context.Context,
-	prefix, schema string,
+	prefix, schema, author string,
 	since, until *time.Time,
 	limit int,
 	order string,
@@ -953,6 +955,9 @@ func (r *RecordRepository) QueryByPrefix(
 
 	if schema != "" {
 		query = query.Where("r.schema = ?", schema)
+	}
+	if author != "" {
+		query = query.Where("r.author = ?", author)
 	}
 	if since != nil {
 		query = query.Where("r.created_at >= ?", *since)
@@ -1061,7 +1066,7 @@ func (r *RecordRepository) QueryRecordSubtree(ctx context.Context, base string, 
 
 func (r *RecordRepository) QueryByParent(
 	ctx context.Context,
-	parent, schema string,
+	parent, schema, author string,
 	since, until *time.Time,
 	limit int,
 	order string,
@@ -1078,6 +1083,9 @@ func (r *RecordRepository) QueryByParent(
 
 	if schema != "" {
 		query = query.Where("r.schema = ?", schema)
+	}
+	if author != "" {
+		query = query.Where("r.author = ?", author)
 	}
 	if since != nil {
 		query = query.Where("r.created_at >= ?", *since)

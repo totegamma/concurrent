@@ -37,7 +37,7 @@ type RecordRepository interface {
 	// CreateRecord reports whether the write applied — false when the key's
 	// stored record already carries a newer-or-equal documentID
 	// (accept-if-newer).
-	CreateRecord(ctx context.Context, tx RepositoryTx, documentID string, key string, owner string, schema string, onUpdate *string, policies *string, distributions []string, redirect *string, createdAt time.Time) (bool, error)
+	CreateRecord(ctx context.Context, tx RepositoryTx, documentID string, key string, owner string, author string, schema string, onUpdate *string, policies *string, distributions []string, redirect *string, createdAt time.Time) (bool, error)
 	CreateAssociation(ctx context.Context, tx RepositoryTx, documentID string, targetURI string, owner string, author string, schema string, variant *string, unique string, createdAt time.Time) (bool, error)
 	// Acknowledge / UnAcknowledge report whether the transition applied —
 	// false when the stored (from, to, schema) state already carries a
@@ -73,8 +73,8 @@ type RecordRepository interface {
 	GetAssociatedRecordCountsBySchema(ctx context.Context, targetURI string) (map[string]int64, error)
 	GetAssociatedRecordCountsByVariant(ctx context.Context, targetURI, schema string) (*utils.OrderedKVMap[int64], error)
 
-	QueryByPrefix(ctx context.Context, prefix, schema string, since, until *time.Time, limit int, order string) ([]QueryRow, error)
-	QueryByParent(ctx context.Context, parent, schema string, since, until *time.Time, limit int, order string) ([]QueryRow, error)
+	QueryByPrefix(ctx context.Context, prefix, schema, author string, since, until *time.Time, limit int, order string) ([]QueryRow, error)
+	QueryByParent(ctx context.Context, parent, schema, author string, since, until *time.Time, limit int, order string) ([]QueryRow, error)
 }
 
 // QueryRow is a raw list-query result row paired with its effective sort key
@@ -1333,7 +1333,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 	}
 
 	resultURI := parsed.Key
-	applied, err := uc.repo.CreateRecord(ctx, tx, documentID, parsed.Key, parsedKey.Owner, schema, parsed.OnUpdate, policies, distributions, redirect, createdAt)
+	applied, err := uc.repo.CreateRecord(ctx, tx, documentID, parsed.Key, parsedKey.Owner, parsed.Author, schema, parsed.OnUpdate, policies, distributions, redirect, createdAt)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -2095,7 +2095,7 @@ func (uc *RecordUsecase) GetAssociatedRecordCountsByVariant(ctx context.Context,
 
 func (uc *RecordUsecase) Query(
 	ctx context.Context,
-	prefix, parent, schema string,
+	prefix, parent, schema, author string,
 	since, until *time.Time,
 	limit int,
 	order string,
@@ -2110,9 +2110,9 @@ func (uc *RecordUsecase) Query(
 	}
 
 	if prefix != "" {
-		rows, err = uc.repo.QueryByPrefix(ctx, prefix, schema, since, until, limit+1, order)
+		rows, err = uc.repo.QueryByPrefix(ctx, prefix, schema, author, since, until, limit+1, order)
 	} else if parent != "" {
-		rows, err = uc.repo.QueryByParent(ctx, parent, schema, since, until, limit+1, order)
+		rows, err = uc.repo.QueryByParent(ctx, parent, schema, author, since, until, limit+1, order)
 	} else {
 		return concrnt.QueryResult{}, errors.New("either prefix or parent must be specified")
 	}
@@ -2252,7 +2252,7 @@ func (uc *RecordUsecase) getBlockingUsers(ctx context.Context, userID string) ([
 
 	blockingKey := concrnt.ComposeCCURI("cckv", userID, ".concrnt/blocking")
 
-	blockingUsers, err := uc.repo.QueryByParent(ctx, blockingKey, "", nil, nil, 0, "")
+	blockingUsers, err := uc.repo.QueryByParent(ctx, blockingKey, "", "", nil, nil, 0, "")
 	if err != nil {
 		span.RecordError(err)
 		return nil, err

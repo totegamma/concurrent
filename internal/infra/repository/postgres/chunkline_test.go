@@ -151,7 +151,7 @@ func createChunklineRecord(t *testing.T, ctx context.Context, repo usecase.Recor
 	})
 
 	withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, []string{"con1owner"}, func(tx usecase.RepositoryTx) error {
-		_, err := repo.CreateRecord(ctx, tx, id, key, "con1owner", "https://schema.example/post.json", nil, nil, []string{}, nil, createdAt)
+		_, err := repo.CreateRecord(ctx, tx, id, key, "con1owner", "con1owner", "https://schema.example/post.json", nil, nil, []string{}, nil, createdAt)
 		return err
 	})
 }

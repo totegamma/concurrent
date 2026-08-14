@@ -194,6 +194,7 @@ type QueryParams struct {
 	Prefix string
 	Parent string
 	Schema string
+	Author string
 	Since  *time.Time
 	Until  *time.Time
 	Limit  int
@@ -703,6 +704,9 @@ func (c *Client) Query(ctx context.Context, resolver string, params QueryParams)
 	}
 	if params.Schema != "" {
 		args["schema"] = params.Schema
+	}
+	if params.Author != "" {
+		args["author"] = params.Author
 	}
 	if params.Since != nil {
 		args["since"] = params.Since.UTC().Format(time.RFC3339Nano)

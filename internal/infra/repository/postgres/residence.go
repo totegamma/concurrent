@@ -65,6 +65,24 @@ func (r *ResidenceRepository) GetMeta(ctx context.Context, ccid string) (*domain
 	}, nil
 }
 
+// UpdateMetaInfo replaces only the info column, preserving inviter (unlike
+// SaveMeta, whose upsert overwrites both).
+func (r *ResidenceRepository) UpdateMetaInfo(ctx context.Context, ccid string, info string) error {
+	ctx, span := tracer.Start(ctx, "ResidenceRepository.UpdateMetaInfo")
+	defer span.End()
+
+	result := r.db.WithContext(ctx).Model(&models.EntityMeta{}).Where("id = ?", ccid).Update("info", info)
+	if result.Error != nil {
+		span.RecordError(result.Error)
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return domain.NotFoundError{Resource: "entity meta"}
+	}
+
+	return nil
+}
+
 func (r *ResidenceRepository) DeleteMeta(ctx context.Context, ccid string) error {
 	ctx, span := tracer.Start(ctx, "ResidenceRepository.DeleteMeta")
 	defer span.End()

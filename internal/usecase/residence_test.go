@@ -45,6 +45,106 @@ func TestEncodeMetaInfo(t *testing.T) {
 	})
 }
 
+// registrationResidenceRepo serves a fixed meta (or an error) and records
+// UpdateMetaInfo calls without touching inviter.
+type registrationResidenceRepo struct {
+	ResidenceRepository
+	meta    *domain.EntityMeta
+	metaErr error
+}
+
+func (r *registrationResidenceRepo) GetMeta(ctx context.Context, ccid string) (*domain.EntityMeta, error) {
+	if r.metaErr != nil {
+		return nil, r.metaErr
+	}
+	return r.meta, nil
+}
+
+func (r *registrationResidenceRepo) UpdateMetaInfo(ctx context.Context, ccid string, info string) error {
+	if r.metaErr != nil {
+		return r.metaErr
+	}
+	r.meta.Info = info
+	return nil
+}
+
+// GetRegistration/UpdateRegistration are the v1 GET/PUT /entity/meta
+// equivalents: requester-only access to their own registration info, with
+// inviter fixed at registration time.
+func TestRegistrationMeta(t *testing.T) {
+	cfg := &domain.Config{FQDN: "example.com"}
+	ccid := "con1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"
+	inviter := "con1pppppppppppppppppppppppppppppppppppppppp"
+	authedCtx := context.WithValue(context.Background(), interop.RequesterCtxKey, domain.Entity{ID: ccid})
+
+	t.Run("unauthenticated get rejected", func(t *testing.T) {
+		uc := NewResidenceUsecase(&registrationResidenceRepo{}, nil, cfg)
+		_, err := uc.GetRegistration(context.Background())
+		if err == nil || !errors.Is(err, domain.ErrPermissionDenied) {
+			t.Fatalf("expected permission error, got %v", err)
+		}
+	})
+
+	t.Run("unauthenticated update rejected", func(t *testing.T) {
+		repo := &registrationResidenceRepo{meta: &domain.EntityMeta{ID: ccid, Info: "null"}}
+		uc := NewResidenceUsecase(repo, nil, cfg)
+		err := uc.UpdateRegistration(context.Background(), map[string]any{"email": "a@example.com"})
+		if err == nil || !errors.Is(err, domain.ErrPermissionDenied) {
+			t.Fatalf("expected permission error, got %v", err)
+		}
+		if repo.meta.Info != "null" {
+			t.Fatal("UpdateMetaInfo should not be called")
+		}
+	})
+
+	t.Run("service account (non-entity requester) rejected", func(t *testing.T) {
+		uc := NewResidenceUsecase(&registrationResidenceRepo{}, nil, cfg)
+		saCtx := context.WithValue(context.Background(), interop.RequesterCtxKey, "con1sssssssssssssssssssssssssssssssssssssss")
+		_, err := uc.GetRegistration(saCtx)
+		if err == nil || !errors.Is(err, domain.ErrPermissionDenied) {
+			t.Fatalf("expected permission error, got %v", err)
+		}
+	})
+
+	t.Run("unregistered requester gets not found", func(t *testing.T) {
+		repo := &registrationResidenceRepo{metaErr: domain.NotFoundError{Resource: "entity meta"}}
+		uc := NewResidenceUsecase(repo, nil, cfg)
+		_, err := uc.GetRegistration(authedCtx)
+		if err == nil || !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("expected not found, got %v", err)
+		}
+		if err := uc.UpdateRegistration(authedCtx, nil); err == nil || !errors.Is(err, domain.ErrNotFound) {
+			t.Fatalf("expected not found, got %v", err)
+		}
+	})
+
+	t.Run("get returns own meta", func(t *testing.T) {
+		repo := &registrationResidenceRepo{meta: &domain.EntityMeta{ID: ccid, Inviter: &inviter, Info: `{"email":"a@example.com"}`}}
+		uc := NewResidenceUsecase(repo, nil, cfg)
+		meta, err := uc.GetRegistration(authedCtx)
+		if err != nil {
+			t.Fatalf("GetRegistration returned error: %v", err)
+		}
+		if meta.ID != ccid || meta.Inviter != &inviter || meta.Info != `{"email":"a@example.com"}` {
+			t.Fatalf("meta = %+v", meta)
+		}
+	})
+
+	t.Run("update replaces info and keeps inviter", func(t *testing.T) {
+		repo := &registrationResidenceRepo{meta: &domain.EntityMeta{ID: ccid, Inviter: &inviter, Info: `{"email":"a@example.com"}`}}
+		uc := NewResidenceUsecase(repo, nil, cfg)
+		if err := uc.UpdateRegistration(authedCtx, map[string]any{"email": "b@example.com"}); err != nil {
+			t.Fatalf("UpdateRegistration returned error: %v", err)
+		}
+		if repo.meta.Info != `{"email":"b@example.com"}` {
+			t.Fatalf("info = %s", repo.meta.Info)
+		}
+		if repo.meta.Inviter != &inviter {
+			t.Fatal("inviter must be preserved")
+		}
+	})
+}
+
 // unregisterResidenceRepo serves a fixed entity (or an error) and records
 // DeleteMeta calls.
 type unregisterResidenceRepo struct {

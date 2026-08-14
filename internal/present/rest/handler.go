@@ -2,6 +2,7 @@ package rest
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
@@ -96,6 +97,8 @@ func (h *Handler) RegisterRoutes(app *echo.Echo, e *echo.Group) {
 	api.GET("/realtime", h.handleRealtime)
 	api.OPTIONS("/realtime", h.handleNop)
 	api.POST("/register", h.handleRegister)
+	api.GET("/register", h.handleGetRegistration)
+	api.PUT("/register", h.handleUpdateRegistration)
 	api.DELETE("/register", h.handleUnregister)
 	api.OPTIONS("/register", h.handleNop)
 	api.GET("/timeline/recent", h.handleTimelineRecent)
@@ -497,6 +500,58 @@ func (h *Handler) handleRegister(c echo.Context) error {
 
 	err = h.residence.Register(ctx, ip, req)
 	if err != nil {
+		return presenter.InternalError(c, err)
+	}
+	return presenter.OK(c, echo.Map{"status": "ok"})
+}
+
+func (h *Handler) handleGetRegistration(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	meta, err := h.residence.GetRegistration(ctx)
+	if err != nil {
+		if errors.Is(err, domain.ErrPermissionDenied) {
+			return presenter.Forbidden(c, err.Error())
+		}
+		if errors.Is(err, domain.ErrNotFound) {
+			return presenter.NotFound(c, "registration not found")
+		}
+		return presenter.InternalError(c, err)
+	}
+
+	// Info is stored as a jsonb string; embed it as raw JSON so the client
+	// sees the same shape it submitted as RegisterRequest.Meta.
+	content := struct {
+		CCID    string          `json:"ccid"`
+		Inviter *string         `json:"inviter,omitempty"`
+		Meta    json.RawMessage `json:"meta"`
+	}{
+		CCID:    meta.ID,
+		Inviter: meta.Inviter,
+		Meta:    json.RawMessage(meta.Info),
+	}
+
+	return presenter.OK(c, echo.Map{"status": "ok", "content": content})
+}
+
+func (h *Handler) handleUpdateRegistration(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	var req struct {
+		Meta any `json:"meta"`
+	}
+	if err := c.Bind(&req); err != nil {
+		return presenter.BadRequest(c, err)
+	}
+
+	err := h.residence.UpdateRegistration(ctx, req.Meta)
+	if err != nil {
+		if errors.Is(err, domain.ErrPermissionDenied) {
+			return presenter.Forbidden(c, err.Error())
+		}
+		if errors.Is(err, domain.ErrNotFound) {
+			return presenter.NotFound(c, "registration not found")
+		}
 		return presenter.InternalError(c, err)
 	}
 	return presenter.OK(c, echo.Map{"status": "ok"})

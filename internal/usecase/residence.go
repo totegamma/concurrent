@@ -16,6 +16,7 @@ import (
 type ResidenceRepository interface {
 	SaveMeta(ctx context.Context, meta domain.EntityMeta) error
 	GetMeta(ctx context.Context, ccid string) (*domain.EntityMeta, error)
+	UpdateMetaInfo(ctx context.Context, ccid string, info string) error
 	DeleteMeta(ctx context.Context, ccid string) error
 
 	GetEntityByCCID(ctx context.Context, ccid string) (*domain.Entity, error)
@@ -71,6 +72,56 @@ func (uc *ResidenceUsecase) Unregister(ctx context.Context) error {
 
 	// DeleteMetaはmetaが存在しなくてもエラーにしない(冪等)
 	if err := uc.repo.DeleteMeta(ctx, requester.ID); err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	return nil
+}
+
+// GetRegistration returns the requester's own registration meta (info and
+// inviter). The target is always the requester — other residents' meta is
+// server-local private state and is never exposed.
+func (uc *ResidenceUsecase) GetRegistration(ctx context.Context) (*domain.EntityMeta, error) {
+	ctx, span := tracer.Start(ctx, "ResidenceUsecase.GetRegistration")
+	defer span.End()
+
+	requester, ok := ctx.Value(interop.RequesterCtxKey).(domain.Entity)
+	if !ok {
+		err := domain.PermissionError{Reason: "authentication required"}
+		span.RecordError(err)
+		return nil, err
+	}
+
+	meta, err := uc.repo.GetMeta(ctx, requester.ID)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	return meta, nil
+}
+
+// UpdateRegistration replaces the requester's registration meta (info only —
+// inviter is set at registration time and never updatable, as in v1).
+func (uc *ResidenceUsecase) UpdateRegistration(ctx context.Context, meta any) error {
+	ctx, span := tracer.Start(ctx, "ResidenceUsecase.UpdateRegistration")
+	defer span.End()
+
+	requester, ok := ctx.Value(interop.RequesterCtxKey).(domain.Entity)
+	if !ok {
+		err := domain.PermissionError{Reason: "authentication required"}
+		span.RecordError(err)
+		return err
+	}
+
+	info, err := encodeMetaInfo(meta)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	if err := uc.repo.UpdateMetaInfo(ctx, requester.ID, info); err != nil {
 		span.RecordError(err)
 		return err
 	}

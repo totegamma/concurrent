@@ -302,20 +302,22 @@ func main() {
 	proxy := rest.NewProxy(conf.Services, authMiddleware.IdentifyIdentity)
 	proxy.RegisterRoutes(e)
 
-	e.GET("/tos", func(c echo.Context) (err error) {
+	static := e.Group("", echomiddleware.CORS())
+
+	static.GET("/tos", func(c echo.Context) (err error) {
 		return c.File("/etc/concrnt/static/tos.txt")
 	})
-	e.OPTIONS("/tos", handleNop)
+	static.OPTIONS("/tos", handleNop)
 
-	e.GET("/code-of-conduct", func(c echo.Context) (err error) {
+	static.GET("/code-of-conduct", func(c echo.Context) (err error) {
 		return c.File("/etc/concrnt/static/code-of-conduct.txt")
 	})
-	e.OPTIONS("/code-of-conduct", handleNop)
+	static.OPTIONS("/code-of-conduct", handleNop)
 
-	e.GET("/register-template", func(c echo.Context) (err error) {
+	static.GET("/register-template", func(c echo.Context) (err error) {
 		return c.File("/etc/concrnt/static/register-template.json")
 	})
-	e.OPTIONS("/register-template", handleNop)
+	static.OPTIONS("/register-template", handleNop)
 
 	// the internal listener carries everything operational — liveness and
 	// readiness probes, and the replica-to-replica subscriber coordination

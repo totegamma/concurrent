@@ -2,12 +2,18 @@ package domain
 
 import "fmt"
 
-// NotFoundError represents a missing resource.
+// NotFoundError represents a missing resource. Message, when set, overrides
+// the derived text — for application-level responses whose exact wording is
+// part of the API contract (e.g. "Registration Not Found").
 type NotFoundError struct {
 	Resource string
+	Message  string
 }
 
 func (e NotFoundError) Error() string {
+	if e.Message != "" {
+		return e.Message
+	}
 	if e.Resource == "" {
 		return "not found"
 	}

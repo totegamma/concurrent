@@ -95,12 +95,21 @@ func (uc *ResidenceUsecase) GetRegistration(ctx context.Context) (*domain.Entity
 
 	meta, err := uc.repo.GetMeta(ctx, requester.ID)
 	if err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			err = errRegistrationNotFound
+		}
 		span.RecordError(err)
 		return nil, err
 	}
 
 	return meta, nil
 }
+
+// errRegistrationNotFound is the 404 for a requester with no registration on
+// this domain. The exact message is part of the API contract: it lets clients
+// tell an application-level "not registered" apart from a bare 404 produced by
+// a misconfigured server or proxy.
+var errRegistrationNotFound = domain.NotFoundError{Resource: "registration", Message: "Registration Not Found"}
 
 // UpdateRegistration replaces the requester's registration meta (info only —
 // inviter is set at registration time and never updatable, as in v1).
@@ -122,6 +131,9 @@ func (uc *ResidenceUsecase) UpdateRegistration(ctx context.Context, meta any) er
 	}
 
 	if err := uc.repo.UpdateMetaInfo(ctx, requester.ID, info); err != nil {
+		if errors.Is(err, domain.ErrNotFound) {
+			err = errRegistrationNotFound
+		}
 		span.RecordError(err)
 		return err
 	}

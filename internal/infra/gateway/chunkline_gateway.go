@@ -134,7 +134,10 @@ func (r *resolver) resolveTimeline(ctx context.Context, timeline string) (chunkl
 		err := json.Unmarshal(item.Value, &manifest)
 		if err != nil {
 			span.RecordError(fmt.Errorf("failed to unmarshal cached manifest for %s: %w", timeline, err))
-		} else {
+		} else if manifest.ChunkSize > 0 {
+			// ChunkSize <= 0 means an invalid manifest cached before this
+			// validation existed — treat it as a miss so it can't reach a
+			// Time2Chunk division (the 7-day TTL is too long to wait out)
 			return manifest, nil
 		}
 	} else if !errors.Is(err, memcache.ErrCacheMiss) {
@@ -145,6 +148,17 @@ func (r *resolver) resolveTimeline(ctx context.Context, timeline string) (chunkl
 	err = r.client.GetResource(ctx, timeline, "application/chunkline+json", nil, &manifest)
 	if err != nil {
 		span.RecordError(fmt.Errorf("failed to fetch chunkline manifest for %s: %w", timeline, err))
+		return chunkline.Manifest{}, err
+	}
+
+	// GetResource decodes whatever the resolve endpoint returns: a resource
+	// that is not a chunkline timeline (e.g. a space root resolving to the
+	// entity document) or a broken origin decodes into a zero manifest.
+	// ChunkSize is the Time2Chunk divisor, so letting one through (or caching
+	// it) would panic the process on the next chunk computation.
+	if manifest.ChunkSize <= 0 {
+		err := fmt.Errorf("resource %s is not a chunkline timeline", timeline)
+		span.RecordError(err)
 		return chunkline.Manifest{}, err
 	}
 
@@ -193,6 +207,12 @@ func (r *resolver) ResolveTimelines(ctx context.Context, timelines []string) (ma
 				remaining = append(remaining, tl)
 				continue
 			}
+			// invalid manifest cached before validation existed: treat as a
+			// miss (see resolveTimeline)
+			if manifest.ChunkSize <= 0 {
+				remaining = append(remaining, tl)
+				continue
+			}
 			result[tl] = manifest
 		} else {
 			remaining = append(remaining, tl)
@@ -204,6 +224,13 @@ func (r *resolver) ResolveTimelines(ctx context.Context, timelines []string) (ma
 		err := r.client.GetResource(ctx, tl, "application/chunkline+json", nil, &manifest)
 		if err != nil {
 			span.RecordError(fmt.Errorf("failed to fetch chunkline manifest for %s: %w", tl, err))
+			continue
+		}
+		// a non-timeline resource or broken origin decodes into a zero
+		// manifest whose ChunkSize would divide by zero in Time2Chunk;
+		// never return or cache one (see resolveTimeline)
+		if manifest.ChunkSize <= 0 {
+			span.RecordError(fmt.Errorf("resource %s is not a chunkline timeline", tl))
 			continue
 		}
 		result[tl] = manifest

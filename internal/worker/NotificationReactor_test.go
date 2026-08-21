@@ -201,3 +201,22 @@ func TestNotificationDedupKeyDistinguishesTimestamps(t *testing.T) {
 		t.Fatal("events at different times must not share a dedup key")
 	}
 }
+
+// The unread counter rides along in the push payload so devices can mirror it
+// onto the app icon without a round trip.
+func TestNotificationPayloadCarriesBadge(t *testing.T) {
+	payload := buildNotificationPayload(concrnt.Event{URI: "ccfs://bob/concrnt/post9"})
+	payload.Badge = 3
+
+	encoded, err := json.Marshal(payload)
+	if err != nil {
+		t.Fatalf("payload must marshal: %v", err)
+	}
+	var decoded map[string]any
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("payload must be a JSON object: %v", err)
+	}
+	if decoded["badge"] != float64(3) {
+		t.Fatalf("badge must be encoded as a number, got %v", decoded["badge"])
+	}
+}

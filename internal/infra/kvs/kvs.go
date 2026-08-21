@@ -2,6 +2,7 @@ package kvs
 
 import (
 	"context"
+	"errors"
 	"time"
 
 	"github.com/redis/go-redis/v9"
@@ -27,4 +28,23 @@ func (r *Redis) SetAdd(ctx context.Context, key string, value string, ttl time.D
 
 func (r *Redis) SetMembers(ctx context.Context, key string) ([]string, error) {
 	return r.rdb.SMembers(ctx, key).Result()
+}
+
+// Incr increments an integer counter and returns the new value. The key is
+// created at 1 when missing and never expires.
+func (r *Redis) Incr(ctx context.Context, key string) (int64, error) {
+	return r.rdb.Incr(ctx, key).Result()
+}
+
+// GetInt reads an integer counter; a missing key reads as 0.
+func (r *Redis) GetInt(ctx context.Context, key string) (int64, error) {
+	value, err := r.rdb.Get(ctx, key).Int64()
+	if errors.Is(err, redis.Nil) {
+		return 0, nil
+	}
+	return value, err
+}
+
+func (r *Redis) Delete(ctx context.Context, key string) error {
+	return r.rdb.Del(ctx, key).Err()
 }

@@ -73,6 +73,7 @@ var Endpoints = map[string]string{
 	"net.concrnt.world.register":          apiPrefix + "/register",
 	"net.concrnt.world.timeline.recent":   apiPrefix + "/timeline/recent{?uris,until,limit}",
 	"net.concrnt.world.subscribe":         apiPrefix + "/subscribe/{owner}/{vendor_id}",
+	"net.concrnt.world.subscribe.counter": apiPrefix + "/subscribe/{owner}/{vendor_id}/counter",
 	"net.concrnt.world.repository":        apiPrefix + "/repository",
 	"net.concrnt.core.known-servers":      apiPrefix + "/known-servers",
 }
@@ -107,6 +108,9 @@ func (h *Handler) RegisterRoutes(app *echo.Echo, e *echo.Group) {
 	api.OPTIONS("/subscribe/:owner/:vendor_id", h.handleNop)
 	api.GET("/subscribe/:owner/:vendor_id", h.handleGetNotification)
 	api.DELETE("/subscribe/:owner/:vendor_id", h.handleDeleteNotification)
+	api.GET("/subscribe/:owner/:vendor_id/counter", h.handleGetNotificationCounter)
+	api.OPTIONS("/subscribe/:owner/:vendor_id/counter", h.handleNop)
+	api.DELETE("/subscribe/:owner/:vendor_id/counter", h.handleResetNotificationCounter)
 	api.GET("/known-servers", h.handleKnownServers)
 	api.OPTIONS("/known-servers", h.handleNop)
 	api.GET("/repository", h.handleDumpRepository)
@@ -692,6 +696,53 @@ func (h *Handler) handleDeleteNotification(c echo.Context) error {
 
 	err = h.notify.Delete(ctx, vendorID, owner)
 	if err != nil {
+		return presenter.InternalError(c, err)
+	}
+
+	return c.NoContent(http.StatusNoContent)
+}
+
+func (h *Handler) handleGetNotificationCounter(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	owner, err := url.PathUnescape(c.Param("owner"))
+	if err != nil {
+		return presenter.BadRequestMessage(c, "invalid owner")
+	}
+	vendorID, err := url.PathUnescape(c.Param("vendor_id"))
+	if err != nil {
+		return presenter.BadRequestMessage(c, "invalid vendor_id")
+	}
+
+	if err := requireNotificationOwner(ctx, owner); err != nil {
+		return presenter.Forbidden(c, err.Error())
+	}
+
+	count, err := h.notify.GetCounter(ctx, vendorID, owner)
+	if err != nil {
+		return presenter.InternalError(c, err)
+	}
+
+	return presenter.OK(c, echo.Map{"status": "ok", "content": echo.Map{"count": count}})
+}
+
+func (h *Handler) handleResetNotificationCounter(c echo.Context) error {
+	ctx := c.Request().Context()
+
+	owner, err := url.PathUnescape(c.Param("owner"))
+	if err != nil {
+		return presenter.BadRequestMessage(c, "invalid owner")
+	}
+	vendorID, err := url.PathUnescape(c.Param("vendor_id"))
+	if err != nil {
+		return presenter.BadRequestMessage(c, "invalid vendor_id")
+	}
+
+	if err := requireNotificationOwner(ctx, owner); err != nil {
+		return presenter.Forbidden(c, err.Error())
+	}
+
+	if err := h.notify.ResetCounter(ctx, vendorID, owner); err != nil {
 		return presenter.InternalError(c, err)
 	}
 

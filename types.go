@@ -216,11 +216,27 @@ func (sd SignedDocument) StripInternalFlags() SignedDocument {
 // (through webpush-relay). It replaces sending the whole Event, whose embedded
 // SignedDocuments blow past the 4096-byte WebPush/FCM limit. The client resolves
 // URI (a ccfs association document) via /api/v2/resolve to render the rest.
+const (
+	// NotificationTypeNotification is a regular push: render and show it.
+	NotificationTypeNotification = "notification"
+	// NotificationTypeCounterReset tells the device the owner has looked at
+	// their notifications elsewhere: clear the app icon badge, show nothing.
+	NotificationTypeCounterReset = "counter-reset"
+	// NotificationTopicCounterReset is the RFC 8030 Topic header carried by a
+	// counter-reset push. The body is encrypted, so this plaintext header is
+	// what lets webpush-relay turn it into a badge-only APNs notification.
+	NotificationTopicCounterReset = "counter-reset"
+)
+
 type NotificationPayload struct {
-	URI       string    `json:"uri"`
-	Schema    string    `json:"schema"`
-	Author    string    `json:"author"`
-	CreatedAt time.Time `json:"createdAt"`
+	Type      string    `json:"type"`
+	URI       string    `json:"uri,omitempty"`
+	Schema    string    `json:"schema,omitempty"`
+	Author    string    `json:"author,omitempty"`
+	CreatedAt time.Time `json:"createdAt,omitzero"`
+	// Badge is the owner's unread counter after this notification was counted
+	// (0 when the counter could not be read); devices mirror it onto the app icon.
+	Badge int64 `json:"badge"`
 }
 
 type RealtimeRequest struct {

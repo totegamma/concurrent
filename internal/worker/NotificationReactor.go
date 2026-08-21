@@ -20,6 +20,7 @@ import (
 
 type NotificationUsecase interface {
 	List(ctx context.Context) ([]domain.NotificationSubscription, error)
+	IncrementCounter(ctx context.Context, vendorID, owner string) (int64, error)
 }
 
 type RealtimeUsecase interface {
@@ -161,7 +162,16 @@ func (r *NotificationReactor) runWorker(ctx context.Context, sub domain.Notifica
 				}
 			}
 
-			payload, err := json.Marshal(buildNotificationPayload(event))
+			notification := buildNotificationPayload(event)
+			// the counter means "notifications the user has not looked at yet",
+			// so it is bumped regardless of whether the push itself lands
+			if count, err := r.notification.IncrementCounter(ctx, sub.VendorID, sub.Owner); err != nil {
+				slog.Warn("failed to increment notification counter", slog.String("error", err.Error()))
+			} else {
+				notification.Badge = count
+			}
+
+			payload, err := json.Marshal(notification)
 			if err != nil {
 				slog.Error("failed to encode notification payload", slog.String("error", err.Error()))
 				r.releaseClaim(ctx, claimedKey)
@@ -288,6 +298,7 @@ func effectiveSchema(sd concrnt.SignedDocument) string {
 // still shows a generic notification rather than dropping it.
 func buildNotificationPayload(event concrnt.Event) concrnt.NotificationPayload {
 	payload := concrnt.NotificationPayload{
+		Type:      concrnt.NotificationTypeNotification,
 		URI:       event.URI,
 		CreatedAt: event.Timestamp,
 	}

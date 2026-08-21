@@ -29,6 +29,7 @@ import (
 	"github.com/concrnt/concrnt/internal/infra/jobqueue"
 	"github.com/concrnt/concrnt/internal/infra/kvs"
 	"github.com/concrnt/concrnt/internal/infra/pubsub"
+	"github.com/concrnt/concrnt/internal/infra/push"
 	"github.com/concrnt/concrnt/internal/infra/repository/postgres"
 	"github.com/concrnt/concrnt/internal/present/rest"
 	"github.com/concrnt/concrnt/internal/present/rest/middleware"
@@ -208,8 +209,32 @@ func main() {
 
 	chunklineRepo := postgres.NewChunklineRepository(db)
 
+	// web push is gated on VAPID keys; without them neither the reactor nor
+	// the out-of-band counter-reset push exist
+	var webpushOpts *webpush.Options
+	if conf.Integrations.VapidPublicKey != "" && conf.Integrations.VapidPrivateKey != "" {
+		webpushOpts = &webpush.Options{
+			Subscriber:      "mailto:admin@" + domainConfig.FQDN,
+			VAPIDPublicKey:  conf.Integrations.VapidPublicKey,
+			VAPIDPrivateKey: conf.Integrations.VapidPrivateKey,
+			TTL:             30,
+			// webpush-go zero-pads every message up to RecordSize, so the wire
+			// body is always exactly RecordSize regardless of payload length.
+			// The default (4096) base64-encodes to ~5.5KB, which overflows the
+			// 4096-byte FCM/APNs data limit at webpush-relay and gets its
+			// encrypted payload dropped. 2048 keeps the base64 body (~2.7KB)
+			// within that limit while leaving ~1.9KB of plaintext room — ample
+			// for the minimal notification payload (see NotificationReactor).
+			RecordSize: 2048,
+		}
+	}
+	var notificationPusher usecase.NotificationPusher
+	if webpushOpts != nil {
+		notificationPusher = push.NewWebPush(*webpushOpts)
+	}
+
 	notificationRepo := postgres.NewNotificationRepository(db)
-	notificationUC := usecase.NewNotificationUsecase(notificationRepo)
+	notificationUC := usecase.NewNotificationUsecase(notificationRepo, redisKVS, notificationPusher)
 
 	leaderSub := worker.NewLeaderSubscriber(&domainConfig, cl, redisPubsub, discovery)
 	workerSub := worker.NewWorkerSubscriber(elector)
@@ -230,7 +255,7 @@ func main() {
 	abuseUC := usecase.NewAbuseUsecase(abuseRepo)
 
 	var notificationReactor *worker.NotificationReactor
-	if conf.Integrations.VapidPublicKey != "" && conf.Integrations.VapidPrivateKey != "" {
+	if webpushOpts != nil {
 		// cross-replica push dedup only matters when a leadership handover can
 		// overlap two reactors; standalone deployments skip the redis round
 		// trip per notification
@@ -238,20 +263,7 @@ func main() {
 		if clustered {
 			notificationDeduper = pubsub.NewRedisDeduper(redis)
 		}
-		notificationReactor = worker.NewNotificationReactor(notificationUC, subscriptionUC, notificationDeduper, webpush.Options{
-			Subscriber:      "mailto:admin@" + domainConfig.FQDN,
-			VAPIDPublicKey:  conf.Integrations.VapidPublicKey,
-			VAPIDPrivateKey: conf.Integrations.VapidPrivateKey,
-			TTL:             30,
-			// webpush-go zero-pads every message up to RecordSize, so the wire
-			// body is always exactly RecordSize regardless of payload length.
-			// The default (4096) base64-encodes to ~5.5KB, which overflows the
-			// 4096-byte FCM/APNs data limit at webpush-relay and gets its
-			// encrypted payload dropped. 2048 keeps the base64 body (~2.7KB)
-			// within that limit while leaving ~1.9KB of plaintext room — ample
-			// for the minimal notification payload (see NotificationReactor).
-			RecordSize: 2048,
-		})
+		notificationReactor = worker.NewNotificationReactor(notificationUC, subscriptionUC, notificationDeduper, *webpushOpts)
 	}
 
 	// singleton workers run only while this replica holds the leadership: the

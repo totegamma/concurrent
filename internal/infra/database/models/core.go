@@ -22,7 +22,9 @@ type CommitOwner struct {
 //     entity, ack, association foreign keys and direct ccfs lookups in
 //     postgres.RecordRepository.GetSignedDocument/Delete.
 //   - idx_commit_logs_gc_candidate (gc_candidate): marks commits for later GC
-//     scans; set by postgres.RecordRepository.CreateRecord when replacing a key.
+//     scans; set by postgres.RecordRepository.CreateRecord when replacing a key
+//     and by postgres.ResidenceRepository.MarkCommitLogsGcCandidateByOwner on
+//     unregister.
 type CommitLog struct {
 	ID          string    `json:"id" gorm:"primaryKey;type:text"`
 	IP          string    `json:"ip" gorm:"type:text"`

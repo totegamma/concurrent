@@ -161,30 +161,35 @@ func TestRegistrationMeta(t *testing.T) {
 	})
 }
 
-// unregisterResidenceRepo serves a fixed entity (or an error) and records
-// DeleteMeta calls.
+// unregisterResidenceRepo records the order of gc-flag and meta-delete calls
+// and can fail either one.
 type unregisterResidenceRepo struct {
 	ResidenceRepository
-	entity     *domain.Entity
-	entityErr  error
-	deletedIDs []string
+	calls     []string
+	markErr   error
+	deleteErr error
 }
 
-func (r *unregisterResidenceRepo) GetEntityByCCID(ctx context.Context, ccid string) (*domain.Entity, error) {
-	if r.entityErr != nil {
-		return nil, r.entityErr
+func (r *unregisterResidenceRepo) MarkCommitLogsGcCandidateByOwner(ctx context.Context, owner string) error {
+	if r.markErr != nil {
+		return r.markErr
 	}
-	return r.entity, nil
-}
-
-func (r *unregisterResidenceRepo) DeleteMeta(ctx context.Context, ccid string) error {
-	r.deletedIDs = append(r.deletedIDs, ccid)
+	r.calls = append(r.calls, "mark:"+owner)
 	return nil
 }
 
-// Unregister is the migration cleanup: it deletes the requester's residence
-// meta, but only after their entity document has moved to another domain — a
-// current resident must not be able to strand themselves.
+func (r *unregisterResidenceRepo) DeleteMeta(ctx context.Context, ccid string) error {
+	if r.deleteErr != nil {
+		return r.deleteErr
+	}
+	r.calls = append(r.calls, "delete:"+ccid)
+	return nil
+}
+
+// Unregister is the unified account-deletion path: for a current resident and
+// for post-migration cleanup alike, it flags the requester's solely-owned
+// commit logs for GC and then deletes the residence meta. Idempotent, so an
+// already-unregistered requester succeeds too.
 func TestUnregister(t *testing.T) {
 	cfg := &domain.Config{FQDN: "example.com"}
 	ccid := "con1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"
@@ -193,56 +198,57 @@ func TestUnregister(t *testing.T) {
 	t.Run("unauthenticated rejected", func(t *testing.T) {
 		repo := &unregisterResidenceRepo{}
 		uc := NewResidenceUsecase(repo, nil, cfg)
-		if err := uc.Unregister(context.Background()); err == nil {
-			t.Fatal("expected error, got nil")
-		}
-		if len(repo.deletedIDs) != 0 {
-			t.Fatal("DeleteMeta should not be called")
-		}
-	})
-
-	t.Run("still resident rejected", func(t *testing.T) {
-		repo := &unregisterResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: cfg.FQDN}}
-		uc := NewResidenceUsecase(repo, nil, cfg)
-		err := uc.Unregister(authedCtx)
+		err := uc.Unregister(context.Background())
 		if err == nil || !errors.Is(err, domain.ErrPermissionDenied) {
 			t.Fatalf("expected permission error, got %v", err)
 		}
-		if len(repo.deletedIDs) != 0 {
-			t.Fatal("DeleteMeta should not be called for a current resident")
+		if len(repo.calls) != 0 {
+			t.Fatalf("no repository call expected, got %v", repo.calls)
 		}
 	})
 
-	t.Run("moved away deletes meta", func(t *testing.T) {
-		repo := &unregisterResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: "new.example.net"}}
+	t.Run("service account (non-entity requester) rejected", func(t *testing.T) {
+		repo := &unregisterResidenceRepo{}
+		uc := NewResidenceUsecase(repo, nil, cfg)
+		saCtx := context.WithValue(context.Background(), interop.RequesterCtxKey, "con1sssssssssssssssssssssssssssssssssssssss")
+		err := uc.Unregister(saCtx)
+		if err == nil || !errors.Is(err, domain.ErrPermissionDenied) {
+			t.Fatalf("expected permission error, got %v", err)
+		}
+		if len(repo.calls) != 0 {
+			t.Fatalf("no repository call expected, got %v", repo.calls)
+		}
+	})
+
+	t.Run("resident account is deleted, gc flag first", func(t *testing.T) {
+		repo := &unregisterResidenceRepo{}
 		uc := NewResidenceUsecase(repo, nil, cfg)
 		if err := uc.Unregister(authedCtx); err != nil {
 			t.Fatalf("Unregister returned error: %v", err)
 		}
-		if len(repo.deletedIDs) != 1 || repo.deletedIDs[0] != ccid {
-			t.Fatalf("DeleteMeta calls = %v, want [%s]", repo.deletedIDs, ccid)
+		// gc化が先: 途中失敗時にmetaが残り、リトライで全体をやり直せる順序
+		want := []string{"mark:" + ccid, "delete:" + ccid}
+		if len(repo.calls) != 2 || repo.calls[0] != want[0] || repo.calls[1] != want[1] {
+			t.Fatalf("calls = %v, want %v", repo.calls, want)
 		}
 	})
 
-	t.Run("entity not found still deletes meta", func(t *testing.T) {
-		repo := &unregisterResidenceRepo{entityErr: domain.NotFoundError{Resource: "entity"}}
-		uc := NewResidenceUsecase(repo, nil, cfg)
-		if err := uc.Unregister(authedCtx); err != nil {
-			t.Fatalf("Unregister returned error: %v", err)
-		}
-		if len(repo.deletedIDs) != 1 {
-			t.Fatal("DeleteMeta was not called")
-		}
-	})
-
-	t.Run("repository error propagates", func(t *testing.T) {
-		repo := &unregisterResidenceRepo{entityErr: errors.New("db down")}
+	t.Run("gc mark failure propagates and keeps meta", func(t *testing.T) {
+		repo := &unregisterResidenceRepo{markErr: errors.New("db down")}
 		uc := NewResidenceUsecase(repo, nil, cfg)
 		if err := uc.Unregister(authedCtx); err == nil {
 			t.Fatal("expected error, got nil")
 		}
-		if len(repo.deletedIDs) != 0 {
-			t.Fatal("DeleteMeta should not be called on lookup failure")
+		if len(repo.calls) != 0 {
+			t.Fatalf("DeleteMeta should not be called on gc-mark failure, got %v", repo.calls)
+		}
+	})
+
+	t.Run("delete meta failure propagates", func(t *testing.T) {
+		repo := &unregisterResidenceRepo{deleteErr: errors.New("db down")}
+		uc := NewResidenceUsecase(repo, nil, cfg)
+		if err := uc.Unregister(authedCtx); err == nil {
+			t.Fatal("expected error, got nil")
 		}
 	})
 }

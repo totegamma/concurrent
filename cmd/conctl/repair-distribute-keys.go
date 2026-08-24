@@ -159,6 +159,7 @@ var repairDistributeKeysCmd = &cobra.Command{
 						if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&models.CommitLog{
 							ID:          newID,
 							IP:          oldLog.IP,
+							Owner:       oldLog.Owner,
 							Document:    string(newBytes),
 							Proof:       oldLog.Proof,
 							GcCandidate: oldLog.GcCandidate,

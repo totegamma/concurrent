@@ -316,6 +316,38 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 		}
 		return nil
 
+	case ProofTypeAckReference:
+		// CIP-10: an ack-reference proof is only valid on the server-generated
+		// acked/unacked mirror of an ack/unack document. The original signed
+		// document is embedded in the proof itself, so the mirror verifies
+		// self-contained: verify the embedded original, then require the
+		// mirror document to be byte-identical to the canonical derivation
+		// from it — that single comparison pins kind correspondence
+		// (ack→acked / unack→unacked) and every other field at once.
+		if sd.Proof.Document == nil || sd.Proof.Proof == nil {
+			return errors.New("embedded document and proof are required for ack-reference proof")
+		}
+
+		embedded := SignedDocument{
+			Document: *sd.Proof.Document,
+			Proof:    *sd.Proof.Proof,
+		}
+		// The embedded original must itself be signed by its author — a
+		// nested reference-style proof would let mirrors be derived from
+		// unsigned material.
+		if err := embedded.verify(ctx, resolver, depth-1, []string{ProofTypeEcrecover, ProofTypeSubkey}); err != nil {
+			return errors.Join(errors.New("embedded ack document failed verification"), err)
+		}
+
+		expected, err := DeriveAckMirror(*sd.Proof.Document)
+		if err != nil {
+			return errors.Join(errors.New("embedded document is not a valid ack/unack document"), err)
+		}
+		if sd.Document != expected {
+			return errors.New("mirror document does not match the canonical derivation of the embedded ack document")
+		}
+		return nil
+
 	case ProofTypeNone:
 		return ErrNoneProofNotAllowed
 

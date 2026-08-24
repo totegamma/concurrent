@@ -6,11 +6,11 @@ import (
 	"github.com/lib/pq"
 )
 
-// Indexes:
-//   - PRIMARY KEY (commit_log_id, owner): de-duplicates owner rows for a commit;
-//     used by postgres.RecordRepository.CreateCommitOwners.
-//   - idx_commit_owners_owner_commit_log_id (owner, commit_log_id): owner-first
-//     dump lookup; used by postgres.RecordRepository.GetAllCommitLogs.
+// Deprecated: commit ownership now lives on commit_logs.owner (single owner
+// per commit). This model is kept only so `conctl op repair-acked-backfill`
+// can read the legacy table to backfill the column; it is no longer
+// auto-migrated and the server never reads or writes it. Operators may drop
+// the table once the repair has run.
 type CommitOwner struct {
 	CommitLogID string    `json:"commit_log_id" gorm:"type:text;primaryKey;index:idx_commit_owners_owner_commit_log_id,priority:2"`
 	CommitLog   CommitLog `json:"-" gorm:"constraint:OnDelete:CASCADE;"`
@@ -21,17 +21,26 @@ type CommitOwner struct {
 //   - PRIMARY KEY (id): canonical commit/document lookup; used by record,
 //     entity, ack, association foreign keys and direct ccfs lookups in
 //     postgres.RecordRepository.GetSignedDocument/Delete.
+//   - idx_commit_logs_owner_c_date (owner, c_date): owner-scoped dump scan;
+//     used by postgres.RecordRepository.GetAllCommitLogs and
+//     postgres.ResidenceRepository.MarkCommitLogsGcCandidateByOwner.
 //   - idx_commit_logs_gc_candidate (gc_candidate): marks commits for later GC
 //     scans; set by postgres.RecordRepository.CreateRecord when replacing a key
 //     and by postgres.ResidenceRepository.MarkCommitLogsGcCandidateByOwner on
 //     unregister.
 type CommitLog struct {
-	ID          string    `json:"id" gorm:"primaryKey;type:text"`
-	IP          string    `json:"ip" gorm:"type:text"`
-	Document    string    `json:"document" gorm:"type:text"`
-	Proof       string    `json:"proof" gorm:"type:text"`
+	ID       string `json:"id" gorm:"primaryKey;type:text"`
+	IP       string `json:"ip" gorm:"type:text"`
+	Document string `json:"document" gorm:"type:text"`
+	Proof    string `json:"proof" gorm:"type:text"`
+	// Owner is the single local entity whose repository this commit belongs
+	// to (dump membership, unregister GC). NULL for pass-through commits no
+	// local entity owns. Successor of the legacy commit_owners join table —
+	// every kind derives exactly one owner (ack/unack: the author; the
+	// ackee's side is carried by its own acked/unacked mirror commit).
+	Owner       *string   `json:"owner" gorm:"type:text;index:idx_commit_logs_owner_c_date,priority:1"`
 	GcCandidate bool      `json:"gcCandidate" gorm:"type:boolean;not null;default:false;index"`
-	CDate       time.Time `json:"cdate" gorm:"type:timestamp with time zone;not null;default:clock_timestamp()"`
+	CDate       time.Time `json:"cdate" gorm:"type:timestamp with time zone;not null;default:clock_timestamp();index:idx_commit_logs_owner_c_date,priority:2"`
 }
 
 // Indexes:
@@ -75,9 +84,9 @@ type RecordKey struct {
 //     plus timestamp predicate support for record_keys-to-records joins that still
 //     need records.created_at.
 type Record struct {
-	DocumentID    string         `json:"id" gorm:"primaryKey;type:text;index:idx_records_schema_created_at_document_id,priority:3;index:idx_records_author_created_at_document_id,priority:3;index:idx_records_document_id_created_at,priority:1"`
-	Document      CommitLog      `json:"documnet" gorm:"foreignKey:DocumentID;references:ID;constraint:OnDelete:CASCADE;"`
-	Owner         string         `json:"owner" gorm:"type:text"`
+	DocumentID string    `json:"id" gorm:"primaryKey;type:text;index:idx_records_schema_created_at_document_id,priority:3;index:idx_records_author_created_at_document_id,priority:3;index:idx_records_document_id_created_at,priority:1"`
+	Document   CommitLog `json:"documnet" gorm:"foreignKey:DocumentID;references:ID;constraint:OnDelete:CASCADE;"`
+	Owner      string    `json:"owner" gorm:"type:text"`
 	// document author; NULL only on rows written before the column existed
 	// (backfilled by conctl op repair-record-authors)
 	Author        string         `json:"author" gorm:"type:text;index:idx_records_author_created_at_document_id,priority:1"`
@@ -92,8 +101,10 @@ type Record struct {
 }
 
 // Indexes:
-//   - PRIMARY KEY (document_id): one ack state per commit document and commit-log
-//     foreign-key target.
+//   - PRIMARY KEY (document_id): one ack state per original ack/unack
+//     document. NOT a commit-log foreign key: on the ackee's server the
+//     original ack is never recorded as a commit (only its acked/unacked
+//     mirror is), so the CDID is kept as a plain comparison key (CIP-10 §4).
 //   - idx_ack_from_to_schema UNIQUE (from, to, schema): idempotent ack state
 //     upsert; used by postgres.RecordRepository.saveAck and filtered by
 //     GetAcknowledgeRecords/GetAcknowledgeRecordCounts.
@@ -109,8 +120,17 @@ type Ack struct {
 	To     string `json:"to" gorm:"type:text;index:idx_ack_from_to_schema,unique;index:idx_acks_to_valid_created_at,priority:1"`
 	Schema string `json:"schema" gorm:"type:text;index:idx_ack_from_to_schema,unique;index:idx_acks_schema_valid_created_at,priority:1"`
 
-	DocumentID string    `json:"id" gorm:"primaryKey;type:text"`
-	Document   CommitLog `json:"-" gorm:"foreignKey:DocumentID;references:ID;constraint:OnDelete:CASCADE;"`
+	DocumentID string `json:"id" gorm:"primaryKey;type:text"`
+
+	// Double anchoring: AckCommitID points at the acker-side ack/unack commit
+	// (set when the author is local), AckedCommitID at the ackee-side
+	// acked/unacked mirror commit (set when the associate owner is local).
+	// Either cascade removes the row when that side's history is GC'd, so an
+	// unregister on either end tears the state down without special-casing.
+	AckCommitID   *string   `json:"ackCommitId" gorm:"type:text"`
+	AckCommit     CommitLog `json:"-" gorm:"foreignKey:AckCommitID;references:ID;constraint:OnDelete:CASCADE;"`
+	AckedCommitID *string   `json:"ackedCommitId" gorm:"type:text"`
+	AckedCommit   CommitLog `json:"-" gorm:"foreignKey:AckedCommitID;references:ID;constraint:OnDelete:CASCADE;"`
 
 	Valid bool `json:"valid" gorm:"type:boolean;not null;default:true;index:idx_acks_from_valid_created_at,priority:2;index:idx_acks_to_valid_created_at,priority:2;index:idx_acks_schema_valid_created_at,priority:2"`
 

@@ -100,7 +100,7 @@ func (r *rangeDeleteRepo) CreateCommitLog(ctx context.Context, tx RepositoryTx, 
 func (r *rangeDeleteRepo) HasCommitLog(ctx context.Context, id string) (bool, error) {
 	return false, nil
 }
-func (r *rangeDeleteRepo) CreateCommitOwners(ctx context.Context, tx RepositoryTx, id string, owners []string) error {
+func (r *rangeDeleteRepo) SetCommitLogOwner(ctx context.Context, tx RepositoryTx, id string, owner *string) error {
 	return nil
 }
 func (r *rangeDeleteRepo) GetHierarchicalRecordPolicies(ctx context.Context, uri string) ([]concrnt.Policy, error) {

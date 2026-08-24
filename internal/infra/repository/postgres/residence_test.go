@@ -42,9 +42,11 @@ func TestResidenceUpdateMetaInfo(t *testing.T) {
 	require.Equal(t, inviter, *meta.Inviter)
 }
 
-// Unregister must flag only commits the departing user owns alone: a commit
-// co-owned by another user (an ack between two local users) must survive,
-// since GCing it would cascade-delete the co-owner's rows.
+// Unregister flags every commit the departing user owns — since every commit
+// has exactly one owner (an ack between two local users is two commits: the
+// ack owned by the acker plus its mirror owned by the ackee), the whole
+// repository is eligible and nothing lingers. Unowned pass-through commits
+// and other users' commits are untouched.
 func TestResidenceMarkCommitLogsGcCandidateByOwner(t *testing.T) {
 	db, cleanup := testutil.CreateDB()
 	t.Cleanup(cleanup)
@@ -55,16 +57,13 @@ func TestResidenceMarkCommitLogsGcCandidateByOwner(t *testing.T) {
 	userA := "con1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"
 	userB := "con1pppppppppppppppppppppppppppppppppppppppp"
 
-	seed := func(id string, owners ...string) {
+	seed := func(id string, owner *string) {
 		t.Helper()
-		require.NoError(t, db.Create(&models.CommitLog{ID: id, Document: "{}", Proof: "{}"}).Error)
-		for _, owner := range owners {
-			require.NoError(t, db.Create(&models.CommitOwner{CommitLogID: id, Owner: owner}).Error)
-		}
+		require.NoError(t, db.Create(&models.CommitLog{ID: id, Owner: owner, Document: "{}", Proof: "{}"}).Error)
 	}
-	seed("log-a-sole", userA)
-	seed("log-b-sole", userB)
-	seed("log-shared", userA, userB)
+	seed("log-a-ack", &userA)    // A's side of an A<->B ack
+	seed("log-b-mirror", &userB) // B's mirror of the same ack
+	seed("log-unowned", nil)     // pass-through commit nobody local owns
 
 	flagged := func() map[string]bool {
 		t.Helper()
@@ -78,7 +77,7 @@ func TestResidenceMarkCommitLogsGcCandidateByOwner(t *testing.T) {
 	}
 
 	require.NoError(t, repo.MarkCommitLogsGcCandidateByOwner(ctx, userA))
-	want := map[string]bool{"log-a-sole": true, "log-b-sole": false, "log-shared": false}
+	want := map[string]bool{"log-a-ack": true, "log-b-mirror": false, "log-unowned": false}
 	require.Equal(t, want, flagged())
 
 	// idempotent: a second run changes nothing

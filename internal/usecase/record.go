@@ -14,6 +14,7 @@ import (
 
 	"github.com/patrickmn/go-cache"
 	"github.com/zeebo/xxh3"
+	"go.opentelemetry.io/otel/trace"
 
 	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/cdid"
@@ -29,7 +30,9 @@ type RecordRepository interface {
 	BeginTx(ctx context.Context) (RepositoryTx, error)
 
 	CreateCommitLog(ctx context.Context, tx RepositoryTx, id string, ip string, document string, proof any) error
-	CreateCommitOwners(ctx context.Context, tx RepositoryTx, id string, owners []string) error
+	// SetCommitLogOwner stamps the commit's single owner once the
+	// kind-specific apply has decided it; nil leaves the column NULL.
+	SetCommitLogOwner(ctx context.Context, tx RepositoryTx, id string, owner *string) error
 	HasCommitLog(ctx context.Context, id string) (bool, error)
 	// CreateEntity reports whether the upsert applied — false when the stored
 	// entity already carries a newer-or-equal documentID (accept-if-newer).
@@ -41,9 +44,13 @@ type RecordRepository interface {
 	CreateAssociation(ctx context.Context, tx RepositoryTx, documentID string, targetURI string, owner string, author string, schema string, variant *string, unique string, createdAt time.Time) (bool, error)
 	// Acknowledge / UnAcknowledge report whether the transition applied —
 	// false when the stored (from, to, schema) state already carries a
-	// newer-or-equal documentID (accept-if-newer).
-	Acknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error)
-	UnAcknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error)
+	// newer documentID, or an equal one with nothing left to anchor
+	// (accept-if-newer, CIP-10 §4). documentID is always the CDID of the
+	// ORIGINAL ack/unack document; ackCommitID anchors the acker-side commit
+	// (author local), ackedCommitID the ackee-side mirror commit (associate
+	// owner local).
+	Acknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time, ackCommitID *string, ackedCommitID *string) (bool, error)
+	UnAcknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time, ackCommitID *string, ackedCommitID *string) (bool, error)
 	DeleteRecordByKey(ctx context.Context, tx RepositoryTx, targetURI string) error
 	DeleteRecordByDocumentID(ctx context.Context, tx RepositoryTx, documentID string) error
 	DeleteAssociation(ctx context.Context, tx RepositoryTx, documentID string) error
@@ -118,8 +125,10 @@ type KVS interface {
 }
 
 type commitApplyResult struct {
-	result        *concrnt.SignedDocument
-	owners        []string
+	result *concrnt.SignedDocument
+	// owner is the single local entity whose repository this commit belongs
+	// to; nil for pass-through commits nobody local owns.
+	owner         *string
 	postProcesses []PostProcessAction
 	// noop marks an apply that changed nothing (accept-if-newer loss): the
 	// whole tx is rolled back — commit_log included — and success returned,
@@ -281,6 +290,12 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		if doc.Kind == "entity" {
 			allowedProofs = []string{concrnt.ProofTypeEcrecover}
 		}
+		// acked/unacked mirrors are only legitimate as derivations of a
+		// proof-embedded original ack/unack (CIP-10) — any other proof type
+		// would let an author-signed document masquerade as a server mirror.
+		if doc.Kind == "acked" || doc.Kind == "unacked" {
+			allowedProofs = []string{concrnt.ProofTypeAckReference}
+		}
 		if err := sd.VerifyWithProofTypes(ctx, uc.resolver(), allowedProofs); err != nil {
 			span.RecordError(err)
 			if errors.Is(err, concrnt.ErrNoneProofNotAllowed) {
@@ -307,7 +322,12 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		// documents by others that target their content (e.g. inbound
 		// associations carried over in the dump). Signature verification
 		// still applies.
-		backdateExempt := doc.Kind == "entity"
+		// acked/unacked mirrors are likewise exempt: their createdAt is
+		// inherited from the embedded original ack, whose own timeliness was
+		// checked when it was first accepted — repair backfills and dump
+		// replays legitimately re-present old mirrors, and the ack-reference
+		// verification pins the mirror to the signed original.
+		backdateExempt := doc.Kind == "entity" || doc.Kind == "acked" || doc.Kind == "unacked"
 		if !backdateExempt && mode == domain.CommitModeLocalOnlyExecute {
 			if authenticated, ok := ctx.Value(interop.RequesterCtxKey).(domain.Entity); ok {
 				backdateExempt = doc.Author == authenticated.ID
@@ -345,9 +365,13 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		span.RecordError(requesterErr)
 	}
 
-	// Only "entity" commits (self-registration) may proceed without an
-	// already-resolvable requester entity.
-	if doc.Kind != "entity" && requester == nil {
+	// Only "entity" commits (self-registration) and acked/unacked mirrors may
+	// proceed without an already-resolvable requester entity. A mirror's
+	// verification is self-contained (the proof embeds the author-signed
+	// original) and its apply needs only the author's CCID string — the
+	// author's server may be long gone by the time the ackee replays their
+	// dump into a new home.
+	if doc.Kind != "entity" && doc.Kind != "acked" && doc.Kind != "unacked" && requester == nil {
 		err := errors.Join(domain.ValidationError{Field: "document.author", Message: fmt.Sprintf("requester entity not found for %s operation", doc.Kind)}, requesterErr)
 		span.RecordError(err)
 		return nil, err
@@ -370,7 +394,10 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		}
 		targetUserID = parsed.Owner
 	}
-	if targetUserID != "" && targetUserID != requesterID {
+	// acked/unacked mirrors skip the block check: the embedded original ack
+	// already passed it when it was accepted, and a later block must not make
+	// the ackee's own holding un-replayable (dump import).
+	if targetUserID != "" && targetUserID != requesterID && doc.Kind != "acked" && doc.Kind != "unacked" {
 
 		blockingUsers, err := uc.getBlockingUsers(ctx, requesterID)
 		if err != nil {
@@ -432,6 +459,25 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
 			return uc.unacknowledge(ctx, tx, documentID, ip, *requester, *targetUser, doc, sd, mode)
 		}
+	case "acked", "unacked":
+		// server-generated mirror of an ack/unack (CIP-10): the ackee's own
+		// holding of the relationship. The embedded original was verified
+		// above (ack-reference proof); apply pins state to the ORIGINAL ack's
+		// CDID and anchors this mirror commit to the state row.
+		if doc.Associate == nil {
+			err := domain.ValidationError{Field: "associate", Message: "associate is required for " + doc.Kind}
+			span.RecordError(err)
+			return nil, err
+		}
+		targetUser, err := uc.GetEntity(ctx, *doc.Associate)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
+			return uc.applyAckMirror(ctx, tx, documentID, *targetUser, doc, sd)
+		}
+
 	case "delete":
 		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
 			return uc.deleteRecord(ctx, tx, *requester, sd, mode)
@@ -440,6 +486,16 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		err := errors.New("unsupported document kind: " + doc.Kind)
 		span.RecordError(err)
 		return nil, err
+	}
+
+	// An ack/unack whose author is not local is a pass-through for this
+	// server (CIP-10): the state upsert, the mirror generation and any relay
+	// still run, but the raw ack commit is the acker's history, not ours —
+	// the ackee's own holding is its acked/unacked mirror commit. Skipping
+	// the log here is what keeps every recorded commit exactly one-owner.
+	skipCommitLog := false
+	if doc.Kind == "ack" || doc.Kind == "unack" {
+		skipCommitLog = !uc.IsLocalEntity(ctx, requester)
 	}
 
 	tx, err := uc.repo.BeginTx(ctx)
@@ -455,9 +511,11 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		}
 	}()
 
-	if err := uc.repo.CreateCommitLog(ctx, tx, documentID, ip, sd.Document, sd.Proof); err != nil {
-		span.RecordError(err)
-		return nil, err
+	if !skipCommitLog {
+		if err := uc.repo.CreateCommitLog(ctx, tx, documentID, ip, sd.Document, sd.Proof); err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
 	}
 
 	applyResult, err := applyCommit(tx)
@@ -474,9 +532,11 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		return applyResult.result, nil
 	}
 
-	if err := uc.repo.CreateCommitOwners(ctx, tx, documentID, applyResult.owners); err != nil {
-		span.RecordError(err)
-		return nil, err
+	if !skipCommitLog {
+		if err := uc.repo.SetCommitLogOwner(ctx, tx, documentID, applyResult.owner); err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -660,7 +720,7 @@ func (uc *RecordUsecase) saveEntity(ctx context.Context, tx RepositoryTx, docume
 		return &commitApplyResult{result: &sd, noop: true}, nil
 	}
 
-	return &commitApplyResult{result: &sd, owners: []string{entity.Author}}, nil
+	return &commitApplyResult{result: &sd, owner: &entity.Author}, nil
 }
 
 func distributionsFromPtr(distributions *[]string) []string {
@@ -1162,7 +1222,11 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 
 	// targets are URI-ordered, so with includeSelf the base record itself
 	// leads and becomes the reported result
-	return &commitApplyResult{result: &targets[0], owners: uc.localEntityOwners(ctx, requester), postProcesses: postProcesses}, nil
+	var owner *string
+	if uc.IsLocalEntity(ctx, &requester) {
+		owner = &requester.ID
+	}
+	return &commitApplyResult{result: &targets[0], owner: owner, postProcesses: postProcesses}, nil
 }
 
 // parseRangeDeleteTarget detects the trailing-asterisk range notation on a
@@ -1369,7 +1433,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 		postProcesses = append(postProcesses, actions...)
 	}
 
-	owners, err := uc.localCommitOwners(ctx, parsedKey.Owner)
+	owner, err := uc.localCommitOwner(ctx, parsedKey.Owner)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -1385,7 +1449,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 
 	sd.CCFS = &ccfs
 
-	return &commitApplyResult{result: &sd, owners: owners, postProcesses: postProcesses}, nil
+	return &commitApplyResult{result: &sd, owner: owner, postProcesses: postProcesses}, nil
 }
 
 func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx, documentID string, ip string, requester domain.Entity, parsed concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
@@ -1571,64 +1635,58 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 		}
 	}
 
-	owners := []string{}
+	var owner *string
 	if isLocal {
-		owners = append(owners, targetURI.Owner)
+		owner = &targetURI.Owner
 	}
 
 	sd.CCFS = &ccfs
 
-	return &commitApplyResult{result: &sd, owners: owners, postProcesses: postProcesses}, nil
+	return &commitApplyResult{result: &sd, owner: owner, postProcesses: postProcesses}, nil
 }
 
-func (uc *RecordUsecase) localCommitOwners(ctx context.Context, candidates ...string) ([]string, error) {
-	owners := make([]string, 0, len(candidates))
-	seen := map[string]struct{}{}
-	for _, candidate := range candidates {
-		if _, ok := seen[candidate]; ok {
-			continue
+// localCommitOwner reports the candidate as the commit's owner when it is an
+// entity or service hosted here, nil otherwise.
+func (uc *RecordUsecase) localCommitOwner(ctx context.Context, candidate string) (*string, error) {
+	if concrnt.IsCCID(candidate) {
+		isLocal, err := uc.IsLocalEntityByCCID(ctx, candidate)
+		if err != nil {
+			return nil, err
 		}
-		seen[candidate] = struct{}{}
-
-		if concrnt.IsCCID(candidate) {
-			isLocal, err := uc.IsLocalEntityByCCID(ctx, candidate)
-			if err != nil {
-				return nil, err
-			}
-			if isLocal {
-				owners = append(owners, candidate)
-			}
-		}
-		if concrnt.IsCSID(candidate) {
-			if candidate == uc.config.FQDN {
-				owners = append(owners, candidate)
-			}
+		if isLocal {
+			return &candidate, nil
 		}
 	}
-	return owners, nil
-}
-
-func (uc *RecordUsecase) localEntityOwners(ctx context.Context, candidates ...domain.Entity) []string {
-	owners := make([]string, 0, len(candidates))
-	seen := map[string]struct{}{}
-	for _, candidate := range candidates {
-		if _, ok := seen[candidate.ID]; ok {
-			continue
-		}
-		seen[candidate.ID] = struct{}{}
-		if uc.IsLocalEntity(ctx, &candidate) {
-			owners = append(owners, candidate.ID)
-		}
+	if concrnt.IsCSID(candidate) && candidate == uc.config.CSID {
+		return &candidate, nil
 	}
-	return owners
+	return nil, nil
 }
 
 func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, documentID string, ip string, requester domain.Entity, targetUser domain.Entity, doc concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.Acknowledge")
 	defer span.End()
+	return uc.applyAck(ctx, tx, documentID, ip, requester, targetUser, doc, sd, mode, true, span)
+}
+
+func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, documentID string, ip string, requester domain.Entity, targetUser domain.Entity, doc concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
+	ctx, span := tracer.Start(ctx, "Usecase.Record.UnAcknowledge")
+	defer span.End()
+	return uc.applyAck(ctx, tx, documentID, ip, requester, targetUser, doc, sd, mode, false, span)
+}
+
+// applyAck is the shared ack/unack apply. The commit is owned by the author
+// alone; the ackee's side of the relationship is materialized as a separate
+// acked/unacked mirror commit (owner: the ackee) generated post-commit when
+// the associate owner is local. When the author is NOT local the raw ack is a
+// pass-through: state still moves and the mirror is still generated, but
+// Commit records no commit_log for it (see skipCommitLog there).
+func (uc *RecordUsecase) applyAck(ctx context.Context, tx RepositoryTx, documentID string, ip string, requester domain.Entity, targetUser domain.Entity, doc concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode, valid bool, span trace.Span) (*commitApplyResult, error) {
+	authorLocal := uc.IsLocalEntity(ctx, &requester)
+	targetLocal := uc.IsLocalEntity(ctx, &targetUser)
 
 	applied := true
-	if uc.IsLocalEntity(ctx, &requester) || uc.IsLocalEntity(ctx, &targetUser) {
+	if authorLocal || targetLocal {
 		parsedAssociate, err := concrnt.ParseCCURI(*doc.Associate)
 		if err != nil {
 			span.RecordError(err)
@@ -1640,7 +1698,19 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 			return nil, err
 		}
 
-		applied, err = uc.repo.Acknowledge(ctx, tx, documentID, doc.Author, parsedAssociate.Owner, doc.Schema, doc.CreatedAt)
+		// The commit log for this document exists only on the author's side,
+		// so only anchor the state row to it there. The ackee-side anchor is
+		// attached later by the mirror commit's own apply.
+		var ackCommitID *string
+		if authorLocal {
+			ackCommitID = &documentID
+		}
+
+		save := uc.repo.Acknowledge
+		if !valid {
+			save = uc.repo.UnAcknowledge
+		}
+		applied, err = save(ctx, tx, documentID, doc.Author, parsedAssociate.Owner, doc.Schema, doc.CreatedAt, ackCommitID, nil)
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
@@ -1649,7 +1719,8 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 
 	// CIP-10 §4 accept-if-newer loss: the stored (from, to, schema) state
 	// already carries a newer-or-equal document, so this one changes nothing —
-	// no proxy delivery, no distribution, and the commit tx rolls back.
+	// no proxy delivery, no mirror, no distribution, and the commit tx rolls
+	// back.
 	if !applied {
 		return &commitApplyResult{result: &sd, noop: true}, nil
 	}
@@ -1662,8 +1733,7 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 	}.String()
 
 	postProcesses := []PostProcessAction{}
-	if !uc.IsLocalEntity(ctx, &targetUser) && mode == domain.CommitModeExecute {
-
+	if !targetLocal && mode == domain.CommitModeExecute {
 		requesterSD, err := uc.GetSigned(ctx, requester.CCKVWithHint())
 		if err != nil {
 			span.RecordError(err)
@@ -1689,7 +1759,18 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 		)
 	}
 
-	if uc.IsLocalEntity(ctx, &requester) {
+	if targetLocal {
+		action, err := uc.createAckMirrorAction(ctx, ip, targetUser, sd, mode)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+		if action != nil {
+			postProcesses = append(postProcesses, action)
+		}
+	}
+
+	if authorLocal {
 		actions, err := uc.createReferenceDistributionActions(ctx, ip, doc.Author, ccfs, requester, sd, distributionsFromPtr(doc.Distributes), mode)
 		if err != nil {
 			span.RecordError(err)
@@ -1698,45 +1779,122 @@ func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, docum
 		postProcesses = append(postProcesses, actions...)
 	}
 
-	owners := []string{}
-	if uc.IsLocalEntity(ctx, &requester) {
-		owners = append(owners, requester.ID)
-	}
-	if uc.IsLocalEntity(ctx, &targetUser) && !slices.Contains(owners, targetUser.ID) {
-		owners = append(owners, targetUser.ID)
+	var owner *string
+	if authorLocal {
+		owner = &requester.ID
 	}
 
 	sd.CCFS = &ccfs
 
-	return &commitApplyResult{result: &sd, owners: owners, postProcesses: postProcesses}, nil
+	return &commitApplyResult{result: &sd, owner: owner, postProcesses: postProcesses}, nil
 }
 
-func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, documentID string, ip string, requester domain.Entity, targetUser domain.Entity, doc concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
-	ctx, span := tracer.Start(ctx, "Usecase.Record.UnAcknowledge")
-	defer span.End()
-
-	applied := true
-	if uc.IsLocalEntity(ctx, &requester) || uc.IsLocalEntity(ctx, &targetUser) {
-		parsedAssociate, err := concrnt.ParseCCURI(*doc.Associate)
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
-		if parsedAssociate.Scheme != "cckv" {
-			err := fmt.Errorf("invalid associate: document associate scheme must be cckv")
-			span.RecordError(err)
-			return nil, err
-		}
-
-		applied, err = uc.repo.UnAcknowledge(ctx, tx, documentID, doc.Author, parsedAssociate.Owner, doc.Schema, doc.CreatedAt)
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
+// createAckMirrorAction builds the post-commit generation of the ackee's
+// acked/unacked mirror (CIP-10): the mirror document is the canonical
+// kind-flipped derivation of the original, the ack-reference proof embeds the
+// original signed document verbatim, and the whole thing is deterministic —
+// retries and repair backfills reproduce the same CDID and no-op on the
+// commit_logs dedup. Unlike distribution this also runs for
+// LocalOnlyExecute imports: a follower ack carried in a migration must grow
+// its mirror here, or the ackee's next dump would silently lose the follower.
+func (uc *RecordUsecase) createAckMirrorAction(ctx context.Context, ip string, targetUser domain.Entity, sd concrnt.SignedDocument, mode domain.CommitMode) (PostProcessAction, error) {
+	if mode != domain.CommitModeExecute && mode != domain.CommitModeLocalOnlyExecute {
+		return nil, nil
+	}
+	if uc.delivery == nil {
+		return nil, nil
 	}
 
-	// Same accept-if-newer loss handling as acknowledge: an older unack must
-	// not roll a newer stored transition back, nor trigger any side effects.
+	mirrorDoc, err := concrnt.DeriveAckMirror(sd.Document)
+	if err != nil {
+		return nil, err
+	}
+
+	originalDoc := sd.Document
+	originalProof := sd.Proof
+	mirrorSD := concrnt.SignedDocument{
+		Document: mirrorDoc,
+		Proof: concrnt.Proof{
+			Type:     concrnt.ProofTypeAckReference,
+			Document: &originalDoc,
+			Proof:    &originalProof,
+		},
+	}
+
+	// The associate owner is local, so this resolves to ourselves and
+	// re-enters Commit; Remote stays none — a mirror must never leave the
+	// ackee's own server.
+	dest := concrnt.CCURI{Scheme: "cckv", Owner: targetUser.ID}.String()
+	return func(ctx context.Context) error {
+		return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
+			ResolveURI: dest,
+			Payload:    mirrorSD,
+			Local:      domain.DeliveryLocalCommit,
+			Remote:     domain.DeliveryRemoteNone,
+			IP:         ip,
+		})
+	}, nil
+}
+
+// applyAckMirror applies an acked/unacked mirror commit: the ackee's own
+// holding of an ack/unack relationship. Verification (Commit) already pinned
+// the mirror to the proof-embedded original, so here the original is decoded
+// and the (from, to, schema) state is moved under the ORIGINAL document's
+// CDID (CIP-10 §4 — the ack's CDID stays the one and only comparison key),
+// anchoring this mirror commit to the state row for cascade teardown.
+func (uc *RecordUsecase) applyAckMirror(ctx context.Context, tx RepositoryTx, mirrorID string, targetUser domain.Entity, doc concrnt.Document[any], sd concrnt.SignedDocument) (*commitApplyResult, error) {
+	ctx, span := tracer.Start(ctx, "Usecase.Record.ApplyAckMirror")
+	defer span.End()
+
+	// A mirror is the ackee's local materialization — a server that doesn't
+	// host the associate owner has no business recording one.
+	if !uc.IsLocalEntity(ctx, &targetUser) {
+		err := domain.ValidationError{Field: "associate", Message: "acked/unacked mirrors are only accepted on the associate owner's server"}
+		span.RecordError(err)
+		return nil, err
+	}
+
+	if sd.Proof.Document == nil || sd.Proof.Proof == nil {
+		err := domain.ValidationError{Field: "proof", Message: "ack-reference proof must embed the original signed document"}
+		span.RecordError(err)
+		return nil, err
+	}
+
+	var original concrnt.Document[any]
+	if err := json.Unmarshal([]byte(*sd.Proof.Document), &original); err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+	if original.Associate == nil {
+		err := domain.ValidationError{Field: "proof.document", Message: "embedded ack document has no associate"}
+		span.RecordError(err)
+		return nil, err
+	}
+	parsedAssociate, err := concrnt.ParseCCURI(*original.Associate)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+	if parsedAssociate.Scheme != "cckv" {
+		err := fmt.Errorf("invalid associate: document associate scheme must be cckv")
+		span.RecordError(err)
+		return nil, err
+	}
+
+	ackID := documentIDFor(*sd.Proof.Document, original.CreatedAt)
+
+	save := uc.repo.Acknowledge
+	if original.Kind == "unack" {
+		save = uc.repo.UnAcknowledge
+	}
+	applied, err := save(ctx, tx, ackID, original.Author, parsedAssociate.Owner, original.Schema, original.CreatedAt, nil, &mirrorID)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	// Accept-if-newer loss, or the state row already anchors this mirror:
+	// nothing to add, roll the commit back as a no-op success.
 	if !applied {
 		return &commitApplyResult{result: &sd, noop: true}, nil
 	}
@@ -1745,56 +1903,11 @@ func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, doc
 		Scheme: "ccfs",
 		Owner:  targetUser.ID,
 		Type:   concrnt.CCFSTypeConcrnt,
-		CDID:   documentID,
+		CDID:   mirrorID,
 	}.String()
-
-	postProcesses := []PostProcessAction{}
-	if !uc.IsLocalEntity(ctx, &targetUser) && mode == domain.CommitModeExecute {
-		requesterSD, err := uc.GetSigned(ctx, requester.CCKVWithHint())
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
-
-		distSD := concrnt.SignedDocument{
-			Document: sd.Document,
-			Proof:    sd.Proof,
-			References: map[string]concrnt.SignedDocument{
-				requester.CCKV(): *requesterSD,
-			},
-		}
-		postProcesses = append(postProcesses,
-			func(ctx context.Context) error {
-				return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
-					Host:    targetUser.Domain,
-					Payload: distSD,
-					Local:   domain.DeliveryLocalNone,
-					Remote:  domain.DeliveryRemoteCommit,
-				})
-			},
-		)
-	}
-
-	if uc.IsLocalEntity(ctx, &requester) {
-		actions, err := uc.createReferenceDistributionActions(ctx, ip, doc.Author, ccfs, requester, sd, distributionsFromPtr(doc.Distributes), mode)
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
-		postProcesses = append(postProcesses, actions...)
-	}
-
-	owners := []string{}
-	if uc.IsLocalEntity(ctx, &requester) {
-		owners = append(owners, requester.ID)
-	}
-	if uc.IsLocalEntity(ctx, &targetUser) && !slices.Contains(owners, targetUser.ID) {
-		owners = append(owners, targetUser.ID)
-	}
-
 	sd.CCFS = &ccfs
 
-	return &commitApplyResult{result: &sd, owners: owners, postProcesses: postProcesses}, nil
+	return &commitApplyResult{result: &sd, owner: &targetUser.ID}, nil
 }
 
 func (uc *RecordUsecase) GetEntity(ctx context.Context, uri string) (*domain.Entity, error) {

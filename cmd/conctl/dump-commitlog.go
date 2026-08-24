@@ -153,8 +153,7 @@ var dumpCommitlogCmd = &cobra.Command{
 				q = q.Where("commit_logs.id <= ?", upperBound)
 			}
 			if dumpCommitlogOwner != "" {
-				q = q.Joins("JOIN commit_owners co ON co.commit_log_id = commit_logs.id").
-					Where("co.owner = ?", dumpCommitlogOwner)
+				q = q.Where("commit_logs.owner = ?", dumpCommitlogOwner)
 			}
 			if err := q.Find(&logs).Error; err != nil {
 				return fmt.Errorf("failed to query commit logs: %w", err)

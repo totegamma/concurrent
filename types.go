@@ -8,6 +8,7 @@ const (
 	ProofTypeEcrecover         = "concrnt-ecrecover-direct"
 	ProofTypeDocumentReference = "document-reference"
 	ProofTypeSubkey            = "concrnt-ecrecover-subkey"
+	ProofTypeAckReference      = "ack-reference"
 	ProofTypeNone              = "none"
 )
 
@@ -51,7 +52,7 @@ type Policy struct {
 }
 
 type Document[T any] struct {
-	Kind string `json:"kind"` // entity / record / association / delete / ack / unack
+	Kind string `json:"kind"` // entity / record / association / delete / ack / unack / acked / unacked
 
 	// CIP-1
 	Key   string `json:"key"`
@@ -93,6 +94,12 @@ type Proof struct {
 	Signature *string `json:"signature,omitempty"`
 	Href      *string `json:"href,omitempty"`
 	Key       *string `json:"key,omitempty"`
+
+	// ack-reference proofs (CIP-10): the original ack/unack signed document
+	// this acked/unacked mirror commit derives from, embedded verbatim so the
+	// mirror verifies self-contained (dump replay included).
+	Document *string `json:"document,omitempty"`
+	Proof    *Proof  `json:"proof,omitempty"`
 }
 
 type SignedDocument struct {

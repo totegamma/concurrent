@@ -47,7 +47,17 @@ type recordingRecordRepo struct {
 	createRecordCalled  bool
 	acknowledgeCalled   bool
 	unacknowledgeCalled bool
-	txs                 []*recordingTx
+	createdCommitLogs   []string
+	// commitOwners records SetCommitLogOwner calls: documentID -> owner (nil
+	// kept as nil, so the single-owner decision itself is assertable).
+	commitOwners map[string]*string
+	// ackAnchors records the (ackCommitID, ackedCommitID) pair of the last
+	// Acknowledge/UnAcknowledge call.
+	ackAnchors [2]*string
+	// ackDocumentID records the documentID of the last transition — for
+	// mirror commits this must be the ORIGINAL ack's CDID, not the mirror's.
+	ackDocumentID string
+	txs           []*recordingTx
 }
 
 func (r *recordingRecordRepo) BeginTx(ctx context.Context) (RepositoryTx, error) {
@@ -56,9 +66,14 @@ func (r *recordingRecordRepo) BeginTx(ctx context.Context) (RepositoryTx, error)
 	return tx, nil
 }
 func (r *recordingRecordRepo) CreateCommitLog(ctx context.Context, tx RepositoryTx, id string, ip string, document string, proof any) error {
+	r.createdCommitLogs = append(r.createdCommitLogs, id)
 	return nil
 }
-func (r *recordingRecordRepo) CreateCommitOwners(ctx context.Context, tx RepositoryTx, id string, owners []string) error {
+func (r *recordingRecordRepo) SetCommitLogOwner(ctx context.Context, tx RepositoryTx, id string, owner *string) error {
+	if r.commitOwners == nil {
+		r.commitOwners = map[string]*string{}
+	}
+	r.commitOwners[id] = owner
 	return nil
 }
 func (r *recordingRecordRepo) HasCommitLog(ctx context.Context, id string) (bool, error) {
@@ -72,12 +87,16 @@ func (r *recordingRecordRepo) CreateRecord(ctx context.Context, tx RepositoryTx,
 	r.createRecordCalled = true
 	return !r.recordStale, nil
 }
-func (r *recordingRecordRepo) Acknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
+func (r *recordingRecordRepo) Acknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time, ackCommitID *string, ackedCommitID *string) (bool, error) {
 	r.acknowledgeCalled = true
+	r.ackDocumentID = documentID
+	r.ackAnchors = [2]*string{ackCommitID, ackedCommitID}
 	return !r.ackStale, nil
 }
-func (r *recordingRecordRepo) UnAcknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
+func (r *recordingRecordRepo) UnAcknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time, ackCommitID *string, ackedCommitID *string) (bool, error) {
 	r.unacknowledgeCalled = true
+	r.ackDocumentID = documentID
+	r.ackAnchors = [2]*string{ackCommitID, ackedCommitID}
 	return !r.ackStale, nil
 }
 func (r *recordingRecordRepo) GetHierarchicalRecordPolicies(ctx context.Context, uri string) ([]concrnt.Policy, error) {
@@ -1452,5 +1471,175 @@ func TestCommitEntityNoneProofSkipsGreenServerCheck(t *testing.T) {
 	}
 	if !repo.createEntityCalled {
 		t.Fatal("CreateEntity was not called for a none-proof entity import")
+	}
+}
+
+// mapResidenceRepo serves per-ccid entities, so author and associate can live
+// on different domains within one test.
+type mapResidenceRepo struct {
+	ResidenceRepository
+	entities map[string]*domain.Entity
+}
+
+func (m mapResidenceRepo) GetEntityByCCID(ctx context.Context, ccid string) (*domain.Entity, error) {
+	if e, ok := m.entities[ccid]; ok {
+		return e, nil
+	}
+	return nil, domain.ErrNotFound
+}
+
+func (r *recordingRecordRepo) QueryByParent(ctx context.Context, parent, schema, author string, since, until *time.Time, limit int, order string) ([]QueryRow, error) {
+	return nil, nil
+}
+
+func signedAck(t *testing.T, kind, author, priv, target string, createdAt time.Time) concrnt.SignedDocument {
+	t.Helper()
+	associate := concrnt.CCURI{Scheme: "cckv", Owner: target}.String()
+	return signTestDocument(t, concrnt.Document[any]{
+		Kind:      kind,
+		Author:    author,
+		Schema:    "https://example.com/follow.json",
+		CreatedAt: createdAt,
+		Associate: &associate,
+	}, priv)
+}
+
+// A colocated ack must be recorded as the author's commit alone, generate an
+// acked mirror job for the ackee, and the mirror's own commit must move the
+// ack state under the ORIGINAL ack's CDID while being owned by the ackee.
+func TestCommitAckGeneratesMirror(t *testing.T) {
+	cfg := &domain.Config{FQDN: "example.com"}
+	acker, ackerPriv := newIdentity(t)
+	ackee, _ := newIdentity(t)
+
+	repo := &recordingRecordRepo{}
+	delivery := &recordingDeliveryQueue{}
+	uc := NewRecordUsecase(
+		repo,
+		mapResidenceRepo{entities: map[string]*domain.Entity{
+			acker: {ID: acker, Domain: cfg.FQDN},
+			ackee: {ID: ackee, Domain: cfg.FQDN},
+		}},
+		newTestServerUsecase(cfg),
+		cfg,
+		nil,
+		nopSignalService{},
+		nopPolicyService{},
+		delivery,
+		nil,
+	)
+
+	ackSD := signedAck(t, "ack", acker, ackerPriv, ackee, time.Now().Add(-time.Minute))
+	var ackDoc concrnt.Document[any]
+	if err := json.Unmarshal([]byte(ackSD.Document), &ackDoc); err != nil {
+		t.Fatal(err)
+	}
+	ackID := documentIDFor(ackSD.Document, ackDoc.CreatedAt)
+
+	if _, err := uc.Commit(context.Background(), "127.0.0.1", ackSD, domain.CommitModeExecute); err != nil {
+		t.Fatalf("Commit(ack) returned error: %v", err)
+	}
+
+	if !slices.Contains(repo.createdCommitLogs, ackID) {
+		t.Fatalf("ack commit log was not created: %v", repo.createdCommitLogs)
+	}
+	owner, ok := repo.commitOwners[ackID]
+	if !ok || owner == nil || *owner != acker {
+		t.Fatalf("ack commit owner = %v, want %s alone", owner, acker)
+	}
+	if repo.ackAnchors[0] == nil || *repo.ackAnchors[0] != ackID || repo.ackAnchors[1] != nil {
+		t.Fatalf("ack anchors = %v, want (ackID, nil)", repo.ackAnchors)
+	}
+
+	if len(delivery.jobs) != 1 {
+		t.Fatalf("expected 1 mirror job, got %d", len(delivery.jobs))
+	}
+	job := delivery.jobs[0]
+	if job.Local != domain.DeliveryLocalCommit || job.Remote != domain.DeliveryRemoteNone {
+		t.Fatalf("mirror job routing = %+v", job)
+	}
+	mirror := job.Payload
+	if mirror.Proof.Type != concrnt.ProofTypeAckReference {
+		t.Fatalf("mirror proof type = %s", mirror.Proof.Type)
+	}
+	if mirror.Proof.Document == nil || *mirror.Proof.Document != ackSD.Document {
+		t.Fatal("mirror proof does not embed the original ack document")
+	}
+
+	// Re-enter Commit with the generated mirror, as the delivery worker would.
+	var mirrorDoc concrnt.Document[any]
+	if err := json.Unmarshal([]byte(mirror.Document), &mirrorDoc); err != nil {
+		t.Fatal(err)
+	}
+	if mirrorDoc.Kind != "acked" {
+		t.Fatalf("mirror kind = %s, want acked", mirrorDoc.Kind)
+	}
+	mirrorID := documentIDFor(mirror.Document, mirrorDoc.CreatedAt)
+
+	if _, err := uc.Commit(context.Background(), "127.0.0.1", mirror, domain.CommitModeExecute); err != nil {
+		t.Fatalf("Commit(mirror) returned error: %v", err)
+	}
+	if repo.ackDocumentID != ackID {
+		t.Fatalf("mirror apply used documentID %s, want the ORIGINAL ack id %s", repo.ackDocumentID, ackID)
+	}
+	if repo.ackAnchors[0] != nil || repo.ackAnchors[1] == nil || *repo.ackAnchors[1] != mirrorID {
+		t.Fatalf("mirror anchors = %v, want (nil, mirrorID)", repo.ackAnchors)
+	}
+	owner, ok = repo.commitOwners[mirrorID]
+	if !ok || owner == nil || *owner != ackee {
+		t.Fatalf("mirror commit owner = %v, want %s", owner, ackee)
+	}
+}
+
+// A proxied ack whose author is remote is a pass-through: the state moves and
+// the mirror job is generated, but no commit log is recorded — the raw ack is
+// the acker's history, not this server's.
+func TestCommitAckRemoteAuthorSkipsCommitLog(t *testing.T) {
+	cfg := &domain.Config{FQDN: "example.com"}
+	acker, ackerPriv := newIdentity(t)
+	ackee, _ := newIdentity(t)
+
+	repo := &recordingRecordRepo{}
+	delivery := &recordingDeliveryQueue{}
+	uc := NewRecordUsecase(
+		repo,
+		mapResidenceRepo{entities: map[string]*domain.Entity{
+			acker: {ID: acker, Domain: "remote.example.net"},
+			ackee: {ID: ackee, Domain: cfg.FQDN},
+		}},
+		newTestServerUsecase(cfg),
+		cfg,
+		nil,
+		nopSignalService{},
+		nopPolicyService{},
+		delivery,
+		nil,
+	)
+
+	ackSD := signedAck(t, "ack", acker, ackerPriv, ackee, time.Now().Add(-time.Minute))
+	if _, err := uc.Commit(context.Background(), "127.0.0.1", ackSD, domain.CommitModeExecute); err != nil {
+		t.Fatalf("Commit returned error: %v", err)
+	}
+
+	if !repo.acknowledgeCalled {
+		t.Fatal("ack state was not applied")
+	}
+	if repo.ackAnchors[0] != nil || repo.ackAnchors[1] != nil {
+		t.Fatalf("pass-through anchors = %v, want (nil, nil)", repo.ackAnchors)
+	}
+	if len(repo.createdCommitLogs) != 0 {
+		t.Fatalf("pass-through ack must not be recorded, got commit logs %v", repo.createdCommitLogs)
+	}
+	if len(repo.commitOwners) != 0 {
+		t.Fatalf("pass-through ack must not set an owner, got %v", repo.commitOwners)
+	}
+	if len(repo.txs) != 1 || !repo.txs[0].committed {
+		t.Fatalf("state tx must commit, got %+v", repo.txs)
+	}
+	if len(delivery.jobs) != 1 || delivery.jobs[0].Local != domain.DeliveryLocalCommit {
+		t.Fatalf("expected 1 local mirror job, got %+v", delivery.jobs)
+	}
+	if delivery.jobs[0].Payload.Proof.Type != concrnt.ProofTypeAckReference {
+		t.Fatalf("job proof type = %s", delivery.jobs[0].Payload.Proof.Type)
 	}
 }

@@ -85,9 +85,12 @@ func MigratePostgres(db *gorm.DB) error {
 		}
 		defer conn.Exec("SELECT pg_advisory_unlock(?)", migrationLockID)
 
-		return conn.AutoMigrate(
+		// commit_owners is intentionally absent: ownership lives on
+		// commit_logs.owner now. The legacy table is left in place for
+		// `conctl op repair-acked-backfill` to read; operators drop it
+		// afterwards at their discretion.
+		if err := conn.AutoMigrate(
 			&models.CommitLog{},
-			&models.CommitOwner{},
 			&models.Record{},
 			&models.RecordKey{},
 			&models.Association{},
@@ -97,6 +100,20 @@ func MigratePostgres(db *gorm.DB) error {
 			&models.EntityMeta{},
 			&models.Subscription{},
 			&models.AbuseReport{},
-		)
+		); err != nil {
+			return err
+		}
+
+		// acks.document_id used to be a commit_logs FK (fk_acks_document).
+		// The ackee's server no longer records the original ack as a commit,
+		// so the column is a plain CDID comparison key and the constraint
+		// must go — AutoMigrate never drops constraints on its own.
+		if conn.Migrator().HasConstraint(&models.Ack{}, "fk_acks_document") {
+			if err := conn.Migrator().DropConstraint(&models.Ack{}, "fk_acks_document"); err != nil {
+				return err
+			}
+		}
+
+		return nil
 	})
 }

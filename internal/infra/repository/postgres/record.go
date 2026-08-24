@@ -151,9 +151,17 @@ func (r *RecordRepository) CreateCommitLog(ctx context.Context, tx usecase.Repos
 	return nil
 }
 
-func (r *RecordRepository) CreateCommitOwners(ctx context.Context, tx usecase.RepositoryTx, id string, owners []string) error {
-	ctx, span := tracer.Start(ctx, "Repository.Record.CreateCommitOwners")
+// SetCommitLogOwner stamps the single owner of a commit log. The log is
+// created before the kind-specific apply (records FK-reference it), and the
+// owner is what the apply decides, hence the two-step write. A nil owner is a
+// no-op: the column is already NULL from CreateCommitLog.
+func (r *RecordRepository) SetCommitLogOwner(ctx context.Context, tx usecase.RepositoryTx, id string, owner *string) error {
+	ctx, span := tracer.Start(ctx, "Repository.Record.SetCommitLogOwner")
 	defer span.End()
+
+	if owner == nil {
+		return nil
+	}
 
 	db, err := getRecordTx(ctx, tx)
 	if err != nil {
@@ -161,18 +169,11 @@ func (r *RecordRepository) CreateCommitOwners(ctx context.Context, tx usecase.Re
 		return err
 	}
 
-	for _, owner := range owners {
-		err := db.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "commit_log_id"}, {Name: "owner"}},
-			DoNothing: true,
-		}).Create(&models.CommitOwner{
-			CommitLogID: id,
-			Owner:       owner,
-		}).Error
-		if err != nil {
-			span.RecordError(err)
-			return err
-		}
+	if err := db.Model(&models.CommitLog{}).
+		Where("id = ?", id).
+		Update("owner", *owner).Error; err != nil {
+		span.RecordError(err)
+		return err
 	}
 
 	return nil
@@ -338,74 +339,134 @@ func (r *RecordRepository) CreateAssociation(ctx context.Context, tx usecase.Rep
 	return result.RowsAffected > 0, nil
 }
 
-func (r *RecordRepository) Acknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
+func (r *RecordRepository) Acknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time, ackCommitID *string, ackedCommitID *string) (bool, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.Acknowledge")
 	defer span.End()
 
-	db, err := getRecordTx(ctx, tx)
-	if err != nil {
-		return false, err
-	}
-
-	ack := models.Ack{
-		From:       from,
-		To:         to,
-		Schema:     schema,
-		DocumentID: documentID,
-		Valid:      true,
-		CreatedAt:  createdAt,
-	}
-
-	// CIP-10 §4: only a strictly newer document may move the (from, to,
-	// schema) state. document_id is a time-prefixed, lexicographically
-	// sortable CDID, so the conditional upsert keeps the newer transition and
-	// makes a replayed older ack a no-op (RowsAffected 0).
-	result := db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "schema"}},
-		DoUpdates: clause.Assignments(map[string]any{"valid": true, "document_id": documentID, "created_at": createdAt}),
-		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("acks.document_id < excluded.document_id")}},
-	}).Create(&ack)
-	if result.Error != nil {
-		span.RecordError(result.Error)
-		return false, result.Error
-	}
-
-	return result.RowsAffected > 0, nil
-
+	return r.saveAck(ctx, tx, documentID, from, to, schema, createdAt, true, ackCommitID, ackedCommitID, span)
 }
 
-func (r *RecordRepository) UnAcknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
+func (r *RecordRepository) UnAcknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time, ackCommitID *string, ackedCommitID *string) (bool, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.Unacknowledge")
 	defer span.End()
 
+	return r.saveAck(ctx, tx, documentID, from, to, schema, createdAt, false, ackCommitID, ackedCommitID, span)
+}
+
+// saveAck applies one ack/unack transition to the (from, to, schema) state.
+// documentID is always the CDID of the ORIGINAL ack/unack document (CIP-10
+// §4), no matter whether the caller is applying the original (ackCommitID
+// set) or its acked/unacked mirror (ackedCommitID set):
+//   - a strictly newer documentID replaces the row, retiring the previous
+//     row's commit anchors as gc candidates (same-key replacement pattern);
+//   - the same documentID only attaches a still-missing commit anchor — this
+//     is how the colocated mirror lands after the original already wrote the
+//     row — and reports applied only when it attached something;
+//   - an older documentID is a no-op (accept-if-newer).
+func (r *RecordRepository) saveAck(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time, valid bool, ackCommitID *string, ackedCommitID *string, span trace.Span) (bool, error) {
 	db, err := getRecordTx(ctx, tx)
 	if err != nil {
 		return false, err
 	}
 
-	ack := models.Ack{
-		From:       from,
-		To:         to,
-		Schema:     schema,
-		DocumentID: documentID,
-		Valid:      false,
-		CreatedAt:  createdAt,
+	var existing models.Ack
+	err = db.Clauses(clause.Locking{Strength: "UPDATE"}).
+		Where(`acks."from" = ? AND acks."to" = ? AND acks."schema" = ?`, from, to, schema).
+		Take(&existing).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		span.RecordError(err)
+		return false, err
 	}
 
-	// Same accept-if-newer conditional as Acknowledge: an older unack must
-	// not roll an established newer ack back.
-	result := db.Clauses(clause.OnConflict{
-		Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "schema"}},
-		DoUpdates: clause.Assignments(map[string]any{"valid": false, "document_id": documentID, "created_at": createdAt}),
-		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("acks.document_id < excluded.document_id")}},
-	}).Create(&ack)
-	if result.Error != nil {
-		span.RecordError(result.Error)
-		return false, result.Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		ack := models.Ack{
+			From:          from,
+			To:            to,
+			Schema:        schema,
+			DocumentID:    documentID,
+			AckCommitID:   ackCommitID,
+			AckedCommitID: ackedCommitID,
+			Valid:         valid,
+			CreatedAt:     createdAt,
+		}
+		// A concurrent first commit for the same triple can slip past the
+		// locked read; the conditional upsert keeps this race accept-if-newer
+		// instead of erroring on the unique index.
+		result := db.Clauses(clause.OnConflict{
+			Columns: []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "schema"}},
+			DoUpdates: clause.Assignments(map[string]any{
+				"document_id":     documentID,
+				"valid":           valid,
+				"created_at":      createdAt,
+				"ack_commit_id":   ackCommitID,
+				"acked_commit_id": ackedCommitID,
+			}),
+			Where: clause.Where{Exprs: []clause.Expression{gorm.Expr("acks.document_id < excluded.document_id")}},
+		}).Create(&ack)
+		if result.Error != nil {
+			span.RecordError(result.Error)
+			return false, result.Error
+		}
+		return result.RowsAffected > 0, nil
 	}
 
-	return result.RowsAffected > 0, nil
+	if documentID < existing.DocumentID {
+		return false, nil
+	}
 
+	if documentID == existing.DocumentID {
+		updates := map[string]any{}
+		if ackCommitID != nil && existing.AckCommitID == nil {
+			updates["ack_commit_id"] = *ackCommitID
+		}
+		if ackedCommitID != nil && existing.AckedCommitID == nil {
+			updates["acked_commit_id"] = *ackedCommitID
+		}
+		if len(updates) == 0 {
+			return false, nil
+		}
+		if err := db.Model(&models.Ack{}).
+			Where("document_id = ?", existing.DocumentID).
+			Updates(updates).Error; err != nil {
+			span.RecordError(err)
+			return false, err
+		}
+		return true, nil
+	}
+
+	// Newer transition: the superseded commits are dead history — flag them
+	// for gc like a replaced record's commit (they are no longer anchored, so
+	// gc'ing them cascades nothing).
+	oldAnchors := []string{}
+	if existing.AckCommitID != nil {
+		oldAnchors = append(oldAnchors, *existing.AckCommitID)
+	}
+	if existing.AckedCommitID != nil {
+		oldAnchors = append(oldAnchors, *existing.AckedCommitID)
+	}
+	if len(oldAnchors) > 0 {
+		if err := db.Model(&models.CommitLog{}).
+			Where("id IN ?", oldAnchors).
+			Update("gc_candidate", true).Error; err != nil {
+			span.RecordError(err)
+			return false, err
+		}
+	}
+
+	if err := db.Model(&models.Ack{}).
+		Where("document_id = ?", existing.DocumentID).
+		Updates(map[string]any{
+			"document_id":     documentID,
+			"valid":           valid,
+			"created_at":      createdAt,
+			"ack_commit_id":   ackCommitID,
+			"acked_commit_id": ackedCommitID,
+		}).Error; err != nil {
+		span.RecordError(err)
+		return false, err
+	}
+
+	return true, nil
 }
 
 func (r *RecordRepository) GetHierarchicalRecordPolicies(ctx context.Context, uri string) ([]concrnt.Policy, error) {
@@ -563,6 +624,16 @@ func (r *RecordRepository) GetSignedDocument(ctx context.Context, uri string) (*
 		err = r.db.WithContext(ctx).
 			Where("id = ?", parsed.CDID).
 			Take(&commitLog).Error
+		if errors.Is(err, gorm.ErrRecordNotFound) {
+			// The ackee's server never records the original ack/unack as a
+			// commit, yet it is the authority for the ack's ccfs URI (the
+			// owner is the associate owner). The original is preserved
+			// verbatim inside the mirror commit's ack-reference proof, so
+			// serve it from there.
+			if sd, ackErr := r.getAckFromMirror(ctx, parsed.CDID, uri); ackErr == nil {
+				return sd, nil
+			}
+		}
 		if err != nil {
 			span.RecordError(errors.Join(errors.New("failed to query commitlog from ccfs"), err))
 			return nil, errors.Join(domain.NotFoundError{Resource: uri}, err)
@@ -595,6 +666,38 @@ func (r *RecordRepository) GetSignedDocument(ctx context.Context, uri string) (*
 		span.RecordError(err)
 		return nil, err
 	}
+}
+
+// getAckFromMirror recovers an original ack/unack signed document from the
+// ack-reference proof of the acked/unacked mirror commit anchored to its ack
+// state row. Used to resolve an ack's ccfs URI on the ackee's server, which
+// holds only the mirror.
+func (r *RecordRepository) getAckFromMirror(ctx context.Context, ackDocumentID string, uri string) (*concrnt.SignedDocument, error) {
+	var ack models.Ack
+	err := r.db.WithContext(ctx).
+		Preload("AckedCommit").
+		Where("document_id = ?", ackDocumentID).
+		Take(&ack).Error
+	if err != nil {
+		return nil, errors.Join(domain.NotFoundError{Resource: uri}, err)
+	}
+	if ack.AckedCommitID == nil {
+		return nil, domain.NotFoundError{Resource: uri}
+	}
+
+	var mirrorProof concrnt.Proof
+	if err := json.Unmarshal([]byte(ack.AckedCommit.Proof), &mirrorProof); err != nil {
+		return nil, err
+	}
+	if mirrorProof.Type != concrnt.ProofTypeAckReference || mirrorProof.Document == nil || mirrorProof.Proof == nil {
+		return nil, domain.NotFoundError{Resource: uri}
+	}
+
+	return &concrnt.SignedDocument{
+		CCFS:     &uri,
+		Document: *mirrorProof.Document,
+		Proof:    *mirrorProof.Proof,
+	}, nil
 }
 
 func (r *RecordRepository) DeleteRecordByKey(ctx context.Context, tx usecase.RepositoryTx, targetURI string) error {
@@ -1119,7 +1222,8 @@ func (r *RecordRepository) GetAcknowledgeRecords(ctx context.Context, from, to, 
 	var acks []models.Ack
 	query := r.db.WithContext(ctx).
 		Model(&models.Ack{}).
-		Preload("Document")
+		Preload("AckCommit").
+		Preload("AckedCommit")
 
 	if from != "" {
 		query = query.Where("acks.from = ?", from)
@@ -1158,25 +1262,47 @@ func (r *RecordRepository) GetAcknowledgeRecords(ctx context.Context, from, to, 
 		return nil, err
 	}
 
-	rows := make([]usecase.QueryRow, len(acks))
-	for i, ack := range acks {
+	// Each server returns the side of the relationship it holds: the acker's
+	// ack/unack commit (AckCommit) or the ackee's acked/unacked mirror
+	// (AckedCommit). A to-filtered query is asking about the ackee's side, so
+	// it prefers the mirror; either way the other anchor is the fallback.
+	preferAcked := to != ""
+
+	rows := make([]usecase.QueryRow, 0, len(acks))
+	for _, ack := range acks {
+		var log *models.CommitLog
+		var logID string
+		switch {
+		case preferAcked && ack.AckedCommitID != nil:
+			log, logID = &ack.AckedCommit, *ack.AckedCommitID
+		case ack.AckCommitID != nil:
+			log, logID = &ack.AckCommit, *ack.AckCommitID
+		case ack.AckedCommitID != nil:
+			log, logID = &ack.AckedCommit, *ack.AckedCommitID
+		default:
+			// No anchor at all (mirror generation still pending on a row whose
+			// author is remote): the state exists but there is no document to
+			// return — skip rather than fail the whole listing.
+			continue
+		}
+
 		var proof concrnt.Proof
-		err := json.Unmarshal([]byte(ack.Document.Proof), &proof)
+		err := json.Unmarshal([]byte(log.Proof), &proof)
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
 		}
 
-		ccfs := concrnt.ComposeCCFSURI(ack.From, concrnt.CCFSTypeConcrnt, ack.DocumentID)
+		ccfs := concrnt.ComposeCCFSURI(ack.To, concrnt.CCFSTypeConcrnt, logID)
 
-		rows[i] = usecase.QueryRow{
+		rows = append(rows, usecase.QueryRow{
 			Row: concrnt.SignedDocument{
 				CCFS:     &ccfs,
-				Document: ack.Document.Document,
+				Document: log.Document,
 				Proof:    proof,
 			},
 			CreatedAt: ack.CreatedAt,
-		}
+		})
 	}
 
 	return rows, nil
@@ -1228,9 +1354,8 @@ func (r *RecordRepository) GetAllCommitLogs(ctx context.Context, owner string) (
 
 	var commitLogs []models.CommitLog
 	err := r.db.WithContext(ctx).
-		Joins("JOIN commit_owners co ON co.commit_log_id = commit_logs.id").
-		Where("co.owner = ?", owner).
-		Order("commit_logs.c_date ASC").
+		Where("owner = ?", owner).
+		Order("c_date ASC").
 		Find(&commitLogs).Error
 	if err != nil {
 		span.RecordError(err)

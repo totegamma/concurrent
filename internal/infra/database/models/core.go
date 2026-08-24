@@ -6,17 +6,6 @@ import (
 	"github.com/lib/pq"
 )
 
-// Deprecated: commit ownership now lives on commit_logs.owner (single owner
-// per commit). This model is kept only so `conctl op repair-acked-backfill`
-// can read the legacy table to backfill the column; it is no longer
-// auto-migrated and the server never reads or writes it. Operators may drop
-// the table once the repair has run.
-type CommitOwner struct {
-	CommitLogID string    `json:"commit_log_id" gorm:"type:text;primaryKey;index:idx_commit_owners_owner_commit_log_id,priority:2"`
-	CommitLog   CommitLog `json:"-" gorm:"constraint:OnDelete:CASCADE;"`
-	Owner       string    `json:"owner" gorm:"type:text;primaryKey;index:idx_commit_owners_owner_commit_log_id,priority:1"`
-}
-
 // Indexes:
 //   - PRIMARY KEY (id): canonical commit/document lookup; used by record,
 //     entity, ack, association foreign keys and direct ccfs lookups in

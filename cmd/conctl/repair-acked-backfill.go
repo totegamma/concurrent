@@ -58,70 +58,82 @@ var repairAckedBackfillCmd = &cobra.Command{
 			return local, nil
 		}
 
-		// Step 1a: single-owner commits carry their owner over verbatim.
-		if repairAckedBackfillDryRun {
-			var count int64
-			err := op.DB.WithContext(ctx).Raw(
-				`SELECT count(*) FROM commit_logs
-				 WHERE owner IS NULL AND EXISTS (SELECT 1 FROM commit_owners co WHERE co.commit_log_id = commit_logs.id)`,
-			).Scan(&count).Error
-			if err != nil {
-				return fmt.Errorf("failed to count ownerless commit logs: %w", err)
-			}
-			fmt.Fprintf(os.Stderr, "would backfill owner for up to %d commit logs\n", count)
-		} else {
-			res := op.DB.WithContext(ctx).Exec(
-				`UPDATE commit_logs SET owner = co.owner
-				 FROM commit_owners co
-				 WHERE co.commit_log_id = commit_logs.id
-				   AND commit_logs.owner IS NULL
-				   AND NOT EXISTS (
-				     SELECT 1 FROM commit_owners c2
-				     WHERE c2.commit_log_id = commit_logs.id AND c2.owner <> co.owner)`,
-			)
-			if res.Error != nil {
-				return fmt.Errorf("failed to backfill single-owner commit logs: %w", res.Error)
-			}
-			fmt.Fprintf(os.Stderr, "backfilled owner for %d single-owner commit logs\n", res.RowsAffected)
+		// The legacy join table only exists on databases migrated from the
+		// multi-owner era; a fresh v2 database never has it. Without it the
+		// owner backfill has nothing to read — but the mirror/anchor walk
+		// below still runs, so the command doubles as a recovery tool for
+		// mirrors lost to post-process failures.
+		hasLegacyOwners := op.DB.Migrator().HasTable("commit_owners")
+		if !hasLegacyOwners {
+			fmt.Fprintln(os.Stderr, "commit_owners table not found: skipping legacy ownership backfill")
 		}
 
-		// Step 1b: multi-owner commits are ack/unack between two local users;
-		// the author is the sole owner under the new model.
 		multiOwned := 0
-		var logs []models.CommitLog
-		err := op.DB.WithContext(ctx).
-			Where(`id IN (SELECT commit_log_id FROM commit_owners GROUP BY commit_log_id HAVING count(DISTINCT owner) > 1)`).
-			FindInBatches(&logs, 500, func(_ *gorm.DB, _ int) error {
-				for _, cl := range logs {
-					var doc concrnt.Document[any]
-					if err := json.Unmarshal([]byte(cl.Document), &doc); err != nil {
-						fmt.Fprintf(os.Stderr, "skipping %s: failed to parse document: %v\n", cl.ID, err)
-						continue
-					}
-					if cl.Owner != nil && *cl.Owner == doc.Author {
-						continue
-					}
-					multiOwned++
-					if repairAckedBackfillDryRun {
-						fmt.Printf("owner %s -> %s (%s)\n", cl.ID, doc.Author, doc.Kind)
-						continue
-					}
-					if err := op.DB.WithContext(ctx).Model(&models.CommitLog{}).
-						Where("id = ?", cl.ID).
-						Update("owner", doc.Author).Error; err != nil {
-						return err
-					}
+		if hasLegacyOwners {
+			// Step 1a: single-owner commits carry their owner over verbatim.
+			if repairAckedBackfillDryRun {
+				var count int64
+				err := op.DB.WithContext(ctx).Raw(
+					`SELECT count(*) FROM commit_logs
+					 WHERE owner IS NULL AND EXISTS (SELECT 1 FROM commit_owners co WHERE co.commit_log_id = commit_logs.id)`,
+				).Scan(&count).Error
+				if err != nil {
+					return fmt.Errorf("failed to count ownerless commit logs: %w", err)
 				}
-				return nil
-			}).Error
-		if err != nil {
-			return fmt.Errorf("failed to backfill multi-owner commit logs: %w", err)
+				fmt.Fprintf(os.Stderr, "would backfill owner for up to %d commit logs\n", count)
+			} else {
+				res := op.DB.WithContext(ctx).Exec(
+					`UPDATE commit_logs SET owner = co.owner
+					 FROM commit_owners co
+					 WHERE co.commit_log_id = commit_logs.id
+					   AND commit_logs.owner IS NULL
+					   AND NOT EXISTS (
+					     SELECT 1 FROM commit_owners c2
+					     WHERE c2.commit_log_id = commit_logs.id AND c2.owner <> co.owner)`,
+				)
+				if res.Error != nil {
+					return fmt.Errorf("failed to backfill single-owner commit logs: %w", res.Error)
+				}
+				fmt.Fprintf(os.Stderr, "backfilled owner for %d single-owner commit logs\n", res.RowsAffected)
+			}
+
+			// Step 1b: multi-owner commits are ack/unack between two local
+			// users; the author is the sole owner under the new model.
+			var logs []models.CommitLog
+			err := op.DB.WithContext(ctx).
+				Where(`id IN (SELECT commit_log_id FROM commit_owners GROUP BY commit_log_id HAVING count(DISTINCT owner) > 1)`).
+				FindInBatches(&logs, 500, func(_ *gorm.DB, _ int) error {
+					for _, cl := range logs {
+						var doc concrnt.Document[any]
+						if err := json.Unmarshal([]byte(cl.Document), &doc); err != nil {
+							fmt.Fprintf(os.Stderr, "skipping %s: failed to parse document: %v\n", cl.ID, err)
+							continue
+						}
+						if cl.Owner != nil && *cl.Owner == doc.Author {
+							continue
+						}
+						multiOwned++
+						if repairAckedBackfillDryRun {
+							fmt.Printf("owner %s -> %s (%s)\n", cl.ID, doc.Author, doc.Kind)
+							continue
+						}
+						if err := op.DB.WithContext(ctx).Model(&models.CommitLog{}).
+							Where("id = ?", cl.ID).
+							Update("owner", doc.Author).Error; err != nil {
+							return err
+						}
+					}
+					return nil
+				}).Error
+			if err != nil {
+				return fmt.Errorf("failed to backfill multi-owner commit logs: %w", err)
+			}
 		}
 
 		// Steps 2-4: walk the ack state rows.
 		mirrors, anchors, disowned, skipped := 0, 0, 0, 0
 		var acks []models.Ack
-		err = op.DB.WithContext(ctx).FindInBatches(&acks, 500, func(_ *gorm.DB, _ int) error {
+		err := op.DB.WithContext(ctx).FindInBatches(&acks, 500, func(_ *gorm.DB, _ int) error {
 			for _, ack := range acks {
 				fromLocal, err := isLocal(ack.From)
 				if err != nil {
@@ -167,10 +179,11 @@ var repairAckedBackfillCmd = &cobra.Command{
 						}
 						// Drop the legacy ownership rows too, or step 1a would
 						// resurrect the owner from them on a re-run.
-						if err := op.DB.WithContext(ctx).
-							Where("commit_log_id = ?", origLog.ID).
-							Delete(&models.CommitOwner{}).Error; err != nil {
-							return err
+						if hasLegacyOwners {
+							if err := op.DB.WithContext(ctx).
+								Exec(`DELETE FROM commit_owners WHERE commit_log_id = ?`, origLog.ID).Error; err != nil {
+								return err
+							}
 						}
 					}
 				}
@@ -263,4 +276,16 @@ var repairAckedBackfillCmd = &cobra.Command{
 func init() {
 	operationCmd.AddCommand(repairAckedBackfillCmd)
 	repairAckedBackfillCmd.Flags().BoolVar(&repairAckedBackfillDryRun, "dry-run", false, "Report what would change without writing")
+}
+
+// moveLegacyCommitOwners repoints rows in the legacy commit_owners table (if
+// it still exists) when a commit log is re-created under a new id, so a later
+// repair-acked-backfill still finds them — the table has an ON DELETE CASCADE
+// foreign key, so leaving the rows behind would silently drop them with the
+// old log. No-op once the operator has dropped the table.
+func moveLegacyCommitOwners(tx *gorm.DB, oldID string, newID string) error {
+	if !tx.Migrator().HasTable("commit_owners") {
+		return nil
+	}
+	return tx.Exec(`UPDATE commit_owners SET commit_log_id = ? WHERE commit_log_id = ?`, newID, oldID).Error
 }

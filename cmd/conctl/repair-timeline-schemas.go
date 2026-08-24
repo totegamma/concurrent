@@ -146,9 +146,7 @@ var repairTimelineSchemasCmd = &cobra.Command{
 					Update("record_id", newID).Error; err != nil {
 					return err
 				}
-				if err := tx.Model(&models.CommitOwner{}).
-					Where("commit_log_id = ?", oldID).
-					Update("commit_log_id", newID).Error; err != nil {
+				if err := moveLegacyCommitOwners(tx, oldID, newID); err != nil {
 					return err
 				}
 				if err := tx.Delete(&models.Record{}, "document_id = ?", oldID).Error; err != nil {

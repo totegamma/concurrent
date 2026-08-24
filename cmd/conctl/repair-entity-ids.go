@@ -81,9 +81,7 @@ var repairEntityIDsCmd = &cobra.Command{
 				}).Error; err != nil {
 					return err
 				}
-				if err := tx.Model(&models.CommitOwner{}).
-					Where("commit_log_id = ?", entity.DocumentID).
-					Update("commit_log_id", newID).Error; err != nil {
+				if err := moveLegacyCommitOwners(tx, entity.DocumentID, newID); err != nil {
 					return err
 				}
 				if err := tx.Model(&models.Entity{}).

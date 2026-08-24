@@ -4,14 +4,6 @@ import (
 	"time"
 )
 
-const (
-	ProofTypeEcrecover         = "concrnt-ecrecover-direct"
-	ProofTypeDocumentReference = "document-reference"
-	ProofTypeSubkey            = "concrnt-ecrecover-subkey"
-	ProofTypeAckReference      = "ack-reference"
-	ProofTypeNone              = "none"
-)
-
 type SoftwareInfo struct {
 	Version      string `json:"version"`
 	BuildMachine string `json:"buildMachine"`
@@ -88,35 +80,6 @@ type LegacyDocument struct {
 }
 
 type SchemaDeleteType string
-
-type Proof struct {
-	Type      string  `json:"type"`
-	Signature *string `json:"signature,omitempty"`
-	Href      *string `json:"href,omitempty"`
-	Key       *string `json:"key,omitempty"`
-
-	// ack-reference proofs (CIP-10): the original ack/unack signed document
-	// this acked/unacked mirror commit derives from, embedded verbatim so the
-	// mirror verifies self-contained (dump replay included).
-	Document *string `json:"document,omitempty"`
-	Proof    *Proof  `json:"proof,omitempty"`
-}
-
-type SignedDocument struct {
-	CCKV       *string                   `json:"cckv,omitempty"`
-	CCFS       *string                   `json:"ccfs,omitempty"`
-	Document   string                    `json:"document"`
-	Proof      Proof                     `json:"proof"`
-	References map[string]SignedDocument `json:"references,omitempty"`
-
-	// IsPublic is an internal, publish-time annotation (not part of the CCAPI
-	// wire format): whether an anonymous requester may read this document
-	// (CIP-11 §3.2 baseline). nil means unevaluated, which consumers must
-	// treat as not public. It exists only on the redis pubsub Event contract;
-	// Event.PublicView strips it at the websocket edge and it is never part of
-	// commit responses, query results or federation payloads.
-	IsPublic *bool `json:"isPublic,omitempty"`
-}
 
 // QueryResult is the paged envelope returned by the query/associations/
 // acknowledges endpoints (CIP-5 §3.2). Prev and Next are datetime cursors
@@ -202,21 +165,6 @@ func (e Event) MarkAllPublic() Event {
 	}
 	e.References = marked
 	return e
-}
-
-// StripInternalFlags removes the internal IsPublic annotations at every
-// nesting level. Called on inbound documents so the spec-external flag never
-// echoes back on API responses. The receiver is not mutated.
-func (sd SignedDocument) StripInternalFlags() SignedDocument {
-	sd.IsPublic = nil
-	if len(sd.References) > 0 {
-		refs := make(map[string]SignedDocument, len(sd.References))
-		for uri, ref := range sd.References {
-			refs[uri] = ref.StripInternalFlags()
-		}
-		sd.References = refs
-	}
-	return sd
 }
 
 // NotificationPayload is the minimal push-notification body delivered to devices

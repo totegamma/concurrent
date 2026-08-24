@@ -6,6 +6,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/concrnt/concrnt/cdid"
+	"github.com/concrnt/concrnt/schemas"
 )
 
 func signedTestAck(t *testing.T, kind string) (SignedDocument, string) {
@@ -26,44 +29,38 @@ func signedTestAck(t *testing.T, kind string) (SignedDocument, string) {
 
 func mirrorOf(t *testing.T, original SignedDocument) SignedDocument {
 	t.Helper()
-	mirrorDoc, err := DeriveAckMirror(original.Document)
+	mirror, err := original.DeriveAcked()
 	if err != nil {
-		t.Fatalf("DeriveAckMirror: %v", err)
+		t.Fatalf("DeriveAcked: %v", err)
 	}
-	doc := original.Document
-	proof := original.Proof
-	return SignedDocument{
-		Document: mirrorDoc,
-		Proof: Proof{
-			Type:     ProofTypeAckReference,
-			Document: &doc,
-			Proof:    &proof,
-		},
-	}
+	return mirror
 }
 
 // The derivation flips only the kind and is deterministic — the mirror of the
 // same ack must be byte-identical across calls (its CDID depends on it).
-func TestDeriveAckMirror(t *testing.T) {
+func TestDeriveAcked(t *testing.T) {
 	ackSD, _ := signedTestAck(t, "ack")
 
-	mirror1, err := DeriveAckMirror(ackSD.Document)
+	mirror1, err := ackSD.DeriveAcked()
 	if err != nil {
-		t.Fatalf("DeriveAckMirror: %v", err)
+		t.Fatalf("DeriveAcked: %v", err)
 	}
-	mirror2, err := DeriveAckMirror(ackSD.Document)
+	mirror2, err := ackSD.DeriveAcked()
 	if err != nil {
-		t.Fatalf("DeriveAckMirror: %v", err)
+		t.Fatalf("DeriveAcked: %v", err)
 	}
-	if mirror1 != mirror2 {
+	if mirror1.Document != mirror2.Document {
 		t.Fatal("derivation is not deterministic")
+	}
+	if mirror1.Proof.Type != ProofTypeAckReference || mirror1.Proof.Document == nil || *mirror1.Proof.Document != ackSD.Document {
+		t.Fatal("mirror proof does not embed the original")
 	}
 
 	var orig, derived Document[map[string]string]
 	if err := json.Unmarshal([]byte(ackSD.Document), &orig); err != nil {
 		t.Fatal(err)
 	}
-	if err := json.Unmarshal([]byte(mirror1), &derived); err != nil {
+	if err := json.Unmarshal([]byte(mirror1.Document), &derived); err != nil {
 		t.Fatal(err)
 	}
 	if derived.Kind != "acked" {
@@ -72,16 +69,16 @@ func TestDeriveAckMirror(t *testing.T) {
 	if derived.Author != orig.Author || derived.Schema != orig.Schema ||
 		*derived.Associate != *orig.Associate || !derived.CreatedAt.Equal(orig.CreatedAt) ||
 		derived.Value["context"] != orig.Value["context"] {
-		t.Fatalf("mirror fields diverged: %s", mirror1)
+		t.Fatalf("mirror fields diverged: %s", mirror1.Document)
 	}
 
 	unackSD, _ := signedTestAck(t, "unack")
-	unackMirror, err := DeriveAckMirror(unackSD.Document)
+	unackMirror, err := unackSD.DeriveAcked()
 	if err != nil {
-		t.Fatalf("DeriveAckMirror(unack): %v", err)
+		t.Fatalf("DeriveAcked(unack): %v", err)
 	}
 	var unackDerived Document[map[string]string]
-	if err := json.Unmarshal([]byte(unackMirror), &unackDerived); err != nil {
+	if err := json.Unmarshal([]byte(unackMirror.Document), &unackDerived); err != nil {
 		t.Fatal(err)
 	}
 	if unackDerived.Kind != "unacked" {
@@ -89,7 +86,7 @@ func TestDeriveAckMirror(t *testing.T) {
 	}
 
 	recordSD := signedCommit(t, "record")
-	if _, err := DeriveAckMirror(recordSD.Document); err == nil {
+	if _, err := recordSD.DeriveAcked(); err == nil {
 		t.Fatal("expected non-ack kinds to be rejected")
 	}
 }
@@ -183,4 +180,58 @@ func TestVerifyAckReferenceRejectsForgeries(t *testing.T) {
 	})
 
 	_ = target
+}
+
+// The distribution reference derivation must reproduce the CIP-7 §4.1 shape:
+// kind=record under <destination>/<hash-CDID(href)>, reference.json schema,
+// original author and a document-reference proof with the original inlined —
+// and it must verify self-contained.
+func TestDeriveDistributionReference(t *testing.T) {
+	author, priv := newTestIdentity(t)
+	key := CCURI{Scheme: "cckv", Owner: author, Key: "posts/1"}.String()
+	createdAt := time.Now().UTC().Truncate(time.Millisecond)
+	original := signDocument(t, Document[map[string]string]{
+		Kind:      "record",
+		Key:       key,
+		Value:     map[string]string{"body": "hi"},
+		Author:    author,
+		Schema:    "https://example.com/post.json",
+		CreatedAt: createdAt,
+	}, priv)
+
+	dest := CCURI{Scheme: "cckv", Owner: author, Key: "timelines/home"}.String()
+	now := time.Now()
+	ref, err := original.DeriveDistributionReference(dest, schemas.Reference{Href: key}, now)
+	if err != nil {
+		t.Fatalf("DeriveDistributionReference: %v", err)
+	}
+
+	var doc Document[schemas.Reference]
+	if err := json.Unmarshal([]byte(ref.Document), &doc); err != nil {
+		t.Fatal(err)
+	}
+	wantKey := dest + "/" + cdid.MakeHash([]byte(key)).String()
+	if doc.Kind != "record" || doc.Key != wantKey || doc.Schema != schemas.ReferenceURL ||
+		doc.Author != author || doc.Value.Href != key {
+		t.Fatalf("unexpected derivation: %s", ref.Document)
+	}
+	if ref.Proof.Type != ProofTypeDocumentReference || ref.Proof.Href == nil || *ref.Proof.Href != key {
+		t.Fatalf("unexpected proof: %+v", ref.Proof)
+	}
+	if _, ok := ref.References[key]; !ok {
+		t.Fatal("original document is not inlined under References[href]")
+	}
+	// deterministic given the same stamp
+	again, err := original.DeriveDistributionReference(dest, schemas.Reference{Href: key}, now)
+	if err != nil || again.Document != ref.Document {
+		t.Fatalf("derivation is not deterministic: %v", err)
+	}
+	// self-contained verification via the inlined original
+	if err := ref.Verify(context.Background(), nil); err != nil {
+		t.Fatalf("Verify: %v", err)
+	}
+
+	if _, err := original.DeriveDistributionReference(dest, schemas.Reference{}, now); err == nil {
+		t.Fatal("expected empty href to be rejected")
+	}
 }

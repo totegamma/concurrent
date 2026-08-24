@@ -696,46 +696,25 @@ func convertRecord(
 
 			for _, timeline := range distributes {
 
-				hash := concrnt.GetHash(serializedDoc)
-				hash10 := [10]byte{}
-				copy(hash10[:], hash[:10])
-				documentID := cdidv2.New(hash10, v1msg.SignedAt).String()
-
-				distKey := timeline + "/" + documentID
-
 				authorURI := fmt.Sprintf("cckv://%s", v1msg.Signer)
 				domainURI := fmt.Sprintf("cckv://%s", destFQDN)
-				if !strings.HasPrefix(distKey, authorURI) && !strings.HasPrefix(distKey, domainURI) {
+				if !strings.HasPrefix(timeline, authorURI) && !strings.HasPrefix(timeline, domainURI) {
 					continue // skip distributing to author's own timeline
 				}
-				if !keyOwnerIsLocal(db, distKey) {
+				if !keyOwnerIsLocal(db, timeline) {
 					continue // 外部ユーザーのtimelineへの書き込みはpolicyで拒否されるためスキップ
 				}
 
-				distDoc := concrnt.Document[schemas.Reference]{
-					Kind: "record",
-					Key:  distKey,
-					Value: schemas.Reference{
-						Href:   key,
-						Schema: &v1msg.Schema,
-					},
-					Author:    v1msg.Signer,
-					Schema:    schemas.ReferenceURL,
-					CreatedAt: v1msg.SignedAt,
-				}
-				docBytes, err := json.Marshal(distDoc)
+				// CIP-7 §4.1: the same derivation the live server performs —
+				// the key segment is the hash-CDID of the href, so re-imported
+				// references replace their live counterparts instead of piling
+				// up under a legacy time-CDID key.
+				distSD, err := sd.DeriveDistributionReference(timeline, schemas.Reference{
+					Href:   key,
+					Schema: &v1msg.Schema,
+				}, v1msg.SignedAt)
 				if err != nil {
 					return "", err
-				}
-				distSD := concrnt.SignedDocument{
-					Document: string(docBytes),
-					Proof: concrnt.Proof{
-						Type: "document-reference",
-						Href: &key,
-					},
-					References: map[string]concrnt.SignedDocument{
-						key: sd,
-					},
 				}
 
 				lineBytes, err := json.Marshal(distSD)
@@ -950,41 +929,24 @@ func convertRecord(
 
 			for _, timeline := range distributes {
 
-				distKey := timeline + "/" + documentID
 				authorURI := fmt.Sprintf("cckv://%s", v1ass.Signer)
 				ownerURI := fmt.Sprintf("cckv://%s", v1ass.Owner)
 				domainURI := fmt.Sprintf("cckv://%s", destFQDN)
-				if !strings.HasPrefix(distKey, authorURI) && !strings.HasPrefix(distKey, domainURI) && !strings.HasPrefix(distKey, ownerURI) {
+				if !strings.HasPrefix(timeline, authorURI) && !strings.HasPrefix(timeline, domainURI) && !strings.HasPrefix(timeline, ownerURI) {
 					continue
 				}
-				if !keyOwnerIsLocal(db, distKey) {
+				if !keyOwnerIsLocal(db, timeline) {
 					continue // 外部ユーザーのtimelineへの書き込みはpolicyで拒否されるためスキップ
 				}
 
-				distDoc := concrnt.Document[schemas.Reference]{
-					Kind: "record",
-					Key:  distKey,
-					Value: schemas.Reference{
-						Href:   ccfs,
-						Schema: &v1ass.Schema,
-					},
-					Author:    v1ass.Signer,
-					Schema:    schemas.ReferenceURL,
-					CreatedAt: v1ass.SignedAt,
-				}
-				docBytes, err := json.Marshal(distDoc)
+				// CIP-7 §4.1: same hash-CDID key derivation as the live server
+				// (see the message branch above)
+				distSD, err := sd.DeriveDistributionReference(timeline, schemas.Reference{
+					Href:   ccfs,
+					Schema: &v1ass.Schema,
+				}, v1ass.SignedAt)
 				if err != nil {
 					return "", err
-				}
-				distSD := concrnt.SignedDocument{
-					Document: string(docBytes),
-					Proof: concrnt.Proof{
-						Type: "document-reference",
-						Href: &ccfs,
-					},
-					References: map[string]concrnt.SignedDocument{
-						ccfs: sd,
-					},
 				}
 
 				lineBytes, err := json.Marshal(distSD)

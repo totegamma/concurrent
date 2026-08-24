@@ -740,44 +740,18 @@ func (uc *RecordUsecase) createReferenceDistributionActions(ctx context.Context,
 		return nil, err
 	}
 
-	// the key segment is the hash-based CDID of the href, so a record keeps
-	// the same reference key across accept-if-newer overwrites and the new
-	// reference replaces the old row instead of piling up next to it
-	refSegment := cdid.MakeHash([]byte(href)).String()
+	now := time.Now()
 
 	postProcesses := make([]PostProcessAction, 0, len(destinations))
 	for _, destURI := range destinations {
-		key, err := url.JoinPath(destURI, refSegment)
+		distSD, err := sd.DeriveDistributionReference(destURI, schemas.Reference{Href: href}, now)
 		if err != nil {
-			slog.Error("failed to join path for distribution", slog.String("destination", destURI), slog.String("href", href), slog.String("error", err.Error()))
+			slog.Error("failed to derive distribution reference", slog.String("destination", destURI), slog.String("href", href), slog.String("error", err.Error()))
 			continue
 		}
-
-		distDoc := concrnt.Document[schemas.Reference]{
-			Kind: "record",
-			Key:  key,
-			Value: schemas.Reference{
-				Href: href,
-			},
-			Author:    author,
-			Schema:    schemas.ReferenceURL,
-			CreatedAt: time.Now(),
-		}
-		docBytes, err := json.Marshal(distDoc)
-		if err != nil {
-			return nil, err
-		}
-		distSD := concrnt.SignedDocument{
-			Document: string(docBytes),
-			Proof: concrnt.Proof{
-				Type: concrnt.ProofTypeDocumentReference,
-				Href: &href,
-			},
-			References: map[string]concrnt.SignedDocument{
-				requester.CCKV(): *requesterSD,
-				href:             sd,
-			},
-		}
+		// the destination needs the author's entity document alongside the
+		// inlined original to resolve the author without a fetch
+		distSD.References[requester.CCKV()] = *requesterSD
 
 		destURI := destURI
 		postProcesses = append(postProcesses,
@@ -1049,6 +1023,9 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 				CDID:   documentIDFor(targetSD.Document, targetDoc.CreatedAt),
 			}.String()
 		}
+		// must mirror SignedDocument.DeriveDistributionReference's key rule —
+		// the sweep addresses reference rows by re-deriving the key they were
+		// created under
 		refSegment := cdid.MakeHash([]byte(href)).String()
 		for _, dest := range distributionsFromPtr(targetDoc.Distributes) {
 			refKey, err := url.JoinPath(dest, refSegment)
@@ -1805,20 +1782,9 @@ func (uc *RecordUsecase) createAckMirrorAction(ctx context.Context, ip string, t
 		return nil, nil
 	}
 
-	mirrorDoc, err := concrnt.DeriveAckMirror(sd.Document)
+	mirrorSD, err := sd.DeriveAcked()
 	if err != nil {
 		return nil, err
-	}
-
-	originalDoc := sd.Document
-	originalProof := sd.Proof
-	mirrorSD := concrnt.SignedDocument{
-		Document: mirrorDoc,
-		Proof: concrnt.Proof{
-			Type:     concrnt.ProofTypeAckReference,
-			Document: &originalDoc,
-			Proof:    &originalProof,
-		},
 	}
 
 	// The associate owner is local, so this resolves to ourselves and

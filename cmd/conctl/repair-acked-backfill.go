@@ -186,7 +186,14 @@ var repairAckedBackfillCmd = &cobra.Command{
 					continue
 				}
 
-				mirrorDoc, err := concrnt.DeriveAckMirror(origLog.Document)
+				var origProof concrnt.Proof
+				if err := json.Unmarshal([]byte(origLog.Proof), &origProof); err != nil {
+					skipped++
+					fmt.Fprintf(os.Stderr, "skipping mirror for %s: failed to parse proof: %v\n", ack.DocumentID, err)
+					continue
+				}
+				origSD := concrnt.SignedDocument{Document: origLog.Document, Proof: origProof}
+				mirrorSD, err := origSD.DeriveAcked()
 				if err != nil {
 					skipped++
 					fmt.Fprintf(os.Stderr, "skipping mirror for %s: %v\n", ack.DocumentID, err)
@@ -198,14 +205,8 @@ var repairAckedBackfillCmd = &cobra.Command{
 					fmt.Fprintf(os.Stderr, "skipping mirror for %s: failed to parse document: %v\n", ack.DocumentID, err)
 					continue
 				}
-				var origProof concrnt.Proof
-				if err := json.Unmarshal([]byte(origLog.Proof), &origProof); err != nil {
-					skipped++
-					fmt.Fprintf(os.Stderr, "skipping mirror for %s: failed to parse proof: %v\n", ack.DocumentID, err)
-					continue
-				}
 
-				hash := concrnt.GetHash([]byte(mirrorDoc))
+				hash := concrnt.GetHash([]byte(mirrorSD.Document))
 				var hash10 [10]byte
 				copy(hash10[:], hash[:10])
 				mirrorID := cdid.New(hash10, orig.CreatedAt).String()
@@ -220,12 +221,7 @@ var repairAckedBackfillCmd = &cobra.Command{
 					continue
 				}
 
-				origDoc := origLog.Document
-				proofBytes, err := json.Marshal(concrnt.Proof{
-					Type:     concrnt.ProofTypeAckReference,
-					Document: &origDoc,
-					Proof:    &origProof,
-				})
+				proofBytes, err := json.Marshal(mirrorSD.Proof)
 				if err != nil {
 					return err
 				}
@@ -235,7 +231,7 @@ var repairAckedBackfillCmd = &cobra.Command{
 					if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&models.CommitLog{
 						ID:       mirrorID,
 						Owner:    &to,
-						Document: mirrorDoc,
+						Document: mirrorSD.Document,
 						Proof:    string(proofBytes),
 					}).Error; err != nil {
 						return err

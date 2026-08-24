@@ -339,11 +339,11 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 			return errors.Join(errors.New("embedded ack document failed verification"), err)
 		}
 
-		expected, err := DeriveAckMirror(*sd.Proof.Document)
+		expected, err := embedded.DeriveAcked()
 		if err != nil {
 			return errors.Join(errors.New("embedded document is not a valid ack/unack document"), err)
 		}
-		if sd.Document != expected {
+		if sd.Document != expected.Document {
 			return errors.New("mirror document does not match the canonical derivation of the embedded ack document")
 		}
 		return nil

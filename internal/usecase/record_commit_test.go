@@ -1643,3 +1643,40 @@ func TestCommitAckRemoteAuthorSkipsCommitLog(t *testing.T) {
 		t.Fatalf("job proof type = %s", delivery.jobs[0].Payload.Proof.Type)
 	}
 }
+
+// Records keyed under the server's own namespace (FQDN or CSID) are owned by
+// the server itself — a long-lived bug compared the FQDN under an IsCSID
+// guard, leaving domain-owned commits ownerless (absent from dumps, immune to
+// GC).
+func TestCommitDomainKeyedRecordOwner(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com", CSID: "ccs1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq"}
+
+	for _, keyOwner := range []string{cfg.FQDN, cfg.CSID} {
+		t.Run(keyOwner, func(t *testing.T) {
+			repo := &recordingRecordRepo{}
+			uc := newRecordCommitUsecase(ccid, cfg, repo, nil)
+
+			doc := concrnt.Document[map[string]string]{
+				Kind:      "record",
+				Key:       concrnt.CCURI{Scheme: "cckv", Owner: keyOwner, Key: "settings/1"}.String(),
+				Value:     map[string]string{"body": "server-owned"},
+				Author:    ccid,
+				Schema:    "https://example.com/config.json",
+				CreatedAt: time.Now().Add(-time.Minute),
+			}
+			sd := signTestDocument(t, doc, priv)
+			if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+				t.Fatalf("Commit returned error: %v", err)
+			}
+			if !repo.createRecordCalled {
+				t.Fatal("CreateRecord was not called")
+			}
+			docID := documentIDFor(sd.Document, doc.CreatedAt)
+			owner, ok := repo.commitOwners[docID]
+			if !ok || owner == nil || *owner != keyOwner {
+				t.Fatalf("commit owner = %v, want %s", owner, keyOwner)
+			}
+		})
+	}
+}

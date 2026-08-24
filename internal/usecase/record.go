@@ -1623,7 +1623,8 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 }
 
 // localCommitOwner reports the candidate as the commit's owner when it is an
-// entity or service hosted here, nil otherwise.
+// entity hosted here or this server itself (its CSID or FQDN — both are
+// authority namespaces per CIP-3 §3.1), nil otherwise.
 func (uc *RecordUsecase) localCommitOwner(ctx context.Context, candidate string) (*string, error) {
 	if concrnt.IsCCID(candidate) {
 		isLocal, err := uc.IsLocalEntityByCCID(ctx, candidate)
@@ -1633,8 +1634,9 @@ func (uc *RecordUsecase) localCommitOwner(ctx context.Context, candidate string)
 		if isLocal {
 			return &candidate, nil
 		}
+		return nil, nil
 	}
-	if concrnt.IsCSID(candidate) && candidate == uc.config.CSID {
+	if candidate == uc.config.CSID || candidate == uc.config.FQDN {
 		return &candidate, nil
 	}
 	return nil, nil

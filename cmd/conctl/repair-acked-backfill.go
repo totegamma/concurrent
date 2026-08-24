@@ -130,6 +130,81 @@ var repairAckedBackfillCmd = &cobra.Command{
 			}
 		}
 
+		// Step 1c: commits that never had ownership rows at all. A long-lived
+		// bug (an FQDN compared under an IsCSID guard) meant records keyed
+		// under the server's own namespace (cckv://<fqdn>/... or the CSID)
+		// never got a commit_owners row, so step 1a has nothing to copy.
+		// Re-derive the owner from the document the way the live server now
+		// does; genuinely ownerless pass-throughs (remote targets, disowned
+		// raw acks) derive to nothing and stay NULL.
+		derived := 0
+		var orphans []models.CommitLog
+		if err := op.DB.WithContext(ctx).
+			Where("owner IS NULL").
+			FindInBatches(&orphans, 500, func(_ *gorm.DB, _ int) error {
+				for _, cl := range orphans {
+					var doc concrnt.Document[any]
+					if err := json.Unmarshal([]byte(cl.Document), &doc); err != nil {
+						fmt.Fprintf(os.Stderr, "skipping %s: failed to parse document: %v\n", cl.ID, err)
+						continue
+					}
+
+					candidate := ""
+					switch doc.Kind {
+					case "record":
+						if parsed, err := concrnt.ParseCCURI(doc.Key); err == nil {
+							candidate = parsed.Owner
+						}
+					case "association", "acked", "unacked":
+						if doc.Associate != nil {
+							if parsed, err := concrnt.ParseCCURI(*doc.Associate); err == nil {
+								candidate = parsed.Owner
+							}
+						}
+					case "ack", "unack", "delete", "entity":
+						candidate = doc.Author
+					}
+					if candidate == "" {
+						continue
+					}
+
+					owner := ""
+					switch {
+					case doc.Kind == "entity":
+						// entities are owned by their author unconditionally,
+						// remote cached copies included (mirrors the live path)
+						owner = candidate
+					case concrnt.IsCCID(candidate):
+						local, err := isLocal(candidate)
+						if err != nil {
+							return err
+						}
+						if local {
+							owner = candidate
+						}
+					case candidate == fqdn || candidate == op.GlobalConfig.CSID:
+						owner = candidate
+					}
+					if owner == "" {
+						continue
+					}
+
+					derived++
+					if repairAckedBackfillDryRun {
+						fmt.Printf("derive %s -> %s (%s)\n", cl.ID, owner, doc.Kind)
+						continue
+					}
+					if err := op.DB.WithContext(ctx).Model(&models.CommitLog{}).
+						Where("id = ? AND owner IS NULL", cl.ID).
+						Update("owner", owner).Error; err != nil {
+						return err
+					}
+				}
+				return nil
+			}).Error; err != nil {
+			return fmt.Errorf("failed to re-derive ownerless commit logs: %w", err)
+		}
+
 		// Steps 2-4: walk the ack state rows.
 		mirrors, anchors, disowned, skipped := 0, 0, 0, 0
 		var acks []models.Ack
@@ -267,8 +342,8 @@ var repairAckedBackfillCmd = &cobra.Command{
 		if repairAckedBackfillDryRun {
 			action = "would backfill"
 		}
-		fmt.Fprintf(os.Stderr, "%s: %d multi-owner commits re-owned, %d mirrors, %d author anchors, %d raw acks disowned, %d skipped\n",
-			action, multiOwned, mirrors, anchors, disowned, skipped)
+		fmt.Fprintf(os.Stderr, "%s: %d multi-owner commits re-owned, %d ownerless commits re-derived, %d mirrors, %d author anchors, %d raw acks disowned, %d skipped\n",
+			action, multiOwned, derived, mirrors, anchors, disowned, skipped)
 		return nil
 	}),
 }

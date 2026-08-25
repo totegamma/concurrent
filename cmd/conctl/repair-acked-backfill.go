@@ -11,7 +11,7 @@ import (
 	"gorm.io/gorm/clause"
 
 	"github.com/concrnt/concrnt"
-	"github.com/concrnt/concrnt/cdid"
+	"github.com/concrnt/concrnt/internal/usecase"
 	"github.com/concrnt/concrnt/internal/infra/database/models"
 )
 
@@ -33,7 +33,7 @@ var repairAckedBackfillCmd = &cobra.Command{
 		"  3. acks.ack_commit_id anchors for rows whose author is local,\n" +
 		"  4. legacy recorded raw acks whose author is NOT local (the old receiving-side\n" +
 		"     copies) are disowned and flagged gc_candidate — the ackee's holding is the\n" +
-		"     mirror now.\n" +
+		"     mirror now (for a local ackee only once that mirror is durably in place).\n" +
 		"Run this right after deploying the build that writes commit_logs.owner; dumps and\n" +
 		"unregister GC are incomplete for pre-existing data until it has run. Re-running is\n" +
 		"a no-op. commit_owners itself is left in place for the operator to drop.\n" +
@@ -169,21 +169,14 @@ var repairAckedBackfillCmd = &cobra.Command{
 					}
 
 					owner := ""
-					switch {
-					case doc.Kind == "entity":
+					if doc.Kind == "entity" {
 						// entities are owned by their author unconditionally,
 						// remote cached copies included (mirrors the live path)
 						owner = candidate
-					case concrnt.IsCCID(candidate):
-						local, err := isLocal(candidate)
-						if err != nil {
-							return err
-						}
-						if local {
-							owner = candidate
-						}
-					case candidate == fqdn || candidate == op.GlobalConfig.CSID:
-						owner = candidate
+					} else if resolved, err := usecase.ResolveCommitOwner(candidate, fqdn, op.GlobalConfig.CSID, isLocal); err != nil {
+						return err
+					} else if resolved != nil {
+						owner = *resolved
 					}
 					if owner == "" {
 						continue
@@ -240,31 +233,40 @@ var repairAckedBackfillCmd = &cobra.Command{
 
 				// Step 4: a recorded raw ack whose author is remote is the old
 				// receiving-side copy — pass-through history under the new
-				// model. Disown it and let gc-commitlog collect it once the
-				// mirror below carries the ackee's holding.
-				if !fromLocal && origExists && (origLog.Owner != nil || !origLog.GcCandidate) {
+				// model. Disown it and let gc-commitlog collect it. When the
+				// ackee is local this is deferred behind step 2: the raw ack is
+				// the only copy the mirror can be derived from, so it must stay
+				// owned until the mirror commit and its anchor are durably in
+				// place — disowning first would let a derivation failure or a
+				// crash in between hand the sole original to gc.
+				needDisown := !fromLocal && origExists && (origLog.Owner != nil || !origLog.GcCandidate)
+				disown := func(tx *gorm.DB) error {
 					disowned++
 					if repairAckedBackfillDryRun {
 						fmt.Printf("disown %s (raw ack by remote %s)\n", origLog.ID, ack.From)
-					} else {
-						if err := op.DB.WithContext(ctx).Model(&models.CommitLog{}).
-							Where("id = ?", origLog.ID).
-							Updates(map[string]any{"owner": nil, "gc_candidate": true}).Error; err != nil {
-							return err
-						}
-						// Drop the legacy ownership rows too, or step 1a would
-						// resurrect the owner from them on a re-run.
-						if hasLegacyOwners {
-							if err := op.DB.WithContext(ctx).
-								Exec(`DELETE FROM commit_owners WHERE commit_log_id = ?`, origLog.ID).Error; err != nil {
-								return err
-							}
-						}
+						return nil
 					}
+					if err := tx.Model(&models.CommitLog{}).
+						Where("id = ?", origLog.ID).
+						Updates(map[string]any{"owner": nil, "gc_candidate": true}).Error; err != nil {
+						return err
+					}
+					// Drop the legacy ownership rows too, or step 1a would
+					// resurrect the owner from them on a re-run.
+					if hasLegacyOwners {
+						return tx.Exec(`DELETE FROM commit_owners WHERE commit_log_id = ?`, origLog.ID).Error
+					}
+					return nil
 				}
 
 				// Step 2: materialize the ackee's mirror.
 				if !toLocal {
+					// no mirror will ever live here: disown right away
+					if needDisown {
+						if err := disown(op.DB.WithContext(ctx)); err != nil {
+							return err
+						}
+					}
 					continue
 				}
 				if !origExists {
@@ -294,18 +296,25 @@ var repairAckedBackfillCmd = &cobra.Command{
 					continue
 				}
 
-				hash := concrnt.GetHash([]byte(mirrorSD.Document))
-				var hash10 [10]byte
-				copy(hash10[:], hash[:10])
-				mirrorID := cdid.New(hash10, orig.CreatedAt).String()
+				mirrorID := concrnt.DocumentIDFor(mirrorSD.Document, orig.CreatedAt)
 
 				if ack.AckedCommitID != nil && *ack.AckedCommitID == mirrorID {
+					// mirror already in place (an earlier run got this far):
+					// only the disown may still be pending
+					if needDisown {
+						if err := disown(op.DB.WithContext(ctx)); err != nil {
+							return err
+						}
+					}
 					continue
 				}
 
 				mirrors++
 				if repairAckedBackfillDryRun {
 					fmt.Printf("mirror %s -> %s (%s): %s\n", ack.From, ack.To, ack.Schema, mirrorID)
+					if needDisown {
+						_ = disown(nil) // dry-run: prints without touching the db
+					}
 					continue
 				}
 
@@ -324,9 +333,15 @@ var repairAckedBackfillCmd = &cobra.Command{
 					}).Error; err != nil {
 						return err
 					}
-					return tx.Model(&models.Ack{}).
+					if err := tx.Model(&models.Ack{}).
 						Where("document_id = ?", ack.DocumentID).
-						Update("acked_commit_id", mirrorID).Error
+						Update("acked_commit_id", mirrorID).Error; err != nil {
+						return err
+					}
+					if needDisown {
+						return disown(tx)
+					}
+					return nil
 				})
 				if err != nil {
 					return fmt.Errorf("failed to backfill mirror for %s: %w", ack.DocumentID, err)

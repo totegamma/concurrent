@@ -390,24 +390,24 @@ func (r *RecordRepository) saveAck(ctx context.Context, tx usecase.RepositoryTx,
 			CreatedAt:     createdAt,
 		}
 		// A concurrent first commit for the same triple can slip past the
-		// locked read; the conditional upsert keeps this race accept-if-newer
-		// instead of erroring on the unique index.
-		result := db.Clauses(clause.OnConflict{
-			Columns: []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "schema"}},
-			DoUpdates: clause.Assignments(map[string]any{
-				"document_id":     documentID,
-				"valid":           valid,
-				"created_at":      createdAt,
-				"ack_commit_id":   ackCommitID,
-				"acked_commit_id": ackedCommitID,
-			}),
-			Where: clause.Where{Exprs: []clause.Expression{gorm.Expr("acks.document_id < excluded.document_id")}},
-		}).Create(&ack)
+		// locked read; DO NOTHING plus a locked re-read routes that race
+		// through the same comparison below as a sequential second commit, so
+		// anchor attaching and gc-flagging of superseded commits behave
+		// identically either way.
+		result := db.Clauses(clause.OnConflict{DoNothing: true}).Create(&ack)
 		if result.Error != nil {
 			span.RecordError(result.Error)
 			return false, result.Error
 		}
-		return result.RowsAffected > 0, nil
+		if result.RowsAffected > 0 {
+			return true, nil
+		}
+		if err := db.Clauses(clause.Locking{Strength: "UPDATE"}).
+			Where(`acks."from" = ? AND acks."to" = ? AND acks."schema" = ?`, from, to, schema).
+			Take(&existing).Error; err != nil {
+			span.RecordError(err)
+			return false, err
+		}
 	}
 
 	if documentID < existing.DocumentID {

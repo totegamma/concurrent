@@ -114,12 +114,16 @@ type Ack struct {
 	// Double anchoring: AckCommitID points at the acker-side ack/unack commit
 	// (set when the author is local), AckedCommitID at the ackee-side
 	// acked/unacked mirror commit (set when the associate owner is local).
-	// Either cascade removes the row when that side's history is GC'd, so an
-	// unregister on either end tears the state down without special-casing.
+	// GC of one side's history only severs that side's anchor (SET NULL): the
+	// other side's holding — e.g. the ackee's mirror after the acker
+	// unregisters — must survive with its listing intact, or it would diverge
+	// from the dump the surviving side can replay (CIP-10 repository
+	// portability). A row whose LAST anchor goes is deleted explicitly by
+	// `conctl op gc-commitlog` alongside the commits themselves.
 	AckCommitID   *string   `json:"ackCommitId" gorm:"type:text"`
-	AckCommit     CommitLog `json:"-" gorm:"foreignKey:AckCommitID;references:ID;constraint:OnDelete:CASCADE;"`
+	AckCommit     CommitLog `json:"-" gorm:"foreignKey:AckCommitID;references:ID;constraint:OnDelete:SET NULL;"`
 	AckedCommitID *string   `json:"ackedCommitId" gorm:"type:text"`
-	AckedCommit   CommitLog `json:"-" gorm:"foreignKey:AckedCommitID;references:ID;constraint:OnDelete:CASCADE;"`
+	AckedCommit   CommitLog `json:"-" gorm:"foreignKey:AckedCommitID;references:ID;constraint:OnDelete:SET NULL;"`
 
 	Valid bool `json:"valid" gorm:"type:boolean;not null;default:true;index:idx_acks_from_valid_created_at,priority:2;index:idx_acks_to_valid_created_at,priority:2;index:idx_acks_schema_valid_created_at,priority:2"`
 

@@ -114,6 +114,32 @@ func MigratePostgres(db *gorm.DB) error {
 			}
 		}
 
+		// The ack anchor FKs must be ON DELETE SET NULL — GC of one side's
+		// commit severs only that anchor, the row survives on the other (see
+		// models.Ack). Earlier builds created them as CASCADE, and AutoMigrate
+		// never alters an existing constraint, so rebuild any that still
+		// cascade ('c' in pg_constraint.confdeltype).
+		for _, fk := range []struct{ name, rel string }{
+			{"fk_acks_ack_commit", "AckCommit"},
+			{"fk_acks_acked_commit", "AckedCommit"},
+		} {
+			var deltype string
+			if err := conn.Raw(
+				`SELECT confdeltype FROM pg_constraint WHERE conname = ? AND conrelid = 'acks'::regclass`, fk.name,
+			).Scan(&deltype).Error; err != nil {
+				return err
+			}
+			if deltype != "c" {
+				continue
+			}
+			if err := conn.Migrator().DropConstraint(&models.Ack{}, fk.name); err != nil {
+				return err
+			}
+			if err := conn.Migrator().CreateConstraint(&models.Ack{}, fk.rel); err != nil {
+				return err
+			}
+		}
+
 		return nil
 	})
 }

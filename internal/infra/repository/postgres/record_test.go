@@ -12,6 +12,7 @@ import (
 	"gorm.io/gorm"
 
 	"github.com/concrnt/concrnt"
+	"github.com/concrnt/concrnt/internal/infra/database"
 	"github.com/concrnt/concrnt/internal/infra/database/models"
 	"github.com/concrnt/concrnt/internal/testutil"
 	"github.com/concrnt/concrnt/internal/usecase"
@@ -468,6 +469,51 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		require.True(t, afterStaleUnack.Valid)
 		require.Equal(t, "ack-3-on", afterStaleUnack.DocumentID)
 		require.True(t, afterStaleUnack.CreatedAt.Equal(reackCreatedAt))
+	})
+
+	t.Run("gc of one anchor severs it without cascading the ack row", func(t *testing.T) {
+		ackSchema := "https://schema.example/follow.json"
+		gcCreatedAt := time.Date(2026, 7, 8, 9, 10, 11, 0, time.UTC)
+		ackSD := repositorySignedDocument(t, concrnt.Document[map[string]string]{
+			Kind:      "ack",
+			Value:     map[string]string{},
+			Author:    "gcauthor",
+			Schema:    ackSchema,
+			CreatedAt: gcCreatedAt,
+		})
+		withRepositoryTx(t, ctx, repo, "gc-ack-raw", "127.0.0.1", ackSD, ptr("gcauthor"), func(tx usecase.RepositoryTx) error {
+			applied, err := repo.Acknowledge(ctx, tx, "gc-ack-raw", "gcauthor", "gcackee", ackSchema, gcCreatedAt, ptr("gc-ack-raw"), nil)
+			require.True(t, applied)
+			return err
+		})
+		withRepositoryTx(t, ctx, repo, "gc-ack-mirror", "127.0.0.1", ackSD, ptr("gcackee"), func(tx usecase.RepositoryTx) error {
+			applied, err := repo.Acknowledge(ctx, tx, "gc-ack-raw", "gcauthor", "gcackee", ackSchema, gcCreatedAt, nil, ptr("gc-ack-mirror"))
+			require.True(t, applied)
+			return err
+		})
+
+		// the acker's history is GC'd (e.g. unregister): the ackee's holding
+		// must survive on its mirror anchor (CIP-10 repository portability)
+		require.NoError(t, db.Delete(&models.CommitLog{}, "id = ?", "gc-ack-raw").Error)
+		var ack models.Ack
+		require.NoError(t, db.Where(`"from" = ? AND "to" = ?`, "gcauthor", "gcackee").Take(&ack).Error)
+		require.Nil(t, ack.AckCommitID)
+		require.NotNil(t, ack.AckedCommitID)
+
+		// the last anchor going only severs it too — removing the fully
+		// unanchored row is gc-commitlog's explicit job, not the FK's
+		require.NoError(t, db.Delete(&models.CommitLog{}, "id = ?", "gc-ack-mirror").Error)
+		require.NoError(t, db.Where(`"from" = ? AND "to" = ?`, "gcauthor", "gcackee").Take(&ack).Error)
+		require.Nil(t, ack.AckCommitID)
+		require.Nil(t, ack.AckedCommitID)
+
+		// a database from a CASCADE-era build is rebuilt to SET NULL on migrate
+		require.NoError(t, db.Exec(`ALTER TABLE acks DROP CONSTRAINT fk_acks_ack_commit`).Error)
+		require.NoError(t, db.Exec(`ALTER TABLE acks ADD CONSTRAINT fk_acks_ack_commit FOREIGN KEY (ack_commit_id) REFERENCES commit_logs(id) ON DELETE CASCADE`).Error)
+		require.NoError(t, database.MigratePostgres(db))
+		var deltype string
+		require.NoError(t, db.Raw(`SELECT confdeltype FROM pg_constraint WHERE conname = 'fk_acks_ack_commit' AND conrelid = 'acks'::regclass`).Scan(&deltype).Error)
+		require.Equal(t, "n", deltype)
 	})
 
 	t.Run("rollback removes commit and record", func(t *testing.T) {

@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"gorm.io/gorm"
 
 	"github.com/concrnt/concrnt/cdid"
 	"github.com/concrnt/concrnt/internal/domain"
@@ -25,8 +26,10 @@ var gcCommitlogCmd = &cobra.Command{
 		"every commit log owned by the departing user. Once the document's\n" +
 		"createdAt has fallen out of the backdate window a replay is rejected as too\n" +
 		"old anyway, so the tombstone is redundant and the row can be deleted\n" +
-		"(any remaining record/ack/association/entity rows cascade\n" +
-		"with it — for unregistered users this is what actually removes their data).\n" +
+		"(any remaining record/association/entity rows cascade with it — for unregistered\n" +
+		"users this is what actually removes their data; ack state rows only lose the\n" +
+		"anchor pointing at the deleted commit, and are removed here once their last\n" +
+		"anchor goes).\n" +
 		"This deletes every gc_candidate commit log whose document createdAt is older\n" +
 		"than now minus --retention. Retention below the backdate window would reopen\n" +
 		"the replay hole, so shorter values are refused.\n" +
@@ -58,22 +61,52 @@ var gcCommitlogCmd = &cobra.Command{
 			return nil
 		}
 
-		var total int64
+		var total, totalAcks int64
 		for {
-			// Postgres has no DELETE ... LIMIT; batching via a subquery keeps
+			// Postgres has no DELETE ... LIMIT; batching via an id list keeps
 			// each statement (and its cascades) bounded.
-			res := op.DB.WithContext(ctx).
-				Exec("DELETE FROM commit_logs WHERE id IN (SELECT id FROM commit_logs WHERE gc_candidate AND id < ? LIMIT 1000)", cutoff)
-			if res.Error != nil {
-				return fmt.Errorf("failed to delete commit logs: %w", res.Error)
+			var doomed []string
+			err := op.DB.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+				doomed = nil
+				if err := tx.Raw(
+					"SELECT id FROM commit_logs WHERE gc_candidate AND id < ? LIMIT 1000", cutoff,
+				).Scan(&doomed).Error; err != nil {
+					return err
+				}
+				if len(doomed) == 0 {
+					return nil
+				}
+				// The ack anchors are ON DELETE SET NULL (one side's GC must
+				// leave the other side's holding intact — see models.Ack), so a
+				// row losing its LAST anchor in this batch is removed explicitly
+				// here. Rows with both anchors already NULL are untouched: that
+				// is pre-backfill state or a mirror still in flight, not this
+				// batch's doing.
+				res := tx.Exec(`DELETE FROM acks
+					WHERE (ack_commit_id IN ? OR acked_commit_id IN ?)
+					  AND (ack_commit_id IS NULL OR ack_commit_id IN ?)
+					  AND (acked_commit_id IS NULL OR acked_commit_id IN ?)`,
+					doomed, doomed, doomed, doomed)
+				if res.Error != nil {
+					return res.Error
+				}
+				totalAcks += res.RowsAffected
+				res = tx.Exec("DELETE FROM commit_logs WHERE id IN ?", doomed)
+				if res.Error != nil {
+					return res.Error
+				}
+				total += res.RowsAffected
+				return nil
+			})
+			if err != nil {
+				return fmt.Errorf("failed to delete commit logs: %w", err)
 			}
-			if res.RowsAffected == 0 {
+			if len(doomed) == 0 {
 				break
 			}
-			total += res.RowsAffected
 			fmt.Fprintf(os.Stderr, "deleted %d commit logs so far...\n", total)
 		}
-		fmt.Fprintf(os.Stderr, "deleted %d commit logs\n", total)
+		fmt.Fprintf(os.Stderr, "deleted %d commit logs and %d fully-unanchored ack rows\n", total, totalAcks)
 		return nil
 	}),
 }

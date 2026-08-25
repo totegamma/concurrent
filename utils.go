@@ -7,7 +7,6 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/concrnt/concrnt/cdid"
 	"github.com/yosida95/uritemplate/v3"
 )
 
@@ -215,10 +214,7 @@ func ToLegacyDocument(sd *SignedDocument) (*LegacyDocument, error) {
 		return nil, err
 	}
 
-	hash := GetHash([]byte(sd.Document))
-	hash10 := [10]byte{}
-	copy(hash10[:], hash[:10])
-	documentID := cdid.New(hash10, doc.CreatedAt).String()
+	documentID := DocumentIDFor(sd.Document, doc.CreatedAt)
 
 	parsed, err := ParseCCURI(doc.Key)
 	if err != nil {

@@ -11,7 +11,6 @@ import (
 	"gorm.io/gorm/clause"
 
 	"github.com/concrnt/concrnt"
-	"github.com/concrnt/concrnt/cdid"
 	"github.com/concrnt/concrnt/internal/infra/database/models"
 	"github.com/concrnt/concrnt/schemas"
 )
@@ -97,10 +96,7 @@ var repairTimelineSchemasCmd = &cobra.Command{
 				fmt.Fprintf(os.Stderr, "skipping %s: failed to serialize document: %v\n", rk.URI, err)
 				continue
 			}
-			hash := concrnt.GetHash(newBytes)
-			var hash10 [10]byte
-			copy(hash10[:], hash[:10])
-			newID := cdid.New(hash10, doc.CreatedAt).String()
+			newID := concrnt.DocumentIDFor(string(newBytes), doc.CreatedAt)
 
 			if newID == oldID {
 				continue

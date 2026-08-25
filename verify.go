@@ -10,7 +10,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/concrnt/concrnt/cdid"
 	"github.com/concrnt/concrnt/schemas"
 )
 
@@ -284,10 +283,7 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 				return errors.New("referenced document author does not match entity href owner")
 			}
 		case hrefURI.Scheme == "ccfs" && hrefURI.Type == CCFSTypeConcrnt:
-			hash := GetHash([]byte(targetSD.Document))
-			var hash10 [10]byte
-			copy(hash10[:], hash[:10])
-			if cdid.New(hash10, targetDoc.CreatedAt).String() != hrefURI.CDID {
+			if DocumentIDFor(targetSD.Document, targetDoc.CreatedAt) != hrefURI.CDID {
 				return errors.New("referenced document cdid does not match proof href")
 			}
 			// owner mirrors the commit path: key owner for records, associate

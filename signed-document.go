@@ -73,6 +73,25 @@ func (sd SignedDocument) StripInternalFlags() SignedDocument {
 	return sd
 }
 
+// DocumentIDFor derives a document's content+time CDID, the id it is stored
+// under. It is time-prefixed and content-hashed, so string comparison orders
+// documents by createdAt with a deterministic content tiebreaker.
+func DocumentIDFor(document string, createdAt time.Time) string {
+	hash := GetHash([]byte(document))
+	var hash10 [10]byte
+	copy(hash10[:], hash[:10])
+	return cdid.New(hash10, createdAt).String()
+}
+
+// DistributionReferenceKey derives the key a distribution Reference for href
+// is stored under at destination (CIP-7 §4.1): <destination>/<hash-CDID(href)>,
+// stable across accept-if-newer overwrites. Creation
+// (DeriveDistributionReference) and the delete-side sweep both address
+// reference rows through this one rule.
+func DistributionReferenceKey(destination string, href string) (string, error) {
+	return url.JoinPath(destination, cdid.MakeHash([]byte(href)).String())
+}
+
 // DeriveAcked derives the canonical acked/unacked mirror commit for this
 // ack/unack signed document (CIP-10 §5.2): the mirror document is the
 // original with only its kind flipped (ack → acked, unack → unacked),
@@ -133,7 +152,7 @@ func (sd SignedDocument) DeriveDistributionReference(destination string, ref sch
 		return SignedDocument{}, errors.Join(errors.New("failed to decode document for reference derivation"), err)
 	}
 
-	key, err := url.JoinPath(destination, cdid.MakeHash([]byte(ref.Href)).String())
+	key, err := DistributionReferenceKey(destination, ref.Href)
 	if err != nil {
 		return SignedDocument{}, errors.Join(fmt.Errorf("failed to derive reference key under %s", destination), err)
 	}

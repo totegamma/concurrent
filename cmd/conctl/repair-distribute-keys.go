@@ -93,17 +93,18 @@ var repairDistributeKeysCmd = &cobra.Command{
 						continue
 					}
 
-					newURI := dest + "/" + cdid.MakeHash([]byte(href)).String()
+					newURI, err := concrnt.DistributionReferenceKey(dest, href)
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "skipping %s: failed to derive reference key: %v\n", rk.URI, err)
+						continue
+					}
 					doc.Key = newURI
 					newBytes, err := json.Marshal(doc)
 					if err != nil {
 						fmt.Fprintf(os.Stderr, "skipping %s: failed to serialize document: %v\n", rk.URI, err)
 						continue
 					}
-					hash := concrnt.GetHash(newBytes)
-					var hash10 [10]byte
-					copy(hash10[:], hash[:10])
-					newID := cdid.New(hash10, doc.CreatedAt).String()
+					newID := concrnt.DocumentIDFor(string(newBytes), doc.CreatedAt)
 
 					// the stored document already carries the new-rule key (only the
 					// record_keys row is stale — half-applied runs end up here): the

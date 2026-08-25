@@ -10,7 +10,6 @@ import (
 	"gorm.io/gorm/clause"
 
 	"github.com/concrnt/concrnt"
-	"github.com/concrnt/concrnt/cdid"
 	"github.com/concrnt/concrnt/internal/infra/database/models"
 )
 
@@ -49,10 +48,7 @@ var repairEntityIDsCmd = &cobra.Command{
 				continue
 			}
 
-			hash := concrnt.GetHash([]byte(entity.Document.Document))
-			var hash10 [10]byte
-			copy(hash10[:], hash[:10])
-			newID := cdid.New(hash10, doc.CreatedAt).String()
+			newID := concrnt.DocumentIDFor(entity.Document.Document, doc.CreatedAt)
 
 			if newID == entity.DocumentID {
 				continue

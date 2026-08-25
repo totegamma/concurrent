@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"log/slog"
 	"net"
-	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -17,7 +16,6 @@ import (
 	"go.opentelemetry.io/otel/trace"
 
 	"github.com/concrnt/concrnt"
-	"github.com/concrnt/concrnt/cdid"
 	"github.com/concrnt/concrnt/client"
 	"github.com/concrnt/concrnt/impl/interop"
 	"github.com/concrnt/concrnt/internal/domain"
@@ -174,16 +172,6 @@ func NewRecordUsecase(
 	}
 }
 
-// documentIDFor derives a document's content+time CDID, the id it is stored
-// under. It is time-prefixed and content-hashed, so string comparison orders
-// documents by createdAt with a deterministic content tiebreaker.
-func documentIDFor(document string, createdAt time.Time) string {
-	hash := concrnt.GetHash([]byte(document))
-	var hash10 [10]byte
-	copy(hash10[:], hash[:10])
-	return cdid.New(hash10, createdAt).String()
-}
-
 // resolver returns uc.client as a DocumentResolver, or a nil interface when
 // the client itself is nil (offline tooling, tests) — assigning a typed nil
 // pointer directly would bypass Verify's nil-resolver guard and panic on use.
@@ -228,7 +216,7 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		return nil, err
 	}
 
-	documentID := documentIDFor(sd.Document, doc.CreatedAt)
+	documentID := concrnt.DocumentIDFor(sd.Document, doc.CreatedAt)
 
 	// CIP-3 §3.1: authority-bearing fields must not use alias-form owners
 	// (@<FQDN>) — a signed routing identifier must not depend on mutable DNS.
@@ -641,7 +629,7 @@ func (uc *RecordUsecase) saveEntity(ctx context.Context, tx RepositoryTx, docume
 		if err := json.Unmarshal([]byte(existing.SignedDocument.Document), &existingDoc); err != nil {
 			// corrupt stored document: log and let the incoming one overwrite it
 			slog.Error("failed to decode stored entity document, overwriting", "ccid", entity.Author, "error", err.Error())
-		} else if documentID <= documentIDFor(existing.SignedDocument.Document, existingDoc.CreatedAt) {
+		} else if documentID <= concrnt.DocumentIDFor(existing.SignedDocument.Document, existingDoc.CreatedAt) {
 			return &commitApplyResult{result: &sd, noop: true}, nil
 		}
 	}
@@ -1020,17 +1008,13 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 				Scheme: "ccfs",
 				Owner:  parsedAssociate.Owner,
 				Type:   concrnt.CCFSTypeConcrnt,
-				CDID:   documentIDFor(targetSD.Document, targetDoc.CreatedAt),
+				CDID:   concrnt.DocumentIDFor(targetSD.Document, targetDoc.CreatedAt),
 			}.String()
 		}
-		// must mirror SignedDocument.DeriveDistributionReference's key rule —
-		// the sweep addresses reference rows by re-deriving the key they were
-		// created under
-		refSegment := cdid.MakeHash([]byte(href)).String()
 		for _, dest := range distributionsFromPtr(targetDoc.Distributes) {
-			refKey, err := url.JoinPath(dest, refSegment)
+			refKey, err := concrnt.DistributionReferenceKey(dest, href)
 			if err != nil {
-				slog.Error("failed to join path for distribution sweep", slog.String("destination", dest), slog.String("href", href), slog.String("error", err.Error()))
+				slog.Error("failed to derive reference key for distribution sweep", slog.String("destination", dest), slog.String("href", href), slog.String("error", err.Error()))
 				continue
 			}
 
@@ -1268,7 +1252,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 		// CreateRecord re-checks the same ordering under the RecordKey row
 		// lock, so this check is only an optimization, not the authoritative
 		// guard against concurrent writers.
-		if documentID <= documentIDFor(existingSD.Document, existingDoc.CreatedAt) {
+		if documentID <= concrnt.DocumentIDFor(existingSD.Document, existingDoc.CreatedAt) {
 			return &commitApplyResult{result: &sd, noop: true}, nil
 		}
 		action = "record:update"
@@ -1626,8 +1610,18 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 // entity hosted here or this server itself (its CSID or FQDN — both are
 // authority namespaces per CIP-3 §3.1), nil otherwise.
 func (uc *RecordUsecase) localCommitOwner(ctx context.Context, candidate string) (*string, error) {
+	return ResolveCommitOwner(candidate, uc.config.FQDN, uc.config.CSID, func(ccid string) (bool, error) {
+		return uc.IsLocalEntityByCCID(ctx, ccid)
+	})
+}
+
+// ResolveCommitOwner is the candidate-level rule behind localCommitOwner,
+// exported with locality injected so conctl repair-acked-backfill re-derives
+// owners for pre-existing commits with exactly the live rule instead of a
+// copy. isLocalCCID reports whether a CCID is hosted on this server.
+func ResolveCommitOwner(candidate string, fqdn string, csid string, isLocalCCID func(string) (bool, error)) (*string, error) {
 	if concrnt.IsCCID(candidate) {
-		isLocal, err := uc.IsLocalEntityByCCID(ctx, candidate)
+		isLocal, err := isLocalCCID(candidate)
 		if err != nil {
 			return nil, err
 		}
@@ -1636,7 +1630,7 @@ func (uc *RecordUsecase) localCommitOwner(ctx context.Context, candidate string)
 		}
 		return nil, nil
 	}
-	if candidate == uc.config.CSID || candidate == uc.config.FQDN {
+	if candidate == csid || candidate == fqdn {
 		return &candidate, nil
 	}
 	return nil, nil
@@ -1849,7 +1843,7 @@ func (uc *RecordUsecase) applyAckMirror(ctx context.Context, tx RepositoryTx, mi
 		return nil, err
 	}
 
-	ackID := documentIDFor(*sd.Proof.Document, original.CreatedAt)
+	ackID := concrnt.DocumentIDFor(*sd.Proof.Document, original.CreatedAt)
 
 	save := uc.repo.Acknowledge
 	if original.Kind == "unack" {

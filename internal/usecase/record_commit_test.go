@@ -682,7 +682,7 @@ func documentIDOf(t *testing.T, sd concrnt.SignedDocument) string {
 	if err := json.Unmarshal([]byte(sd.Document), &doc); err != nil {
 		t.Fatalf("unmarshal document: %v", err)
 	}
-	return documentIDFor(sd.Document, doc.CreatedAt)
+	return concrnt.DocumentIDFor(sd.Document, doc.CreatedAt)
 }
 
 // A document already in commit_logs was fully applied once: redelivery is a
@@ -1534,7 +1534,7 @@ func TestCommitAckGeneratesMirror(t *testing.T) {
 	if err := json.Unmarshal([]byte(ackSD.Document), &ackDoc); err != nil {
 		t.Fatal(err)
 	}
-	ackID := documentIDFor(ackSD.Document, ackDoc.CreatedAt)
+	ackID := concrnt.DocumentIDFor(ackSD.Document, ackDoc.CreatedAt)
 
 	if _, err := uc.Commit(context.Background(), "127.0.0.1", ackSD, domain.CommitModeExecute); err != nil {
 		t.Fatalf("Commit(ack) returned error: %v", err)
@@ -1574,7 +1574,7 @@ func TestCommitAckGeneratesMirror(t *testing.T) {
 	if mirrorDoc.Kind != "acked" {
 		t.Fatalf("mirror kind = %s, want acked", mirrorDoc.Kind)
 	}
-	mirrorID := documentIDFor(mirror.Document, mirrorDoc.CreatedAt)
+	mirrorID := concrnt.DocumentIDFor(mirror.Document, mirrorDoc.CreatedAt)
 
 	if _, err := uc.Commit(context.Background(), "127.0.0.1", mirror, domain.CommitModeExecute); err != nil {
 		t.Fatalf("Commit(mirror) returned error: %v", err)
@@ -1672,7 +1672,7 @@ func TestCommitDomainKeyedRecordOwner(t *testing.T) {
 			if !repo.createRecordCalled {
 				t.Fatal("CreateRecord was not called")
 			}
-			docID := documentIDFor(sd.Document, doc.CreatedAt)
+			docID := concrnt.DocumentIDFor(sd.Document, doc.CreatedAt)
 			owner, ok := repo.commitOwners[docID]
 			if !ok || owner == nil || *owner != keyOwner {
 				t.Fatalf("commit owner = %v, want %s", owner, keyOwner)

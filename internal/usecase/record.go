@@ -26,46 +26,22 @@ import (
 )
 
 type RecordRepository interface {
+	// Utilities
 	BeginTx(ctx context.Context) (RepositoryTx, error)
 
-	CreateCommitLog(ctx context.Context, tx RepositoryTx, id string, ip string, document string, proof any) error
-	CreateCommitOwners(ctx context.Context, tx RepositoryTx, id string, owners []string) error
-	HasCommitLog(ctx context.Context, id string) (bool, error)
-	// CreateEntity reports whether the upsert applied — false when the stored
-	// entity already carries a newer-or-equal documentID (accept-if-newer).
+	// Create / Update
+	CreateCommitLog(ctx context.Context, tx RepositoryTx, id string, ip string, document string, proof any, owner string) error
+
 	CreateEntity(ctx context.Context, tx RepositoryTx, ccid string, alias *string, domain string, documentID string) (bool, error)
-	// CreateRecord reports whether the write applied — false when the key's
-	// stored record already carries a newer-or-equal documentID
-	// (accept-if-newer).
 	CreateRecord(ctx context.Context, tx RepositoryTx, documentID string, key string, owner string, author string, schema string, onUpdate *string, policies *string, distributions []string, redirect *string, createdAt time.Time) (bool, error)
 	CreateAssociation(ctx context.Context, tx RepositoryTx, documentID string, targetURI string, owner string, author string, schema string, variant *string, unique string, createdAt time.Time) (bool, error)
-	// Acknowledge / UnAcknowledge report whether the transition applied —
-	// false when the stored (from, to, schema) state already carries a
-	// newer-or-equal documentID (accept-if-newer).
 	Acknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error)
 	UnAcknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error)
-	DeleteRecordByKey(ctx context.Context, tx RepositoryTx, targetURI string) error
-	DeleteRecordByDocumentID(ctx context.Context, tx RepositoryTx, documentID string) error
-	DeleteAssociation(ctx context.Context, tx RepositoryTx, documentID string) error
+	Acknowledged(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error)
+	UnAcknowledged(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error)
 
-	// QueryRecordSubtree enumerates every live record at base itself
-	// (includeSelf) and under base's path subtree, URI-ordered. Unlike
-	// QueryByPrefix it never matches sibling keys ("item2" for base "item")
-	// and escapes pattern metacharacters — it returns exactly the set a
-	// range delete may remove.
-	QueryRecordSubtree(ctx context.Context, base string, includeSelf bool) ([]concrnt.SignedDocument, error)
-
-	// GetTimelineRemoval reports the chunkline (timeline URI, item ID) tuple a
-	// record key currently occupies, or ("", "") when it is not a timeline
-	// member. The item ID must match the BodyItem.ID() the chunkline body
-	// endpoint serves for that member.
-	GetTimelineRemoval(ctx context.Context, keyURI string) (timeline string, itemID string, err error)
-
+	// Read
 	GetSignedDocument(ctx context.Context, uri string) (*concrnt.SignedDocument, error)
-	GetHierarchicalRecordPolicies(ctx context.Context, uri string) ([]concrnt.Policy, error)
-	GetAllCommitLogs(ctx context.Context, owner string) ([]concrnt.SignedDocument, error)
-
-	GetDistributions(ctx context.Context, uri string) ([]string, error)
 
 	GetAcknowledgeRecords(ctx context.Context, from, to, schema string, since, until *time.Time, limit int, order string) ([]QueryRow, error)
 	GetAcknowledgeRecordCounts(ctx context.Context, from, to, schema string) (map[string]int64, error)
@@ -75,6 +51,18 @@ type RecordRepository interface {
 
 	QueryByPrefix(ctx context.Context, prefix, schema, author string, since, until *time.Time, limit int, order string) ([]QueryRow, error)
 	QueryByParent(ctx context.Context, parent, schema, author string, since, until *time.Time, limit int, order string) ([]QueryRow, error)
+
+	QueryRecordSubtree(ctx context.Context, base string, includeSelf bool) ([]concrnt.SignedDocument, error)
+	GetTimelineRemoval(ctx context.Context, keyURI string) (timeline string, itemID string, err error)
+	GetHierarchicalRecordPolicies(ctx context.Context, uri string) ([]concrnt.Policy, error)
+	GetAllCommitLogs(ctx context.Context, owner string) ([]concrnt.SignedDocument, error)
+
+	GetDistributions(ctx context.Context, uri string) ([]string, error)
+
+	// Delete
+	DeleteRecordByKey(ctx context.Context, tx RepositoryTx, targetURI string) error
+	DeleteRecordByDocumentID(ctx context.Context, tx RepositoryTx, documentID string) error
+	DeleteAssociation(ctx context.Context, tx RepositoryTx, documentID string) error
 }
 
 // QueryRow is a raw list-query result row paired with its effective sort key
@@ -119,12 +107,7 @@ type KVS interface {
 
 type commitApplyResult struct {
 	result        *concrnt.SignedDocument
-	owners        []string
 	postProcesses []PostProcessAction
-	// noop marks an apply that changed nothing (accept-if-newer loss): the
-	// whole tx is rolled back — commit_log included — and success returned,
-	// so rejected-as-older documents never enter the history.
-	noop bool
 }
 
 type RecordUsecase struct {
@@ -163,16 +146,6 @@ func NewRecordUsecase(
 		kvs:       kvs,
 		cache:     cache.New(10*time.Minute, 15*time.Minute),
 	}
-}
-
-// documentIDFor derives a document's content+time CDID, the id it is stored
-// under. It is time-prefixed and content-hashed, so string comparison orders
-// documents by createdAt with a deterministic content tiebreaker.
-func documentIDFor(document string, createdAt time.Time) string {
-	hash := concrnt.GetHash([]byte(document))
-	var hash10 [10]byte
-	copy(hash10[:], hash[:10])
-	return cdid.New(hash10, createdAt).String()
 }
 
 // resolver returns uc.client as a DocumentResolver, or a nil interface when
@@ -219,8 +192,6 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		return nil, err
 	}
 
-	documentID := documentIDFor(sd.Document, doc.CreatedAt)
-
 	// CIP-3 §3.1: authority-bearing fields must not use alias-form owners
 	// (@<FQDN>) — a signed routing identifier must not depend on mutable DNS.
 	// Entry validation like the size check above: applies to every committer.
@@ -228,24 +199,6 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 	if err := rejectAliasOwners(doc); err != nil {
 		span.RecordError(err)
 		return nil, err
-	}
-
-	// A document already in commit_logs was fully applied once; re-delivery
-	// (client retry, federation redelivery, dump re-import) is a no-op
-	// success. This is also the replay guard: deleted and superseded
-	// documents stay in commit_logs, so a captured copy can't be replayed
-	// back in. Once a gc'd commit_log falls out, the backdate window below
-	// rejects the document instead. Checked before signature verification —
-	// documentID is derived from the full document bytes, so a hit reveals
-	// nothing the requester doesn't already hold, and verification can be
-	// expensive (remote subkey fetches).
-	alreadyCommitted, err := uc.repo.HasCommitLog(ctx, documentID)
-	if err != nil {
-		span.RecordError(err)
-		return nil, err
-	}
-	if alreadyCommitted {
-		return &sd, nil
 	}
 
 	serviceAccountType, _ := ctx.Value(interop.ServiceAccountTypeCtxKey).(string)
@@ -390,20 +343,20 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 	switch doc.Kind {
 	case "entity":
 		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
-			return uc.saveEntity(ctx, tx, documentID, sd)
+			return uc.saveEntity(ctx, tx, ip, sd)
 		}
 
 	case "record":
 		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
-			return uc.createRecord(ctx, tx, documentID, ip, *requester, doc, sd, mode)
+			return uc.createRecord(ctx, tx, ip, *requester, doc, sd, mode)
 		}
 
 	case "association":
 		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
-			return uc.createAssociation(ctx, tx, documentID, ip, *requester, doc, sd, mode)
+			return uc.createAssociation(ctx, tx, ip, *requester, doc, sd, mode)
 		}
 
-	case "ack":
+	case "ack", "acked", "unack", "unacked":
 		referrer := GetReferrerFromReferences(sd, requester.CCKV())
 		targetUserID := *doc.Associate
 		if referrer != nil {
@@ -415,23 +368,9 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 			return nil, err
 		}
 		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
-			return uc.acknowledge(ctx, tx, documentID, ip, *requester, *targetUser, doc, sd, mode)
+			return uc.processAck(ctx, tx, ip, *requester, *targetUser, doc, sd, mode)
 		}
 
-	case "unack":
-		referrer := GetReferrerFromReferences(sd, requester.CCKV())
-		targetUserID := *doc.Associate
-		if referrer != nil {
-			targetUserID = targetUserID + "@" + *referrer
-		}
-		targetUser, err := uc.GetEntity(ctx, targetUserID)
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
-		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
-			return uc.unacknowledge(ctx, tx, documentID, ip, *requester, *targetUser, doc, sd, mode)
-		}
 	case "delete":
 		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
 			return uc.deleteRecord(ctx, tx, *requester, sd, mode)
@@ -441,6 +380,8 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		span.RecordError(err)
 		return nil, err
 	}
+
+	//  ** start transatction **
 
 	tx, err := uc.repo.BeginTx(ctx)
 	if err != nil {
@@ -455,26 +396,8 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		}
 	}()
 
-	if err := uc.repo.CreateCommitLog(ctx, tx, documentID, ip, sd.Document, sd.Proof); err != nil {
-		span.RecordError(err)
-		return nil, err
-	}
-
 	applyResult, err := applyCommit(tx)
 	if err != nil {
-		span.RecordError(err)
-		return nil, err
-	}
-
-	// Nothing was applied (accept-if-newer loss): let the deferred rollback
-	// discard the tx — commit_log included — and just report success.
-	if applyResult.noop {
-		slog.Info("commit no-op (accept-if-newer loss)",
-			"documentID", documentID, "kind", doc.Kind, "author", doc.Author)
-		return applyResult.result, nil
-	}
-
-	if err := uc.repo.CreateCommitOwners(ctx, tx, documentID, applyResult.owners); err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
@@ -551,7 +474,7 @@ func rejectAliasOwners(doc concrnt.Document[any]) error {
 	return nil
 }
 
-func (uc *RecordUsecase) saveEntity(ctx context.Context, tx RepositoryTx, documentID string, sd concrnt.SignedDocument) (*commitApplyResult, error) {
+func (uc *RecordUsecase) saveEntity(ctx context.Context, tx RepositoryTx, ip string, sd concrnt.SignedDocument) (*commitApplyResult, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.SaveEntity")
 	defer span.End()
 
@@ -561,39 +484,6 @@ func (uc *RecordUsecase) saveEntity(ctx context.Context, tx RepositoryTx, docume
 		return nil, err
 	}
 
-	// Accept-if-newer fast path: an entity document only replaces the stored
-	// one when its documentID is greater. documentID is a time-prefixed,
-	// content-hashed, sortable CDID, so this orders by createdAt and breaks
-	// exact-createdAt ties deterministically (both federated servers converge
-	// on the same winner). Older-or-equal replays (e.g. re-running a
-	// migration/import, where the same document reproduces the same documentID)
-	// succeed as a no-op here, skipping the registration/alias checks below so
-	// stale replays can't fail on them. CreateEntity re-checks the same
-	// ordering under a row lock, so this check is only an optimization, not the
-	// authoritative guard against concurrent writers.
-	existing, err := uc.residence.GetEntityByCCID(ctx, entity.Author)
-	if err != nil && !errors.Is(err, domain.ErrNotFound) {
-		span.RecordError(err)
-		return nil, err
-	}
-	if existing != nil && existing.SignedDocument != nil {
-		var existingDoc concrnt.Document[schemas.Entity]
-		if err := json.Unmarshal([]byte(existing.SignedDocument.Document), &existingDoc); err != nil {
-			// corrupt stored document: log and let the incoming one overwrite it
-			slog.Error("failed to decode stored entity document, overwriting", "ccid", entity.Author, "error", err.Error())
-		} else if documentID <= documentIDFor(existing.SignedDocument.Document, existingDoc.CreatedAt) {
-			return &commitApplyResult{result: &sd, noop: true}, nil
-		}
-	}
-
-	// CIP-0 §9: only interact with servers on the same layer. Fail-closed: an
-	// entity is only stored when its home server resolves and is green (same
-	// layer, not tagged _blocked). For the local domain Resolve returns
-	// GetThisServer, which is trivially green.
-	// None-proof documents are exempt: they only reach here via the system
-	// service account (Verify rejects them for everyone else), and migration
-	// imports replay historical entities whose home servers may be offline or
-	// still on v1.
 	if sd.Proof.Type != concrnt.ProofTypeNone {
 		entityServer, err := uc.server.Resolve(ctx, entity.Value.Domain, nil)
 		if err != nil {
@@ -649,18 +539,24 @@ func (uc *RecordUsecase) saveEntity(ctx context.Context, tx RepositoryTx, docume
 		}
 	}
 
-	applied, err := uc.repo.CreateEntity(ctx, tx, entity.Author, entity.Value.Alias, entity.Value.Domain, documentID)
+	documentID, err := sd.CDID()
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
-	// Lost the newer-wins recheck under the row lock to a concurrent writer:
-	// same accept-if-newer no-op as the fast path above.
-	if !applied {
-		return &commitApplyResult{result: &sd, noop: true}, nil
+
+	if err := uc.repo.CreateCommitLog(ctx, tx, documentID, ip, sd.Document, sd.Proof, entity.Author); err != nil {
+		span.RecordError(err)
+		return nil, err
 	}
 
-	return &commitApplyResult{result: &sd, owners: []string{entity.Author}}, nil
+	_, err = uc.repo.CreateEntity(ctx, tx, entity.Author, entity.Value.Alias, entity.Value.Domain, documentID)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	return &commitApplyResult{result: &sd}, nil
 }
 
 func distributionsFromPtr(distributions *[]string) []string {
@@ -736,23 +632,6 @@ func (uc *RecordUsecase) createReferenceDistributionActions(ctx context.Context,
 	return postProcesses, nil
 }
 
-// deleteRecord handles both a plain delete and the trailing-asterisk range
-// notation ("...item*" = item plus its subtree, "...item/*" = subtree only) —
-// a plain delete is simply a range whose enumeration is the single addressed
-// document. When this server is authoritative for the target key, the target
-// rows are removed and the delete is fanned out to every distribute
-// destination; on the receiving (non-authoritative) side the targets are
-// recovered from References. In both cases the distribute reference records
-// this server holds (created by createReferenceDistributionActions) are
-// deleted in the same transaction and advertised via /chunkline/removed, and
-// a delete that concerns neither the target key nor any locally-held
-// distributed copy is a no-op success. The delete policy is evaluated on
-// every authoritative target before anything is removed, and any failure —
-// including a single policy denial — makes the commit transaction roll back
-// in full, commitlog included: deletion is all-or-nothing. The one exception
-// is a policy denial on a reference-record sweep: that row is skipped (kept,
-// the pre-sweep status quo), so a destination timeline's policy can never
-// block deleting the record itself.
 func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requester domain.Entity, sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.Delete")
 	defer span.End()
@@ -780,11 +659,6 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 
 	authoritative := targetHost == uc.config.FQDN
 
-	// enumerate the targets: the stored subtree/document when this server is
-	// authoritative for the target key, the References entries otherwise (for
-	// a range the origin server enqueues one delivery job per deleted target,
-	// each carrying that target in References, so matching References against
-	// the range is how a receiving server learns the target list)
 	var targets []concrnt.SignedDocument
 	var targetURIs []string // per-target address (cckv/ccfs URI) deletion and policy key on
 	if authoritative {
@@ -826,7 +700,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 		// act on — pass it through as a no-op success (commitlog included, so
 		// a later delivery that does carry the targets is not deduplicated away)
 		if len(targetURIs) == 0 {
-			return &commitApplyResult{result: &sd, noop: true}, nil
+			return &commitApplyResult{result: &sd}, nil
 		}
 		for _, targetURI := range targetURIs {
 			targets = append(targets, sd.References[targetURI])
@@ -982,11 +856,16 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 				span.RecordError(err)
 				return nil, err
 			}
+			documentID, err := targetSD.CDID()
+			if err != nil {
+				span.RecordError(err)
+				return nil, err
+			}
 			href = concrnt.CCURI{
 				Scheme: "ccfs",
 				Owner:  parsedAssociate.Owner,
 				Type:   concrnt.CCFSTypeConcrnt,
-				CDID:   documentIDFor(targetSD.Document, targetDoc.CreatedAt),
+				CDID:   documentID,
 			}.String()
 		}
 		refSegment := cdid.MakeHash([]byte(href)).String()
@@ -1162,7 +1041,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 
 	// targets are URI-ordered, so with includeSelf the base record itself
 	// leads and becomes the reported result
-	return &commitApplyResult{result: &targets[0], owners: uc.localEntityOwners(ctx, requester), postProcesses: postProcesses}, nil
+	return &commitApplyResult{result: &targets[0], postProcesses: postProcesses}, nil
 }
 
 // parseRangeDeleteTarget detects the trailing-asterisk range notation on a
@@ -1197,7 +1076,7 @@ func parseRangeDeleteTarget(targetURI string) (base string, includeSelf bool, is
 	return base, includeSelf, true, nil
 }
 
-func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, documentID string, ip string, requester domain.Entity, parsed concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
+func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, ip string, requester domain.Entity, parsed concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.CreateRecord")
 	defer span.End()
 
@@ -1217,18 +1096,6 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
-		}
-		// Accept-if-newer fast path (CIP-3 §3.4), same rule as saveEntity: a
-		// document only replaces the stored one when its documentID (time-
-		// prefixed, content-hashed CDID) is greater. Older-or-equal replays
-		// succeed as a no-op before policy eval and key validation, so a stale
-		// replay can't fail on checks that changed since — and, critically,
-		// can't roll the key back or tombstone the newer stored version.
-		// CreateRecord re-checks the same ordering under the RecordKey row
-		// lock, so this check is only an optimization, not the authoritative
-		// guard against concurrent writers.
-		if documentID <= documentIDFor(existingSD.Document, existingDoc.CreatedAt) {
-			return &commitApplyResult{result: &sd, noop: true}, nil
 		}
 		action = "record:update"
 		policySelf = existingDoc
@@ -1332,17 +1199,17 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 		}
 	}
 
-	resultURI := parsed.Key
-	applied, err := uc.repo.CreateRecord(ctx, tx, documentID, parsed.Key, parsedKey.Owner, parsed.Author, schema, parsed.OnUpdate, policies, distributions, redirect, createdAt)
+	documentID, err := sd.CDID()
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
-	// A concurrent commit won the key between the fast-path check above and
-	// the row lock: the stored record is newer-or-equal, so this one is the
-	// same accept-if-newer no-op as the fast path.
-	if !applied {
-		return &commitApplyResult{result: &sd, noop: true}, nil
+
+	resultURI := parsed.Key
+	_, err = uc.repo.CreateRecord(ctx, tx, documentID, parsed.Key, parsedKey.Owner, parsed.Author, schema, parsed.OnUpdate, policies, distributions, redirect, createdAt)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
 	}
 
 	postProcesses := []PostProcessAction{}
@@ -1369,12 +1236,6 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 		postProcesses = append(postProcesses, actions...)
 	}
 
-	owners, err := uc.localCommitOwners(ctx, parsedKey.Owner)
-	if err != nil {
-		span.RecordError(err)
-		return nil, err
-	}
-
 	sd.CCKV = &parsed.Key
 	ccfs := concrnt.CCURI{
 		Scheme: "ccfs",
@@ -1385,10 +1246,10 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, docu
 
 	sd.CCFS = &ccfs
 
-	return &commitApplyResult{result: &sd, owners: owners, postProcesses: postProcesses}, nil
+	return &commitApplyResult{result: &sd, postProcesses: postProcesses}, nil
 }
 
-func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx, documentID string, ip string, requester domain.Entity, parsed concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
+func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx, ip string, requester domain.Entity, parsed concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.CreateAssociation")
 	defer span.End()
 
@@ -1433,6 +1294,12 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 	}
 	if targetURI.Scheme != "cckv" {
 		err := fmt.Errorf("invalid associate: document associate scheme must be cckv")
+		span.RecordError(err)
+		return nil, err
+	}
+
+	documentID, err := sd.CDID()
+	if err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
@@ -1571,41 +1438,9 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 		}
 	}
 
-	owners := []string{}
-	if isLocal {
-		owners = append(owners, targetURI.Owner)
-	}
-
 	sd.CCFS = &ccfs
 
-	return &commitApplyResult{result: &sd, owners: owners, postProcesses: postProcesses}, nil
-}
-
-func (uc *RecordUsecase) localCommitOwners(ctx context.Context, candidates ...string) ([]string, error) {
-	owners := make([]string, 0, len(candidates))
-	seen := map[string]struct{}{}
-	for _, candidate := range candidates {
-		if _, ok := seen[candidate]; ok {
-			continue
-		}
-		seen[candidate] = struct{}{}
-
-		if concrnt.IsCCID(candidate) {
-			isLocal, err := uc.IsLocalEntityByCCID(ctx, candidate)
-			if err != nil {
-				return nil, err
-			}
-			if isLocal {
-				owners = append(owners, candidate)
-			}
-		}
-		if concrnt.IsCSID(candidate) {
-			if candidate == uc.config.FQDN {
-				owners = append(owners, candidate)
-			}
-		}
-	}
-	return owners, nil
+	return &commitApplyResult{result: &sd, postProcesses: postProcesses}, nil
 }
 
 func (uc *RecordUsecase) localEntityOwners(ctx context.Context, candidates ...domain.Entity) []string {
@@ -1623,178 +1458,156 @@ func (uc *RecordUsecase) localEntityOwners(ctx context.Context, candidates ...do
 	return owners
 }
 
-func (uc *RecordUsecase) acknowledge(ctx context.Context, tx RepositoryTx, documentID string, ip string, requester domain.Entity, targetUser domain.Entity, doc concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
+func (uc *RecordUsecase) processAck(ctx context.Context, tx RepositoryTx, ip string, from domain.Entity, to domain.Entity, doc concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.Acknowledge")
 	defer span.End()
 
-	applied := true
-	if uc.IsLocalEntity(ctx, &requester) || uc.IsLocalEntity(ctx, &targetUser) {
-		parsedAssociate, err := concrnt.ParseCCURI(*doc.Associate)
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
-		if parsedAssociate.Scheme != "cckv" {
-			err := fmt.Errorf("invalid associate: document associate scheme must be cckv")
-			span.RecordError(err)
-			return nil, err
-		}
-
-		applied, err = uc.repo.Acknowledge(ctx, tx, documentID, doc.Author, parsedAssociate.Owner, doc.Schema, doc.CreatedAt)
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
-	}
-
-	// CIP-10 §4 accept-if-newer loss: the stored (from, to, schema) state
-	// already carries a newer-or-equal document, so this one changes nothing —
-	// no proxy delivery, no distribution, and the commit tx rolls back.
-	if !applied {
-		return &commitApplyResult{result: &sd, noop: true}, nil
-	}
-
-	ccfs := concrnt.CCURI{
-		Scheme: "ccfs",
-		Owner:  targetUser.ID,
-		Type:   concrnt.CCFSTypeConcrnt,
-		CDID:   documentID,
-	}.String()
-
 	postProcesses := []PostProcessAction{}
-	if !uc.IsLocalEntity(ctx, &targetUser) && mode == domain.CommitModeExecute {
 
-		requesterSD, err := uc.GetSigned(ctx, requester.CCKVWithHint())
+	if uc.IsLocalEntity(ctx, &from) && (doc.Kind == "ack" || doc.Kind == "unack") { // create ack
+
+		documentID, err := sd.CDID()
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
 		}
 
-		distSD := concrnt.SignedDocument{
-			Document: sd.Document,
-			Proof:    sd.Proof,
-			References: map[string]concrnt.SignedDocument{
-				requester.CCKV(): *requesterSD,
-			},
+		if err := uc.repo.CreateCommitLog(ctx, tx, documentID, ip, sd.Document, sd.Proof, from.ID); err != nil {
+			span.RecordError(err)
+			return nil, err
 		}
-		postProcesses = append(postProcesses,
-			func(ctx context.Context) error {
-				return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
-					Host:    targetUser.Domain,
-					Payload: distSD,
-					Local:   domain.DeliveryLocalNone,
-					Remote:  domain.DeliveryRemoteCommit,
-				})
-			},
-		)
-	}
 
-	if uc.IsLocalEntity(ctx, &requester) {
-		actions, err := uc.createReferenceDistributionActions(ctx, ip, doc.Author, ccfs, requester, sd, distributionsFromPtr(doc.Distributes), mode)
+		if doc.Kind == "ack" {
+			_, err = uc.repo.Acknowledge(ctx, tx, documentID, from.ID, to.ID, doc.Schema, doc.CreatedAt)
+			if err != nil {
+				span.RecordError(err)
+				return nil, err
+			}
+		} else {
+			_, err = uc.repo.UnAcknowledge(ctx, tx, documentID, from.ID, to.ID, doc.Schema, doc.CreatedAt)
+			if err != nil {
+				span.RecordError(err)
+				return nil, err
+			}
+		}
+
+		// フォロー通知などを生成
+		ccfs := concrnt.CCURI{
+			Scheme: "ccfs",
+			Owner:  to.ID,
+			Type:   concrnt.CCFSTypeConcrnt,
+			CDID:   documentID,
+		}.String()
+
+		actions, err := uc.createReferenceDistributionActions(ctx, ip, doc.Author, ccfs, from, sd, distributionsFromPtr(doc.Distributes), mode)
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
 		}
 		postProcesses = append(postProcesses, actions...)
+
+	} else {
+		// ignore. because...
+		// if remote: from should be the local entity.
+		// if acked: acked document does not create ack
 	}
 
-	owners := []string{}
-	if uc.IsLocalEntity(ctx, &requester) {
-		owners = append(owners, requester.ID)
-	}
-	if uc.IsLocalEntity(ctx, &targetUser) && !slices.Contains(owners, targetUser.ID) {
-		owners = append(owners, targetUser.ID)
-	}
+	if uc.IsLocalEntity(ctx, &to) { // create acked
 
-	sd.CCFS = &ccfs
-
-	return &commitApplyResult{result: &sd, owners: owners, postProcesses: postProcesses}, nil
-}
-
-func (uc *RecordUsecase) unacknowledge(ctx context.Context, tx RepositoryTx, documentID string, ip string, requester domain.Entity, targetUser domain.Entity, doc concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
-	ctx, span := tracer.Start(ctx, "Usecase.Record.UnAcknowledge")
-	defer span.End()
-
-	applied := true
-	if uc.IsLocalEntity(ctx, &requester) || uc.IsLocalEntity(ctx, &targetUser) {
-		parsedAssociate, err := concrnt.ParseCCURI(*doc.Associate)
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
+		ackedSD := sd
+		if doc.Kind == "ack" || doc.Kind == "unack" {
+			var doc concrnt.Document[json.RawMessage]
+			err := json.Unmarshal([]byte(sd.Document), &doc)
+			if err != nil {
+				span.RecordError(err)
+				return nil, err
+			}
+			if doc.Kind == "ack" {
+				doc.Kind = "acked"
+			} else {
+				doc.Kind = "unacked"
+			}
+			docBytes, err := json.Marshal(doc)
+			if err != nil {
+				span.RecordError(err)
+				return nil, err
+			}
+			ackedSD = concrnt.SignedDocument{
+				Document: string(docBytes),
+				Proof: concrnt.Proof{
+					Type:     concrnt.ProofTypeDocumentDirect,
+					Document: &sd.Document,
+					Proof:    &sd.Proof,
+				},
+			}
 		}
-		if parsedAssociate.Scheme != "cckv" {
-			err := fmt.Errorf("invalid associate: document associate scheme must be cckv")
-			span.RecordError(err)
-			return nil, err
-		}
 
-		applied, err = uc.repo.UnAcknowledge(ctx, tx, documentID, doc.Author, parsedAssociate.Owner, doc.Schema, doc.CreatedAt)
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
-	}
-
-	// Same accept-if-newer loss handling as acknowledge: an older unack must
-	// not roll a newer stored transition back, nor trigger any side effects.
-	if !applied {
-		return &commitApplyResult{result: &sd, noop: true}, nil
-	}
-
-	ccfs := concrnt.CCURI{
-		Scheme: "ccfs",
-		Owner:  targetUser.ID,
-		Type:   concrnt.CCFSTypeConcrnt,
-		CDID:   documentID,
-	}.String()
-
-	postProcesses := []PostProcessAction{}
-	if !uc.IsLocalEntity(ctx, &targetUser) && mode == domain.CommitModeExecute {
-		requesterSD, err := uc.GetSigned(ctx, requester.CCKVWithHint())
+		// commit
+		documentID, err := ackedSD.CDID()
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
 		}
 
-		distSD := concrnt.SignedDocument{
-			Document: sd.Document,
-			Proof:    sd.Proof,
-			References: map[string]concrnt.SignedDocument{
-				requester.CCKV(): *requesterSD,
-			},
-		}
-		postProcesses = append(postProcesses,
-			func(ctx context.Context) error {
-				return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
-					Host:    targetUser.Domain,
-					Payload: distSD,
-					Local:   domain.DeliveryLocalNone,
-					Remote:  domain.DeliveryRemoteCommit,
-				})
-			},
-		)
-	}
-
-	if uc.IsLocalEntity(ctx, &requester) {
-		actions, err := uc.createReferenceDistributionActions(ctx, ip, doc.Author, ccfs, requester, sd, distributionsFromPtr(doc.Distributes), mode)
-		if err != nil {
+		if err := uc.repo.CreateCommitLog(ctx, tx, documentID, ip, sd.Document, sd.Proof, to.ID); err != nil {
 			span.RecordError(err)
 			return nil, err
 		}
-		postProcesses = append(postProcesses, actions...)
+
+		switch doc.Kind {
+		case "acked":
+			_, err = uc.repo.Acknowledged(ctx, tx, documentID, from.ID, to.ID, doc.Schema, doc.CreatedAt)
+			if err != nil {
+				span.RecordError(err)
+				return nil, err
+			}
+		case "unacked":
+			_, err = uc.repo.UnAcknowledged(ctx, tx, documentID, from.ID, to.ID, doc.Schema, doc.CreatedAt)
+			if err != nil {
+				span.RecordError(err)
+				return nil, err
+			}
+		default:
+			err := errors.New("unsupported document kind for acked: " + doc.Kind)
+			span.RecordError(err)
+			return nil, err
+		}
+
+	} else {
+		if doc.Kind == "ack" || doc.Kind == "unack" {
+			// deriver to remote server
+
+			requesterSD, err := uc.GetSigned(ctx, from.CCKVWithHint())
+			if err != nil {
+				span.RecordError(err)
+				return nil, err
+			}
+
+			distSD := concrnt.SignedDocument{
+				Document: sd.Document,
+				Proof:    sd.Proof,
+				References: map[string]concrnt.SignedDocument{
+					from.CCKV(): *requesterSD,
+				},
+			}
+			postProcesses = append(postProcesses,
+				func(ctx context.Context) error {
+					return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
+						Host:    to.Domain,
+						Payload: distSD,
+						Local:   domain.DeliveryLocalNone,
+						Remote:  domain.DeliveryRemoteCommit,
+					})
+				},
+			)
+
+		} else {
+			// 外に転送できるのはackのみ
+		}
 	}
 
-	owners := []string{}
-	if uc.IsLocalEntity(ctx, &requester) {
-		owners = append(owners, requester.ID)
-	}
-	if uc.IsLocalEntity(ctx, &targetUser) && !slices.Contains(owners, targetUser.ID) {
-		owners = append(owners, targetUser.ID)
-	}
+	return &commitApplyResult{result: &sd, postProcesses: postProcesses}, nil
 
-	sd.CCFS = &ccfs
-
-	return &commitApplyResult{result: &sd, owners: owners, postProcesses: postProcesses}, nil
 }
 
 func (uc *RecordUsecase) GetEntity(ctx context.Context, uri string) (*domain.Entity, error) {

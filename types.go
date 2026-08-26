@@ -1,12 +1,16 @@
 package concrnt
 
 import (
+	"encoding/json"
 	"time"
+
+	"github.com/concrnt/concrnt/cdid"
 )
 
 const (
 	ProofTypeEcrecover         = "concrnt-ecrecover-direct"
 	ProofTypeDocumentReference = "document-reference"
+	ProofTypeDocumentDirect    = "document-direct"
 	ProofTypeSubkey            = "concrnt-ecrecover-subkey"
 	ProofTypeNone              = "none"
 )
@@ -93,6 +97,8 @@ type Proof struct {
 	Signature *string `json:"signature,omitempty"`
 	Href      *string `json:"href,omitempty"`
 	Key       *string `json:"key,omitempty"`
+	Document  *string `json:"document,omitempty"`
+	Proof     *Proof  `json:"proof,omitempty"`
 }
 
 type SignedDocument struct {
@@ -109,6 +115,24 @@ type SignedDocument struct {
 	// Event.PublicView strips it at the websocket edge and it is never part of
 	// commit responses, query results or federation payloads.
 	IsPublic *bool `json:"isPublic,omitempty"`
+}
+
+func (sd *SignedDocument) ParsedDocument() (Document[any], error) {
+	var doc Document[any]
+	err := json.Unmarshal([]byte(sd.Document), &doc)
+	return doc, err
+}
+
+func (sd *SignedDocument) CDID() (string, error) {
+	doc, err := sd.ParsedDocument()
+	if err != nil {
+		return "", err
+	}
+
+	hash := GetHash([]byte(sd.Document))
+	var hash10 [10]byte
+	copy(hash10[:], hash[:10])
+	return cdid.New(hash10, doc.CreatedAt).String(), nil
 }
 
 // QueryResult is the paged envelope returned by the query/associations/

@@ -7,20 +7,12 @@ import (
 )
 
 // Indexes:
-//   - PRIMARY KEY (commit_log_id, owner): de-duplicates owner rows for a commit;
-//     used by postgres.RecordRepository.CreateCommitOwners.
-//   - idx_commit_owners_owner_commit_log_id (owner, commit_log_id): owner-first
-//     dump lookup; used by postgres.RecordRepository.GetAllCommitLogs.
-type CommitOwner struct {
-	CommitLogID string    `json:"commit_log_id" gorm:"type:text;primaryKey;index:idx_commit_owners_owner_commit_log_id,priority:2"`
-	CommitLog   CommitLog `json:"-" gorm:"constraint:OnDelete:CASCADE;"`
-	Owner       string    `json:"owner" gorm:"type:text;primaryKey;index:idx_commit_owners_owner_commit_log_id,priority:1"`
-}
-
-// Indexes:
 //   - PRIMARY KEY (id): canonical commit/document lookup; used by record,
 //     entity, ack, association foreign keys and direct ccfs lookups in
 //     postgres.RecordRepository.GetSignedDocument/Delete.
+//   - idx_commit_logs_owner_c_date (owner, c_date): owner-scoped dump scan;
+//     used by postgres.RecordRepository.GetAllCommitLogs and
+//     postgres.ResidenceRepository.MarkCommitLogsGcCandidateByOwner.
 //   - idx_commit_logs_gc_candidate (gc_candidate): marks commits for later GC
 //     scans; set by postgres.RecordRepository.CreateRecord when replacing a key
 //     and by postgres.ResidenceRepository.MarkCommitLogsGcCandidateByOwner on
@@ -30,8 +22,9 @@ type CommitLog struct {
 	IP          string    `json:"ip" gorm:"type:text"`
 	Document    string    `json:"document" gorm:"type:text"`
 	Proof       string    `json:"proof" gorm:"type:text"`
+	Owner       string    `json:"owner" gorm:"type:text;index:idx_commit_logs_owner_c_date,priority:1"`
 	GcCandidate bool      `json:"gcCandidate" gorm:"type:boolean;not null;default:false;index"`
-	CDate       time.Time `json:"cdate" gorm:"type:timestamp with time zone;not null;default:clock_timestamp()"`
+	CDate       time.Time `json:"cdate" gorm:"type:timestamp with time zone;not null;default:clock_timestamp();index:idx_commit_logs_owner_c_date,priority:2"`
 }
 
 // Indexes:
@@ -75,9 +68,9 @@ type RecordKey struct {
 //     plus timestamp predicate support for record_keys-to-records joins that still
 //     need records.created_at.
 type Record struct {
-	DocumentID    string         `json:"id" gorm:"primaryKey;type:text;index:idx_records_schema_created_at_document_id,priority:3;index:idx_records_author_created_at_document_id,priority:3;index:idx_records_document_id_created_at,priority:1"`
-	Document      CommitLog      `json:"documnet" gorm:"foreignKey:DocumentID;references:ID;constraint:OnDelete:CASCADE;"`
-	Owner         string         `json:"owner" gorm:"type:text"`
+	DocumentID string    `json:"id" gorm:"primaryKey;type:text;index:idx_records_schema_created_at_document_id,priority:3;index:idx_records_author_created_at_document_id,priority:3;index:idx_records_document_id_created_at,priority:1"`
+	Document   CommitLog `json:"documnet" gorm:"foreignKey:DocumentID;references:ID;constraint:OnDelete:CASCADE;"`
+	Owner      string    `json:"owner" gorm:"type:text"`
 	// document author; NULL only on rows written before the column existed
 	// (backfilled by conctl op repair-record-authors)
 	Author        string         `json:"author" gorm:"type:text;index:idx_records_author_created_at_document_id,priority:1"`
@@ -105,6 +98,33 @@ type Record struct {
 //     schema-filtered ack list/count lookup; used by
 //     postgres.RecordRepository.GetAcknowledge*.
 type Ack struct {
+	From   string `json:"from" gorm:"type:text;index:idx_ack_from_to_schema,unique;index:idx_acks_from_valid_created_at,priority:1"`
+	To     string `json:"to" gorm:"type:text;index:idx_ack_from_to_schema,unique;index:idx_acks_to_valid_created_at,priority:1"`
+	Schema string `json:"schema" gorm:"type:text;index:idx_ack_from_to_schema,unique;index:idx_acks_schema_valid_created_at,priority:1"`
+
+	DocumentID string    `json:"id" gorm:"primaryKey;type:text"`
+	Document   CommitLog `json:"-" gorm:"foreignKey:DocumentID;references:ID;constraint:OnDelete:CASCADE;"`
+
+	Valid bool `json:"valid" gorm:"type:boolean;not null;default:true;index:idx_acks_from_valid_created_at,priority:2;index:idx_acks_to_valid_created_at,priority:2;index:idx_acks_schema_valid_created_at,priority:2"`
+
+	CreatedAt time.Time `json:"createdAt" gorm:"type:timestamp with time zone;not null;index:idx_acks_from_valid_created_at,priority:3;index:idx_acks_to_valid_created_at,priority:3;index:idx_acks_schema_valid_created_at,priority:3"` // user-provided creation time
+	CDate     time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
+}
+
+// Indexes:
+//   - PRIMARY KEY (document_id): one ack state per commit document and commit-log
+//     foreign-key target.
+//   - idx_ack_from_to_schema UNIQUE (from, to, schema): idempotent ack state
+//     upsert; used by postgres.RecordRepository.saveAck and filtered by
+//     GetAcknowledgeRecords/GetAcknowledgeRecordCounts.
+//   - idx_acks_from_valid_created_at (from, valid, created_at): from-filtered
+//     ack list/count lookup; used by postgres.RecordRepository.GetAcknowledge*.
+//   - idx_acks_to_valid_created_at (to, valid, created_at): to-filtered ack
+//     list/count lookup; used by postgres.RecordRepository.GetAcknowledge*.
+//   - idx_acks_schema_valid_created_at (schema, valid, created_at):
+//     schema-filtered ack list/count lookup; used by
+//     postgres.RecordRepository.GetAcknowledge*.
+type Acked struct {
 	From   string `json:"from" gorm:"type:text;index:idx_ack_from_to_schema,unique;index:idx_acks_from_valid_created_at,priority:1"`
 	To     string `json:"to" gorm:"type:text;index:idx_ack_from_to_schema,unique;index:idx_acks_to_valid_created_at,priority:1"`
 	Schema string `json:"schema" gorm:"type:text;index:idx_ack_from_to_schema,unique;index:idx_acks_schema_valid_created_at,priority:1"`

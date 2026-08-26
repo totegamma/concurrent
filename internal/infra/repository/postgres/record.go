@@ -98,27 +98,7 @@ func (r *RecordRepository) CreateEntity(
 	return result.RowsAffected > 0, nil
 }
 
-func (r *RecordRepository) HasCommitLog(ctx context.Context, id string) (bool, error) {
-	ctx, span := tracer.Start(ctx, "Repository.Record.HasCommitLog")
-	defer span.End()
-
-	var commitLog models.CommitLog
-	err := r.db.WithContext(ctx).
-		Select("id").
-		Where("id = ?", id).
-		Take(&commitLog).Error
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return false, nil
-	}
-	if err != nil {
-		span.RecordError(err)
-		return false, err
-	}
-
-	return true, nil
-}
-
-func (r *RecordRepository) CreateCommitLog(ctx context.Context, tx usecase.RepositoryTx, id string, ip string, document string, proof any) error {
+func (r *RecordRepository) CreateCommitLog(ctx context.Context, tx usecase.RepositoryTx, id string, ip string, document string, proof any, owner string) error {
 	ctx, span := tracer.Start(ctx, "Repository.Record.CreateCommitLog")
 	defer span.End()
 
@@ -138,6 +118,7 @@ func (r *RecordRepository) CreateCommitLog(ctx context.Context, tx usecase.Repos
 		ID:       id,
 		IP:       ip,
 		Document: document,
+		Owner:    owner,
 		Proof:    string(proofBytes),
 	}
 
@@ -146,33 +127,6 @@ func (r *RecordRepository) CreateCommitLog(ctx context.Context, tx usecase.Repos
 	}).Create(&commitLog).Error; err != nil {
 		span.RecordError(err)
 		return err
-	}
-
-	return nil
-}
-
-func (r *RecordRepository) CreateCommitOwners(ctx context.Context, tx usecase.RepositoryTx, id string, owners []string) error {
-	ctx, span := tracer.Start(ctx, "Repository.Record.CreateCommitOwners")
-	defer span.End()
-
-	db, err := getRecordTx(ctx, tx)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-
-	for _, owner := range owners {
-		err := db.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "commit_log_id"}, {Name: "owner"}},
-			DoNothing: true,
-		}).Create(&models.CommitOwner{
-			CommitLogID: id,
-			Owner:       owner,
-		}).Error
-		if err != nil {
-			span.RecordError(err)
-			return err
-		}
 	}
 
 	return nil
@@ -338,8 +292,8 @@ func (r *RecordRepository) CreateAssociation(ctx context.Context, tx usecase.Rep
 	return result.RowsAffected > 0, nil
 }
 
-func (r *RecordRepository) Acknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
-	ctx, span := tracer.Start(ctx, "Repository.Record.Acknowledge")
+func (r *RecordRepository) processAck(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time, valid bool) (bool, error) {
+	ctx, span := tracer.Start(ctx, "Repository.Record.processAck")
 	defer span.End()
 
 	db, err := getRecordTx(ctx, tx)
@@ -352,7 +306,7 @@ func (r *RecordRepository) Acknowledge(ctx context.Context, tx usecase.Repositor
 		To:         to,
 		Schema:     schema,
 		DocumentID: documentID,
-		Valid:      true,
+		Valid:      valid,
 		CreatedAt:  createdAt,
 	}
 
@@ -362,7 +316,7 @@ func (r *RecordRepository) Acknowledge(ctx context.Context, tx usecase.Repositor
 	// makes a replayed older ack a no-op (RowsAffected 0).
 	result := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "schema"}},
-		DoUpdates: clause.Assignments(map[string]any{"valid": true, "document_id": documentID, "created_at": createdAt}),
+		DoUpdates: clause.Assignments(map[string]any{"valid": valid, "document_id": documentID, "created_at": createdAt}),
 		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("acks.document_id < excluded.document_id")}},
 	}).Create(&ack)
 	if result.Error != nil {
@@ -374,8 +328,17 @@ func (r *RecordRepository) Acknowledge(ctx context.Context, tx usecase.Repositor
 
 }
 
+func (r *RecordRepository) Acknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
+	return r.processAck(ctx, tx, documentID, from, to, schema, createdAt, true)
+
+}
+
 func (r *RecordRepository) UnAcknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
-	ctx, span := tracer.Start(ctx, "Repository.Record.Unacknowledge")
+	return r.processAck(ctx, tx, documentID, from, to, schema, createdAt, false)
+}
+
+func (r *RecordRepository) processAcked(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time, valid bool) (bool, error) {
+	ctx, span := tracer.Start(ctx, "Repository.Record.processAcked")
 	defer span.End()
 
 	db, err := getRecordTx(ctx, tx)
@@ -383,20 +346,22 @@ func (r *RecordRepository) UnAcknowledge(ctx context.Context, tx usecase.Reposit
 		return false, err
 	}
 
-	ack := models.Ack{
+	ack := models.Acked{
 		From:       from,
 		To:         to,
 		Schema:     schema,
 		DocumentID: documentID,
-		Valid:      false,
+		Valid:      valid,
 		CreatedAt:  createdAt,
 	}
 
-	// Same accept-if-newer conditional as Acknowledge: an older unack must
-	// not roll an established newer ack back.
+	// CIP-10 §4: only a strictly newer document may move the (from, to,
+	// schema) state. document_id is a time-prefixed, lexicographically
+	// sortable CDID, so the conditional upsert keeps the newer transition and
+	// makes a replayed older ack a no-op (RowsAffected 0).
 	result := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "schema"}},
-		DoUpdates: clause.Assignments(map[string]any{"valid": false, "document_id": documentID, "created_at": createdAt}),
+		DoUpdates: clause.Assignments(map[string]any{"valid": valid, "document_id": documentID, "created_at": createdAt}),
 		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("acks.document_id < excluded.document_id")}},
 	}).Create(&ack)
 	if result.Error != nil {
@@ -406,6 +371,15 @@ func (r *RecordRepository) UnAcknowledge(ctx context.Context, tx usecase.Reposit
 
 	return result.RowsAffected > 0, nil
 
+}
+
+func (r *RecordRepository) Acknowledged(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
+	return r.processAcked(ctx, tx, documentID, from, to, schema, createdAt, true)
+
+}
+
+func (r *RecordRepository) UnAcknowledged(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
+	return r.processAcked(ctx, tx, documentID, from, to, schema, createdAt, false)
 }
 
 func (r *RecordRepository) GetHierarchicalRecordPolicies(ctx context.Context, uri string) ([]concrnt.Policy, error) {

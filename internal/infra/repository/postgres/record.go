@@ -98,6 +98,26 @@ func (r *RecordRepository) CreateEntity(
 	return result.RowsAffected > 0, nil
 }
 
+func (r *RecordRepository) HasCommitLog(ctx context.Context, id string) (bool, error) {
+	ctx, span := tracer.Start(ctx, "Repository.Record.HasCommitLog")
+	defer span.End()
+
+	var commitLog models.CommitLog
+	err := r.db.WithContext(ctx).
+		Select("id").
+		Where("id = ?", id).
+		Take(&commitLog).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return false, nil
+	}
+	if err != nil {
+		span.RecordError(err)
+		return false, err
+	}
+
+	return true, nil
+}
+
 func (r *RecordRepository) CreateCommitLog(ctx context.Context, tx usecase.RepositoryTx, id string, ip string, document string, proof any, owner string) error {
 	ctx, span := tracer.Start(ctx, "Repository.Record.CreateCommitLog")
 	defer span.End()

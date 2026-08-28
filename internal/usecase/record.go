@@ -41,6 +41,7 @@ type RecordRepository interface {
 	UnAcknowledged(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error)
 
 	// Read
+	HasCommitLog(ctx context.Context, id string) (bool, error)
 	GetSignedDocument(ctx context.Context, uri string) (*concrnt.SignedDocument, error)
 
 	GetAcknowledgeRecords(ctx context.Context, from, to, schema string, since, until *time.Time, limit int, order string) ([]QueryRow, error)
@@ -108,6 +109,7 @@ type KVS interface {
 type commitApplyResult struct {
 	result        *concrnt.SignedDocument
 	postProcesses []PostProcessAction
+	noop          bool
 }
 
 type RecordUsecase struct {
@@ -176,60 +178,49 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 	ctx, span := tracer.Start(ctx, "Usecase.Record.Commit")
 	defer span.End()
 
-	// CIP-1 §4.1: the signed serialization must not exceed 32 KiB. Checked
-	// before anything else — including the system-service-account bypass —
-	// because sd.Document is exactly what CreateCommitLog persists.
 	if len(sd.Document) > domain.MaxDocumentSize {
 		err := domain.ValidationError{Field: "document", Message: fmt.Sprintf("document exceeds the maximum size of %d bytes", domain.MaxDocumentSize)}
 		span.RecordError(err)
 		return nil, err
 	}
 
-	var doc concrnt.Document[any]
-	err := json.Unmarshal([]byte(sd.Document), &doc)
+	doc, err := sd.ParsedDocument()
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
 
-	// CIP-3 §3.1: authority-bearing fields must not use alias-form owners
-	// (@<FQDN>) — a signed routing identifier must not depend on mutable DNS.
-	// Entry validation like the size check above: applies to every committer.
-	// The resolve path (GetEntity) still accepts aliases.
 	if err := rejectAliasOwners(doc); err != nil {
 		span.RecordError(err)
 		return nil, err
 	}
 
+	documentID, err := sd.CDID()
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	alreadyCommitted, err := uc.repo.HasCommitLog(ctx, documentID)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+	if alreadyCommitted {
+		return &sd, nil
+	}
+
 	serviceAccountType, _ := ctx.Value(interop.ServiceAccountTypeCtxKey).(string)
 	isServiceAccount := serviceAccountType == "system"
 
-	// A signed createdAt is otherwise attacker-controlled, and a far-future
-	// stamp would let one document dominate every later one (e.g. entity
-	// accept-if-newer freezes on the newest createdAt). Reject too-far-future
-	// documents globally, with a generous clock-skew tolerance.
 	if doc.CreatedAt.After(time.Now().Add(domain.MaxFutureSkew)) {
 		err := domain.ValidationError{Field: "createdAt", Message: "createdAt is too far in the future"}
 		span.RecordError(err)
 		return nil, err
 	}
 
-	// System service accounts (migration/import via conctl) carry the server's
-	// own key and legitimately replay unsigned (none-proof) historical
-	// documents with backdated timestamps, so they skip signature verification
-	// and the backdate window below. Every other committer is verified:
-	//   - document-reference proofs verify against the recursively-verified
-	//     inline copy in References (the author vouching for their own
-	//     document), so commits stay valid even when the referenced document's
-	//     origin server is unreachable (e.g. mid-migration imports);
-	//   - subkey enact documents are always fetched from their authoritative
-	//     server inside Verify, so revoked subkeys can't be replayed inline.
 	if !isServiceAccount {
-		// Entity documents must be master-key signed (CIP-0 §8.2): affiliation
-		// is an account-level statement, and combined with the backdate
-		// exemption below a subkey proof would let a leaked, since-revoked
-		// subkey forge a backdated affiliation forever (CIP-13 §8 relies on
-		// the backdate window to bound exactly that).
+
 		var allowedProofs []string
 		if doc.Kind == "entity" {
 			allowedProofs = []string{concrnt.ProofTypeEcrecover}
@@ -249,17 +240,6 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 			return nil, errors.Join(domain.ValidationError{Field: "proof", Message: "signature verification failed"}, err)
 		}
 
-		// Entity documents are exempt from the backdate window: an affiliation
-		// signature is long-lived and re-presented indefinitely (federated
-		// resolution commits fetched copies, GetEntity), accept-if-newer
-		// already no-ops old replays, and the master-key requirement above
-		// keeps the leaked-subkey backdating bound of CIP-13 §8 intact.
-		// Self-service migration: an authenticated user importing their own
-		// repository dump (LocalOnlyExecute never re-federates) may replay
-		// historical documents past the backdate window — their own, and
-		// documents by others that target their content (e.g. inbound
-		// associations carried over in the dump). Signature verification
-		// still applies.
 		backdateExempt := doc.Kind == "entity"
 		if !backdateExempt && mode == domain.CommitModeLocalOnlyExecute {
 			if authenticated, ok := ctx.Value(interop.RequesterCtxKey).(domain.Entity); ok {
@@ -277,12 +257,6 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 			}
 		}
 
-		// Reject documents older than the backdate window. Together with the
-		// commit_logs check above this makes a deletion permanent against
-		// replay — a captured document is either still in commit_logs (and
-		// no-ops) or already too old to accept. This is also what keeps a
-		// future gc of flagged commit_logs safe, provided the retention
-		// period is at least MaxBackdate.
 		if !backdateExempt && doc.CreatedAt.Before(time.Now().Add(-domain.MaxBackdate)) {
 			err := domain.ValidationError{Field: "createdAt", Message: "createdAt is older than the allowed backdate window"}
 			span.RecordError(err)
@@ -400,6 +374,12 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
+	}
+
+	if applyResult.noop {
+		slog.Info("commit no-op (accept-if-newer loss)",
+			"documentID", documentID, "kind", doc.Kind, "author", doc.Author)
+		return applyResult.result, nil
 	}
 
 	if err := tx.Commit(ctx); err != nil {
@@ -1463,6 +1443,18 @@ func (uc *RecordUsecase) processAck(ctx context.Context, tx RepositoryTx, ip str
 	defer span.End()
 
 	postProcesses := []PostProcessAction{}
+	created := false
+
+	documentID, err := sd.CDID()
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	if err := uc.repo.CreateCommitLog(ctx, tx, documentID, ip, sd.Document, sd.Proof, to.ID); err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
 
 	if uc.IsLocalEntity(ctx, &from) && (doc.Kind == "ack" || doc.Kind == "unack") { // create ack
 
@@ -1478,13 +1470,13 @@ func (uc *RecordUsecase) processAck(ctx context.Context, tx RepositoryTx, ip str
 		}
 
 		if doc.Kind == "ack" {
-			_, err = uc.repo.Acknowledge(ctx, tx, documentID, from.ID, to.ID, doc.Schema, doc.CreatedAt)
+			created, err = uc.repo.Acknowledge(ctx, tx, documentID, from.ID, to.ID, doc.Schema, doc.CreatedAt)
 			if err != nil {
 				span.RecordError(err)
 				return nil, err
 			}
 		} else {
-			_, err = uc.repo.UnAcknowledge(ctx, tx, documentID, from.ID, to.ID, doc.Schema, doc.CreatedAt)
+			created, err = uc.repo.UnAcknowledge(ctx, tx, documentID, from.ID, to.ID, doc.Schema, doc.CreatedAt)
 			if err != nil {
 				span.RecordError(err)
 				return nil, err
@@ -1506,63 +1498,60 @@ func (uc *RecordUsecase) processAck(ctx context.Context, tx RepositoryTx, ip str
 		}
 		postProcesses = append(postProcesses, actions...)
 
+		// acked documentを生成・配送
+		ackedDoc, err := sd.ParsedDocument()
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+
+		if ackedDoc.Kind == "ack" {
+			ackedDoc.Kind = "acked"
+		} else {
+			ackedDoc.Kind = "unacked"
+		}
+		docBytes, err := json.Marshal(ackedDoc)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+		ackedSD := concrnt.SignedDocument{
+			Document: string(docBytes),
+			Proof: concrnt.Proof{
+				Type:     concrnt.ProofTypeDocumentDirect,
+				Document: &sd.Document,
+				Proof:    &sd.Proof,
+			},
+		}
+
+		postProcesses = append(postProcesses,
+			func(ctx context.Context) error {
+				return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
+					ResolveURI: to.CCKVWithHint(),
+					Payload:    ackedSD,
+					Local:      domain.DeliveryLocalCommit,
+					Remote:     domain.DeliveryRemoteNone,
+				})
+			},
+		)
+
 	} else {
 		// ignore. because...
 		// if remote: from should be the local entity.
 		// if acked: acked document does not create ack
 	}
 
-	if uc.IsLocalEntity(ctx, &to) { // create acked
-
-		ackedSD := sd
-		if doc.Kind == "ack" || doc.Kind == "unack" {
-			var doc concrnt.Document[json.RawMessage]
-			err := json.Unmarshal([]byte(sd.Document), &doc)
-			if err != nil {
-				span.RecordError(err)
-				return nil, err
-			}
-			if doc.Kind == "ack" {
-				doc.Kind = "acked"
-			} else {
-				doc.Kind = "unacked"
-			}
-			docBytes, err := json.Marshal(doc)
-			if err != nil {
-				span.RecordError(err)
-				return nil, err
-			}
-			ackedSD = concrnt.SignedDocument{
-				Document: string(docBytes),
-				Proof: concrnt.Proof{
-					Type:     concrnt.ProofTypeDocumentDirect,
-					Document: &sd.Document,
-					Proof:    &sd.Proof,
-				},
-			}
-		}
-
-		// commit
-		documentID, err := ackedSD.CDID()
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
-
-		if err := uc.repo.CreateCommitLog(ctx, tx, documentID, ip, sd.Document, sd.Proof, to.ID); err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
+	if uc.IsLocalEntity(ctx, &to) && (doc.Kind == "acked" || doc.Kind == "unacked") { // create acked
 
 		switch doc.Kind {
 		case "acked":
-			_, err = uc.repo.Acknowledged(ctx, tx, documentID, from.ID, to.ID, doc.Schema, doc.CreatedAt)
+			created, err = uc.repo.Acknowledged(ctx, tx, documentID, from.ID, to.ID, doc.Schema, doc.CreatedAt)
 			if err != nil {
 				span.RecordError(err)
 				return nil, err
 			}
 		case "unacked":
-			_, err = uc.repo.UnAcknowledged(ctx, tx, documentID, from.ID, to.ID, doc.Schema, doc.CreatedAt)
+			created, err = uc.repo.UnAcknowledged(ctx, tx, documentID, from.ID, to.ID, doc.Schema, doc.CreatedAt)
 			if err != nil {
 				span.RecordError(err)
 				return nil, err
@@ -1573,40 +1562,9 @@ func (uc *RecordUsecase) processAck(ctx context.Context, tx RepositoryTx, ip str
 			return nil, err
 		}
 
-	} else {
-		if doc.Kind == "ack" || doc.Kind == "unack" {
-			// deriver to remote server
-
-			requesterSD, err := uc.GetSigned(ctx, from.CCKVWithHint())
-			if err != nil {
-				span.RecordError(err)
-				return nil, err
-			}
-
-			distSD := concrnt.SignedDocument{
-				Document: sd.Document,
-				Proof:    sd.Proof,
-				References: map[string]concrnt.SignedDocument{
-					from.CCKV(): *requesterSD,
-				},
-			}
-			postProcesses = append(postProcesses,
-				func(ctx context.Context) error {
-					return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
-						Host:    to.Domain,
-						Payload: distSD,
-						Local:   domain.DeliveryLocalNone,
-						Remote:  domain.DeliveryRemoteCommit,
-					})
-				},
-			)
-
-		} else {
-			// 外に転送できるのはackのみ
-		}
 	}
 
-	return &commitApplyResult{result: &sd, postProcesses: postProcesses}, nil
+	return &commitApplyResult{result: &sd, noop: !created, postProcesses: postProcesses}, nil
 
 }
 
@@ -1796,17 +1754,6 @@ func (uc *RecordUsecase) checkReadAccessAs(ctx context.Context, uri string, sd c
 	return nil
 }
 
-// markEventForAnonymous annotates every realtime-event document with the
-// internal IsPublic flag: whether an anonymous requester may read it
-// (CIP-11 §3.2 baseline). The full documents stay on the event so trusted
-// internal consumers (NotificationReactor, modules on the redis pubsub) see
-// everything; unauthenticated websocket subscribers get Event.PublicView,
-// which drops the documents flagged false. Evaluated once per event here
-// rather than per subscriber. Unevaluable documents are flagged not public
-// (fail closed). References nested deeper than one level are removed: the
-// public view would drop them anyway and no internal consumer reads them.
-// The passed event's documents are copied, never mutated in place — the
-// commit response and the delivery payload share the same underlying maps.
 func (uc *RecordUsecase) markEventForAnonymous(ctx context.Context, event concrnt.Event) concrnt.Event {
 	if len(event.References) == 0 {
 		return event

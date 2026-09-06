@@ -87,6 +87,8 @@ type rangeDeleteRepo struct {
 	queryCalls  []subtreeQueryCall
 	deletedURIs []string
 	txs         []*recordingTx
+	// commitLogOwners records CreateCommitLog calls: documentID -> owner.
+	commitLogOwners map[string]string
 }
 
 func (r *rangeDeleteRepo) BeginTx(ctx context.Context) (RepositoryTx, error) {
@@ -94,14 +96,15 @@ func (r *rangeDeleteRepo) BeginTx(ctx context.Context) (RepositoryTx, error) {
 	r.txs = append(r.txs, tx)
 	return tx, nil
 }
-func (r *rangeDeleteRepo) CreateCommitLog(ctx context.Context, tx RepositoryTx, id string, ip string, document string, proof any) error {
+func (r *rangeDeleteRepo) CreateCommitLog(ctx context.Context, tx RepositoryTx, id string, ip string, document string, proof any, owner string) error {
+	if r.commitLogOwners == nil {
+		r.commitLogOwners = map[string]string{}
+	}
+	r.commitLogOwners[id] = owner
 	return nil
 }
 func (r *rangeDeleteRepo) HasCommitLog(ctx context.Context, id string) (bool, error) {
 	return false, nil
-}
-func (r *rangeDeleteRepo) CreateCommitOwners(ctx context.Context, tx RepositoryTx, id string, owners []string) error {
-	return nil
 }
 func (r *rangeDeleteRepo) GetHierarchicalRecordPolicies(ctx context.Context, uri string) ([]concrnt.Policy, error) {
 	return nil, nil

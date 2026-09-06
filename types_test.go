@@ -1,7 +1,9 @@
 package concrnt
 
 import (
+	"encoding/json"
 	"testing"
+	"time"
 )
 
 func boolPtr(b bool) *bool { return &b }
@@ -137,5 +139,77 @@ func TestSignedDocumentStripInternalFlags(t *testing.T) {
 	}
 	if sd.References["cckv://owner/posts/a"].IsPublic == nil {
 		t.Fatal("StripInternalFlags must not mutate the receiver's references")
+	}
+}
+
+// Proof round-trips its nested embedding through JSON unchanged.
+func TestProofDocumentDirectJSONRoundTrip(t *testing.T) {
+	original, _ := signedTestAck(t, "ack")
+	mirror := mirrorOf(t, original)
+
+	encoded, err := json.Marshal(mirror.Proof)
+	if err != nil {
+		t.Fatalf("marshal proof: %v", err)
+	}
+	var decoded Proof
+	if err := json.Unmarshal(encoded, &decoded); err != nil {
+		t.Fatalf("unmarshal proof: %v", err)
+	}
+	if decoded.Type != ProofTypeDocumentDirect || decoded.Document == nil || *decoded.Document != original.Document {
+		t.Fatalf("embedded document did not survive the round trip: %+v", decoded)
+	}
+	if decoded.Proof == nil || decoded.Proof.Type != original.Proof.Type || decoded.Proof.Signature == nil || *decoded.Proof.Signature != *original.Proof.Signature {
+		t.Fatalf("embedded proof did not survive the round trip: %+v", decoded.Proof)
+	}
+}
+
+// CDID derives the content+time document id Commit stores a document under:
+// the time-prefixed CDID of createdAt with the first 10 bytes of the document
+// hash — lexicographically ordered by createdAt with a deterministic content
+// tiebreaker.
+func TestSignedDocumentCDIDAndParsedDocument(t *testing.T) {
+	ccid, priv := newTestIdentity(t)
+	at := time.Date(2026, 9, 1, 12, 0, 0, 0, time.UTC)
+	newDoc := func(createdAt time.Time, foo string) SignedDocument {
+		return signDocument(t, Document[testRecordValue]{
+			Kind:      "record",
+			Key:       "cckv://" + ccid + "/example",
+			Value:     testRecordValue{Foo: foo},
+			Author:    ccid,
+			CreatedAt: createdAt,
+		}, priv)
+	}
+
+	sd := newDoc(at, "bar")
+	doc, err := sd.ParsedDocument()
+	if err != nil {
+		t.Fatalf("ParsedDocument returned error: %v", err)
+	}
+	if doc.Kind != "record" || doc.Author != ccid || !doc.CreatedAt.Equal(at) {
+		t.Fatalf("unexpected parsed document: %+v", doc)
+	}
+
+	id, err := sd.CDID()
+	if err != nil {
+		t.Fatalf("CDID returned error: %v", err)
+	}
+	again, _ := sd.CDID()
+	if id != again {
+		t.Fatal("CDID must be deterministic")
+	}
+	other := newDoc(at, "baz")
+	sameTime, _ := other.CDID()
+	if sameTime == id {
+		t.Fatal("documents with different content must not share a CDID")
+	}
+	laterSD := newDoc(at.Add(time.Second), "bar")
+	later, _ := laterSD.CDID()
+	if !(later > id) {
+		t.Fatalf("a later createdAt must sort above: %s !> %s", later, id)
+	}
+
+	broken := SignedDocument{Document: "{not json"}
+	if _, err := broken.CDID(); err == nil {
+		t.Fatal("CDID of an unparseable document must fail")
 	}
 }

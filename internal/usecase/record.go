@@ -530,10 +530,14 @@ func (uc *RecordUsecase) saveEntity(ctx context.Context, tx RepositoryTx, ip str
 		return nil, err
 	}
 
-	_, err = uc.repo.CreateEntity(ctx, tx, entity.Author, entity.Value.Alias, entity.Value.Domain, documentID)
+	applied, err := uc.repo.CreateEntity(ctx, tx, entity.Author, entity.Value.Alias, entity.Value.Domain, documentID)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
+	}
+
+	if !applied {
+		return &commitApplyResult{result: &sd, noop: true}, nil
 	}
 
 	return &commitApplyResult{result: &sd}, nil
@@ -680,7 +684,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 		// act on — pass it through as a no-op success (commitlog included, so
 		// a later delivery that does carry the targets is not deduplicated away)
 		if len(targetURIs) == 0 {
-			return &commitApplyResult{result: &sd}, nil
+			return &commitApplyResult{result: &sd, noop: true}, nil
 		}
 		for _, targetURI := range targetURIs {
 			targets = append(targets, sd.References[targetURI])
@@ -1186,10 +1190,14 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, ip s
 	}
 
 	resultURI := parsed.Key
-	_, err = uc.repo.CreateRecord(ctx, tx, documentID, parsed.Key, parsedKey.Owner, parsed.Author, schema, parsed.OnUpdate, policies, distributions, redirect, createdAt)
+	applied, err := uc.repo.CreateRecord(ctx, tx, documentID, parsed.Key, parsedKey.Owner, parsed.Author, schema, parsed.OnUpdate, policies, distributions, redirect, createdAt)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
+	}
+
+	if !applied {
+		return &commitApplyResult{result: &sd, noop: true}, nil
 	}
 
 	postProcesses := []PostProcessAction{}
@@ -1297,7 +1305,6 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 		return nil, err
 	}
 
-	created := false
 	postProcesses := []PostProcessAction{}
 
 	requesterSD, err := uc.GetSigned(ctx, requester.CCKVWithHint())
@@ -1321,16 +1328,17 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 		uniqueKey += string(bodyBytes)
 		uniqueHash := xxh3.HashString(uniqueKey)
 
-		inserted, err := uc.repo.CreateAssociation(ctx, tx, documentID, *parsed.Associate, targetURI.Owner, parsed.Author, parsed.Schema, parsed.AssociationVariant, fmt.Sprintf("%x", uniqueHash), parsed.CreatedAt)
+		applied, err := uc.repo.CreateAssociation(ctx, tx, documentID, *parsed.Associate, targetURI.Owner, parsed.Author, parsed.Schema, parsed.AssociationVariant, fmt.Sprintf("%x", uniqueHash), parsed.CreatedAt)
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
 		}
 
-		// 重複配送(挿入なし)のときは参照配布もスキップする。さもないと
-		// 別documentIDの論理重複がタイムラインに二重に載る
-		created = inserted
-		if created && mode == domain.CommitModeExecute {
+		if !applied {
+			return &commitApplyResult{result: &sd, noop: true}, nil
+		}
+
+		if mode == domain.CommitModeExecute {
 			actions, err := uc.createReferenceDistributionActions(ctx, ip, parsed.Author, ccfs, requester, sd, distributionsFromPtr(parsed.Distributes), mode)
 			if err != nil {
 				span.RecordError(err)
@@ -1378,11 +1386,6 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 			distributions = append(distributions, dists...)
 		}
 
-		remoteKind := domain.DeliveryRemoteNone
-		if created {
-			remoteKind = domain.DeliveryRemoteCommit
-		}
-
 		for _, channel := range distributions {
 			remoteSD := concrnt.SignedDocument{
 				Document: sd.Document,
@@ -1410,7 +1413,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 						ResolveURI: channel,
 						Payload:    remoteSD,
 						Local:      domain.DeliveryLocalPublish,
-						Remote:     remoteKind,
+						Remote:     domain.DeliveryRemoteCommit,
 						Event:      &event,
 					})
 				},

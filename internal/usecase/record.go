@@ -1542,6 +1542,7 @@ func (uc *RecordUsecase) processAck(ctx context.Context, tx RepositoryTx, ip str
 			Type:   concrnt.CCFSTypeConcrnt,
 			CDID:   documentID,
 		}.String()
+		sd.CCFS = &ccfs
 
 		actions, err := uc.createReferenceDistributionActions(ctx, ip, doc.Author, ccfs, from, sd, distributionsFromPtr(doc.Distributes), mode)
 		if err != nil {
@@ -1598,6 +1599,15 @@ func (uc *RecordUsecase) processAck(ctx context.Context, tx RepositoryTx, ip str
 			return nil, err
 		}
 
+		// CIP-3 §3.4: the acked's ccfs identity is held by the associate
+		// owner's server
+		ccfs := concrnt.CCURI{
+			Scheme: "ccfs",
+			Owner:  to.ID,
+			Type:   concrnt.CCFSTypeConcrnt,
+			CDID:   documentID,
+		}.String()
+		sd.CCFS = &ccfs
 	}
 
 	return &commitApplyResult{result: &sd, noop: !created, postProcesses: postProcesses}, nil

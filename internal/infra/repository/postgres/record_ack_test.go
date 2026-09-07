@@ -112,10 +112,12 @@ func TestAckedRepositoryAcceptIfNewer(t *testing.T) {
 }
 
 // /acknowledges returns the side of each relationship this server holds
-// (CIP-10 §6): the ack commit for acks made by local users, the acked mirror
-// for acks received by local users. A to-filtered listing must therefore
-// include the ackeds rows, and the counts must add them up.
-func TestGetAcknowledgeRecordsIncludesAcked(t *testing.T) {
+// (CIP-10 §6): a from-filtered query lists the ack commits of a local acker
+// (acks), a to-filtered query lists the acked documents received for a local
+// target (ackeds). Since every ack — a same-server one included — yields both
+// an ack and an acked commit, each side is complete on its own. One of from /
+// to is required, and the counts follow the same split.
+func TestGetAcknowledgeRecordsServesHeldSide(t *testing.T) {
 	db, cleanup := testutil.CreateDB()
 	t.Cleanup(cleanup)
 
@@ -123,10 +125,10 @@ func TestGetAcknowledgeRecordsIncludesAcked(t *testing.T) {
 	repo := NewRecordRepository(db)
 
 	schema := "https://schema.example/follow.json"
-	local, localAcker, remoteAcker := "con1owner", "con1author", "con1remote"
+	local, localAcker, remoteAcker, remoteTarget := "con1owner", "con1author", "con1remote", "con1elsewhere"
 	at := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
-	doc := func(kind, author string) concrnt.SignedDocument {
-		associate := "cckv://" + local
+	doc := func(kind, author, target string) concrnt.SignedDocument {
+		associate := "cckv://" + target
 		return repositorySignedDocument(t, concrnt.Document[map[string]string]{
 			Kind:      kind,
 			Value:     map[string]string{"context": "follow"},
@@ -137,41 +139,63 @@ func TestGetAcknowledgeRecordsIncludesAcked(t *testing.T) {
 		})
 	}
 
-	// a local user acking the local target: this server holds the ack
-	withRepositoryTx(t, ctx, repo, "ack-local", "127.0.0.1", doc("ack", localAcker), localAcker, func(tx usecase.RepositoryTx) error {
+	// local acker → local target: this server holds both the ack and the acked
+	withRepositoryTx(t, ctx, repo, "ack-local", "127.0.0.1", doc("ack", localAcker, local), localAcker, func(tx usecase.RepositoryTx) error {
 		_, err := repo.Acknowledge(ctx, tx, "ack-local", localAcker, local, schema, at)
 		return err
 	})
-	// a remote user acking the local target: this server holds the mirror
-	withRepositoryTx(t, ctx, repo, "acked-remote", "127.0.0.1", doc("acked", remoteAcker), local, func(tx usecase.RepositoryTx) error {
-		_, err := repo.Acknowledged(ctx, tx, "acked-remote", remoteAcker, local, schema, at.Add(time.Hour))
+	withRepositoryTx(t, ctx, repo, "acked-local", "127.0.0.1", doc("acked", localAcker, local), local, func(tx usecase.RepositoryTx) error {
+		_, err := repo.Acknowledged(ctx, tx, "acked-local", localAcker, local, schema, at)
+		return err
+	})
+	// local acker → remote target: only the ack is here
+	withRepositoryTx(t, ctx, repo, "ack-outbound", "127.0.0.1", doc("ack", localAcker, remoteTarget), localAcker, func(tx usecase.RepositoryTx) error {
+		_, err := repo.Acknowledge(ctx, tx, "ack-outbound", localAcker, remoteTarget, schema, at.Add(time.Hour))
+		return err
+	})
+	// remote acker → local target: only the acked is here
+	withRepositoryTx(t, ctx, repo, "acked-inbound", "127.0.0.1", doc("acked", remoteAcker, local), local, func(tx usecase.RepositoryTx) error {
+		_, err := repo.Acknowledged(ctx, tx, "acked-inbound", remoteAcker, local, schema, at.Add(2*time.Hour))
 		return err
 	})
 
-	kinds := func(rows []usecase.QueryRow) []string {
+	ids := func(rows []usecase.QueryRow) []string {
 		t.Helper()
 		out := make([]string, len(rows))
 		for i, row := range rows {
 			parsed, err := row.Row.ParsedDocument()
 			require.NoError(t, err)
-			out[i] = parsed.Kind
+			associate, err := concrnt.ParseCCURI(*parsed.Associate)
+			require.NoError(t, err)
+			out[i] = parsed.Kind + ":" + parsed.Author + ">" + associate.Owner
 		}
 		return out
 	}
 
-	rows, err := repo.GetAcknowledgeRecords(ctx, "", local, "", nil, nil, 0, "desc")
+	rows, err := repo.GetAcknowledgeRecords(ctx, localAcker, "", "", nil, nil, 0, "desc")
 	require.NoError(t, err)
-	require.Equal(t, []string{"acked", "ack"}, kinds(rows), "to-filtered listing must include the acked mirror, newest first")
+	require.Equal(t, []string{"ack:" + localAcker + ">" + remoteTarget, "ack:" + localAcker + ">" + local}, ids(rows), "from-filtered listing is the acker's ack commits, newest first")
 
-	rows, err = repo.GetAcknowledgeRecords(ctx, remoteAcker, "", "", nil, nil, 0, "desc")
+	rows, err = repo.GetAcknowledgeRecords(ctx, "", local, "", nil, nil, 0, "desc")
 	require.NoError(t, err)
-	require.Equal(t, []string{"acked"}, kinds(rows))
+	require.Equal(t, []string{"acked:" + remoteAcker + ">" + local, "acked:" + localAcker + ">" + local}, ids(rows), "to-filtered listing is the target's acked documents, newest first")
 
-	rows, err = repo.GetAcknowledgeRecords(ctx, localAcker, "", "", nil, nil, 0, "desc")
+	rows, err = repo.GetAcknowledgeRecords(ctx, localAcker, local, "", nil, nil, 0, "desc")
 	require.NoError(t, err)
-	require.Equal(t, []string{"ack"}, kinds(rows))
+	require.Equal(t, []string{"ack:" + localAcker + ">" + local}, ids(rows), "from and to together narrow the acker's side to one target")
 
-	counts, err := repo.GetAcknowledgeRecordCounts(ctx, "", local, "")
+	_, err = repo.GetAcknowledgeRecords(ctx, "", "", "", nil, nil, 0, "desc")
+	require.Error(t, err, "one of from / to is required")
+
+	counts, err := repo.GetAcknowledgeRecordCounts(ctx, localAcker, "", "")
 	require.NoError(t, err)
 	require.EqualValues(t, 2, counts[schema])
+
+	counts, err = repo.GetAcknowledgeRecordCounts(ctx, "", local, "")
+	require.NoError(t, err)
+	require.EqualValues(t, 2, counts[schema])
+
+	counts, err = repo.GetAcknowledgeRecordCounts(ctx, localAcker, local, "")
+	require.NoError(t, err)
+	require.EqualValues(t, 1, counts[schema])
 }

@@ -105,8 +105,7 @@ func (r *ResidenceRepository) MarkCommitLogsGcCandidateByOwner(ctx context.Conte
 
 	err := r.db.WithContext(ctx).
 		Model(&models.CommitLog{}).
-		Where("id IN (SELECT commit_log_id FROM commit_owners WHERE owner = ?)", owner).
-		Where("NOT EXISTS (SELECT 1 FROM commit_owners co2 WHERE co2.commit_log_id = commit_logs.id AND co2.owner <> ?)", owner).
+		Where("owner = ?", owner).
 		Where("NOT gc_candidate").
 		Update("gc_candidate", true).Error
 	if err != nil {

@@ -382,7 +382,7 @@ func (r *RecordRepository) processAcked(ctx context.Context, tx usecase.Reposito
 	result := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "schema"}},
 		DoUpdates: clause.Assignments(map[string]any{"valid": valid, "document_id": documentID, "created_at": createdAt}),
-		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("acked.document_id < excluded.document_id")}},
+		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("ackeds.document_id < excluded.document_id")}},
 	}).Create(&ack)
 	if result.Error != nil {
 		span.RecordError(result.Error)
@@ -1176,24 +1176,24 @@ func (r *RecordRepository) getAckedRecords(ctx context.Context, to, schema strin
 	query := r.db.WithContext(ctx).
 		Model(&models.Acked{}).
 		Preload("Document").
-		Where("acked.to = ?", to).
-		Where("acked.valid = ?", true)
+		Where("ackeds.to = ?", to).
+		Where("ackeds.valid = ?", true)
 
 	if schema != "" {
-		query = query.Where("acked.schema = ?", schema)
+		query = query.Where("ackeds.schema = ?", schema)
 	}
 
 	if since != nil {
-		query = query.Where("acked.created_at >= ?", *since)
+		query = query.Where("ackeds.created_at >= ?", *since)
 	}
 	if until != nil {
-		query = query.Where("acked.created_at <= ?", *until)
+		query = query.Where("ackedscreated_at <= ?", *until)
 	}
 
 	if order == "desc" {
-		query = query.Order("acked.created_at DESC, acked.document_id DESC")
+		query = query.Order("ackeds.created_at DESC, ackeds.document_id DESC")
 	} else {
-		query = query.Order("acked.created_at ASC, acked.document_id ASC")
+		query = query.Order("ackeds.created_at ASC, ackeds.document_id ASC")
 	}
 
 	if limit > 0 {

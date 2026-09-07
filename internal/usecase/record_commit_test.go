@@ -1501,8 +1501,9 @@ func TestCommitEntityNoneProofSkipsGreenServerCheck(t *testing.T) {
 
 // Every commit is owned by exactly one entity and is recorded in commit_logs
 // inside the commit transaction (CIP-3 §3.1: record = key owner, association
-// = target owner, delete = executor). Records and associations reference the
-// commit log by foreign key, so a missing commit log is a failed commit.
+// = target owner, delete = owner of the deleted target — the namespace whose
+// repository must carry the tombstone). Records and associations reference
+// the commit log by foreign key, so a missing commit log is a failed commit.
 func TestCommitWritesCommitLogWithOwner(t *testing.T) {
 	ccid, priv := newIdentity(t)
 	cfg := &domain.Config{FQDN: "example.com"}
@@ -1549,7 +1550,7 @@ func TestCommitWritesCommitLogWithOwner(t *testing.T) {
 		}
 	})
 
-	t.Run("delete is owned by the executor", func(t *testing.T) {
+	t.Run("delete is owned by the target owner", func(t *testing.T) {
 		repo := &rangeDeleteRepo{subtree: []concrnt.SignedDocument{subtreeRecord(t, rangeBaseURI)}}
 		uc := newRangeDeleteUsecase(ccid, cfg, repo, &denyKeysPolicyService{}, &recordingDeliveryQueue{}, &stubKVS{})
 
@@ -1558,8 +1559,8 @@ func TestCommitWritesCommitLogWithOwner(t *testing.T) {
 			t.Fatalf("Commit returned error: %v", err)
 		}
 		id := documentIDOf(t, sd)
-		if repo.commitLogOwners[id] != ccid {
-			t.Fatalf("commit owner = %q, want executor %s", repo.commitLogOwners[id], ccid)
+		if repo.commitLogOwners[id] != cfg.FQDN {
+			t.Fatalf("commit owner = %q, want target owner %s", repo.commitLogOwners[id], cfg.FQDN)
 		}
 	})
 }

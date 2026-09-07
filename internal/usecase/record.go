@@ -240,7 +240,7 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 			return nil, errors.Join(domain.ValidationError{Field: "proof", Message: "signature verification failed"}, err)
 		}
 
-		backdateExempt := doc.Kind == "entity"
+		backdateExempt := doc.Kind == "entity" || doc.Kind == "ack" || doc.Kind == "acked" || doc.Kind == "unack" || doc.Kind == "unacked"
 		if !backdateExempt && mode == domain.CommitModeLocalOnlyExecute {
 			if authenticated, ok := ctx.Value(interop.RequesterCtxKey).(domain.Entity); ok {
 				backdateExempt = doc.Author == authenticated.ID
@@ -755,7 +755,13 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, ip s
 				return nil, err
 			}
 
-			if err := uc.repo.CreateCommitLog(ctx, tx, documentID, ip, sd.Document, sd.Proof, targetURI.Owner); err != nil {
+			parsedTargetURI, err := concrnt.ParseCCURI(targetURI)
+			if err != nil {
+				span.RecordError(err)
+				continue
+			}
+
+			if err := uc.repo.CreateCommitLog(ctx, tx, documentID, ip, sd.Document, sd.Proof, parsedTargetURI.Owner); err != nil {
 				span.RecordError(err)
 				return nil, err
 			}
@@ -1448,21 +1454,6 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 	return &commitApplyResult{result: &sd, postProcesses: postProcesses}, nil
 }
 
-func (uc *RecordUsecase) localEntityOwners(ctx context.Context, candidates ...domain.Entity) []string {
-	owners := make([]string, 0, len(candidates))
-	seen := map[string]struct{}{}
-	for _, candidate := range candidates {
-		if _, ok := seen[candidate.ID]; ok {
-			continue
-		}
-		seen[candidate.ID] = struct{}{}
-		if uc.IsLocalEntity(ctx, &candidate) {
-			owners = append(owners, candidate.ID)
-		}
-	}
-	return owners
-}
-
 func (uc *RecordUsecase) processAck(ctx context.Context, tx RepositoryTx, ip string, from domain.Entity, to domain.Entity, doc concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.Acknowledge")
 	defer span.End()
@@ -1490,17 +1481,6 @@ func (uc *RecordUsecase) processAck(ctx context.Context, tx RepositoryTx, ip str
 	}
 
 	if uc.IsLocalEntity(ctx, &from) && (doc.Kind == "ack" || doc.Kind == "unack") { // create ack
-
-		documentID, err := sd.CDID()
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
-
-		if err := uc.repo.CreateCommitLog(ctx, tx, documentID, ip, sd.Document, sd.Proof, from.ID); err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
 
 		if doc.Kind == "ack" {
 			created, err = uc.repo.Acknowledge(ctx, tx, documentID, from.ID, to.ID, doc.Schema, doc.CreatedAt)

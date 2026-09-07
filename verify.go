@@ -328,14 +328,26 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 				return errors.Join(errors.New("failed to parse signed document for ack-reference proof"), err)
 			}
 
-			if ackedDoc.Kind == "ack" {
-				ackedDoc.Kind = "acked"
-			} else {
-				ackedDoc.Kind = "unacked"
+			if ackedDoc.Associate == nil || embeddedDoc.Associate == nil {
+				return errors.New("both signed and embedded documents must have an associate for ack-reference proof")
 			}
 
-			if ackedDoc != embeddedDoc {
-				return errors.New("embedded document does not match signed document for ack-reference proof")
+			if *ackedDoc.Associate != *embeddedDoc.Associate {
+				return errors.New("signed and embedded documents must have the same associate for ack-reference proof")
+			}
+
+			embeddedDocValue, err := json.Marshal(embeddedDoc.Value)
+			if err != nil {
+				return errors.Join(errors.New("failed to marshal embedded document value for ack-reference proof"), err)
+			}
+
+			ackedDocValue, err := json.Marshal(ackedDoc.Value)
+			if err != nil {
+				return errors.Join(errors.New("failed to marshal signed document value for ack-reference proof"), err)
+			}
+
+			if string(embeddedDocValue) != string(ackedDocValue) {
+				return errors.New("signed and embedded documents must have the same value for ack-reference proof")
 			}
 
 			return nil

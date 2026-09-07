@@ -433,7 +433,7 @@ func TestDeleteRecordRangeRemoteMatchesReferences(t *testing.T) {
 		},
 	}
 
-	result, err := uc.deleteRecord(context.Background(), nil, requester, sd, domain.CommitModeExecute)
+	result, err := uc.deleteRecord(context.Background(), nil, "127.0.0.1", requester, sd, domain.CommitModeExecute)
 	if err != nil {
 		t.Fatalf("deleteRecord returned error: %v", err)
 	}
@@ -456,7 +456,7 @@ func TestDeleteRecordRangeRemoteMatchesReferences(t *testing.T) {
 
 	// no matching reference at all passes through as a no-op success
 	sd.References = map[string]concrnt.SignedDocument{*unrelated.CCKV: unrelated}
-	res, err := uc.deleteRecord(context.Background(), nil, requester, sd, domain.CommitModeExecute)
+	res, err := uc.deleteRecord(context.Background(), nil, "127.0.0.1", requester, sd, domain.CommitModeExecute)
 	if err != nil {
 		t.Fatalf("expected no-op success when no reference matches the range, got %v", err)
 	}

@@ -1445,6 +1445,13 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 			distributions = append(distributions, dists...)
 		}
 
+		// 各タイムラインを購読しているクライアントに、そのタイムラインにassociationが追加されたことを通知するために、
+		// association本体をリモートサーバーに転送し、eventの発生を促す。
+		remoteKind := domain.DeliveryRemoteNone
+		if isLocal {
+			remoteKind = domain.DeliveryRemoteCommit
+		}
+
 		for _, channel := range distributions {
 			remoteSD := concrnt.SignedDocument{
 				Document: sd.Document,
@@ -1472,7 +1479,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 						ResolveURI: channel,
 						Payload:    remoteSD,
 						Local:      domain.DeliveryLocalPublish,
-						Remote:     domain.DeliveryRemoteCommit,
+						Remote:     remoteKind,
 						Event:      &event,
 					})
 				},

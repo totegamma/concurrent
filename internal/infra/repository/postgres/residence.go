@@ -95,10 +95,10 @@ func (r *ResidenceRepository) DeleteMeta(ctx context.Context, ccid string) error
 	return nil
 }
 
-// MarkCommitLogsGcCandidateByOwner flags every commit log solely owned by the
-// given ccid as a GC candidate. Commits co-owned by another user (e.g. an ack
-// between two local users is owned by both) are left untouched: GCing them
-// would cascade-delete the co-owner's rows. Idempotent.
+// MarkCommitLogsGcCandidateByOwner flags every commit log owned by the given
+// ccid as a GC candidate. Every commit has exactly one owner (an ack between
+// two local users is two commits: the ack owned by the acker and the acked
+// owned by the target), so nothing another user holds is touched. Idempotent.
 func (r *ResidenceRepository) MarkCommitLogsGcCandidateByOwner(ctx context.Context, owner string) error {
 	ctx, span := tracer.Start(ctx, "ResidenceRepository.MarkCommitLogsGcCandidateByOwner")
 	defer span.End()

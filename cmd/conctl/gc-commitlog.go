@@ -25,7 +25,7 @@ var gcCommitlogCmd = &cobra.Command{
 		"every commit log solely owned by the departing user. Once the document's\n" +
 		"createdAt has fallen out of the backdate window a replay is rejected as too\n" +
 		"old anyway, so the tombstone is redundant and the row can be deleted\n" +
-		"(commit_owners and any remaining record/ack/association/entity rows cascade\n" +
+		"(any remaining record/ack/acked/association/entity rows cascade\n" +
 		"with it — for unregistered users this is what actually removes their data).\n" +
 		"This deletes every gc_candidate commit log whose document createdAt is older\n" +
 		"than now minus --retention. Retention below the backdate window would reopen\n" +
@@ -61,7 +61,7 @@ var gcCommitlogCmd = &cobra.Command{
 		var total int64
 		for {
 			// Postgres has no DELETE ... LIMIT; batching via a subquery keeps
-			// each statement (and its commit_owners cascade) bounded.
+			// each statement (and its cascade) bounded.
 			res := op.DB.WithContext(ctx).
 				Exec("DELETE FROM commit_logs WHERE id IN (SELECT id FROM commit_logs WHERE gc_candidate AND id < ? LIMIT 1000)", cutoff)
 			if res.Error != nil {

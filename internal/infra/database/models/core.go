@@ -201,6 +201,10 @@ type Entity struct {
 
 	DocumentID string    `json:"id" gorm:"type:text"`
 	Document   CommitLog `json:"-" gorm:"foreignKey:DocumentID;references:ID;constraint:OnDelete:CASCADE;"`
+	// document createdAt: the accept-if-newer key (CIP-3 §3.4). Rows written
+	// before the column existed hold the epoch until backfilled by
+	// `conctl op repair-single-owner`, so any real document replaces them.
+	CreatedAt time.Time `json:"createdAt" gorm:"type:timestamp with time zone;not null;default:'epoch'"`
 
 	CDate time.Time `json:"cdate" gorm:"->;<-:create;type:timestamp with time zone;not null;default:clock_timestamp()"`
 	MDate time.Time `json:"mdate" gorm:"autoUpdateTime"`

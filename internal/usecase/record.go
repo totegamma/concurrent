@@ -32,7 +32,7 @@ type RecordRepository interface {
 	// Create / Update
 	CreateCommitLog(ctx context.Context, tx RepositoryTx, id string, ip string, document string, proof any, owner string) error
 
-	CreateEntity(ctx context.Context, tx RepositoryTx, ccid string, alias *string, domain string, documentID string) (bool, error)
+	CreateEntity(ctx context.Context, tx RepositoryTx, ccid string, alias *string, domain string, documentID string, createdAt time.Time) (bool, error)
 	CreateRecord(ctx context.Context, tx RepositoryTx, documentID string, key string, owner string, author string, schema string, onUpdate *string, policies *string, distributions []string, redirect *string, createdAt time.Time) (bool, error)
 	CreateAssociation(ctx context.Context, tx RepositoryTx, documentID string, targetURI string, owner string, author string, schema string, variant *string, unique string, createdAt time.Time) (bool, error)
 	Acknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error)
@@ -195,6 +195,10 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		return nil, err
 	}
 
+	// acked/unacked are server-derived holdings of the associate owner
+	// (CIP-10 §5.2) and follow their own verification and exemption rules.
+	isAckedKind := doc.Kind == "acked" || doc.Kind == "unacked"
+
 	documentID, err := sd.CDID()
 	if err != nil {
 		span.RecordError(err)
@@ -221,9 +225,16 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 
 	if !isServiceAccount {
 
+		// Entity documents must be master-key signed (CIP-0 §8.2); acked and
+		// unacked documents are server derivations of an embedded ack and are
+		// only legitimate under a document-direct proof (CIP-10 §5.2) — an
+		// author-signed "acked" would let anyone write the target-side state.
 		var allowedProofs []string
 		if doc.Kind == "entity" {
 			allowedProofs = []string{concrnt.ProofTypeEcrecover}
+		}
+		if isAckedKind {
+			allowedProofs = []string{concrnt.ProofTypeDocumentDirect}
 		}
 		if err := sd.VerifyWithProofTypes(ctx, uc.resolver(), allowedProofs); err != nil {
 			span.RecordError(err)
@@ -234,13 +245,21 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 			if doc.Kind == "entity" && errors.Is(err, concrnt.ErrProofTypeNotAllowed) {
 				return nil, errors.Join(domain.ValidationError{Field: "proof.type", Message: "entity documents must be signed with " + concrnt.ProofTypeEcrecover}, err)
 			}
+			if isAckedKind && errors.Is(err, concrnt.ErrProofTypeNotAllowed) {
+				return nil, errors.Join(domain.ValidationError{Field: "proof.type", Message: "acked/unacked documents must carry a " + concrnt.ProofTypeDocumentDirect + " proof"}, err)
+			}
 			if errors.Is(err, concrnt.ErrUnsupportedProofType) {
 				return nil, errors.Join(domain.ValidationError{Field: "proof.type", Message: "unsupported proof type: " + sd.Proof.Type}, err)
 			}
 			return nil, errors.Join(domain.ValidationError{Field: "proof", Message: "signature verification failed"}, err)
 		}
 
-		backdateExempt := doc.Kind == "entity" || doc.Kind == "ack" || doc.Kind == "acked" || doc.Kind == "unack" || doc.Kind == "unacked"
+		// Entity documents are exempt from the backdate window (CIP-3 §3.4);
+		// so are acked/unacked documents, whose createdAt is inherited from
+		// the embedded ack that already passed the window when it was
+		// accepted — delivery retries and repository replays may arrive
+		// later than the window (CIP-10 §5.2).
+		backdateExempt := doc.Kind == "entity" || isAckedKind
 		if !backdateExempt && mode == domain.CommitModeLocalOnlyExecute {
 			if authenticated, ok := ctx.Value(interop.RequesterCtxKey).(domain.Entity); ok {
 				backdateExempt = doc.Author == authenticated.ID
@@ -273,11 +292,20 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 	}
 
 	// Only "entity" commits (self-registration) may proceed without an
-	// already-resolvable requester entity.
-	if doc.Kind != "entity" && requester == nil {
-		err := errors.Join(domain.ValidationError{Field: "document.author", Message: fmt.Sprintf("requester entity not found for %s operation", doc.Kind)}, requesterErr)
-		span.RecordError(err)
-		return nil, err
+	// already-resolvable requester entity. So may acked/unacked documents:
+	// they are the associate owner's own holding, replayable from a dump
+	// after the acker's server is gone, and the embedded signature already
+	// vouches for the author (CIP-10 §5.2) — an unresolvable author is simply
+	// not local.
+	if requester == nil {
+		if doc.Kind != "entity" && !isAckedKind {
+			err := errors.Join(domain.ValidationError{Field: "document.author", Message: fmt.Sprintf("requester entity not found for %s operation", doc.Kind)}, requesterErr)
+			span.RecordError(err)
+			return nil, err
+		}
+		if isAckedKind {
+			requester = &domain.Entity{ID: requesterID}
+		}
 	}
 
 	targetUserID := ""
@@ -297,7 +325,10 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 		}
 		targetUserID = parsed.Owner
 	}
-	if targetUserID != "" && targetUserID != requesterID {
+	// acked/unacked skip the block check: the embedded ack passed it when it
+	// was accepted, and a later block must not make the associate owner's
+	// own holding un-replayable (CIP-10 §5.2).
+	if targetUserID != "" && targetUserID != requesterID && !isAckedKind {
 
 		blockingUsers, err := uc.getBlockingUsers(ctx, requesterID)
 		if err != nil {
@@ -530,7 +561,7 @@ func (uc *RecordUsecase) saveEntity(ctx context.Context, tx RepositoryTx, ip str
 		return nil, err
 	}
 
-	applied, err := uc.repo.CreateEntity(ctx, tx, entity.Author, entity.Value.Alias, entity.Value.Domain, documentID)
+	applied, err := uc.repo.CreateEntity(ctx, tx, entity.Author, entity.Value.Alias, entity.Value.Domain, documentID, entity.CreatedAt)
 	if err != nil {
 		span.RecordError(err)
 		return nil, err
@@ -1497,9 +1528,10 @@ func (uc *RecordUsecase) processAck(ctx context.Context, tx RepositoryTx, ip str
 		}
 
 		// フォロー通知などを生成
+		// CIP-3 §3.4: the ack's ccfs identity is held by the author's server
 		ccfs := concrnt.CCURI{
 			Scheme: "ccfs",
-			Owner:  to.ID,
+			Owner:  from.ID,
 			Type:   concrnt.CCFSTypeConcrnt,
 			CDID:   documentID,
 		}.String()

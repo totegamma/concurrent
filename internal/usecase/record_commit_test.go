@@ -35,19 +35,20 @@ func (stubResidenceRepo) GetEntityByCCID(ctx context.Context, ccid string) (*dom
 // and records which mutations were attempted. commitLogs seeds the ids
 // HasCommitLog answers true for (already-committed documents); storedSD, when
 // set, is what GetSignedDocument serves for every key (a pre-existing record);
-// storedDocumentID, when set, is the documentID the repository already holds
-// for whatever CreateEntity / CreateRecord write — both report the
-// accept-if-newer loss (applied=false) for a documentID that is not strictly
-// newer, mirroring the repository's row-lock comparison; ackStale / ackedStale
+// storedCreatedAt, when set, is the createdAt of the document the repository
+// already holds for whatever CreateEntity / CreateRecord write — both report
+// the accept-if-newer loss (applied=false) for a createdAt that is not
+// strictly newer, mirroring the repository's row-lock comparison (CIP-3
+// §3.4); ackStale / ackedStale
 // make Acknowledge / UnAcknowledge and Acknowledged / UnAcknowledged report
 // that loss unconditionally.
 type recordingRecordRepo struct {
 	RecordRepository
-	commitLogs       map[string]bool
-	storedSD         *concrnt.SignedDocument
-	storedDocumentID string
-	ackStale         bool
-	ackedStale       bool
+	commitLogs      map[string]bool
+	storedSD        *concrnt.SignedDocument
+	storedCreatedAt time.Time
+	ackStale        bool
+	ackedStale      bool
 
 	createEntityCalled   bool
 	createRecordCalled   bool
@@ -96,13 +97,13 @@ func (r *recordingRecordRepo) CreateCommitLog(ctx context.Context, tx Repository
 func (r *recordingRecordRepo) HasCommitLog(ctx context.Context, id string) (bool, error) {
 	return r.commitLogs[id], nil
 }
-func (r *recordingRecordRepo) CreateEntity(ctx context.Context, tx RepositoryTx, ccid string, alias *string, domain string, documentID string) (bool, error) {
+func (r *recordingRecordRepo) CreateEntity(ctx context.Context, tx RepositoryTx, ccid string, alias *string, domain string, documentID string, createdAt time.Time) (bool, error) {
 	r.createEntityCalled = true
-	return r.storedDocumentID == "" || documentID > r.storedDocumentID, nil
+	return r.storedCreatedAt.IsZero() || createdAt.After(r.storedCreatedAt), nil
 }
 func (r *recordingRecordRepo) CreateRecord(ctx context.Context, tx RepositoryTx, documentID string, key string, owner string, author string, schema string, onUpdate *string, policies *string, distributions []string, redirect *string, createdAt time.Time) (bool, error) {
 	r.createRecordCalled = true
-	return r.storedDocumentID == "" || documentID > r.storedDocumentID, nil
+	return r.storedCreatedAt.IsZero() || createdAt.After(r.storedCreatedAt), nil
 }
 func (r *recordingRecordRepo) Acknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
 	r.acknowledgeCalled = true
@@ -329,7 +330,7 @@ func TestCommitEntityAcceptIfNewer(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			stored := newEntityDoc(tc.storedAt)
-			repo := &recordingRecordRepo{storedDocumentID: documentIDOf(t, stored)}
+			repo := &recordingRecordRepo{storedCreatedAt: tc.storedAt}
 			cfg := &domain.Config{FQDN: "example.com"}
 			uc := NewRecordUsecase(
 				repo,
@@ -390,7 +391,7 @@ func TestCommitRecordAcceptIfNewer(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			repo := &recordingRecordRepo{storedSD: &stored, storedDocumentID: documentIDOf(t, stored)}
+			repo := &recordingRecordRepo{storedSD: &stored, storedCreatedAt: storedAt}
 			uc := newRecordCommitUsecase(ccid, cfg, repo, nil)
 
 			sd := signedRecord(t, ccid, priv, tc.createdAt)

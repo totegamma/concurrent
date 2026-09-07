@@ -2,6 +2,7 @@ package concrnt
 
 import (
 	"encoding/json"
+	"fmt"
 	"time"
 
 	"github.com/concrnt/concrnt/cdid"
@@ -55,7 +56,7 @@ type Policy struct {
 }
 
 type Document[T any] struct {
-	Kind string `json:"kind"` // entity / record / association / delete / ack / unack
+	Kind string `json:"kind"` // entity / record / association / delete / ack / unack / acked / unacked
 
 	// CIP-1
 	Key   string `json:"key"`
@@ -133,6 +134,44 @@ func (sd *SignedDocument) CDID() (string, error) {
 	var hash10 [10]byte
 	copy(hash10[:], hash[:10])
 	return cdid.New(hash10, doc.CreatedAt).String(), nil
+}
+
+// DeriveAcked derives the acked/unacked document the author's server ships
+// to the associate owner's server for an ack/unack (CIP-10 §5.2): the same
+// document with only kind replaced, re-serialized in the canonical field set,
+// carrying the original signed document in a document-direct proof. The
+// derivation is deterministic (same ack → same CDID), which is what makes a
+// retried or backfilled acked commit an idempotent no-op.
+func (sd *SignedDocument) DeriveAcked() (SignedDocument, error) {
+	doc, err := sd.ParsedDocument()
+	if err != nil {
+		return SignedDocument{}, err
+	}
+
+	switch doc.Kind {
+	case "ack":
+		doc.Kind = "acked"
+	case "unack":
+		doc.Kind = "unacked"
+	default:
+		return SignedDocument{}, fmt.Errorf("acked documents can only be derived from ack/unack documents, got kind %q", doc.Kind)
+	}
+
+	derived, err := json.Marshal(doc)
+	if err != nil {
+		return SignedDocument{}, err
+	}
+
+	original := sd.Document
+	originalProof := sd.Proof
+	return SignedDocument{
+		Document: string(derived),
+		Proof: Proof{
+			Type:     ProofTypeDocumentDirect,
+			Document: &original,
+			Proof:    &originalProof,
+		},
+	}, nil
 }
 
 // QueryResult is the paged envelope returned by the query/associations/

@@ -198,7 +198,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 				OnUpdate:  ptr("forget"),
 			})
 			withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, "con1entity", func(tx usecase.RepositoryTx) error {
-				applied, err := repo.CreateEntity(ctx, tx, "con1entity", nil, "example.com", id)
+				applied, err := repo.CreateEntity(ctx, tx, "con1entity", nil, "example.com", id, createdAt)
 				require.True(t, applied)
 				return err
 			})
@@ -207,10 +207,26 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		var entity models.Entity
 		require.NoError(t, db.Where("id = ?", "con1entity").Take(&entity).Error)
 		require.Equal(t, "entity-2-new", entity.DocumentID)
+		require.True(t, entity.CreatedAt.Equal(time.Date(2026, 1, 2, 3, 4, 6, 0, time.UTC)))
 
 		var oldCommit models.CommitLog
 		require.NoError(t, db.Where("id = ?", "entity-1-old").Take(&oldCommit).Error)
 		require.False(t, oldCommit.GcCandidate)
+
+		// CIP-3 §3.4: the key is createdAt alone — an equal-createdAt
+		// document is a no-op whatever its id, an older one too
+		tx, err := repo.BeginTx(ctx)
+		require.NoError(t, err)
+		require.NoError(t, repo.CreateCommitLog(ctx, tx, "entity-9-same-time", "127.0.0.1", "{}", concrnt.Proof{Type: concrnt.ProofTypeNone}, "con1entity"))
+		applied, err := repo.CreateEntity(ctx, tx, "con1entity", nil, "other.example.net", "entity-9-same-time", time.Date(2026, 1, 2, 3, 4, 6, 0, time.UTC))
+		require.NoError(t, err)
+		require.False(t, applied, "same createdAt must be a no-op")
+		applied, err = repo.CreateEntity(ctx, tx, "con1entity", nil, "other.example.net", "entity-0-older", time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC))
+		require.NoError(t, err)
+		require.False(t, applied, "older createdAt must be a no-op")
+		require.NoError(t, tx.Rollback(ctx))
+		require.NoError(t, db.Where("id = ?", "con1entity").Take(&entity).Error)
+		require.Equal(t, "example.com", entity.Domain)
 	})
 
 	t.Run("create reference record", func(t *testing.T) {

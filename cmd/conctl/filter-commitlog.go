@@ -30,10 +30,10 @@ var filterCommitlogCmd = &cobra.Command{
 		"document-reference records). --exclude-owner drops commits belonging to the given CCIDs\n" +
 		"(e.g. to erase test accounts): a commit is considered owned by a CCID when it is the\n" +
 		"document's author, the owner of the document's key, or the owner of its associate\n" +
-		"target — the same notion the server uses for commit_owners. --only-kind keeps only\n" +
-		"commits whose document kind matches (entity / record / association / delete / ack /\n" +
-		"unack); --only-schema keeps only commits whose document schema exactly matches the\n" +
-		"given URL — documents without a schema (entity, delete, ...) are dropped when\n" +
+		"target — a superset of the single owner the server records on each commit. --only-kind\n" +
+		"keeps only commits whose document kind matches (entity / record / association / delete /\n" +
+		"ack / unack / acked / unacked); --only-schema keeps only commits whose document schema\n" +
+		"exactly matches the given URL — documents without a schema (entity, delete, ...) are dropped when\n" +
 		"--only-schema is given, so combine with --only-kind deliberately. Repeated values of\n" +
 		"one flag are OR; different flags are AND. With no filters the input passes through\n" +
 		"unchanged. Writes to [out-file], or stdout when omitted. Lines that fail to parse are\n" +

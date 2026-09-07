@@ -2,7 +2,6 @@ package usecase
 
 import (
 	"context"
-	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -81,32 +80,11 @@ func signedAck(t *testing.T, kind string, from, to ackParty, createdAt time.Time
 // original signed ack in a document-direct proof.
 func derivedAcked(t *testing.T, ack concrnt.SignedDocument) concrnt.SignedDocument {
 	t.Helper()
-	doc, err := ack.ParsedDocument()
+	derived, err := ack.DeriveAcked()
 	if err != nil {
-		t.Fatalf("parse ack document: %v", err)
+		t.Fatalf("derive acked document: %v", err)
 	}
-	switch doc.Kind {
-	case "ack":
-		doc.Kind = "acked"
-	case "unack":
-		doc.Kind = "unacked"
-	default:
-		t.Fatalf("not an ack document: %s", doc.Kind)
-	}
-	docBytes, err := json.Marshal(doc)
-	if err != nil {
-		t.Fatalf("marshal acked document: %v", err)
-	}
-	original := ack.Document
-	originalProof := ack.Proof
-	return concrnt.SignedDocument{
-		Document: string(docBytes),
-		Proof: concrnt.Proof{
-			Type:     concrnt.ProofTypeDocumentDirect,
-			Document: &original,
-			Proof:    &originalProof,
-		},
-	}
+	return derived
 }
 
 func newAckUsecase(cfg *domain.Config, repo RecordRepository, residence ResidenceRepository, delivery DeliveryQueue) *RecordUsecase {
@@ -154,10 +132,17 @@ func TestCommitAckOwnerIsAuthor(t *testing.T) {
 			uc := newAckUsecase(cfg, repo, residenceOf(from, to), delivery)
 
 			sd := signedAck(t, kind, from, to, time.Now().Add(-time.Minute))
-			if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+			result, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute)
+			if err != nil {
 				t.Fatalf("Commit returned error: %v", err)
 			}
 			id := documentIDOf(t, sd)
+
+			// CIP-3 §3.4: the ack's ccfs identity is held by the author's server
+			wantCCFS := concrnt.ComposeCCFSURI(from.ccid, concrnt.CCFSTypeConcrnt, id)
+			if result == nil || result.CCFS == nil || *result.CCFS != wantCCFS {
+				t.Fatalf("result ccfs = %v, want %s", result.CCFS, wantCCFS)
+			}
 
 			if len(repo.createdCommitLogs) != 1 || repo.createdCommitLogs[0] != id {
 				t.Fatalf("CreateCommitLog calls = %v, want exactly [%s]", repo.createdCommitLogs, id)

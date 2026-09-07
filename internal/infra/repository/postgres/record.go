@@ -64,6 +64,7 @@ func (r *RecordRepository) CreateEntity(
 	alias *string,
 	domain string,
 	documentID string,
+	createdAt time.Time,
 ) (bool, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.CreateEntity")
 	defer span.End()
@@ -79,17 +80,17 @@ func (r *RecordRepository) CreateEntity(
 		Alias:      alias,
 		Domain:     domain,
 		DocumentID: documentID,
+		CreatedAt:  createdAt,
 	}
 
-	// document_id is a time-prefixed, content-hashed, lexicographically
-	// sortable CDID, so "excluded.document_id > entities.document_id" keeps the
-	// newer document (and breaks exact-createdAt ties deterministically). This
-	// makes newer-wins atomic at the row lock, closing the read-then-write race
-	// between the usecase-level accept-if-newer check and this upsert.
+	// CIP-3 §3.4 accept-if-newer on the document's createdAt: only a strictly
+	// newer document replaces the stored one; an equal or older one is a
+	// no-op (RowsAffected 0). The conditional upsert makes newer-wins atomic
+	// at the row lock, so concurrent writers converge on the same winner.
 	result := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"alias", "domain", "document_id"}),
-		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("entities.document_id < excluded.document_id")}},
+		DoUpdates: clause.AssignmentColumns([]string{"alias", "domain", "document_id", "created_at"}),
+		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("entities.created_at < excluded.created_at")}},
 	}).Create(&modelEntity)
 	if result.Error != nil {
 		return false, result.Error
@@ -175,12 +176,11 @@ func (r *RecordRepository) CreateRecord(
 		return false, err
 	}
 
-	// Lock the RecordKey before writing anything. document_id is a
-	// time-prefixed, content-hashed, lexicographically sortable CDID, so this
-	// keeps the newer document (CIP-3 §3.4 accept-if-newer, deterministic on
-	// exact-createdAt ties) atomically at the row lock — closing the
-	// read-then-write race between the usecase-level check and this write,
-	// same as CreateEntity's conditional upsert.
+	// Lock the RecordKey before writing anything. CIP-3 §3.4 accept-if-newer
+	// on the document's createdAt: only a strictly newer document takes the
+	// key, an equal or older one is a no-op. Deciding under the row lock
+	// closes the read-then-write race between concurrent commits, same as
+	// CreateEntity's conditional upsert.
 	var oldRecordKey models.RecordKey
 	err = db.Clauses(clause.Locking{Strength: "UPDATE"}).
 		Where("uri = ?", key).
@@ -189,7 +189,7 @@ func (r *RecordRepository) CreateRecord(
 		span.RecordError(err)
 		return false, err
 	}
-	if oldRecordKey.RecordID != nil && documentID <= *oldRecordKey.RecordID {
+	if oldRecordKey.RecordID != nil && oldRecordKey.RecordCreatedAt != nil && !createdAt.After(*oldRecordKey.RecordCreatedAt) {
 		return false, nil
 	}
 
@@ -241,7 +241,7 @@ func (r *RecordRepository) CreateRecord(
 	result := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "uri"}},
 		DoUpdates: clause.Assignments(map[string]any{"record_id": documentID, "parent_id": pid, "record_created_at": createdAt, "clean_on_update": cleanOnUpdate}),
-		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("record_keys.record_id IS NULL OR record_keys.record_id < excluded.record_id")}},
+		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("record_keys.record_id IS NULL OR record_keys.record_created_at IS NULL OR record_keys.record_created_at < excluded.record_created_at")}},
 	}).Create(&rk)
 	if result.Error != nil {
 		span.RecordError(result.Error)
@@ -330,14 +330,15 @@ func (r *RecordRepository) processAck(ctx context.Context, tx usecase.Repository
 		CreatedAt:  createdAt,
 	}
 
-	// CIP-10 §4: only a strictly newer document may move the (from, to,
-	// schema) state. document_id is a time-prefixed, lexicographically
-	// sortable CDID, so the conditional upsert keeps the newer transition and
-	// makes a replayed older ack a no-op (RowsAffected 0).
+	// CIP-10 §4: only a document with a strictly newer createdAt may move
+	// the (from, to, schema) state; an equal or older one is a no-op
+	// (RowsAffected 0). The key is createdAt alone — never the document id —
+	// so the acker's and the associate owner's servers, which hold different
+	// documents with the same createdAt, reach the same decision.
 	result := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "schema"}},
 		DoUpdates: clause.Assignments(map[string]any{"valid": valid, "document_id": documentID, "created_at": createdAt}),
-		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("acks.document_id < excluded.document_id")}},
+		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("acks.created_at < excluded.created_at")}},
 	}).Create(&ack)
 	if result.Error != nil {
 		span.RecordError(result.Error)
@@ -375,14 +376,15 @@ func (r *RecordRepository) processAcked(ctx context.Context, tx usecase.Reposito
 		CreatedAt:  createdAt,
 	}
 
-	// CIP-10 §4: only a strictly newer document may move the (from, to,
-	// schema) state. document_id is a time-prefixed, lexicographically
-	// sortable CDID, so the conditional upsert keeps the newer transition and
-	// makes a replayed older ack a no-op (RowsAffected 0).
+	// CIP-10 §4: only a document with a strictly newer createdAt may move
+	// the (from, to, schema) state; an equal or older one is a no-op
+	// (RowsAffected 0). The key is createdAt alone — never the document id —
+	// so the acker's and the associate owner's servers, which hold different
+	// documents with the same createdAt, reach the same decision.
 	result := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "schema"}},
 		DoUpdates: clause.Assignments(map[string]any{"valid": valid, "document_id": documentID, "created_at": createdAt}),
-		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("ackeds.document_id < excluded.document_id")}},
+		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("ackeds.created_at < excluded.created_at")}},
 	}).Create(&ack)
 	if result.Error != nil {
 		span.RecordError(result.Error)
@@ -1187,7 +1189,7 @@ func (r *RecordRepository) getAckedRecords(ctx context.Context, to, schema strin
 		query = query.Where("ackeds.created_at >= ?", *since)
 	}
 	if until != nil {
-		query = query.Where("ackedscreated_at <= ?", *until)
+		query = query.Where("ackeds.created_at <= ?", *until)
 	}
 
 	if order == "desc" {
@@ -1215,7 +1217,9 @@ func (r *RecordRepository) getAckedRecords(ctx context.Context, to, schema strin
 			return nil, err
 		}
 
-		ccfs := concrnt.ComposeCCFSURI(ack.From, concrnt.CCFSTypeConcrnt, ack.DocumentID)
+		// CIP-3 §3.4: an acked's ccfs identity is held by the associate
+		// owner's server
+		ccfs := concrnt.ComposeCCFSURI(ack.To, concrnt.CCFSTypeConcrnt, ack.DocumentID)
 
 		rows[i] = usecase.QueryRow{
 			Row: concrnt.SignedDocument{
@@ -1295,10 +1299,10 @@ func (r *RecordRepository) getAckedRecordCounts(ctx context.Context, to, schema 
 		Model(&models.Acked{}).
 		Select("schema, COUNT(*) AS count").
 		Where("valid = ?", true).
-		Where("acks.to = ?", to)
+		Where("ackeds.to = ?", to)
 
 	if schema != "" {
-		query = query.Where("acks.schema = ?", schema)
+		query = query.Where("ackeds.schema = ?", schema)
 	}
 
 	err := query.Group("schema").Scan(&results).Error

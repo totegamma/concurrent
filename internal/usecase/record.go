@@ -347,7 +347,7 @@ func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.Signe
 
 	case "delete":
 		applyCommit = func(tx RepositoryTx) (*commitApplyResult, error) {
-			return uc.deleteRecord(ctx, tx, *requester, sd, mode)
+			return uc.deleteRecord(ctx, tx, ip, *requester, sd, mode)
 		}
 	default:
 		err := errors.New("unsupported document kind: " + doc.Kind)
@@ -616,7 +616,7 @@ func (uc *RecordUsecase) createReferenceDistributionActions(ctx context.Context,
 	return postProcesses, nil
 }
 
-func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requester domain.Entity, sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
+func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, ip string, requester domain.Entity, sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.Delete")
 	defer span.End()
 
@@ -748,6 +748,18 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, requ
 		var removedTimeline, removedItemID string
 
 		if authoritative {
+
+			documentID, err := sd.CDID()
+			if err != nil {
+				span.RecordError(err)
+				return nil, err
+			}
+
+			if err := uc.repo.CreateCommitLog(ctx, tx, documentID, ip, sd.Document, sd.Proof, targetURI.Owner); err != nil {
+				span.RecordError(err)
+				return nil, err
+			}
+
 			switch targetDoc.Kind {
 			case "record":
 
@@ -1189,6 +1201,11 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, ip s
 		return nil, err
 	}
 
+	if err := uc.repo.CreateCommitLog(ctx, tx, documentID, ip, sd.Document, sd.Proof, parsedKey.Owner); err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
 	resultURI := parsed.Key
 	applied, err := uc.repo.CreateRecord(ctx, tx, documentID, parsed.Key, parsedKey.Owner, parsed.Author, schema, parsed.OnUpdate, policies, distributions, redirect, createdAt)
 	if err != nil {
@@ -1328,6 +1345,11 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 		uniqueKey += string(bodyBytes)
 		uniqueHash := xxh3.HashString(uniqueKey)
 
+		if err := uc.repo.CreateCommitLog(ctx, tx, documentID, ip, sd.Document, sd.Proof, targetURI.Owner); err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+
 		applied, err := uc.repo.CreateAssociation(ctx, tx, documentID, *parsed.Associate, targetURI.Owner, parsed.Author, parsed.Schema, parsed.AssociationVariant, fmt.Sprintf("%x", uniqueHash), parsed.CreatedAt)
 		if err != nil {
 			span.RecordError(err)
@@ -1454,9 +1476,17 @@ func (uc *RecordUsecase) processAck(ctx context.Context, tx RepositoryTx, ip str
 		return nil, err
 	}
 
-	if err := uc.repo.CreateCommitLog(ctx, tx, documentID, ip, sd.Document, sd.Proof, to.ID); err != nil {
-		span.RecordError(err)
-		return nil, err
+	switch doc.Kind {
+	case "ack", "unack":
+		if err := uc.repo.CreateCommitLog(ctx, tx, documentID, ip, sd.Document, sd.Proof, from.ID); err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+	case "acked", "unacked":
+		if err := uc.repo.CreateCommitLog(ctx, tx, documentID, ip, sd.Document, sd.Proof, to.ID); err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
 	}
 
 	if uc.IsLocalEntity(ctx, &from) && (doc.Kind == "ack" || doc.Kind == "unack") { // create ack
@@ -1533,7 +1563,7 @@ func (uc *RecordUsecase) processAck(ctx context.Context, tx RepositoryTx, ip str
 					ResolveURI: to.CCKVWithHint(),
 					Payload:    ackedSD,
 					Local:      domain.DeliveryLocalCommit,
-					Remote:     domain.DeliveryRemoteNone,
+					Remote:     domain.DeliveryRemoteCommit,
 				})
 			},
 		)

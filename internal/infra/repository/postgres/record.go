@@ -382,7 +382,7 @@ func (r *RecordRepository) processAcked(ctx context.Context, tx usecase.Reposito
 	result := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "schema"}},
 		DoUpdates: clause.Assignments(map[string]any{"valid": valid, "document_id": documentID, "created_at": createdAt}),
-		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("acks.document_id < excluded.document_id")}},
+		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("acked.document_id < excluded.document_id")}},
 	}).Create(&ack)
 	if result.Error != nil {
 		span.RecordError(result.Error)
@@ -1106,27 +1106,19 @@ func (r *RecordRepository) QueryByParent(
 	return recordKeysToQueryRows(rks, span)
 }
 
-func (r *RecordRepository) GetAcknowledgeRecords(ctx context.Context, from, to, schema string, since, until *time.Time, limit int, order string) ([]usecase.QueryRow, error) {
-	ctx, span := tracer.Start(ctx, "Repository.Record.GetAcknowledgeRecords")
+func (r *RecordRepository) getAckRecords(ctx context.Context, from, schema string, since, until *time.Time, limit int, order string) ([]usecase.QueryRow, error) {
+	ctx, span := tracer.Start(ctx, "Repository.Record.getAckRecords")
 	defer span.End()
 
 	var acks []models.Ack
 	query := r.db.WithContext(ctx).
 		Model(&models.Ack{}).
-		Preload("Document")
+		Preload("Document").
+		Where("acks.from = ?", from).
+		Where("acks.valid = ?", true)
 
-	if from != "" {
-		query = query.Where("acks.from = ?", from)
-	}
-	if to != "" {
-		query = query.Where("acks.to = ?", to)
-	}
 	if schema != "" {
 		query = query.Where("acks.schema = ?", schema)
-	}
-
-	if from != "" || to != "" || schema != "" {
-		query = query.Where("acks.valid = ?", true)
 	}
 
 	if since != nil {
@@ -1176,8 +1168,85 @@ func (r *RecordRepository) GetAcknowledgeRecords(ctx context.Context, from, to, 
 	return rows, nil
 }
 
-func (r *RecordRepository) GetAcknowledgeRecordCounts(ctx context.Context, from, to, schema string) (map[string]int64, error) {
-	ctx, span := tracer.Start(ctx, "Repository.Record.GetAcknowledgeRecordCounts")
+func (r *RecordRepository) getAckedRecords(ctx context.Context, to, schema string, since, until *time.Time, limit int, order string) ([]usecase.QueryRow, error) {
+	ctx, span := tracer.Start(ctx, "Repository.Record.getAckedRecords")
+	defer span.End()
+
+	var acked []models.Acked
+	query := r.db.WithContext(ctx).
+		Model(&models.Acked{}).
+		Preload("Document").
+		Where("acked.to = ?", to).
+		Where("acked.valid = ?", true)
+
+	if schema != "" {
+		query = query.Where("acked.schema = ?", schema)
+	}
+
+	if since != nil {
+		query = query.Where("acked.created_at >= ?", *since)
+	}
+	if until != nil {
+		query = query.Where("acked.created_at <= ?", *until)
+	}
+
+	if order == "desc" {
+		query = query.Order("acked.created_at DESC, acked.document_id DESC")
+	} else {
+		query = query.Order("acked.created_at ASC, acked.document_id ASC")
+	}
+
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+
+	err := query.Find(&acked).Error
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	rows := make([]usecase.QueryRow, len(acked))
+	for i, ack := range acked {
+		var proof concrnt.Proof
+		err := json.Unmarshal([]byte(ack.Document.Proof), &proof)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+
+		ccfs := concrnt.ComposeCCFSURI(ack.From, concrnt.CCFSTypeConcrnt, ack.DocumentID)
+
+		rows[i] = usecase.QueryRow{
+			Row: concrnt.SignedDocument{
+				CCFS:     &ccfs,
+				Document: ack.Document.Document,
+				Proof:    proof,
+			},
+			CreatedAt: ack.CreatedAt,
+		}
+	}
+
+	return rows, nil
+}
+
+func (r *RecordRepository) GetAcknowledgeRecords(ctx context.Context, from, to, schema string, since, until *time.Time, limit int, order string) ([]usecase.QueryRow, error) {
+	ctx, span := tracer.Start(ctx, "Repository.Record.GetAcknowledgeRecords")
+	defer span.End()
+
+	if from != "" {
+		return r.getAckRecords(ctx, from, schema, since, until, limit, order)
+	} else if to != "" {
+		return r.getAckedRecords(ctx, to, schema, since, until, limit, order)
+	} else {
+		err := errors.New("either 'from' or 'to' must be specified")
+		span.RecordError(err)
+		return nil, err
+	}
+}
+
+func (r *RecordRepository) getAckRecordCounts(ctx context.Context, from, schema string) (map[string]int64, error) {
+	ctx, span := tracer.Start(ctx, "Repository.Record.getAckRecordCounts")
 	defer span.End()
 
 	type result struct {
@@ -1190,14 +1259,9 @@ func (r *RecordRepository) GetAcknowledgeRecordCounts(ctx context.Context, from,
 	query := r.db.WithContext(ctx).
 		Model(&models.Ack{}).
 		Select("schema, COUNT(*) AS count").
-		Where("valid = ?", true)
+		Where("valid = ?", true).
+		Where("acks.from = ?", from)
 
-	if from != "" {
-		query = query.Where("acks.from = ?", from)
-	}
-	if to != "" {
-		query = query.Where("acks.to = ?", to)
-	}
 	if schema != "" {
 		query = query.Where("acks.schema = ?", schema)
 	}
@@ -1216,15 +1280,64 @@ func (r *RecordRepository) GetAcknowledgeRecordCounts(ctx context.Context, from,
 	return counts, nil
 }
 
+func (r *RecordRepository) getAckedRecordCounts(ctx context.Context, to, schema string) (map[string]int64, error) {
+	ctx, span := tracer.Start(ctx, "Repository.Record.getAckedRecordCounts")
+	defer span.End()
+
+	type result struct {
+		Schema string
+		Count  int64
+	}
+
+	var results []result
+
+	query := r.db.WithContext(ctx).
+		Model(&models.Acked{}).
+		Select("schema, COUNT(*) AS count").
+		Where("valid = ?", true).
+		Where("acks.to = ?", to)
+
+	if schema != "" {
+		query = query.Where("acks.schema = ?", schema)
+	}
+
+	err := query.Group("schema").Scan(&results).Error
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	counts := make(map[string]int64)
+	for _, r := range results {
+		counts[r.Schema] = r.Count
+	}
+
+	return counts, nil
+}
+
+func (r *RecordRepository) GetAcknowledgeRecordCounts(ctx context.Context, from, to, schema string) (map[string]int64, error) {
+	ctx, span := tracer.Start(ctx, "Repository.Record.GetAcknowledgeRecordCounts")
+	defer span.End()
+
+	if from != "" {
+		return r.getAckRecordCounts(ctx, from, schema)
+	} else if to != "" {
+		return r.getAckedRecordCounts(ctx, to, schema)
+	} else {
+		err := errors.New("either 'from' or 'to' must be specified")
+		span.RecordError(err)
+		return nil, err
+	}
+}
+
 func (r *RecordRepository) GetAllCommitLogs(ctx context.Context, owner string) ([]concrnt.SignedDocument, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.GetAllCommitLogs")
 	defer span.End()
 
 	var commitLogs []models.CommitLog
 	err := r.db.WithContext(ctx).
-		Joins("JOIN commit_owners co ON co.commit_log_id = commit_logs.id").
-		Where("co.owner = ?", owner).
-		Order("commit_logs.c_date ASC").
+		Where("owner = ?", owner).
+		Order("c_date ASC").
 		Find(&commitLogs).Error
 	if err != nil {
 		span.RecordError(err)

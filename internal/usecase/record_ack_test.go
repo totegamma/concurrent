@@ -401,7 +401,7 @@ func (r *blockingRecordRepo) QueryByParent(ctx context.Context, parent, schema, 
 // Mirrors are the target's own holding and must stay replayable from a
 // repository dump (CIP-10 §5.2 検査の免除): the backdate window, the block
 // check and the author-entity resolution do not apply, while a server that
-// does not manage the associate owner must not accept a mirror at all.
+// does not manage the associate owner simply has nothing to hold.
 func TestCommitAckedExemptions(t *testing.T) {
 	cfg := &domain.Config{FQDN: "example.com"}
 	from := newAckParty(t, "remote.example.net")
@@ -448,17 +448,23 @@ func TestCommitAckedExemptions(t *testing.T) {
 		}
 	})
 
-	t.Run("rejected when the associate owner is not local", func(t *testing.T) {
+	t.Run("ignored when the associate owner is not local", func(t *testing.T) {
+		// a server that manages neither side has nothing to hold: the commit
+		// is a no-op success (CIP-3 §3.1), nothing is stored and the tx
+		// rolls back
 		elsewhere := newAckParty(t, "other.example.net")
 		repo := &recordingRecordRepo{}
 		uc := newAckUsecase(cfg, repo, residenceOf(from, elsewhere), &recordingDeliveryQueue{})
 
 		ack := signedAck(t, "ack", from, elsewhere, time.Now().Add(-time.Minute))
-		if _, err := uc.Commit(systemCtx(), "127.0.0.1", derivedAcked(t, ack), domain.CommitModeExecute); err == nil {
-			t.Fatal("a mirror for an associate owner this server does not manage must be rejected, got success")
+		if _, err := uc.Commit(systemCtx(), "127.0.0.1", derivedAcked(t, ack), domain.CommitModeExecute); err != nil {
+			t.Fatalf("Commit returned error: %v", err)
 		}
 		if repo.acknowledgedCalled {
-			t.Fatal("a misdirected mirror must not reach the repository")
+			t.Fatal("a mirror for an associate owner this server does not manage must not reach the repository")
+		}
+		if len(repo.txs) != 1 || repo.txs[0].committed || !repo.txs[0].rolledBack {
+			t.Fatalf("expected a single rolled-back tx, got %+v", repo.txs)
 		}
 	})
 }

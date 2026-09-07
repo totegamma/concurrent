@@ -18,9 +18,10 @@ import (
 // server holds.
 
 // The target-side acked/unacked state follows the same accept-if-newer
-// transitions as the acker-side ack state (CIP-10 §4 / §5.2): only a strictly
-// newer document moves the (from, to, schema) row, older replays are no-ops,
-// and the acks table stays untouched.
+// transitions as the acker-side ack state (CIP-10 §4 / §5.2): the key is the
+// document's createdAt alone — only a strictly newer createdAt moves the
+// (from, to, schema) row, same-or-older replays are no-ops whatever their
+// document id — and the acks table stays untouched.
 func TestAckedRepositoryAcceptIfNewer(t *testing.T) {
 	db, cleanup := testutil.CreateDB()
 	t.Cleanup(cleanup)
@@ -32,7 +33,8 @@ func TestAckedRepositoryAcceptIfNewer(t *testing.T) {
 	schema := "https://schema.example/follow.json"
 	associate := "cckv://" + to
 	t1 := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
-	t2 := t1.Add(24 * time.Hour)
+	t2 := t1.Add(time.Hour)
+	t3 := t1.Add(24 * time.Hour)
 
 	mirror := func(kind string, createdAt time.Time) concrnt.SignedDocument {
 		return repositorySignedDocument(t, concrnt.Document[map[string]string]{
@@ -50,61 +52,66 @@ func TestAckedRepositoryAcceptIfNewer(t *testing.T) {
 		require.NoError(t, db.Where(`"from" = ? AND "to" = ? AND schema = ?`, from, to, schema).Take(&row).Error)
 		return row
 	}
-
-	withRepositoryTx(t, ctx, repo, "acked-1-on", "127.0.0.1", mirror("acked", t1), to, func(tx usecase.RepositoryTx) error {
-		applied, err := repo.Acknowledged(ctx, tx, "acked-1-on", from, to, schema, t1)
-		if err != nil {
-			return err
+	commit := func(id, kind string, createdAt time.Time) {
+		t.Helper()
+		withRepositoryTx(t, ctx, repo, id, "127.0.0.1", mirror(kind, createdAt), to, func(tx usecase.RepositoryTx) error {
+			transition := repo.Acknowledged
+			if kind == "unacked" {
+				transition = repo.UnAcknowledged
+			}
+			applied, err := transition(ctx, tx, id, from, to, schema, createdAt)
+			if err != nil {
+				return err
+			}
+			require.True(t, applied, "%s must apply", id)
+			return nil
+		})
+	}
+	// attempt runs a transition in a transaction that is always rolled back,
+	// so only the reported applied flag matters
+	attempt := func(id, kind string, createdAt time.Time) bool {
+		t.Helper()
+		sd := mirror(kind, createdAt)
+		tx, err := repo.BeginTx(ctx)
+		require.NoError(t, err)
+		require.NoError(t, repo.CreateCommitLog(ctx, tx, id, "127.0.0.1", sd.Document, sd.Proof, to))
+		transition := repo.Acknowledged
+		if kind == "unacked" {
+			transition = repo.UnAcknowledged
 		}
-		require.True(t, applied)
-		return nil
-	})
+		applied, err := transition(ctx, tx, id, from, to, schema, createdAt)
+		require.NoError(t, err)
+		require.NoError(t, tx.Rollback(ctx))
+		return applied
+	}
+
+	commit("acked-1-on", "acked", t1)
 	row := state()
 	require.True(t, row.Valid)
 	require.Equal(t, "acked-1-on", row.DocumentID)
 	require.True(t, row.CreatedAt.Equal(t1))
 	requireCommitOwner(t, db, "acked-1-on", to)
 
-	withRepositoryTx(t, ctx, repo, "acked-2-off", "127.0.0.1", mirror("unacked", t1), to, func(tx usecase.RepositoryTx) error {
-		applied, err := repo.UnAcknowledged(ctx, tx, "acked-2-off", from, to, schema, t1)
-		if err != nil {
-			return err
-		}
-		require.True(t, applied)
-		return nil
-	})
+	// same createdAt is not strictly newer: no-op even with a higher id
+	require.False(t, attempt("acked-9-same-time", "unacked", t1), "same createdAt must be a no-op: the transition key is createdAt, not the document id")
+	require.Equal(t, "acked-1-on", state().DocumentID)
+
+	commit("acked-2-off", "unacked", t2)
 	row = state()
 	require.False(t, row.Valid)
 	require.Equal(t, "acked-2-off", row.DocumentID)
 
 	// an older acked replayed after the unacked must not resurrect it
-	tx, err := repo.BeginTx(ctx)
-	require.NoError(t, err)
-	applied, err := repo.Acknowledged(ctx, tx, "acked-0-stale", from, to, schema, t1)
-	require.NoError(t, err)
-	require.False(t, applied)
-	require.NoError(t, tx.Rollback(ctx))
+	require.False(t, attempt("acked-0-stale", "acked", t1))
 	require.Equal(t, "acked-2-off", state().DocumentID)
 
 	// a newer acked wins, and an unacked from before it is a no-op
-	withRepositoryTx(t, ctx, repo, "acked-3-on", "127.0.0.1", mirror("acked", t2), to, func(tx usecase.RepositoryTx) error {
-		applied, err := repo.Acknowledged(ctx, tx, "acked-3-on", from, to, schema, t2)
-		if err != nil {
-			return err
-		}
-		require.True(t, applied)
-		return nil
-	})
-	tx, err = repo.BeginTx(ctx)
-	require.NoError(t, err)
-	applied, err = repo.UnAcknowledged(ctx, tx, "acked-2x-stale", from, to, schema, t1)
-	require.NoError(t, err)
-	require.False(t, applied)
-	require.NoError(t, tx.Rollback(ctx))
+	commit("acked-3-on", "acked", t3)
+	require.False(t, attempt("acked-2x-stale", "unacked", t2))
 	row = state()
 	require.True(t, row.Valid)
 	require.Equal(t, "acked-3-on", row.DocumentID)
-	require.True(t, row.CreatedAt.Equal(t2))
+	require.True(t, row.CreatedAt.Equal(t3))
 
 	var ackCount int64
 	require.NoError(t, db.Model(&models.Ack{}).Count(&ackCount).Error)
@@ -115,8 +122,9 @@ func TestAckedRepositoryAcceptIfNewer(t *testing.T) {
 // (CIP-10 §6): a from-filtered query lists the ack commits of a local acker
 // (acks), a to-filtered query lists the acked documents received for a local
 // target (ackeds). Since every ack — a same-server one included — yields both
-// an ack and an acked commit, each side is complete on its own. One of from /
-// to is required, and the counts follow the same split.
+// an ack and an acked commit, each side is complete on its own. Exactly one
+// of from / to is given (the handler rejects anything else), and the counts
+// follow the same split.
 func TestGetAcknowledgeRecordsServesHeldSide(t *testing.T) {
 	db, cleanup := testutil.CreateDB()
 	t.Cleanup(cleanup)
@@ -180,9 +188,10 @@ func TestGetAcknowledgeRecordsServesHeldSide(t *testing.T) {
 	require.NoError(t, err)
 	require.Equal(t, []string{"acked:" + remoteAcker + ">" + local, "acked:" + localAcker + ">" + local}, ids(rows), "to-filtered listing is the target's acked documents, newest first")
 
-	rows, err = repo.GetAcknowledgeRecords(ctx, localAcker, local, "", nil, nil, 0, "desc")
+	// the until window applies to the held side's createdAt
+	rows, err = repo.GetAcknowledgeRecords(ctx, "", local, "", nil, ptr(at.Add(time.Minute)), 0, "desc")
 	require.NoError(t, err)
-	require.Equal(t, []string{"ack:" + localAcker + ">" + local}, ids(rows), "from and to together narrow the acker's side to one target")
+	require.Equal(t, []string{"acked:" + localAcker + ">" + local}, ids(rows), "until must window the to-side listing")
 
 	_, err = repo.GetAcknowledgeRecords(ctx, "", "", "", nil, nil, 0, "desc")
 	require.Error(t, err, "one of from / to is required")
@@ -195,7 +204,4 @@ func TestGetAcknowledgeRecordsServesHeldSide(t *testing.T) {
 	require.NoError(t, err)
 	require.EqualValues(t, 2, counts[schema])
 
-	counts, err = repo.GetAcknowledgeRecordCounts(ctx, localAcker, local, "")
-	require.NoError(t, err)
-	require.EqualValues(t, 1, counts[schema])
 }

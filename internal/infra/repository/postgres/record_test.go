@@ -349,89 +349,90 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		require.EqualValues(t, 1, associationCount)
 
 		ackSchema := "https://schema.example/like.json"
-		ackSD := repositorySignedDocument(t, concrnt.Document[map[string]string]{
-			Kind:      "ack",
-			Value:     map[string]string{"context": "like"},
-			Author:    "con1author",
-			Schema:    ackSchema,
-			CreatedAt: time.Date(2026, 4, 5, 6, 7, 8, 0, time.UTC),
-			Associate: &key,
-		})
 		ackCreatedAt := time.Date(2026, 4, 5, 6, 7, 8, 0, time.UTC)
-		withRepositoryTx(t, ctx, repo, "ack-1-on", "127.0.0.1", ackSD, "con1author", func(tx usecase.RepositoryTx) error {
+		ackDoc := func(kind string, createdAt time.Time) concrnt.SignedDocument {
+			return repositorySignedDocument(t, concrnt.Document[map[string]string]{
+				Kind:      kind,
+				Value:     map[string]string{"context": "like"},
+				Author:    "con1author",
+				Schema:    ackSchema,
+				CreatedAt: createdAt,
+				Associate: &key,
+			})
+		}
+		ackState := func() models.Ack {
+			t.Helper()
+			var ack models.Ack
+			require.NoError(t, db.Where(`"from" = ? AND "to" = ? AND schema = ?`, "con1author", "con1owner", ackSchema).Take(&ack).Error)
+			return ack
+		}
+		// attempt runs a transition in a transaction that is always rolled
+		// back, so only the reported applied flag matters
+		attempt := func(id string, unack bool, createdAt time.Time) bool {
+			t.Helper()
+			kind := "ack"
+			if unack {
+				kind = "unack"
+			}
+			sd := ackDoc(kind, createdAt)
+			tx, err := repo.BeginTx(ctx)
+			require.NoError(t, err)
+			require.NoError(t, repo.CreateCommitLog(ctx, tx, id, "127.0.0.1", sd.Document, sd.Proof, "con1author"))
+			transition := repo.Acknowledge
+			if unack {
+				transition = repo.UnAcknowledge
+			}
+			applied, err := transition(ctx, tx, id, "con1author", "con1owner", ackSchema, createdAt)
+			require.NoError(t, err)
+			require.NoError(t, tx.Rollback(ctx))
+			return applied
+		}
+
+		withRepositoryTx(t, ctx, repo, "ack-1-on", "127.0.0.1", ackDoc("ack", ackCreatedAt), "con1author", func(tx usecase.RepositoryTx) error {
 			applied, err := repo.Acknowledge(ctx, tx, "ack-1-on", "con1author", "con1owner", ackSchema, ackCreatedAt)
 			require.True(t, applied)
 			return err
 		})
-
-		var ack models.Ack
-		require.NoError(t, db.Where(`"from" = ? AND "to" = ? AND schema = ?`, "con1author", "con1owner", ackSchema).Take(&ack).Error)
+		ack := ackState()
 		require.True(t, ack.Valid)
 		require.Equal(t, "ack-1-on", ack.DocumentID)
 		// the ack commit is the acker's alone (CIP-10 §5); the target side is
-		// held as an acked mirror commit, see TestAckedRepositoryAcceptIfNewer
+		// held as an acked commit, see TestAckedRepositoryAcceptIfNewer
 		requireCommitOwner(t, db, "ack-1-on", "con1author")
 
-		unackSD := repositorySignedDocument(t, concrnt.Document[map[string]string]{
-			Kind:      "unack",
-			Value:     map[string]string{"context": "like"},
-			Author:    "con1author",
-			Schema:    ackSchema,
-			CreatedAt: ackCreatedAt,
-			Associate: &key,
-		})
-		withRepositoryTx(t, ctx, repo, "ack-2-off", "127.0.0.1", unackSD, "con1author", func(tx usecase.RepositoryTx) error {
-			applied, err := repo.UnAcknowledge(ctx, tx, "ack-2-off", "con1author", "con1owner", ackSchema, ackCreatedAt)
+		// CIP-10 §4: the transition key is createdAt alone. An unack with the
+		// same createdAt is not strictly newer and must no-op even though its
+		// document id sorts above the stored one.
+		require.False(t, attempt("ack-9-same-time", true, ackCreatedAt), "same createdAt must be a no-op: the transition key is createdAt, not the document id")
+		require.Equal(t, "ack-1-on", ackState().DocumentID)
+
+		unackCreatedAt := ackCreatedAt.Add(time.Hour)
+		withRepositoryTx(t, ctx, repo, "ack-2-off", "127.0.0.1", ackDoc("unack", unackCreatedAt), "con1author", func(tx usecase.RepositoryTx) error {
+			applied, err := repo.UnAcknowledge(ctx, tx, "ack-2-off", "con1author", "con1owner", ackSchema, unackCreatedAt)
 			require.True(t, applied)
 			return err
 		})
-
-		var unack models.Ack
-		require.NoError(t, db.Where(`"from" = ? AND "to" = ? AND schema = ?`, "con1author", "con1owner", ackSchema).Take(&unack).Error)
+		unack := ackState()
 		require.False(t, unack.Valid)
 		require.Equal(t, "ack-2-off", unack.DocumentID)
 		requireCommitOwner(t, db, "ack-2-off", "con1author")
 
-		// CIP-10 §4 accept-if-newer: a replayed ack older than the stored
-		// unack must not resurrect it...
-		tx, err := repo.BeginTx(ctx)
-		require.NoError(t, err)
-		applied, err := repo.Acknowledge(ctx, tx, "ack-0-stale", "con1author", "con1owner", ackSchema, ackCreatedAt)
-		require.NoError(t, err)
-		require.False(t, applied)
-		require.NoError(t, tx.Rollback(ctx))
-
-		var afterStaleAck models.Ack
-		require.NoError(t, db.Where(`"from" = ? AND "to" = ? AND schema = ?`, "con1author", "con1owner", ackSchema).Take(&afterStaleAck).Error)
+		// a replayed ack older than the stored unack must not resurrect it...
+		require.False(t, attempt("ack-0-stale", false, ackCreatedAt))
+		afterStaleAck := ackState()
 		require.False(t, afterStaleAck.Valid)
 		require.Equal(t, "ack-2-off", afterStaleAck.DocumentID)
 
 		// ...and after a newer ack (t2), an unack replayed from before it (t1)
 		// must not roll the state back either.
-		reackCreatedAt := time.Date(2026, 4, 6, 6, 7, 8, 0, time.UTC)
-		reackSD := repositorySignedDocument(t, concrnt.Document[map[string]string]{
-			Kind:      "ack",
-			Value:     map[string]string{"context": "like"},
-			Author:    "con1author",
-			Schema:    ackSchema,
-			CreatedAt: reackCreatedAt,
-			Associate: &key,
-		})
-		withRepositoryTx(t, ctx, repo, "ack-3-on", "127.0.0.1", reackSD, "con1author", func(tx usecase.RepositoryTx) error {
+		reackCreatedAt := ackCreatedAt.Add(24 * time.Hour)
+		withRepositoryTx(t, ctx, repo, "ack-3-on", "127.0.0.1", ackDoc("ack", reackCreatedAt), "con1author", func(tx usecase.RepositoryTx) error {
 			applied, err := repo.Acknowledge(ctx, tx, "ack-3-on", "con1author", "con1owner", ackSchema, reackCreatedAt)
 			require.True(t, applied)
 			return err
 		})
-
-		tx, err = repo.BeginTx(ctx)
-		require.NoError(t, err)
-		applied, err = repo.UnAcknowledge(ctx, tx, "ack-2x-stale", "con1author", "con1owner", ackSchema, ackCreatedAt)
-		require.NoError(t, err)
-		require.False(t, applied)
-		require.NoError(t, tx.Rollback(ctx))
-
-		var afterStaleUnack models.Ack
-		require.NoError(t, db.Where(`"from" = ? AND "to" = ? AND schema = ?`, "con1author", "con1owner", ackSchema).Take(&afterStaleUnack).Error)
+		require.False(t, attempt("ack-2x-stale", true, unackCreatedAt))
+		afterStaleUnack := ackState()
 		require.True(t, afterStaleUnack.Valid)
 		require.Equal(t, "ack-3-on", afterStaleUnack.DocumentID)
 		require.True(t, afterStaleUnack.CreatedAt.Equal(reackCreatedAt))

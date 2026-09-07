@@ -170,9 +170,15 @@ func TestCommitAckOwnerIsAuthor(t *testing.T) {
 			if kind == "unack" {
 				wantMethod = "UnAcknowledge"
 			}
-			want := ackCall{method: wantMethod, documentID: id, from: from.ccid, to: to.ccid, schema: followSchema}
-			if len(repo.ackCalls) != 1 || repo.ackCalls[0] != want {
-				t.Fatalf("ack transitions = %+v, want [%+v]", repo.ackCalls, want)
+			if len(repo.ackCalls) != 1 {
+				t.Fatalf("ack transitions = %+v, want exactly one", repo.ackCalls)
+			}
+			call := repo.ackCalls[0]
+			if call.method != wantMethod || call.documentID != id || call.from != from.ccid || call.to != to.ccid || call.schema != followSchema {
+				t.Fatalf("ack transition = %+v, want %s(%s, from=%s, to=%s, schema=%s)", call, wantMethod, id, from.ccid, to.ccid, followSchema)
+			}
+			if doc, _ := sd.ParsedDocument(); !call.createdAt.Equal(doc.CreatedAt) {
+				t.Fatalf("transition createdAt = %v, want the document's %v", call.createdAt, doc.CreatedAt)
 			}
 			if repo.acknowledgedCalled || repo.unacknowledgedCalled {
 				t.Fatal("the acker's server must not write the target-side acked state for its own ack")
@@ -322,18 +328,12 @@ func TestCommitAckedAppliesOnTargetServer(t *testing.T) {
 			if len(repo.txs) != 1 || !repo.txs[0].committed {
 				t.Fatalf("expected a committed tx, got %+v", repo.txs)
 			}
-
-			// CIP-10 §5.2 (apply rule): the accept-if-newer comparison for the
-			// (from, to, schema) state uses the ORIGINAL ack's CDID on both
-			// sides, never the mirror's own — an ack and an unack with the same
-			// createdAt would otherwise tie-break differently on the two
-			// servers and diverge. Decision item: keep this rule (store the
-			// original's CDID as the comparison key) or revise the CIP.
-			t.Run("state comparison key is the original ack's CDID", func(t *testing.T) {
-				if call.documentID != documentIDOf(t, ack) {
-					t.Fatalf("transition documentID = %s (the mirror's), want the original ack's %s", call.documentID, documentIDOf(t, ack))
-				}
-			})
+			// CIP-10 §4 / §5.2: the accept-if-newer key is the document's
+			// createdAt, which the mirror inherits from the original ack, so
+			// both servers compare the same value.
+			if doc, _ := ack.ParsedDocument(); !call.createdAt.Equal(doc.CreatedAt) {
+				t.Fatalf("transition createdAt = %v, want the original ack's %v", call.createdAt, doc.CreatedAt)
+			}
 		})
 	}
 }

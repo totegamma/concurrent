@@ -73,6 +73,7 @@ type ackCall struct {
 	from       string
 	to         string
 	schema     string
+	createdAt  time.Time
 }
 
 func (r *recordingRecordRepo) BeginTx(ctx context.Context) (RepositoryTx, error) {
@@ -105,22 +106,22 @@ func (r *recordingRecordRepo) CreateRecord(ctx context.Context, tx RepositoryTx,
 }
 func (r *recordingRecordRepo) Acknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
 	r.acknowledgeCalled = true
-	r.ackCalls = append(r.ackCalls, ackCall{"Acknowledge", documentID, from, to, schema})
+	r.ackCalls = append(r.ackCalls, ackCall{"Acknowledge", documentID, from, to, schema, createdAt})
 	return !r.ackStale, nil
 }
 func (r *recordingRecordRepo) UnAcknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
 	r.unacknowledgeCalled = true
-	r.ackCalls = append(r.ackCalls, ackCall{"UnAcknowledge", documentID, from, to, schema})
+	r.ackCalls = append(r.ackCalls, ackCall{"UnAcknowledge", documentID, from, to, schema, createdAt})
 	return !r.ackStale, nil
 }
 func (r *recordingRecordRepo) Acknowledged(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
 	r.acknowledgedCalled = true
-	r.ackCalls = append(r.ackCalls, ackCall{"Acknowledged", documentID, from, to, schema})
+	r.ackCalls = append(r.ackCalls, ackCall{"Acknowledged", documentID, from, to, schema, createdAt})
 	return !r.ackedStale, nil
 }
 func (r *recordingRecordRepo) UnAcknowledged(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
 	r.unacknowledgedCalled = true
-	r.ackCalls = append(r.ackCalls, ackCall{"UnAcknowledged", documentID, from, to, schema})
+	r.ackCalls = append(r.ackCalls, ackCall{"UnAcknowledged", documentID, from, to, schema, createdAt})
 	return !r.ackedStale, nil
 }
 func (r *recordingRecordRepo) GetHierarchicalRecordPolicies(ctx context.Context, uri string) ([]concrnt.Policy, error) {

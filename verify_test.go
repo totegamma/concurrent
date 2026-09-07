@@ -1173,6 +1173,35 @@ func TestVerifyDocumentDirectRejectsForgeries(t *testing.T) {
 		}
 	})
 
+	// every field other than kind must match the embedded document: a valid
+	// ack must not be re-purposable as a different schema, time or author
+	for field, mutate := range map[string]func(string) string{
+		"schema":    func(d string) string { return strings.Replace(d, "follow.json", "block.json", 1) },
+		"createdAt": func(d string) string { return strings.Replace(d, "2026-09-01T00:00:00Z", "2026-09-02T00:00:00Z", 1) },
+		"author": func(d string) string {
+			other, _ := newTestIdentity(t)
+			var doc Document[json.RawMessage]
+			if err := json.Unmarshal([]byte(d), &doc); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			doc.Author = other
+			out, _ := json.Marshal(doc)
+			return string(out)
+		},
+	} {
+		t.Run("tampered "+field, func(t *testing.T) {
+			mirror := mirrorOf(t, original)
+			mutated := mutate(mirror.Document)
+			if mutated == mirror.Document {
+				t.Fatalf("fixture did not change the %s field", field)
+			}
+			mirror.Document = mutated
+			if err := mirror.Verify(context.Background(), nil); err == nil {
+				t.Fatalf("a mirror with a different %s than the embedded document must fail verification", field)
+			}
+		})
+	}
+
 	t.Run("tampered embedded document", func(t *testing.T) {
 		mirror := mirrorOf(t, original)
 		tampered := strings.Replace(*mirror.Proof.Document, `"follow"`, `"forged"`, 1)

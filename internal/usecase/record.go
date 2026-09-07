@@ -1544,29 +1544,13 @@ func (uc *RecordUsecase) processAck(ctx context.Context, tx RepositoryTx, ip str
 		postProcesses = append(postProcesses, actions...)
 
 		// acked documentを生成・配送
-		ackedDoc, err := sd.ParsedDocument()
+		// DeriveAcked is the same derivation the receiving side re-runs to
+		// verify the document-direct proof (verify.go), so the two stay in
+		// lockstep by construction.
+		ackedSD, err := sd.DeriveAcked()
 		if err != nil {
 			span.RecordError(err)
 			return nil, err
-		}
-
-		if ackedDoc.Kind == "ack" {
-			ackedDoc.Kind = "acked"
-		} else {
-			ackedDoc.Kind = "unacked"
-		}
-		docBytes, err := json.Marshal(ackedDoc)
-		if err != nil {
-			span.RecordError(err)
-			return nil, err
-		}
-		ackedSD := concrnt.SignedDocument{
-			Document: string(docBytes),
-			Proof: concrnt.Proof{
-				Type:     concrnt.ProofTypeDocumentDirect,
-				Document: &sd.Document,
-				Proof:    &sd.Proof,
-			},
 		}
 
 		postProcesses = append(postProcesses,

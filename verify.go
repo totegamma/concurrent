@@ -297,7 +297,7 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 
 	case ProofTypeDocumentDirect:
 		if sd.Proof.Document == nil || sd.Proof.Proof == nil {
-			return errors.New("embedded document and proof are required for ack-reference proof")
+			return errors.New("embedded document and proof are required for document-direct proof")
 		}
 
 		embedded := SignedDocument{
@@ -306,48 +306,28 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 		}
 
 		if err := embedded.verify(ctx, resolver, depth-1, []string{ProofTypeEcrecover, ProofTypeSubkey}); err != nil {
-			return errors.Join(errors.New("embedded ack document failed verification"), err)
+			return errors.Join(errors.New("embedded document failed verification"), err)
 		}
 
 		self, err := sd.ParsedDocument()
 		if err != nil {
-			return errors.Join(errors.New("failed to parse signed document for ack-reference proof"), err)
+			return errors.Join(errors.New("failed to parse signed document for document-direct proof"), err)
 		}
 
 		switch self.Kind {
 		case "acked", "unacked":
-
-			embeddedDoc, err := embedded.ParsedDocument()
+			// CIP-10 §5.2: the document must be byte-equal to the canonical
+			// derivation of the embedded ack/unack — that single comparison
+			// binds the kind correspondence (acked→ack, unacked→unack) and
+			// every other field (author, schema, createdAt, associate, value)
+			// at once, so a valid ack cannot be re-purposed.
+			expected, err := embedded.DeriveAcked()
 			if err != nil {
-				return errors.Join(errors.New("failed to parse embedded document for ack-reference proof"), err)
+				return errors.Join(errors.New("embedded document is not an ack/unack document for document-direct proof"), err)
 			}
 
-			ackedDoc, err := sd.ParsedDocument()
-
-			if err != nil {
-				return errors.Join(errors.New("failed to parse signed document for ack-reference proof"), err)
-			}
-
-			if ackedDoc.Associate == nil || embeddedDoc.Associate == nil {
-				return errors.New("both signed and embedded documents must have an associate for ack-reference proof")
-			}
-
-			if *ackedDoc.Associate != *embeddedDoc.Associate {
-				return errors.New("signed and embedded documents must have the same associate for ack-reference proof")
-			}
-
-			embeddedDocValue, err := json.Marshal(embeddedDoc.Value)
-			if err != nil {
-				return errors.Join(errors.New("failed to marshal embedded document value for ack-reference proof"), err)
-			}
-
-			ackedDocValue, err := json.Marshal(ackedDoc.Value)
-			if err != nil {
-				return errors.Join(errors.New("failed to marshal signed document value for ack-reference proof"), err)
-			}
-
-			if string(embeddedDocValue) != string(ackedDocValue) {
-				return errors.New("signed and embedded documents must have the same value for ack-reference proof")
+			if sd.Document != expected.Document {
+				return errors.New("signed document does not match the derivation of the embedded document for document-direct proof")
 			}
 
 			return nil

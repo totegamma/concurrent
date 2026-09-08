@@ -117,20 +117,7 @@ func commitOwnerOf(document string) string {
 func repairSingleOwner(ctx context.Context, db *gorm.DB, fqdn string, dryRun bool) (repairSingleOwnerStats, error) {
 	var stats repairSingleOwnerStats
 
-	localCache := map[string]bool{}
-	isLocal := func(ccid string) (bool, error) {
-		if v, ok := localCache[ccid]; ok {
-			return v, nil
-		}
-		var entity models.Entity
-		err := db.WithContext(ctx).Select("id", "domain").Where("id = ?", ccid).Take(&entity).Error
-		if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-			return false, err
-		}
-		local := err == nil && entity.Domain == fqdn
-		localCache[ccid] = local
-		return local, nil
-	}
+	isLocal := localEntityChecker(ctx, db, fqdn)
 
 	// Step 1: commit_logs.owner for rows that have none.
 	hasLegacyOwners := db.Migrator().HasTable("commit_owners")

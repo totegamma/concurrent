@@ -64,6 +64,7 @@ func (r *RecordRepository) CreateEntity(
 	alias *string,
 	domain string,
 	documentID string,
+	createdAt time.Time,
 ) (bool, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.CreateEntity")
 	defer span.End()
@@ -79,17 +80,17 @@ func (r *RecordRepository) CreateEntity(
 		Alias:      alias,
 		Domain:     domain,
 		DocumentID: documentID,
+		CreatedAt:  createdAt,
 	}
 
-	// document_id is a time-prefixed, content-hashed, lexicographically
-	// sortable CDID, so "excluded.document_id > entities.document_id" keeps the
-	// newer document (and breaks exact-createdAt ties deterministically). This
-	// makes newer-wins atomic at the row lock, closing the read-then-write race
-	// between the usecase-level accept-if-newer check and this upsert.
+	// CIP-3 §3.4 accept-if-newer on the document's createdAt: only a strictly
+	// newer document replaces the stored one; an equal or older one is a
+	// no-op (RowsAffected 0). The conditional upsert makes newer-wins atomic
+	// at the row lock, so concurrent writers converge on the same winner.
 	result := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "id"}},
-		DoUpdates: clause.AssignmentColumns([]string{"alias", "domain", "document_id"}),
-		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("entities.document_id < excluded.document_id")}},
+		DoUpdates: clause.AssignmentColumns([]string{"alias", "domain", "document_id", "created_at"}),
+		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("entities.created_at < excluded.created_at")}},
 	}).Create(&modelEntity)
 	if result.Error != nil {
 		return false, result.Error
@@ -118,7 +119,7 @@ func (r *RecordRepository) HasCommitLog(ctx context.Context, id string) (bool, e
 	return true, nil
 }
 
-func (r *RecordRepository) CreateCommitLog(ctx context.Context, tx usecase.RepositoryTx, id string, ip string, document string, proof any) error {
+func (r *RecordRepository) CreateCommitLog(ctx context.Context, tx usecase.RepositoryTx, id string, ip string, document string, proof any, owner string) error {
 	ctx, span := tracer.Start(ctx, "Repository.Record.CreateCommitLog")
 	defer span.End()
 
@@ -138,6 +139,7 @@ func (r *RecordRepository) CreateCommitLog(ctx context.Context, tx usecase.Repos
 		ID:       id,
 		IP:       ip,
 		Document: document,
+		Owner:    owner,
 		Proof:    string(proofBytes),
 	}
 
@@ -146,33 +148,6 @@ func (r *RecordRepository) CreateCommitLog(ctx context.Context, tx usecase.Repos
 	}).Create(&commitLog).Error; err != nil {
 		span.RecordError(err)
 		return err
-	}
-
-	return nil
-}
-
-func (r *RecordRepository) CreateCommitOwners(ctx context.Context, tx usecase.RepositoryTx, id string, owners []string) error {
-	ctx, span := tracer.Start(ctx, "Repository.Record.CreateCommitOwners")
-	defer span.End()
-
-	db, err := getRecordTx(ctx, tx)
-	if err != nil {
-		span.RecordError(err)
-		return err
-	}
-
-	for _, owner := range owners {
-		err := db.Clauses(clause.OnConflict{
-			Columns:   []clause.Column{{Name: "commit_log_id"}, {Name: "owner"}},
-			DoNothing: true,
-		}).Create(&models.CommitOwner{
-			CommitLogID: id,
-			Owner:       owner,
-		}).Error
-		if err != nil {
-			span.RecordError(err)
-			return err
-		}
 	}
 
 	return nil
@@ -201,12 +176,11 @@ func (r *RecordRepository) CreateRecord(
 		return false, err
 	}
 
-	// Lock the RecordKey before writing anything. document_id is a
-	// time-prefixed, content-hashed, lexicographically sortable CDID, so this
-	// keeps the newer document (CIP-3 §3.4 accept-if-newer, deterministic on
-	// exact-createdAt ties) atomically at the row lock — closing the
-	// read-then-write race between the usecase-level check and this write,
-	// same as CreateEntity's conditional upsert.
+	// Lock the RecordKey before writing anything. CIP-3 §3.4 accept-if-newer
+	// on the document's createdAt: only a strictly newer document takes the
+	// key, an equal or older one is a no-op. Deciding under the row lock
+	// closes the read-then-write race between concurrent commits, same as
+	// CreateEntity's conditional upsert.
 	var oldRecordKey models.RecordKey
 	err = db.Clauses(clause.Locking{Strength: "UPDATE"}).
 		Where("uri = ?", key).
@@ -215,7 +189,7 @@ func (r *RecordRepository) CreateRecord(
 		span.RecordError(err)
 		return false, err
 	}
-	if oldRecordKey.RecordID != nil && documentID <= *oldRecordKey.RecordID {
+	if oldRecordKey.RecordID != nil && oldRecordKey.RecordCreatedAt != nil && !createdAt.After(*oldRecordKey.RecordCreatedAt) {
 		return false, nil
 	}
 
@@ -267,7 +241,7 @@ func (r *RecordRepository) CreateRecord(
 	result := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "uri"}},
 		DoUpdates: clause.Assignments(map[string]any{"record_id": documentID, "parent_id": pid, "record_created_at": createdAt, "clean_on_update": cleanOnUpdate}),
-		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("record_keys.record_id IS NULL OR record_keys.record_id < excluded.record_id")}},
+		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("record_keys.record_id IS NULL OR record_keys.record_created_at IS NULL OR record_keys.record_created_at < excluded.record_created_at")}},
 	}).Create(&rk)
 	if result.Error != nil {
 		span.RecordError(result.Error)
@@ -338,8 +312,8 @@ func (r *RecordRepository) CreateAssociation(ctx context.Context, tx usecase.Rep
 	return result.RowsAffected > 0, nil
 }
 
-func (r *RecordRepository) Acknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
-	ctx, span := tracer.Start(ctx, "Repository.Record.Acknowledge")
+func (r *RecordRepository) processAck(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time, valid bool) (bool, error) {
+	ctx, span := tracer.Start(ctx, "Repository.Record.processAck")
 	defer span.End()
 
 	db, err := getRecordTx(ctx, tx)
@@ -352,18 +326,19 @@ func (r *RecordRepository) Acknowledge(ctx context.Context, tx usecase.Repositor
 		To:         to,
 		Schema:     schema,
 		DocumentID: documentID,
-		Valid:      true,
+		Valid:      valid,
 		CreatedAt:  createdAt,
 	}
 
-	// CIP-10 §4: only a strictly newer document may move the (from, to,
-	// schema) state. document_id is a time-prefixed, lexicographically
-	// sortable CDID, so the conditional upsert keeps the newer transition and
-	// makes a replayed older ack a no-op (RowsAffected 0).
+	// CIP-10 §4: only a document with a strictly newer createdAt may move
+	// the (from, to, schema) state; an equal or older one is a no-op
+	// (RowsAffected 0). The key is createdAt alone — never the document id —
+	// so the acker's and the associate owner's servers, which hold different
+	// documents with the same createdAt, reach the same decision.
 	result := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "schema"}},
-		DoUpdates: clause.Assignments(map[string]any{"valid": true, "document_id": documentID, "created_at": createdAt}),
-		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("acks.document_id < excluded.document_id")}},
+		DoUpdates: clause.Assignments(map[string]any{"valid": valid, "document_id": documentID, "created_at": createdAt}),
+		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("acks.created_at < excluded.created_at")}},
 	}).Create(&ack)
 	if result.Error != nil {
 		span.RecordError(result.Error)
@@ -374,8 +349,17 @@ func (r *RecordRepository) Acknowledge(ctx context.Context, tx usecase.Repositor
 
 }
 
+func (r *RecordRepository) Acknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
+	return r.processAck(ctx, tx, documentID, from, to, schema, createdAt, true)
+
+}
+
 func (r *RecordRepository) UnAcknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
-	ctx, span := tracer.Start(ctx, "Repository.Record.Unacknowledge")
+	return r.processAck(ctx, tx, documentID, from, to, schema, createdAt, false)
+}
+
+func (r *RecordRepository) processAcked(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time, valid bool) (bool, error) {
+	ctx, span := tracer.Start(ctx, "Repository.Record.processAcked")
 	defer span.End()
 
 	db, err := getRecordTx(ctx, tx)
@@ -383,21 +367,24 @@ func (r *RecordRepository) UnAcknowledge(ctx context.Context, tx usecase.Reposit
 		return false, err
 	}
 
-	ack := models.Ack{
+	ack := models.Acked{
 		From:       from,
 		To:         to,
 		Schema:     schema,
 		DocumentID: documentID,
-		Valid:      false,
+		Valid:      valid,
 		CreatedAt:  createdAt,
 	}
 
-	// Same accept-if-newer conditional as Acknowledge: an older unack must
-	// not roll an established newer ack back.
+	// CIP-10 §4: only a document with a strictly newer createdAt may move
+	// the (from, to, schema) state; an equal or older one is a no-op
+	// (RowsAffected 0). The key is createdAt alone — never the document id —
+	// so the acker's and the associate owner's servers, which hold different
+	// documents with the same createdAt, reach the same decision.
 	result := db.Clauses(clause.OnConflict{
 		Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "schema"}},
-		DoUpdates: clause.Assignments(map[string]any{"valid": false, "document_id": documentID, "created_at": createdAt}),
-		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("acks.document_id < excluded.document_id")}},
+		DoUpdates: clause.Assignments(map[string]any{"valid": valid, "document_id": documentID, "created_at": createdAt}),
+		Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("ackeds.created_at < excluded.created_at")}},
 	}).Create(&ack)
 	if result.Error != nil {
 		span.RecordError(result.Error)
@@ -406,6 +393,15 @@ func (r *RecordRepository) UnAcknowledge(ctx context.Context, tx usecase.Reposit
 
 	return result.RowsAffected > 0, nil
 
+}
+
+func (r *RecordRepository) Acknowledged(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
+	return r.processAcked(ctx, tx, documentID, from, to, schema, createdAt, true)
+
+}
+
+func (r *RecordRepository) UnAcknowledged(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
+	return r.processAcked(ctx, tx, documentID, from, to, schema, createdAt, false)
 }
 
 func (r *RecordRepository) GetHierarchicalRecordPolicies(ctx context.Context, uri string) ([]concrnt.Policy, error) {
@@ -595,6 +591,26 @@ func (r *RecordRepository) GetSignedDocument(ctx context.Context, uri string) (*
 		span.RecordError(err)
 		return nil, err
 	}
+}
+
+func (r *RecordRepository) MarkCommitLogGcCandidate(ctx context.Context, tx usecase.RepositoryTx, documentID string) error {
+	ctx, span := tracer.Start(ctx, "Repository.Record.MarkCommitLogGcCandidate")
+	defer span.End()
+
+	db, err := getRecordTx(ctx, tx)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	if err := db.Model(&models.CommitLog{}).
+		Where("id = ?", documentID).
+		Update("gc_candidate", true).Error; err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	return nil
 }
 
 func (r *RecordRepository) DeleteRecordByKey(ctx context.Context, tx usecase.RepositoryTx, targetURI string) error {
@@ -1112,27 +1128,19 @@ func (r *RecordRepository) QueryByParent(
 	return recordKeysToQueryRows(rks, span)
 }
 
-func (r *RecordRepository) GetAcknowledgeRecords(ctx context.Context, from, to, schema string, since, until *time.Time, limit int, order string) ([]usecase.QueryRow, error) {
-	ctx, span := tracer.Start(ctx, "Repository.Record.GetAcknowledgeRecords")
+func (r *RecordRepository) getAckRecords(ctx context.Context, from, schema string, since, until *time.Time, limit int, order string) ([]usecase.QueryRow, error) {
+	ctx, span := tracer.Start(ctx, "Repository.Record.getAckRecords")
 	defer span.End()
 
 	var acks []models.Ack
 	query := r.db.WithContext(ctx).
 		Model(&models.Ack{}).
-		Preload("Document")
+		Preload("Document").
+		Where("acks.from = ?", from).
+		Where("acks.valid = ?", true)
 
-	if from != "" {
-		query = query.Where("acks.from = ?", from)
-	}
-	if to != "" {
-		query = query.Where("acks.to = ?", to)
-	}
 	if schema != "" {
 		query = query.Where("acks.schema = ?", schema)
-	}
-
-	if from != "" || to != "" || schema != "" {
-		query = query.Where("acks.valid = ?", true)
 	}
 
 	if since != nil {
@@ -1182,8 +1190,87 @@ func (r *RecordRepository) GetAcknowledgeRecords(ctx context.Context, from, to, 
 	return rows, nil
 }
 
-func (r *RecordRepository) GetAcknowledgeRecordCounts(ctx context.Context, from, to, schema string) (map[string]int64, error) {
-	ctx, span := tracer.Start(ctx, "Repository.Record.GetAcknowledgeRecordCounts")
+func (r *RecordRepository) getAckedRecords(ctx context.Context, to, schema string, since, until *time.Time, limit int, order string) ([]usecase.QueryRow, error) {
+	ctx, span := tracer.Start(ctx, "Repository.Record.getAckedRecords")
+	defer span.End()
+
+	var acked []models.Acked
+	query := r.db.WithContext(ctx).
+		Model(&models.Acked{}).
+		Preload("Document").
+		Where("ackeds.to = ?", to).
+		Where("ackeds.valid = ?", true)
+
+	if schema != "" {
+		query = query.Where("ackeds.schema = ?", schema)
+	}
+
+	if since != nil {
+		query = query.Where("ackeds.created_at >= ?", *since)
+	}
+	if until != nil {
+		query = query.Where("ackeds.created_at <= ?", *until)
+	}
+
+	if order == "desc" {
+		query = query.Order("ackeds.created_at DESC, ackeds.document_id DESC")
+	} else {
+		query = query.Order("ackeds.created_at ASC, ackeds.document_id ASC")
+	}
+
+	if limit > 0 {
+		query = query.Limit(limit)
+	}
+
+	err := query.Find(&acked).Error
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	rows := make([]usecase.QueryRow, len(acked))
+	for i, ack := range acked {
+		var proof concrnt.Proof
+		err := json.Unmarshal([]byte(ack.Document.Proof), &proof)
+		if err != nil {
+			span.RecordError(err)
+			return nil, err
+		}
+
+		// CIP-3 §3.4: an acked's ccfs identity is held by the associate
+		// owner's server
+		ccfs := concrnt.ComposeCCFSURI(ack.To, concrnt.CCFSTypeConcrnt, ack.DocumentID)
+
+		rows[i] = usecase.QueryRow{
+			Row: concrnt.SignedDocument{
+				CCFS:     &ccfs,
+				Document: ack.Document.Document,
+				Proof:    proof,
+			},
+			CreatedAt: ack.CreatedAt,
+		}
+	}
+
+	return rows, nil
+}
+
+func (r *RecordRepository) GetAcknowledgeRecords(ctx context.Context, from, to, schema string, since, until *time.Time, limit int, order string) ([]usecase.QueryRow, error) {
+	ctx, span := tracer.Start(ctx, "Repository.Record.GetAcknowledgeRecords")
+	defer span.End()
+
+	if from != "" {
+		return r.getAckRecords(ctx, from, schema, since, until, limit, order)
+	} else if to != "" {
+		return r.getAckedRecords(ctx, to, schema, since, until, limit, order)
+	} else {
+		err := errors.New("either 'from' or 'to' must be specified")
+		span.RecordError(err)
+		return nil, err
+	}
+}
+
+func (r *RecordRepository) getAckRecordCounts(ctx context.Context, from, schema string) (map[string]int64, error) {
+	ctx, span := tracer.Start(ctx, "Repository.Record.getAckRecordCounts")
 	defer span.End()
 
 	type result struct {
@@ -1196,14 +1283,9 @@ func (r *RecordRepository) GetAcknowledgeRecordCounts(ctx context.Context, from,
 	query := r.db.WithContext(ctx).
 		Model(&models.Ack{}).
 		Select("schema, COUNT(*) AS count").
-		Where("valid = ?", true)
+		Where("valid = ?", true).
+		Where("acks.from = ?", from)
 
-	if from != "" {
-		query = query.Where("acks.from = ?", from)
-	}
-	if to != "" {
-		query = query.Where("acks.to = ?", to)
-	}
 	if schema != "" {
 		query = query.Where("acks.schema = ?", schema)
 	}
@@ -1222,15 +1304,64 @@ func (r *RecordRepository) GetAcknowledgeRecordCounts(ctx context.Context, from,
 	return counts, nil
 }
 
+func (r *RecordRepository) getAckedRecordCounts(ctx context.Context, to, schema string) (map[string]int64, error) {
+	ctx, span := tracer.Start(ctx, "Repository.Record.getAckedRecordCounts")
+	defer span.End()
+
+	type result struct {
+		Schema string
+		Count  int64
+	}
+
+	var results []result
+
+	query := r.db.WithContext(ctx).
+		Model(&models.Acked{}).
+		Select("schema, COUNT(*) AS count").
+		Where("valid = ?", true).
+		Where("ackeds.to = ?", to)
+
+	if schema != "" {
+		query = query.Where("ackeds.schema = ?", schema)
+	}
+
+	err := query.Group("schema").Scan(&results).Error
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	counts := make(map[string]int64)
+	for _, r := range results {
+		counts[r.Schema] = r.Count
+	}
+
+	return counts, nil
+}
+
+func (r *RecordRepository) GetAcknowledgeRecordCounts(ctx context.Context, from, to, schema string) (map[string]int64, error) {
+	ctx, span := tracer.Start(ctx, "Repository.Record.GetAcknowledgeRecordCounts")
+	defer span.End()
+
+	if from != "" {
+		return r.getAckRecordCounts(ctx, from, schema)
+	} else if to != "" {
+		return r.getAckedRecordCounts(ctx, to, schema)
+	} else {
+		err := errors.New("either 'from' or 'to' must be specified")
+		span.RecordError(err)
+		return nil, err
+	}
+}
+
 func (r *RecordRepository) GetAllCommitLogs(ctx context.Context, owner string) ([]concrnt.SignedDocument, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.GetAllCommitLogs")
 	defer span.End()
 
 	var commitLogs []models.CommitLog
 	err := r.db.WithContext(ctx).
-		Joins("JOIN commit_owners co ON co.commit_log_id = commit_logs.id").
-		Where("co.owner = ?", owner).
-		Order("commit_logs.c_date ASC").
+		Where("owner = ?", owner).
+		Order("c_date ASC").
 		Find(&commitLogs).Error
 	if err != nil {
 		span.RecordError(err)

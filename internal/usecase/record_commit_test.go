@@ -35,19 +35,48 @@ func (stubResidenceRepo) GetEntityByCCID(ctx context.Context, ccid string) (*dom
 // and records which mutations were attempted. commitLogs seeds the ids
 // HasCommitLog answers true for (already-committed documents); storedSD, when
 // set, is what GetSignedDocument serves for every key (a pre-existing record);
-// recordStale / ackStale make CreateRecord / Acknowledge / UnAcknowledge
-// report the accept-if-newer loss (applied=false).
+// storedCreatedAt, when set, is the createdAt of the document the repository
+// already holds for whatever CreateEntity / CreateRecord write — both report
+// the accept-if-newer loss (applied=false) for a createdAt that is not
+// strictly newer, mirroring the repository's row-lock comparison (CIP-3
+// §3.4); ackStale / ackedStale
+// make Acknowledge / UnAcknowledge and Acknowledged / UnAcknowledged report
+// that loss unconditionally.
 type recordingRecordRepo struct {
 	RecordRepository
-	commitLogs          map[string]bool
-	storedSD            *concrnt.SignedDocument
-	recordStale         bool
-	ackStale            bool
-	createEntityCalled  bool
-	createRecordCalled  bool
-	acknowledgeCalled   bool
-	unacknowledgeCalled bool
-	txs                 []*recordingTx
+	commitLogs      map[string]bool
+	storedSD        *concrnt.SignedDocument
+	storedCreatedAt time.Time
+	ackStale        bool
+	ackedStale      bool
+
+	createEntityCalled   bool
+	createRecordCalled   bool
+	acknowledgeCalled    bool
+	unacknowledgeCalled  bool
+	acknowledgedCalled   bool
+	unacknowledgedCalled bool
+	txs                  []*recordingTx
+
+	// createdCommitLogs records every CreateCommitLog call in order, and
+	// commitLogOwners the owner each documentID was recorded under.
+	createdCommitLogs []string
+	commitLogOwners   map[string]string
+	// ackCalls records every ack-state transition attempted, in order.
+	ackCalls []ackCall
+	// gcFlagged records MarkCommitLogGcCandidate calls in order.
+	gcFlagged []string
+}
+
+// ackCall is one Acknowledge / UnAcknowledge / Acknowledged / UnAcknowledged
+// call as the repository saw it.
+type ackCall struct {
+	method     string
+	documentID string
+	from       string
+	to         string
+	schema     string
+	createdAt  time.Time
 }
 
 func (r *recordingRecordRepo) BeginTx(ctx context.Context) (RepositoryTx, error) {
@@ -55,30 +84,52 @@ func (r *recordingRecordRepo) BeginTx(ctx context.Context) (RepositoryTx, error)
 	r.txs = append(r.txs, tx)
 	return tx, nil
 }
-func (r *recordingRecordRepo) CreateCommitLog(ctx context.Context, tx RepositoryTx, id string, ip string, document string, proof any) error {
-	return nil
-}
-func (r *recordingRecordRepo) CreateCommitOwners(ctx context.Context, tx RepositoryTx, id string, owners []string) error {
+func (r *recordingRecordRepo) CreateCommitLog(ctx context.Context, tx RepositoryTx, id string, ip string, document string, proof any, owner string) error {
+	r.createdCommitLogs = append(r.createdCommitLogs, id)
+	if r.commitLogOwners == nil {
+		r.commitLogOwners = map[string]string{}
+	}
+	// same first-write-wins semantics as the postgres implementation
+	// (ON CONFLICT DO NOTHING on the primary key)
+	if _, exists := r.commitLogOwners[id]; !exists {
+		r.commitLogOwners[id] = owner
+	}
 	return nil
 }
 func (r *recordingRecordRepo) HasCommitLog(ctx context.Context, id string) (bool, error) {
 	return r.commitLogs[id], nil
 }
-func (r *recordingRecordRepo) CreateEntity(ctx context.Context, tx RepositoryTx, ccid string, alias *string, domain string, documentID string) (bool, error) {
+func (r *recordingRecordRepo) MarkCommitLogGcCandidate(ctx context.Context, tx RepositoryTx, documentID string) error {
+	r.gcFlagged = append(r.gcFlagged, documentID)
+	return nil
+}
+func (r *recordingRecordRepo) CreateEntity(ctx context.Context, tx RepositoryTx, ccid string, alias *string, domain string, documentID string, createdAt time.Time) (bool, error) {
 	r.createEntityCalled = true
-	return true, nil
+	return r.storedCreatedAt.IsZero() || createdAt.After(r.storedCreatedAt), nil
 }
 func (r *recordingRecordRepo) CreateRecord(ctx context.Context, tx RepositoryTx, documentID string, key string, owner string, author string, schema string, onUpdate *string, policies *string, distributions []string, redirect *string, createdAt time.Time) (bool, error) {
 	r.createRecordCalled = true
-	return !r.recordStale, nil
+	return r.storedCreatedAt.IsZero() || createdAt.After(r.storedCreatedAt), nil
 }
 func (r *recordingRecordRepo) Acknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
 	r.acknowledgeCalled = true
+	r.ackCalls = append(r.ackCalls, ackCall{"Acknowledge", documentID, from, to, schema, createdAt})
 	return !r.ackStale, nil
 }
 func (r *recordingRecordRepo) UnAcknowledge(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
 	r.unacknowledgeCalled = true
+	r.ackCalls = append(r.ackCalls, ackCall{"UnAcknowledge", documentID, from, to, schema, createdAt})
 	return !r.ackStale, nil
+}
+func (r *recordingRecordRepo) Acknowledged(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
+	r.acknowledgedCalled = true
+	r.ackCalls = append(r.ackCalls, ackCall{"Acknowledged", documentID, from, to, schema, createdAt})
+	return !r.ackedStale, nil
+}
+func (r *recordingRecordRepo) UnAcknowledged(ctx context.Context, tx RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
+	r.unacknowledgedCalled = true
+	r.ackCalls = append(r.ackCalls, ackCall{"UnAcknowledged", documentID, from, to, schema, createdAt})
+	return !r.ackedStale, nil
 }
 func (r *recordingRecordRepo) GetHierarchicalRecordPolicies(ctx context.Context, uri string) ([]concrnt.Policy, error) {
 	return nil, nil
@@ -88,6 +139,12 @@ func (r *recordingRecordRepo) GetSignedDocument(ctx context.Context, uri string)
 		return r.storedSD, nil
 	}
 	return nil, domain.ErrNotFound
+}
+
+// QueryByParent answers the blocking-list query Commit issues when a
+// document's author and target owner differ: nobody blocks anybody.
+func (r *recordingRecordRepo) QueryByParent(ctx context.Context, parent, schema, author string, since, until *time.Time, limit int, order string) ([]QueryRow, error) {
+	return nil, nil
 }
 
 // fixedResidenceRepo serves one pre-existing entity for every lookup.
@@ -233,9 +290,11 @@ func TestCommitUnresolvableRequesterReturnsError(t *testing.T) {
 
 // Entity commits are accept-if-newer: a document older than (or as old as)
 // the stored one succeeds as a no-op instead of clobbering the newer
-// affiliation; only a strictly newer document reaches the repository. The
-// no-op must also roll the commit transaction back — a rejected-as-older
-// document leaves no commit_log behind.
+// affiliation. The ordering is decided by the repository under its row lock
+// (the usecase no longer pre-compares CDIDs), so CreateEntity is always
+// attempted; what matters is that a reported loss rolls the commit
+// transaction back — a rejected-as-older document leaves no commit_log
+// behind — while a win commits it.
 func TestCommitEntityAcceptIfNewer(t *testing.T) {
 	priv := make([]byte, 32)
 	if _, err := rand.Read(priv); err != nil {
@@ -260,10 +319,10 @@ func TestCommitEntityAcceptIfNewer(t *testing.T) {
 	storedAt := time.Now().Add(-time.Hour).UTC().Truncate(time.Second)
 
 	cases := []struct {
-		name             string
-		storedAt         time.Time
-		createdAt        time.Time
-		wantCreateEntity bool
+		name        string
+		storedAt    time.Time
+		createdAt   time.Time
+		wantApplied bool
 	}{
 		{"older", storedAt, storedAt.Add(-time.Hour), false},
 		{"same", storedAt, storedAt, false},
@@ -277,7 +336,7 @@ func TestCommitEntityAcceptIfNewer(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			stored := newEntityDoc(tc.storedAt)
-			repo := &recordingRecordRepo{}
+			repo := &recordingRecordRepo{storedCreatedAt: tc.storedAt}
 			cfg := &domain.Config{FQDN: "example.com"}
 			uc := NewRecordUsecase(
 				repo,
@@ -299,14 +358,14 @@ func TestCommitEntityAcceptIfNewer(t *testing.T) {
 			if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
 				t.Fatalf("Commit returned error: %v", err)
 			}
-			if repo.createEntityCalled != tc.wantCreateEntity {
-				t.Fatalf("CreateEntity called = %v, want %v", repo.createEntityCalled, tc.wantCreateEntity)
+			if !repo.createEntityCalled {
+				t.Fatal("CreateEntity was not attempted")
 			}
 			if len(repo.txs) != 1 {
 				t.Fatalf("expected 1 tx, got %d", len(repo.txs))
 			}
-			if repo.txs[0].committed != tc.wantCreateEntity || repo.txs[0].rolledBack == tc.wantCreateEntity {
-				t.Fatalf("tx state = %+v, want committed = %v", repo.txs[0], tc.wantCreateEntity)
+			if repo.txs[0].committed != tc.wantApplied || repo.txs[0].rolledBack == tc.wantApplied {
+				t.Fatalf("tx state = %+v, want committed = %v", repo.txs[0], tc.wantApplied)
 			}
 		})
 	}
@@ -314,8 +373,10 @@ func TestCommitEntityAcceptIfNewer(t *testing.T) {
 
 // Record commits follow the same accept-if-newer rule (CIP-3 §3.4): a
 // document older than (or as old as) the one stored at its key succeeds as a
-// no-op — nothing reaches the repository, the tx rolls back (no commit_log),
-// so the stored newer version is neither overwritten nor tombstoned.
+// no-op. The repository decides the ordering under the RecordKey row lock, so
+// CreateRecord is always attempted; a reported loss must roll the tx back (no
+// commit_log), so the stored newer version is neither overwritten nor
+// tombstoned.
 func TestCommitRecordAcceptIfNewer(t *testing.T) {
 	ccid, priv := newIdentity(t)
 	cfg := &domain.Config{FQDN: "example.com"}
@@ -325,9 +386,9 @@ func TestCommitRecordAcceptIfNewer(t *testing.T) {
 	stored := signedRecord(t, ccid, priv, storedAt)
 
 	cases := []struct {
-		name             string
-		createdAt        time.Time
-		wantCreateRecord bool
+		name        string
+		createdAt   time.Time
+		wantApplied bool
 	}{
 		{"older", storedAt.Add(-time.Minute), false},
 		{"same", storedAt, false},
@@ -336,81 +397,72 @@ func TestCommitRecordAcceptIfNewer(t *testing.T) {
 
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			repo := &recordingRecordRepo{storedSD: &stored}
+			repo := &recordingRecordRepo{storedSD: &stored, storedCreatedAt: storedAt}
 			uc := newRecordCommitUsecase(ccid, cfg, repo, nil)
 
 			sd := signedRecord(t, ccid, priv, tc.createdAt)
 			if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
 				t.Fatalf("Commit returned error: %v", err)
 			}
-			if repo.createRecordCalled != tc.wantCreateRecord {
-				t.Fatalf("CreateRecord called = %v, want %v", repo.createRecordCalled, tc.wantCreateRecord)
+			if !repo.createRecordCalled {
+				t.Fatal("CreateRecord was not attempted")
 			}
 			if len(repo.txs) != 1 {
 				t.Fatalf("expected 1 tx, got %d", len(repo.txs))
 			}
-			if repo.txs[0].committed != tc.wantCreateRecord || repo.txs[0].rolledBack == tc.wantCreateRecord {
-				t.Fatalf("tx state = %+v, want committed = %v", repo.txs[0], tc.wantCreateRecord)
+			if repo.txs[0].committed != tc.wantApplied || repo.txs[0].rolledBack == tc.wantApplied {
+				t.Fatalf("tx state = %+v, want committed = %v", repo.txs[0], tc.wantApplied)
 			}
 		})
 	}
-
-	// The repository re-checks the ordering under its row lock; when a
-	// concurrent commit won the key after the usecase fast-path check, the
-	// reported loss must still no-op and roll the tx back.
-	t.Run("repository reports stale", func(t *testing.T) {
-		repo := &recordingRecordRepo{recordStale: true}
-		uc := newRecordCommitUsecase(ccid, cfg, repo, nil)
-
-		sd := signedRecord(t, ccid, priv, storedAt)
-		if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
-			t.Fatalf("Commit returned error: %v", err)
-		}
-		if !repo.createRecordCalled {
-			t.Fatal("CreateRecord was not called")
-		}
-		if len(repo.txs) != 1 || repo.txs[0].committed || !repo.txs[0].rolledBack {
-			t.Fatalf("expected a single rolled-back tx, got %+v", repo.txs)
-		}
-	})
 }
 
 // Ack/unack transitions follow accept-if-newer too (CIP-10 §4): when the
 // repository reports the stored (from, to, schema) state already carries a
 // newer document, the commit is a no-op success — the tx rolls back (no
-// commit_log) and no side effects run.
+// commit_log) and no side effects run. The same holds for the target-side
+// acked/unacked mirror state (CIP-10 §5.2), exercised here with the proof
+// check bypassed (system context).
 func TestCommitAckAcceptIfNewer(t *testing.T) {
-	ccid, priv := newIdentity(t)
 	cfg := &domain.Config{FQDN: "example.com"}
-
 	// Self-ack keeps author == target owner, sidestepping the blocking-list
 	// lookup Commit issues for cross-user operations.
-	associate := concrnt.CCURI{Scheme: "cckv", Owner: ccid}.String()
-	newAckDoc := func(kind string) concrnt.SignedDocument {
-		return signTestDocument(t, concrnt.Document[any]{
-			Kind:      kind,
-			Author:    ccid,
-			Schema:    "https://example.com/follow.json",
-			CreatedAt: time.Now().Add(-time.Minute),
-			Associate: &associate,
-		}, priv)
+	self := newAckParty(t, cfg.FQDN)
+
+	cases := []struct {
+		kind   string
+		mirror bool
+		called func(*recordingRecordRepo) bool
+		ctx    context.Context
+	}{
+		{"ack", false, func(r *recordingRecordRepo) bool { return r.acknowledgeCalled }, context.Background()},
+		{"unack", false, func(r *recordingRecordRepo) bool { return r.unacknowledgeCalled }, context.Background()},
+		{"acked", true, func(r *recordingRecordRepo) bool { return r.acknowledgedCalled }, systemCtx()},
+		{"unacked", true, func(r *recordingRecordRepo) bool { return r.unacknowledgedCalled }, systemCtx()},
 	}
 
-	for _, kind := range []string{"ack", "unack"} {
+	for _, tc := range cases {
 		for _, stale := range []bool{false, true} {
-			name := kind + "/applied"
+			name := tc.kind + "/applied"
 			if stale {
-				name = kind + "/stale"
+				name = tc.kind + "/stale"
 			}
 			t.Run(name, func(t *testing.T) {
-				repo := &recordingRecordRepo{ackStale: stale}
-				uc := newRecordCommitUsecase(ccid, cfg, repo, nil)
+				repo := &recordingRecordRepo{ackStale: stale, ackedStale: stale}
+				uc := newAckUsecase(cfg, repo, residenceOf(self), &recordingDeliveryQueue{})
 
-				if _, err := uc.Commit(context.Background(), "127.0.0.1", newAckDoc(kind), domain.CommitModeExecute); err != nil {
+				var sd concrnt.SignedDocument
+				if tc.mirror {
+					sd = derivedAcked(t, signedAck(t, strings.TrimSuffix(tc.kind, "ed"), self, self, time.Now().Add(-time.Minute)))
+				} else {
+					sd = signedAck(t, tc.kind, self, self, time.Now().Add(-time.Minute))
+				}
+
+				if _, err := uc.Commit(tc.ctx, "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
 					t.Fatalf("Commit returned error: %v", err)
 				}
-				if !repo.acknowledgeCalled && !repo.unacknowledgeCalled {
-					t.Fatal("repository transition was not attempted")
+				if !tc.called(repo) {
+					t.Fatalf("repository transition for %s was not attempted (calls: %+v)", tc.kind, repo.ackCalls)
 				}
 				if len(repo.txs) != 1 {
 					t.Fatalf("expected 1 tx, got %d", len(repo.txs))
@@ -659,11 +711,11 @@ func TestCommitEntityBackdateExemptRequiresDirectProof(t *testing.T) {
 // same way Commit does: CDID from the document body + createdAt.
 func documentIDOf(t *testing.T, sd concrnt.SignedDocument) string {
 	t.Helper()
-	var doc concrnt.Document[any]
-	if err := json.Unmarshal([]byte(sd.Document), &doc); err != nil {
-		t.Fatalf("unmarshal document: %v", err)
+	id, err := sd.CDID()
+	if err != nil {
+		t.Fatalf("derive document id: %v", err)
 	}
-	return documentIDFor(sd.Document, doc.CreatedAt)
+	return id
 }
 
 // A document already in commit_logs was fully applied once: redelivery is a
@@ -1452,5 +1504,114 @@ func TestCommitEntityNoneProofSkipsGreenServerCheck(t *testing.T) {
 	}
 	if !repo.createEntityCalled {
 		t.Fatal("CreateEntity was not called for a none-proof entity import")
+	}
+}
+
+// Every commit is owned by exactly one entity and is recorded in commit_logs
+// inside the commit transaction (CIP-3 §3.1: record = key owner, association
+// = target owner, delete = owner of the deleted target — the namespace whose
+// repository must carry the tombstone). Records and associations reference
+// the commit log by foreign key, so a missing commit log is a failed commit.
+func TestCommitWritesCommitLogWithOwner(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+
+	t.Run("record is owned by the key owner", func(t *testing.T) {
+		repo := &recordingRecordRepo{}
+		uc := newRecordCommitUsecase(ccid, cfg, repo, nil)
+
+		sd := signedRecord(t, ccid, priv, time.Now())
+		if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+			t.Fatalf("Commit returned error: %v", err)
+		}
+		id := documentIDOf(t, sd)
+		if len(repo.createdCommitLogs) != 1 || repo.createdCommitLogs[0] != id {
+			t.Fatalf("CreateCommitLog calls = %v, want exactly [%s]", repo.createdCommitLogs, id)
+		}
+		if repo.commitLogOwners[id] != ccid {
+			t.Fatalf("commit owner = %q, want key owner %s", repo.commitLogOwners[id], ccid)
+		}
+	})
+
+	t.Run("association is owned by the target owner", func(t *testing.T) {
+		repo := &associationRecordingRepo{}
+		uc := newRecordCommitUsecase(ccid, cfg, repo, nil)
+
+		associate := concrnt.CCURI{Scheme: "cckv", Owner: ccid, Key: "posts/1"}.String()
+		sd := signTestDocument(t, concrnt.Document[any]{
+			Kind:      "association",
+			Associate: &associate,
+			Value:     map[string]any{"messageId": "m1"},
+			Author:    ccid,
+			Schema:    "https://example.com/a/reply.json",
+			CreatedAt: time.Now(),
+		}, priv)
+		if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeDryRun); err != nil {
+			t.Fatalf("Commit returned error: %v", err)
+		}
+		id := documentIDOf(t, sd)
+		if len(repo.createdCommitLogs) != 1 || repo.createdCommitLogs[0] != id {
+			t.Fatalf("CreateCommitLog calls = %v, want exactly [%s]", repo.createdCommitLogs, id)
+		}
+		if repo.commitLogOwners[id] != ccid {
+			t.Fatalf("commit owner = %q, want target owner %s", repo.commitLogOwners[id], ccid)
+		}
+	})
+
+	t.Run("delete is owned by the target owner", func(t *testing.T) {
+		repo := &rangeDeleteRepo{subtree: []concrnt.SignedDocument{subtreeRecord(t, rangeBaseURI)}}
+		uc := newRangeDeleteUsecase(ccid, cfg, repo, &denyKeysPolicyService{}, &recordingDeliveryQueue{}, &stubKVS{})
+
+		sd := signedDelete(t, ccid, priv, rangeBaseURI+"*")
+		if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+			t.Fatalf("Commit returned error: %v", err)
+		}
+		id := documentIDOf(t, sd)
+		if repo.commitLogOwners[id] != cfg.FQDN {
+			t.Fatalf("commit owner = %q, want target owner %s", repo.commitLogOwners[id], cfg.FQDN)
+		}
+	})
+}
+
+// A server that is not authoritative for an association's target only
+// publishes the event locally; it must not re-commit the association to
+// every distribution channel host. Without a commit log for non-local
+// associations there is no replay guard, so re-fan-out between servers would
+// loop.
+func TestCommitAssociationRemoteTargetDoesNotRefanout(t *testing.T) {
+	cfg := &domain.Config{FQDN: "example.com"}
+	author := newAckParty(t, cfg.FQDN)
+	owner := newAckParty(t, "remote.example.net")
+
+	target := concrnt.CCURI{Scheme: "cckv", Owner: owner.ccid, Key: "posts/1"}.String()
+	targetSD := signedRecord(t, owner.ccid, owner.priv, time.Now().Add(-time.Minute))
+
+	sd := signTestDocument(t, concrnt.Document[any]{
+		Kind:      "association",
+		Associate: &target,
+		Value:     map[string]any{"messageId": "m1"},
+		Author:    author.ccid,
+		Schema:    "https://example.com/a/reply.json",
+		CreatedAt: time.Now(),
+	}, author.priv)
+	sd.References = map[string]concrnt.SignedDocument{target: targetSD}
+
+	repo := &associationRecordingRepo{}
+	delivery := &recordingDeliveryQueue{}
+	uc := newAckUsecase(cfg, repo, residenceOf(author, owner), delivery)
+
+	if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+		t.Fatalf("Commit returned error: %v", err)
+	}
+	if len(repo.uniques) != 0 {
+		t.Fatal("a non-authoritative server must not store the association")
+	}
+	if len(delivery.jobs) == 0 {
+		t.Fatal("expected the local publish job")
+	}
+	for _, job := range delivery.jobs {
+		if job.Remote != domain.DeliveryRemoteNone {
+			t.Fatalf("non-authoritative association job must not re-commit remotely, got Remote=%q for %s", job.Remote, job.ResolveURI)
+		}
 	}
 }

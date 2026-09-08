@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"slices"
+	"strings"
 	"testing"
 	"time"
 
@@ -87,6 +88,10 @@ type rangeDeleteRepo struct {
 	queryCalls  []subtreeQueryCall
 	deletedURIs []string
 	txs         []*recordingTx
+	// commitLogOwners records CreateCommitLog calls: documentID -> owner.
+	commitLogOwners map[string]string
+	// gcFlagged records MarkCommitLogGcCandidate calls in order.
+	gcFlagged []string
 }
 
 func (r *rangeDeleteRepo) BeginTx(ctx context.Context) (RepositoryTx, error) {
@@ -94,13 +99,18 @@ func (r *rangeDeleteRepo) BeginTx(ctx context.Context) (RepositoryTx, error) {
 	r.txs = append(r.txs, tx)
 	return tx, nil
 }
-func (r *rangeDeleteRepo) CreateCommitLog(ctx context.Context, tx RepositoryTx, id string, ip string, document string, proof any) error {
+func (r *rangeDeleteRepo) CreateCommitLog(ctx context.Context, tx RepositoryTx, id string, ip string, document string, proof any, owner string) error {
+	if r.commitLogOwners == nil {
+		r.commitLogOwners = map[string]string{}
+	}
+	r.commitLogOwners[id] = owner
 	return nil
 }
 func (r *rangeDeleteRepo) HasCommitLog(ctx context.Context, id string) (bool, error) {
 	return false, nil
 }
-func (r *rangeDeleteRepo) CreateCommitOwners(ctx context.Context, tx RepositoryTx, id string, owners []string) error {
+func (r *rangeDeleteRepo) MarkCommitLogGcCandidate(ctx context.Context, tx RepositoryTx, documentID string) error {
+	r.gcFlagged = append(r.gcFlagged, documentID)
 	return nil
 }
 func (r *rangeDeleteRepo) GetHierarchicalRecordPolicies(ctx context.Context, uri string) ([]concrnt.Policy, error) {
@@ -266,6 +276,57 @@ func TestCommitRangeDeleteSubtree(t *testing.T) {
 	if result == nil || result.CCKV == nil || *result.CCKV != rangeBaseURI {
 		t.Fatalf("unexpected result: %+v", result)
 	}
+
+	// onUpdate defaults to forget: every deleted target's commit and the
+	// delete commit itself are flagged for gc
+	wantFlagged := []string{}
+	for i := range targets {
+		id, _ := targets[i].CDID()
+		wantFlagged = append(wantFlagged, id)
+	}
+	wantFlagged = append(wantFlagged, documentIDOf(t, sd))
+	if !slices.Equal(repo.gcFlagged, wantFlagged) {
+		t.Fatalf("gc flagged = %v, want %v", repo.gcFlagged, wantFlagged)
+	}
+}
+
+// A deleted document with onUpdate=retain keeps its history: neither its
+// commit nor the delete commit is flagged for gc, so a repository replay
+// reproduces the document and its deletion.
+func TestCommitDeleteRetainKeepsHistory(t *testing.T) {
+	ccid, priv := newIdentity(t)
+	cfg := &domain.Config{FQDN: "example.com"}
+
+	retained := subtreeRecord(t, rangeBaseURI)
+	retained.Document = strings.Replace(retained.Document, `"kind":"record"`, `"kind":"record","onUpdate":"retain"`, 1)
+	forgotten := subtreeRecord(t, rangeBaseURI+"/a")
+
+	t.Run("retained target keeps both commits", func(t *testing.T) {
+		repo := &rangeDeleteRepo{subtree: []concrnt.SignedDocument{retained}}
+		uc := newRangeDeleteUsecase(ccid, cfg, repo, &denyKeysPolicyService{}, &recordingDeliveryQueue{}, nil)
+
+		sd := signedDelete(t, ccid, priv, rangeBaseURI+"*")
+		if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+			t.Fatalf("Commit returned error: %v", err)
+		}
+		if len(repo.gcFlagged) != 0 {
+			t.Fatalf("nothing may be flagged for gc when the target is retained, got %v", repo.gcFlagged)
+		}
+	})
+
+	t.Run("one retained target keeps the delete for all", func(t *testing.T) {
+		repo := &rangeDeleteRepo{subtree: []concrnt.SignedDocument{retained, forgotten}}
+		uc := newRangeDeleteUsecase(ccid, cfg, repo, &denyKeysPolicyService{}, &recordingDeliveryQueue{}, nil)
+
+		sd := signedDelete(t, ccid, priv, rangeBaseURI+"*")
+		if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeExecute); err != nil {
+			t.Fatalf("Commit returned error: %v", err)
+		}
+		forgottenID, _ := forgotten.CDID()
+		if !slices.Equal(repo.gcFlagged, []string{forgottenID}) {
+			t.Fatalf("gc flagged = %v, want only the forgotten target %s", repo.gcFlagged, forgottenID)
+		}
+	})
 }
 
 // A children-only range delete ("...l1/*") enumerates without includeSelf.
@@ -389,15 +450,26 @@ func TestCommitRejectsAsteriskInRecordKey(t *testing.T) {
 }
 
 // The remote arm of a range delete recovers the concrete targets from
-// References by subtree match and emits one "deleted" signal set per target.
-// The target owner is not local, so deleteRecord takes the signals-only path.
+// References by subtree match, sweeps each target's local reference row and
+// emits one "deleted" signal set per target. The target owner is not local,
+// so deleteRecord acts only on the rows it holds.
 func TestDeleteRecordRangeRemoteMatchesReferences(t *testing.T) {
 	ccid, _ := newIdentity(t)
 	cfg := &domain.Config{FQDN: "example.com"}
 	requester := domain.Entity{ID: ccid, Domain: cfg.FQDN}
 	delivery := &recordingDeliveryQueue{}
+
+	base := "cckv://otherhost.example.net/lists/l1"
+	dest := "cckv://example.com/timelines/t1"
+	self := subtreeRecord(t, base, dest)
+	child := subtreeRecord(t, base+"/a", dest)
+	unrelated := subtreeRecord(t, "cckv://otherhost.example.net/lists/l2/x")
+	repo := &rangeDeleteRepo{stored: map[string]concrnt.SignedDocument{
+		dest + "/" + refSegment(base):      referenceRecord(t, dest+"/"+refSegment(base), base),
+		dest + "/" + refSegment(base+"/a"): referenceRecord(t, dest+"/"+refSegment(base+"/a"), base+"/a"),
+	}}
 	uc := NewRecordUsecase(
-		&rangeDeleteRepo{},
+		repo,
 		fixedResidenceRepo{entity: &requester},
 		newTestServerUsecase(cfg),
 		cfg,
@@ -408,10 +480,6 @@ func TestDeleteRecordRangeRemoteMatchesReferences(t *testing.T) {
 		nil,
 	)
 
-	base := "cckv://otherhost.example.net/lists/l1"
-	self := subtreeRecord(t, base)
-	child := subtreeRecord(t, base+"/a")
-	unrelated := subtreeRecord(t, "cckv://otherhost.example.net/lists/l2/x")
 	deleteDoc, err := json.Marshal(concrnt.Document[schemas.Delete]{
 		Kind:      "delete",
 		Value:     schemas.Delete(base + "*"),
@@ -430,7 +498,7 @@ func TestDeleteRecordRangeRemoteMatchesReferences(t *testing.T) {
 		},
 	}
 
-	result, err := uc.deleteRecord(context.Background(), nil, requester, sd, domain.CommitModeExecute)
+	result, err := uc.deleteRecord(context.Background(), nil, "127.0.0.1", requester, sd, domain.CommitModeExecute)
 	if err != nil {
 		t.Fatalf("deleteRecord returned error: %v", err)
 	}
@@ -440,20 +508,22 @@ func TestDeleteRecordRangeRemoteMatchesReferences(t *testing.T) {
 		}
 	}
 
+	// one "deleted" event per target and destination (the target itself and
+	// its distribute destination), so each target shows up once per channel
 	eventURIs := []string{}
 	for _, job := range delivery.jobs {
 		if job.Event != nil && job.Event.Type == "deleted" {
 			eventURIs = append(eventURIs, job.Event.URI)
 		}
 	}
-	want := []string{base, base + "/a"}
+	want := []string{base, base, base + "/a", base + "/a"}
 	if !slices.Equal(eventURIs, want) {
 		t.Fatalf("deleted events for %v, want %v", eventURIs, want)
 	}
 
 	// no matching reference at all passes through as a no-op success
 	sd.References = map[string]concrnt.SignedDocument{*unrelated.CCKV: unrelated}
-	res, err := uc.deleteRecord(context.Background(), nil, requester, sd, domain.CommitModeExecute)
+	res, err := uc.deleteRecord(context.Background(), nil, "127.0.0.1", requester, sd, domain.CommitModeExecute)
 	if err != nil {
 		t.Fatalf("expected no-op success when no reference matches the range, got %v", err)
 	}
@@ -582,6 +652,17 @@ func TestCommitDeleteRemoteTargetSweepsLocalReference(t *testing.T) {
 	if len(repo.txs) != 1 || !repo.txs[0].committed {
 		t.Fatalf("commitlog must be kept for a delete that acted locally, got %+v", repo.txs)
 	}
+	// the forwarded delete is committed like any other, under the deleted
+	// namespace's owner (CIP-4 §6.1 / CIP-3 §3.1); the swept reference row and
+	// the delete itself are history nobody asked to keep, so both go to gc
+	deleteID := documentIDOf(t, sd)
+	if repo.commitLogOwners[deleteID] != "otherhost.example.net" {
+		t.Fatalf("delete commit owner = %q, want the deleted namespace's owner", repo.commitLogOwners[deleteID])
+	}
+	refID, _ := (&concrnt.SignedDocument{Document: repo.stored[refKey].Document}).CDID()
+	if !slices.Equal(repo.gcFlagged, []string{refID, deleteID}) {
+		t.Fatalf("gc flagged = %v, want [%s %s]", repo.gcFlagged, refID, deleteID)
+	}
 	deletedEvents := 0
 	for _, job := range delivery.jobs {
 		if job.Remote != domain.DeliveryRemoteNone {
@@ -628,9 +709,9 @@ func TestCommitDeleteUnrelatedIsNoop(t *testing.T) {
 	}
 }
 
-// A delete for a remote target whose destinations left no rows here still
-// succeeds: the signals go out and the commitlog is kept, but nothing is
-// deleted.
+// A delete for a remote target whose destinations left no rows here removes
+// nothing, so it is not recorded (CIP-4 §6.1): the tx rolls back, no
+// commitlog, no signals — a later delivery that does find rows still applies.
 func TestCommitDeleteRemoteTargetWithoutLocalCopies(t *testing.T) {
 	ccid, priv := newIdentity(t)
 	cfg := &domain.Config{FQDN: "example.com"}
@@ -649,11 +730,11 @@ func TestCommitDeleteRemoteTargetWithoutLocalCopies(t *testing.T) {
 	if len(repo.deletedURIs) != 0 {
 		t.Fatalf("nothing may be deleted, got %v", repo.deletedURIs)
 	}
-	if len(repo.txs) != 1 || !repo.txs[0].committed {
-		t.Fatalf("commitlog must be kept, got %+v", repo.txs)
+	if len(repo.txs) != 1 || repo.txs[0].committed || !repo.txs[0].rolledBack {
+		t.Fatalf("a delete that removed nothing must roll back, got %+v", repo.txs)
 	}
-	if len(delivery.jobs) == 0 {
-		t.Fatal("expected deleted events to be enqueued")
+	if len(delivery.jobs) != 0 {
+		t.Fatalf("a delete that removed nothing must not signal, got %+v", delivery.jobs)
 	}
 }
 

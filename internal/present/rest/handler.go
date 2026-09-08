@@ -933,8 +933,10 @@ func (h *Handler) handleAcknowledges(c echo.Context) error {
 	to := c.QueryParam("to")
 	schema := c.QueryParam("schema")
 
-	if from == "" && to == "" {
-		return presenter.BadRequestMessage(c, "from and to parameters are required")
+	// CIP-10 §6: exactly one of from / to — each names a different held
+	// side (the acker's acks vs. the target's ackeds)
+	if (from == "") == (to == "") {
+		return presenter.BadRequestMessage(c, "specify exactly one of the from / to parameters")
 	}
 
 	w, err := parseQueryWindow(c)
@@ -956,8 +958,10 @@ func (h *Handler) handleAcknowledgeCounts(c echo.Context) error {
 	to := c.QueryParam("to")
 	schema := c.QueryParam("schema")
 
-	if from == "" && to == "" {
-		return presenter.BadRequestMessage(c, "from and to parameters are required")
+	// CIP-10 §6: exactly one of from / to — each names a different held
+	// side (the acker's acks vs. the target's ackeds)
+	if (from == "") == (to == "") {
+		return presenter.BadRequestMessage(c, "specify exactly one of the from / to parameters")
 	}
 
 	counts, err := h.record.GetAcknowledgeRecordCounts(ctx, from, to, schema)

@@ -14,10 +14,6 @@ import (
 	"github.com/concrnt/concrnt/schemas"
 )
 
-// DocumentResolver fetches a signed document by its cckv/ccfs URI, so that
-// Verify can follow proof references (subkey / document-reference) that
-// aren't already inlined in SignedDocument.References. *client.Client
-// satisfies this interface structurally.
 type DocumentResolver interface {
 	ResolveSignedDocument(ctx context.Context, uri string) (SignedDocument, error)
 }
@@ -212,9 +208,7 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 		return nil
 
 	case ProofTypeDocumentReference:
-		// CIP-4/CIP-6: a document-reference proof is only valid on the
-		// auto-generated Reference document (schema reference.json) whose
-		// href points back at the memberOf-referenced document.
+
 		if sd.Proof.Href == nil {
 			return errors.New("href is required for document-reference proof")
 		}
@@ -231,12 +225,6 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 			return errors.New("proof href does not match reference document href")
 		}
 
-		// An inlined copy of the target is trusted here: it must pass its own
-		// proof verification below and its author must match this document's
-		// author, so a correctly-signed inline reference is the author
-		// vouching for their own document and cannot be forged. This keeps
-		// commits verifiable even when the referenced document's origin
-		// server is unreachable (e.g. mid-migration imports).
 		targetSD, err := sd.resolve(ctx, resolver, *sd.Proof.Href)
 		if err != nil {
 			return errors.Join(fmt.Errorf("failed to fetch referenced document %s", *sd.Proof.Href), err)
@@ -257,9 +245,6 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 			return errors.New("referenced document author does not match signed document author")
 		}
 
-		// CIP-6: the resolved/inlined target must actually be the document the
-		// href identifies — author match alone would let any same-author
-		// document inlined under References[href] stand in for it.
 		hrefURI, err := ParseCCURI(*sd.Proof.Href)
 		if err != nil {
 			return errors.Join(errors.New("invalid href for document-reference proof"), err)
@@ -274,9 +259,6 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 				return errors.New("referenced document key does not match proof href")
 			}
 		case hrefURI.Scheme == "cckv":
-			// keyless href = entity reference: the target is the owner's own
-			// entity document — a same-author keyed record must not stand in
-			// for it
 			if targetDoc.Kind != "entity" {
 				return errors.New("referenced document for entity href is not an entity document")
 			}
@@ -290,8 +272,7 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 			if cdid.New(hash10, targetDoc.CreatedAt).String() != hrefURI.CDID {
 				return errors.New("referenced document cdid does not match proof href")
 			}
-			// owner mirrors the commit path: key owner for records, associate
-			// owner for associations/acks, author for entity documents
+
 			expectedOwner := targetDoc.Author
 			if targetDoc.Key != "" {
 				targetKey, err := ParseCCURI(targetDoc.Key)
@@ -310,11 +291,50 @@ func (sd *SignedDocument) verify(ctx context.Context, resolver DocumentResolver,
 				return errors.New("referenced document owner does not match proof href owner")
 			}
 		default:
-			// http(s)/blob and anything else cannot be bound to a document
-			// identity — such references need a direct or subkey signature
 			return fmt.Errorf("document-reference proof href must be a cckv or ccfs concrnt uri, got %s", *sd.Proof.Href)
 		}
 		return nil
+
+	case ProofTypeDocumentDirect:
+		if sd.Proof.Document == nil || sd.Proof.Proof == nil {
+			return errors.New("embedded document and proof are required for document-direct proof")
+		}
+
+		embedded := SignedDocument{
+			Document: *sd.Proof.Document,
+			Proof:    *sd.Proof.Proof,
+		}
+
+		if err := embedded.verify(ctx, resolver, depth-1, []string{ProofTypeEcrecover, ProofTypeSubkey}); err != nil {
+			return errors.Join(errors.New("embedded document failed verification"), err)
+		}
+
+		self, err := sd.ParsedDocument()
+		if err != nil {
+			return errors.Join(errors.New("failed to parse signed document for document-direct proof"), err)
+		}
+
+		switch self.Kind {
+		case "acked", "unacked":
+			// CIP-10 §5.2: the document must be byte-equal to the canonical
+			// derivation of the embedded ack/unack — that single comparison
+			// binds the kind correspondence (acked→ack, unacked→unack) and
+			// every other field (author, schema, createdAt, associate, value)
+			// at once, so a valid ack cannot be re-purposed.
+			expected, err := embedded.DeriveAcked()
+			if err != nil {
+				return errors.Join(errors.New("embedded document is not an ack/unack document for document-direct proof"), err)
+			}
+
+			if sd.Document != expected.Document {
+				return errors.New("signed document does not match the derivation of the embedded document for document-direct proof")
+			}
+
+			return nil
+
+		default:
+			return ErrProofTypeNotAllowed
+		}
 
 	case ProofTypeNone:
 		return ErrNoneProofNotAllowed

@@ -1082,3 +1082,185 @@ func TestVerifyDocumentReferenceRejectsUnbindableHrefs(t *testing.T) {
 		}
 	}
 }
+
+// Tests for the document-direct proof (CIP-10 §5.2 verification rule, CIP-1
+// §7.4.1): a server-derived acked/unacked mirror proves itself by embedding
+// the original signed ack/unack. Verification is self-contained — (1) the
+// embedded document verifies under its own author-signed proof and (2) the
+// mirror is byte-equal to the canonical derivation (kind ack→acked,
+// unack→unacked, everything else unchanged) of the embedded document.
+
+// signedTestAck builds an author-signed ack/unack and returns it with its
+// author.
+func signedTestAck(t *testing.T, kind string) (SignedDocument, string) {
+	t.Helper()
+	ccid, priv := newTestIdentity(t)
+	target, _ := newTestIdentity(t)
+	associate := "cckv://" + target
+	sd := signDocument(t, Document[map[string]string]{
+		Kind:      kind,
+		Value:     map[string]string{"context": "follow"},
+		Author:    ccid,
+		Schema:    "https://example.com/follow.json",
+		CreatedAt: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC),
+		Associate: &associate,
+	}, priv)
+	return sd, ccid
+}
+
+// mirrorOf derives the canonical acked/unacked mirror of an ack/unack with a
+// document-direct proof embedding the original.
+func mirrorOf(t *testing.T, original SignedDocument) SignedDocument {
+	t.Helper()
+	var doc Document[json.RawMessage]
+	if err := json.Unmarshal([]byte(original.Document), &doc); err != nil {
+		t.Fatalf("unmarshal original: %v", err)
+	}
+	switch doc.Kind {
+	case "ack":
+		doc.Kind = "acked"
+	case "unack":
+		doc.Kind = "unacked"
+	default:
+		t.Fatalf("not an ack document: %s", doc.Kind)
+	}
+	mirror, err := json.Marshal(doc)
+	if err != nil {
+		t.Fatalf("marshal mirror: %v", err)
+	}
+	embeddedDocument := original.Document
+	embeddedProof := original.Proof
+	return SignedDocument{
+		Document: string(mirror),
+		Proof: Proof{
+			Type:     ProofTypeDocumentDirect,
+			Document: &embeddedDocument,
+			Proof:    &embeddedProof,
+		},
+	}
+}
+
+func TestVerifyDocumentDirectValid(t *testing.T) {
+	for _, kind := range []string{"ack", "unack"} {
+		t.Run(kind, func(t *testing.T) {
+			original, _ := signedTestAck(t, kind)
+			mirror := mirrorOf(t, original)
+
+			// self-contained: no resolver needed
+			if err := mirror.Verify(context.Background(), nil); err != nil {
+				t.Fatalf("Verify returned error: %v", err)
+			}
+		})
+	}
+}
+
+func TestVerifyDocumentDirectRejectsForgeries(t *testing.T) {
+	original, _ := signedTestAck(t, "ack")
+
+	t.Run("tampered mirror document", func(t *testing.T) {
+		mirror := mirrorOf(t, original)
+		mirror.Document = strings.Replace(mirror.Document, `"follow"`, `"forged"`, 1)
+		if err := mirror.Verify(context.Background(), nil); err == nil {
+			t.Fatal("a mirror that differs from the embedded document must fail verification")
+		}
+	})
+
+	t.Run("kind correspondence", func(t *testing.T) {
+		mirror := mirrorOf(t, original)
+		mirror.Document = strings.Replace(mirror.Document, `"kind":"acked"`, `"kind":"unacked"`, 1)
+		if err := mirror.Verify(context.Background(), nil); err == nil {
+			t.Fatal("an unacked mirror embedding an ack must fail verification")
+		}
+	})
+
+	// every field other than kind must match the embedded document: a valid
+	// ack must not be re-purposable as a different schema, time or author
+	for field, mutate := range map[string]func(string) string{
+		"schema":    func(d string) string { return strings.Replace(d, "follow.json", "block.json", 1) },
+		"createdAt": func(d string) string { return strings.Replace(d, "2026-09-01T00:00:00Z", "2026-09-02T00:00:00Z", 1) },
+		"author": func(d string) string {
+			other, _ := newTestIdentity(t)
+			var doc Document[json.RawMessage]
+			if err := json.Unmarshal([]byte(d), &doc); err != nil {
+				t.Fatalf("unmarshal: %v", err)
+			}
+			doc.Author = other
+			out, _ := json.Marshal(doc)
+			return string(out)
+		},
+	} {
+		t.Run("tampered "+field, func(t *testing.T) {
+			mirror := mirrorOf(t, original)
+			mutated := mutate(mirror.Document)
+			if mutated == mirror.Document {
+				t.Fatalf("fixture did not change the %s field", field)
+			}
+			mirror.Document = mutated
+			if err := mirror.Verify(context.Background(), nil); err == nil {
+				t.Fatalf("a mirror with a different %s than the embedded document must fail verification", field)
+			}
+		})
+	}
+
+	t.Run("tampered embedded document", func(t *testing.T) {
+		mirror := mirrorOf(t, original)
+		tampered := strings.Replace(*mirror.Proof.Document, `"follow"`, `"forged"`, 1)
+		mirror.Proof.Document = &tampered
+		if err := mirror.Verify(context.Background(), nil); err == nil {
+			t.Fatal("an embedded document that fails its own signature must fail verification")
+		}
+	})
+
+	t.Run("embedded document must be author-signed", func(t *testing.T) {
+		mirror := mirrorOf(t, original)
+		mirror.Proof.Proof = &Proof{Type: ProofTypeNone}
+		if err := mirror.Verify(context.Background(), nil); err == nil {
+			t.Fatal("a none-proof embedded document must fail verification")
+		}
+	})
+
+	t.Run("missing embedding", func(t *testing.T) {
+		mirror := mirrorOf(t, original)
+		mirror.Proof.Document = nil
+		if err := mirror.Verify(context.Background(), nil); err == nil {
+			t.Fatal("a document-direct proof without the embedded document must fail verification")
+		}
+	})
+
+	t.Run("non-ack embedded document", func(t *testing.T) {
+		ccid, priv := newTestIdentity(t)
+		record := signDocument(t, Document[testRecordValue]{
+			Kind:      "record",
+			Key:       "cckv://" + ccid + "/example",
+			Value:     testRecordValue{Foo: "bar"},
+			Author:    ccid,
+			CreatedAt: time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC),
+		}, priv)
+		mirror := SignedDocument{
+			Document: strings.Replace(record.Document, `"kind":"record"`, `"kind":"acked"`, 1),
+			Proof: Proof{
+				Type:     ProofTypeDocumentDirect,
+				Document: &record.Document,
+				Proof:    &record.Proof,
+			},
+		}
+		if err := mirror.Verify(context.Background(), nil); err == nil {
+			t.Fatal("a document-direct proof wrapping a non-ack document must fail verification")
+		}
+	})
+}
+
+// VerifyWithProofTypes must be able to pin acked/unacked commits to
+// document-direct proofs only, so an author cannot sign the acked kind
+// directly.
+func TestVerifyWithProofTypesDocumentDirect(t *testing.T) {
+	original, _ := signedTestAck(t, "ack")
+	mirror := mirrorOf(t, original)
+
+	if err := mirror.VerifyWithProofTypes(context.Background(), nil, []string{ProofTypeDocumentDirect}); err != nil {
+		t.Fatalf("VerifyWithProofTypes returned error: %v", err)
+	}
+	if err := original.VerifyWithProofTypes(context.Background(), nil, []string{ProofTypeDocumentDirect}); err == nil {
+		t.Fatal("an ecrecover proof must be rejected when only document-direct is allowed")
+	}
+}

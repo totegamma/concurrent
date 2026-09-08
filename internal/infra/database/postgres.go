@@ -87,11 +87,11 @@ func MigratePostgres(db *gorm.DB) error {
 
 		return conn.AutoMigrate(
 			&models.CommitLog{},
-			&models.CommitOwner{},
 			&models.Record{},
 			&models.RecordKey{},
 			&models.Association{},
 			&models.Ack{},
+			&models.Acked{},
 			&models.Server{},
 			&models.Entity{},
 			&models.EntityMeta{},

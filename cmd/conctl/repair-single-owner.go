@@ -122,7 +122,7 @@ func repairSingleOwner(ctx context.Context, db *gorm.DB, fqdn string, dryRun boo
 	// Step 1: commit_logs.owner for rows that have none.
 	hasLegacyOwners := db.Migrator().HasTable("commit_owners")
 	var unowned []models.CommitLog
-	if err := db.WithContext(ctx).Select("id", "document").Where("owner = ''").FindInBatches(&unowned, 500, func(tx *gorm.DB, batch int) error {
+	if err := db.WithContext(ctx).Select("id", "document").Where("owner = '' OR owner IS NULL").FindInBatches(&unowned, 500, func(tx *gorm.DB, batch int) error {
 		for _, log := range unowned {
 			owner := ""
 			if hasLegacyOwners {

@@ -80,6 +80,10 @@ func seedLegacyState(t *testing.T, db *gorm.DB) legacyState {
 	st.deleteAlice = "delete-alice"
 	commit(st.deleteAlice, concrnt.Document[schemas.Delete]{Kind: "delete", Value: schemas.Delete("cckv://" + st.alice + "/posts/*"), Author: st.alice, Schema: "https://schema.concrnt.net/delete.json", CreatedAt: st.ackAt})
 
+	// the owner column did not exist before v1.11, so the startup migration
+	// adds it as NULL on every pre-existing row — not ''
+	require.NoError(t, db.Exec(`UPDATE commit_logs SET owner = NULL`).Error)
+
 	return st
 }
 
@@ -92,7 +96,7 @@ func TestRepairSingleOwner(t *testing.T) {
 
 	snapshot := func() (int64, int64, int64) {
 		var commits, acks, ackeds int64
-		require.NoError(t, db.Model(&models.CommitLog{}).Where("owner <> ''").Count(&commits).Error)
+		require.NoError(t, db.Model(&models.CommitLog{}).Where("owner <> '' AND owner IS NOT NULL").Count(&commits).Error)
 		require.NoError(t, db.Model(&models.Ack{}).Count(&acks).Error)
 		require.NoError(t, db.Model(&models.Acked{}).Count(&ackeds).Error)
 		return commits, acks, ackeds
@@ -191,6 +195,7 @@ func TestRepairSingleOwnerWithoutLegacyTable(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NoError(t, db.Create(&models.CommitLog{ID: "rec-1", Document: string(docBytes), Proof: `{"type":"none"}`}).Error)
+	require.NoError(t, db.Exec(`UPDATE commit_logs SET owner = NULL`).Error)
 
 	stats, err := repairSingleOwner(ctx, db, repairFQDN, false)
 	require.NoError(t, err)

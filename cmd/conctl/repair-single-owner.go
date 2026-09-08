@@ -3,10 +3,10 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/spf13/cobra"
 	"gorm.io/gorm"
@@ -119,20 +119,32 @@ func repairSingleOwner(ctx context.Context, db *gorm.DB, fqdn string, dryRun boo
 
 	isLocal := localEntityChecker(ctx, db, fqdn)
 
-	// Step 1: commit_logs.owner for rows that have none.
+	// Step 1: commit_logs.owner for rows that have none. Writes are collected
+	// per batch and applied in one statement: a round trip and a commit per
+	// row is what makes a production-sized table take hours.
 	hasLegacyOwners := db.Migrator().HasTable("commit_owners")
 	var unowned []models.CommitLog
-	if err := db.WithContext(ctx).Select("id", "document").Where("owner = '' OR owner IS NULL").FindInBatches(&unowned, 500, func(tx *gorm.DB, batch int) error {
+	if err := db.WithContext(ctx).Select("id", "document").Where("(owner = '' OR owner IS NULL)").FindInBatches(&unowned, 500, func(tx *gorm.DB, batch int) error {
+		legacyOwners := map[string][]string{}
+		if hasLegacyOwners {
+			ids := make([]string, 0, len(unowned))
+			for _, log := range unowned {
+				ids = append(ids, log.ID)
+			}
+			var rows []struct{ CommitLogID, Owner string }
+			if err := db.WithContext(ctx).Raw("SELECT commit_log_id, owner FROM commit_owners WHERE commit_log_id IN ?", ids).Scan(&rows).Error; err != nil {
+				return err
+			}
+			for _, row := range rows {
+				legacyOwners[row.CommitLogID] = append(legacyOwners[row.CommitLogID], row.Owner)
+			}
+		}
+		var rows []string // "(id, owner)" placeholders
+		var args []any
 		for _, log := range unowned {
 			owner := ""
-			if hasLegacyOwners {
-				var owners []string
-				if err := db.WithContext(ctx).Raw("SELECT owner FROM commit_owners WHERE commit_log_id = ?", log.ID).Scan(&owners).Error; err != nil {
-					return err
-				}
-				if len(owners) == 1 {
-					owner = owners[0]
-				}
+			if owners := legacyOwners[log.ID]; len(owners) == 1 {
+				owner = owners[0]
 			}
 			// an ack/unack belongs to its author whatever the legacy table
 			// says; one whose author is not local is a receiving-side copy
@@ -154,14 +166,13 @@ func repairSingleOwner(ctx context.Context, db *gorm.DB, fqdn string, dryRun boo
 				continue
 			}
 			stats.Owners++
-			if dryRun {
-				continue
-			}
-			if err := db.WithContext(ctx).Model(&models.CommitLog{}).Where("id = ?", log.ID).Update("owner", owner).Error; err != nil {
-				return err
-			}
+			rows = append(rows, "(?, ?)")
+			args = append(args, log.ID, owner)
 		}
-		return nil
+		if dryRun || len(rows) == 0 {
+			return nil
+		}
+		return db.WithContext(ctx).Exec("UPDATE commit_logs AS c SET owner = v.owner FROM (VALUES "+strings.Join(rows, ", ")+") AS v(id, owner) WHERE c.id = v.id", args...).Error
 	}).Error; err != nil {
 		return stats, fmt.Errorf("commit owner backfill: %w", err)
 	}
@@ -169,6 +180,8 @@ func repairSingleOwner(ctx context.Context, db *gorm.DB, fqdn string, dryRun boo
 	// Step 2: entities.created_at from the entity document.
 	var entities []models.Entity
 	if err := db.WithContext(ctx).Preload("Document").Where("created_at = 'epoch'").FindInBatches(&entities, 500, func(tx *gorm.DB, batch int) error {
+		var rows []string // "(id, createdAt)" placeholders
+		var args []any
 		for _, entity := range entities {
 			var doc concrnt.Document[json.RawMessage]
 			if err := json.Unmarshal([]byte(entity.Document.Document), &doc); err != nil {
@@ -179,22 +192,41 @@ func repairSingleOwner(ctx context.Context, db *gorm.DB, fqdn string, dryRun boo
 				continue
 			}
 			stats.EntityTimestamps++
-			if dryRun {
-				continue
-			}
-			if err := db.WithContext(ctx).Model(&models.Entity{}).Where("id = ?", entity.ID).Update("created_at", doc.CreatedAt).Error; err != nil {
-				return err
-			}
+			rows = append(rows, "(?, ?::timestamptz)")
+			args = append(args, entity.ID, doc.CreatedAt.UTC().Format(time.RFC3339Nano))
 		}
-		return nil
+		if dryRun || len(rows) == 0 {
+			return nil
+		}
+		return db.WithContext(ctx).Exec("UPDATE entities AS e SET created_at = v.created_at FROM (VALUES "+strings.Join(rows, ", ")+") AS v(id, created_at) WHERE e.id = v.id", args...).Error
 	}).Error; err != nil {
 		return stats, fmt.Errorf("entity timestamp backfill: %w", err)
 	}
 
 	// Step 3: the target's holding for every ack whose target is local, and
-	// Step 4: removal of the receiving-side raw ack copies.
+	// Step 4: removal of the receiving-side raw ack copies. Both are applied
+	// in one transaction per batch, holdings first.
 	var acks []models.Ack
 	if err := db.WithContext(ctx).Preload("Document").FindInBatches(&acks, 500, func(tx *gorm.DB, batch int) error {
+		// the holdings already in place for this batch, keyed by (from, to, schema)
+		var keys []string // "(from, to, schema)" placeholders
+		var keyArgs []any
+		for _, ack := range acks {
+			keys = append(keys, "(?, ?, ?)")
+			keyArgs = append(keyArgs, ack.From, ack.To, ack.Schema)
+		}
+		var held []models.Acked
+		if err := db.WithContext(ctx).Where(`("from", "to", schema) IN (`+strings.Join(keys, ", ")+`)`, keyArgs...).Find(&held).Error; err != nil {
+			return err
+		}
+		existing := map[[3]string]models.Acked{}
+		for _, h := range held {
+			existing[[3]string{h.From, h.To, h.Schema}] = h
+		}
+
+		var holdingCommits []models.CommitLog
+		var holdings []models.Acked
+		var disowned []string
 		for _, ack := range acks {
 			fromLocal, err := isLocal(ack.From)
 			if err != nil {
@@ -220,45 +252,28 @@ func repairSingleOwner(ctx context.Context, db *gorm.DB, fqdn string, dryRun boo
 					return fmt.Errorf("ack %s: %w", ack.DocumentID, err)
 				}
 
-				var existing models.Acked
-				err = db.WithContext(ctx).Where(`"from" = ? AND "to" = ? AND schema = ?`, ack.From, ack.To, ack.Schema).Take(&existing).Error
-				if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
-					return err
-				}
 				// skip when a holding at least as new as this ack is in place
-				if errors.Is(err, gorm.ErrRecordNotFound) || existing.CreatedAt.Before(ack.CreatedAt) {
+				if held, ok := existing[[3]string{ack.From, ack.To, ack.Schema}]; !ok || held.CreatedAt.Before(ack.CreatedAt) {
 					stats.AckedHoldings++
-					if !dryRun {
-						if err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-							proofBytes, err := json.Marshal(acked.Proof)
-							if err != nil {
-								return err
-							}
-							if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&models.CommitLog{
-								ID:       ackedID,
-								IP:       ack.Document.IP,
-								Document: acked.Document,
-								Proof:    string(proofBytes),
-								Owner:    ack.To,
-							}).Error; err != nil {
-								return err
-							}
-							return tx.Clauses(clause.OnConflict{
-								Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "schema"}},
-								DoUpdates: clause.Assignments(map[string]any{"valid": ack.Valid, "document_id": ackedID, "created_at": ack.CreatedAt}),
-								Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("ackeds.created_at < excluded.created_at")}},
-							}).Create(&models.Acked{
-								From:       ack.From,
-								To:         ack.To,
-								Schema:     ack.Schema,
-								DocumentID: ackedID,
-								Valid:      ack.Valid,
-								CreatedAt:  ack.CreatedAt,
-							}).Error
-						}); err != nil {
-							return fmt.Errorf("ack %s: acked holding: %w", ack.DocumentID, err)
-						}
+					proofBytes, err := json.Marshal(acked.Proof)
+					if err != nil {
+						return err
 					}
+					holdingCommits = append(holdingCommits, models.CommitLog{
+						ID:       ackedID,
+						IP:       ack.Document.IP,
+						Document: acked.Document,
+						Proof:    string(proofBytes),
+						Owner:    ack.To,
+					})
+					holdings = append(holdings, models.Acked{
+						From:       ack.From,
+						To:         ack.To,
+						Schema:     ack.Schema,
+						DocumentID: ackedID,
+						Valid:      ack.Valid,
+						CreatedAt:  ack.CreatedAt,
+					})
 				}
 			}
 
@@ -266,21 +281,36 @@ func repairSingleOwner(ctx context.Context, db *gorm.DB, fqdn string, dryRun boo
 				// the raw ack was only ever the target's implied holding; now
 				// that the acked commit carries it, the copy is history to gc
 				stats.DisownedRawAcks++
-				if dryRun {
-					continue
-				}
-				if err := db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-					if err := tx.Where("document_id = ?", ack.DocumentID).Delete(&models.Ack{}).Error; err != nil {
-						return err
-					}
-					return tx.Model(&models.CommitLog{}).Where("id = ?", ack.DocumentID).
-						Updates(map[string]any{"owner": "", "gc_candidate": true}).Error
-				}); err != nil {
-					return fmt.Errorf("ack %s: disown raw copy: %w", ack.DocumentID, err)
-				}
+				disowned = append(disowned, ack.DocumentID)
 			}
 		}
-		return nil
+		if dryRun || (len(holdings) == 0 && len(disowned) == 0) {
+			return nil
+		}
+		return db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+			if len(holdings) > 0 {
+				if err := tx.Clauses(clause.OnConflict{DoNothing: true}).Create(&holdingCommits).Error; err != nil {
+					return fmt.Errorf("acked holdings: %w", err)
+				}
+				if err := tx.Clauses(clause.OnConflict{
+					Columns:   []clause.Column{{Name: "from"}, {Name: "to"}, {Name: "schema"}},
+					DoUpdates: clause.AssignmentColumns([]string{"valid", "document_id", "created_at"}),
+					Where:     clause.Where{Exprs: []clause.Expression{gorm.Expr("ackeds.created_at < excluded.created_at")}},
+				}).Create(&holdings).Error; err != nil {
+					return fmt.Errorf("acked holdings: %w", err)
+				}
+			}
+			if len(disowned) > 0 {
+				if err := tx.Where("document_id IN ?", disowned).Delete(&models.Ack{}).Error; err != nil {
+					return fmt.Errorf("disown raw copies: %w", err)
+				}
+				if err := tx.Model(&models.CommitLog{}).Where("id IN ?", disowned).
+					Updates(map[string]any{"owner": "", "gc_candidate": true}).Error; err != nil {
+					return fmt.Errorf("disown raw copies: %w", err)
+				}
+			}
+			return nil
+		})
 	}).Error; err != nil {
 		return stats, fmt.Errorf("acked backfill: %w", err)
 	}

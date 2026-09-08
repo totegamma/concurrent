@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"testing"
 	"time"
 
@@ -195,11 +196,20 @@ func TestRepairSingleOwnerWithoutLegacyTable(t *testing.T) {
 	})
 	require.NoError(t, err)
 	require.NoError(t, db.Create(&models.CommitLog{ID: "rec-1", Document: string(docBytes), Proof: `{"type":"none"}`}).Error)
+	// enough rows to span several batches
+	filler := make([]models.CommitLog, 0, 1200)
+	for i := range 1200 {
+		filler = append(filler, models.CommitLog{ID: fmt.Sprintf("rec-filler-%04d", i), Document: string(docBytes), Proof: `{"type":"none"}`})
+	}
+	require.NoError(t, db.CreateInBatches(&filler, 200).Error)
 	require.NoError(t, db.Exec(`UPDATE commit_logs SET owner = NULL`).Error)
 
 	stats, err := repairSingleOwner(ctx, db, repairFQDN, false)
 	require.NoError(t, err)
-	require.Equal(t, repairSingleOwnerStats{Owners: 1}, stats)
+	require.Equal(t, repairSingleOwnerStats{Owners: 1201}, stats)
+	var unowned int64
+	require.NoError(t, db.Model(&models.CommitLog{}).Where("owner IS NULL OR owner = ''").Count(&unowned).Error)
+	require.Zero(t, unowned)
 
 	var log models.CommitLog
 	require.NoError(t, db.Where("id = ?", "rec-1").Take(&log).Error)

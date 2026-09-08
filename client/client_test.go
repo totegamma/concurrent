@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"mime"
 	"mime/multipart"
@@ -779,3 +780,91 @@ var _ interface {
 	Timeout() bool
 	Temporary() bool
 } = timeoutError{}
+
+func TestBatchGetIsolatesDomainFailures(t *testing.T) {
+	t.Parallel()
+
+	const alive = "alive.test"
+	const broken = "broken.test"
+	const offline = "offline.test"
+
+	newHandler := func(domain string, batchStatus int) http.Handler {
+		var handler http.Handler
+		handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			switch r.URL.Path {
+			case "/.well-known/concrnt":
+				wkc := concrnt.WellKnownConcrnt{
+					Version: "2.0",
+					Domain:  domain,
+					CSID:    "ccs1" + domain,
+					Layer:   "concrnt",
+					Endpoints: map[string]string{
+						"net.concrnt.core.batch": "/batch",
+					},
+				}
+				if err := json.NewEncoder(w).Encode(wkc); err != nil {
+					t.Fatalf("encode well-known: %v", err)
+				}
+			case "/batch":
+				if batchStatus != http.StatusOK {
+					http.Error(w, "boom", batchStatus)
+					return
+				}
+				serveTestBatch(t, handler, w, r)
+			default:
+				if strings.HasPrefix(r.URL.Path, "/item/") {
+					fmt.Fprint(w, strings.TrimPrefix(r.URL.Path, "/item/"))
+					return
+				}
+				http.NotFound(w, r)
+			}
+		})
+		return handler
+	}
+
+	aliveServer := httptest.NewServer(newHandler(alive, http.StatusOK))
+	defer aliveServer.Close()
+	brokenServer := httptest.NewServer(newHandler(broken, http.StatusInternalServerError))
+	defer brokenServer.Close()
+
+	cl := New(alive)
+	cl.AddHostRemapping(alive, aliveServer.URL)
+	cl.AddHostRemapping(broken, brokenServer.URL)
+	cl.markOffline(offline)
+
+	responses, err := cl.BatchGet(context.Background(), map[string]map[string]string{
+		alive: {
+			"a1": "https://" + alive + "/item/a1",
+			"a2": "https://" + alive + "/item/a2",
+		},
+		broken: {
+			"b1": "https://" + broken + "/item/b1",
+		},
+		offline: {
+			"o1": "https://" + offline + "/item/o1",
+		},
+	})
+	if err != nil {
+		t.Fatalf("BatchGet returned error: %v", err)
+	}
+
+	for _, key := range []string{"a1", "a2"} {
+		resp, ok := responses[key]
+		if !ok {
+			t.Fatalf("missing response for %s", key)
+		}
+		body, err := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if err != nil {
+			t.Fatalf("read body for %s: %v", key, err)
+		}
+		if resp.StatusCode != http.StatusOK || string(body) != key {
+			t.Fatalf("response for %s = %d %q, want 200 %q", key, resp.StatusCode, body, key)
+		}
+	}
+	for _, key := range []string{"b1", "o1"} {
+		if _, ok := responses[key]; ok {
+			t.Fatalf("unexpected response for %s", key)
+		}
+	}
+}

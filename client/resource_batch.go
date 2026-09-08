@@ -18,6 +18,11 @@ import (
 // (used when a server doesn't support a batch endpoint) run concurrently.
 const batchFallbackConcurrency = 8
 
+// batchDomainConcurrency bounds how many domains BatchGet fetches from at
+// once. Each domain may additionally fan out up to batchFallbackConcurrency
+// per-request fetches when it lacks a batch endpoint.
+const batchDomainConcurrency = 8
+
 // runBounded runs fn(i) for every i in [0, n) on at most limit goroutines,
 // returning once all calls have finished.
 func runBounded(limit, n int, fn func(i int)) {
@@ -25,13 +30,11 @@ func runBounded(limit, n int, fn func(i int)) {
 	jobs := make(chan int)
 
 	for range min(limit, n) {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
+		wg.Go(func() {
 			for i := range jobs {
 				fn(i)
 			}
-		}()
+		})
 	}
 
 	for i := range n {

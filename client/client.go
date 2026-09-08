@@ -1006,22 +1006,36 @@ func (c *Client) Realtime(ctx context.Context, fqdn string) (*websocket.Conn, er
 
 // requests: map[requestID]map[key]url
 // -> map[key]http.Response
+//
+// Domains are fetched concurrently and independently: an offline or failing
+// domain only loses its own keys, the other domains' responses are still
+// returned.
 func (c *Client) BatchGet(ctx context.Context, requests map[string]map[string]string) (map[string]*http.Response, error) {
 	ctx, span := tracer.Start(ctx, "Client.BatchGet")
 	defer span.End()
 
 	var responses = make(map[string]*http.Response)
+	var mu sync.Mutex
 
-	for domain, reqs := range requests {
+	domains := make([]string, 0, len(requests))
+	for domain := range requests {
+		domains = append(domains, domain)
+	}
+
+	runBounded(batchDomainConcurrency, len(domains), func(i int) {
+		domain := domains[i]
+		reqs := requests[domain]
+
 		if !c.IsOnline(domain) {
-			return nil, fmt.Errorf("Domain %s is offline", domain)
+			span.RecordError(fmt.Errorf("Domain %s is offline", domain))
+			return
 		}
 
 		info, err := c.GetServer(ctx, domain, nil)
 		if err != nil {
 			err := errors.Join(fmt.Errorf("failed to get server for domain %s", domain), err)
 			span.RecordError(err)
-			continue
+			return
 		}
 
 		desc, ok := info.Endpoints["net.concrnt.core.batch"]
@@ -1030,7 +1044,7 @@ func (c *Client) BatchGet(ctx context.Context, requests map[string]map[string]st
 			if err != nil {
 				err := errors.Join(fmt.Errorf("failed to render batch endpoint template for server %s", info.Domain), err)
 				span.RecordError(err)
-				continue
+				return
 			}
 			endpoint := "https://" + info.Domain + path
 
@@ -1049,10 +1063,12 @@ func (c *Client) BatchGet(ctx context.Context, requests map[string]map[string]st
 			if err != nil {
 				err := errors.Join(fmt.Errorf("failed to perform batch get to %s", endpoint), err)
 				span.RecordError(err)
-				continue
+				return
 			}
 
+			mu.Lock()
 			maps.Copy(responses, responces)
+			mu.Unlock()
 
 		} else {
 			keys := make([]string, 0, len(reqs))
@@ -1060,7 +1076,6 @@ func (c *Client) BatchGet(ctx context.Context, requests map[string]map[string]st
 				keys = append(keys, key)
 			}
 
-			var mu sync.Mutex
 			runBounded(batchFallbackConcurrency, len(keys), func(i int) {
 				key := keys[i]
 				url := reqs[key]
@@ -1083,7 +1098,7 @@ func (c *Client) BatchGet(ctx context.Context, requests map[string]map[string]st
 				mu.Unlock()
 			})
 		}
-	}
+	})
 
 	return responses, nil
 }

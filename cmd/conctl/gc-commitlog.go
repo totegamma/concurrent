@@ -21,8 +21,10 @@ var gcCommitlogCmd = &cobra.Command{
 	Short: "Delete GC-flagged commit logs older than the replay window",
 	Long: "When a record key is overwritten, the superseded document's commit log is kept\n" +
 		"with gc_candidate set: it acts as a replay tombstone, making a re-commit of the\n" +
-		"captured old document a no-op. Unregister (account deletion) likewise flags\n" +
-		"every commit log solely owned by the departing user. Once the document's\n" +
+		"captured old document a no-op. A delete flags the deleted document's commit and\n" +
+		"its own the same way unless the document asked for history (onUpdate=retain), and\n" +
+		"unregister (account deletion) flags every commit log owned by the departing user.\n" +
+		"Once the document's\n" +
 		"createdAt has fallen out of the backdate window a replay is rejected as too\n" +
 		"old anyway, so the tombstone is redundant and the row can be deleted\n" +
 		"(any remaining record/ack/acked/association/entity rows cascade\n" +

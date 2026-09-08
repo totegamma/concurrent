@@ -516,6 +516,36 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		requireCommitOwner(t, db, "delete-commit", "con1owner")
 	})
 
+	t.Run("mark commit log gc candidate", func(t *testing.T) {
+		sd := repositorySignedDocument(t, concrnt.Document[map[string]string]{
+			Kind:      "record",
+			Key:       "cckv://con1owner/timeline/gc-flag",
+			Value:     map[string]string{"body": "flag me"},
+			Author:    "con1owner",
+			Schema:    "https://schema.example/post.json",
+			CreatedAt: time.Date(2026, 5, 6, 7, 8, 9, 0, time.UTC),
+		})
+		withRepositoryTx(t, ctx, repo, "gc-flag", "127.0.0.1", sd, "con1owner", func(tx usecase.RepositoryTx) error {
+			return nil
+		})
+
+		var commit models.CommitLog
+		require.NoError(t, db.Where("id = ?", "gc-flag").Take(&commit).Error)
+		require.False(t, commit.GcCandidate)
+
+		tx, err := repo.BeginTx(ctx)
+		require.NoError(t, err)
+		require.NoError(t, repo.MarkCommitLogGcCandidate(ctx, tx, "gc-flag"))
+		require.NoError(t, repo.MarkCommitLogGcCandidate(ctx, tx, "no-such-commit"))
+		require.NoError(t, tx.Commit(ctx))
+
+		require.NoError(t, db.Where("id = ?", "gc-flag").Take(&commit).Error)
+		require.True(t, commit.GcCandidate)
+
+		err = repo.MarkCommitLogGcCandidate(ctx, nil, "gc-flag")
+		require.Error(t, err)
+	})
+
 	t.Run("commit log methods marshal proof and ignore conflicts", func(t *testing.T) {
 		href := "cckv://con1owner/timeline/conflict"
 		proof := concrnt.Proof{

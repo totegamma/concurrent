@@ -593,6 +593,26 @@ func (r *RecordRepository) GetSignedDocument(ctx context.Context, uri string) (*
 	}
 }
 
+func (r *RecordRepository) MarkCommitLogGcCandidate(ctx context.Context, tx usecase.RepositoryTx, documentID string) error {
+	ctx, span := tracer.Start(ctx, "Repository.Record.MarkCommitLogGcCandidate")
+	defer span.End()
+
+	db, err := getRecordTx(ctx, tx)
+	if err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	if err := db.Model(&models.CommitLog{}).
+		Where("id = ?", documentID).
+		Update("gc_candidate", true).Error; err != nil {
+		span.RecordError(err)
+		return err
+	}
+
+	return nil
+}
+
 func (r *RecordRepository) DeleteRecordByKey(ctx context.Context, tx usecase.RepositoryTx, targetURI string) error {
 	ctx, span := tracer.Start(ctx, "Repository.Record.DeleteRecordByKey")
 	defer span.End()

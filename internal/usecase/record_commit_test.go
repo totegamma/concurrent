@@ -64,6 +64,8 @@ type recordingRecordRepo struct {
 	commitLogOwners   map[string]string
 	// ackCalls records every ack-state transition attempted, in order.
 	ackCalls []ackCall
+	// gcFlagged records MarkCommitLogGcCandidate calls in order.
+	gcFlagged []string
 }
 
 // ackCall is one Acknowledge / UnAcknowledge / Acknowledged / UnAcknowledged
@@ -96,6 +98,10 @@ func (r *recordingRecordRepo) CreateCommitLog(ctx context.Context, tx Repository
 }
 func (r *recordingRecordRepo) HasCommitLog(ctx context.Context, id string) (bool, error) {
 	return r.commitLogs[id], nil
+}
+func (r *recordingRecordRepo) MarkCommitLogGcCandidate(ctx context.Context, tx RepositoryTx, documentID string) error {
+	r.gcFlagged = append(r.gcFlagged, documentID)
+	return nil
 }
 func (r *recordingRecordRepo) CreateEntity(ctx context.Context, tx RepositoryTx, ccid string, alias *string, domain string, documentID string, createdAt time.Time) (bool, error) {
 	r.createEntityCalled = true

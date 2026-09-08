@@ -61,6 +61,9 @@ type RecordRepository interface {
 	GetDistributions(ctx context.Context, uri string) ([]string, error)
 
 	// Delete
+	// MarkCommitLogGcCandidate flags a commit log for `conctl op gc-commitlog`
+	// once the backdate window has passed (CIP-3 §3.4 replay guard).
+	MarkCommitLogGcCandidate(ctx context.Context, tx RepositoryTx, documentID string) error
 	DeleteRecordByKey(ctx context.Context, tx RepositoryTx, targetURI string) error
 	DeleteRecordByDocumentID(ctx context.Context, tx RepositoryTx, documentID string) error
 	DeleteAssociation(ctx context.Context, tx RepositoryTx, documentID string) error
@@ -770,6 +773,47 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, ip s
 		remoteKind = domain.DeliveryRemoteCommit
 	}
 
+	// A delete is committed the same way whichever way it arrived: from the
+	// user, or forwarded by the author's server to a distribution destination
+	// on the user's behalf (CIP-4 §6.1). The commit belongs to the owner of
+	// the deleted namespace (CIP-3 §3.1) — every target of a range shares the
+	// base's owner, so one commit log covers them all.
+	documentID, err := sd.CDID()
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	parsedBase, err := concrnt.ParseCCURI(rangeBase)
+	if err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	if err := uc.repo.CreateCommitLog(ctx, tx, documentID, ip, sd.Document, sd.Proof, parsedBase.Owner); err != nil {
+		span.RecordError(err)
+		return nil, err
+	}
+
+	// History is only kept for what asked for it: a deleted document with
+	// onUpdate=retain keeps its commit and, with it, this delete's (the
+	// replay needs both); everything else is flagged for gc once the
+	// backdate window has passed (the replay guard then holds on its own).
+	deleteRetained := false
+	deletedAny := false
+	flagDeleted := func(deleted *concrnt.SignedDocument, onUpdate *string) error {
+		deletedAny = true
+		if onUpdate != nil && *onUpdate == "retain" {
+			deleteRetained = true
+			return nil
+		}
+		deletedID, err := deleted.CDID()
+		if err != nil {
+			return err
+		}
+		return uc.repo.MarkCommitLogGcCandidate(ctx, tx, deletedID)
+	}
+
 	postProcesses := []PostProcessAction{}
 	for i := range targets {
 		targetSD := &targets[i]
@@ -779,24 +823,6 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, ip s
 		var removedTimeline, removedItemID string
 
 		if authoritative {
-
-			documentID, err := sd.CDID()
-			if err != nil {
-				span.RecordError(err)
-				return nil, err
-			}
-
-			parsedTargetURI, err := concrnt.ParseCCURI(targetURI)
-			if err != nil {
-				span.RecordError(err)
-				continue
-			}
-
-			if err := uc.repo.CreateCommitLog(ctx, tx, documentID, ip, sd.Document, sd.Proof, parsedTargetURI.Owner); err != nil {
-				span.RecordError(err)
-				return nil, err
-			}
-
 			switch targetDoc.Kind {
 			case "record":
 
@@ -842,6 +868,11 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, ip s
 					return nil, err
 				}
 
+				if err := flagDeleted(targetSD, targetDoc.OnUpdate); err != nil {
+					span.RecordError(err)
+					return nil, err
+				}
+
 			case "association":
 
 				parsedURI, err := concrnt.ParseCCURI(targetURI)
@@ -858,6 +889,11 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, ip s
 
 				err = uc.repo.DeleteAssociation(ctx, tx, parsedURI.CDID)
 				if err != nil {
+					span.RecordError(err)
+					return nil, err
+				}
+
+				if err := flagDeleted(targetSD, nil); err != nil {
 					span.RecordError(err)
 					return nil, err
 				}
@@ -966,6 +1002,11 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, ip s
 				span.RecordError(err)
 				return nil, err
 			}
+
+			if err := flagDeleted(refSD, refDoc.OnUpdate); err != nil {
+				span.RecordError(err)
+				return nil, err
+			}
 		}
 
 		if mode != domain.CommitModeExecute {
@@ -1069,6 +1110,20 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, ip s
 					},
 				)
 			}
+		}
+	}
+
+	// CIP-4 §6.1: a delete that removed nothing here (the forwarded targets
+	// had no local reference rows) is not recorded — the tx rolls back — so
+	// a later delivery that does find rows is not deduplicated away
+	if !deletedAny {
+		return &commitApplyResult{result: &sd, noop: true}, nil
+	}
+
+	if !deleteRetained {
+		if err := uc.repo.MarkCommitLogGcCandidate(ctx, tx, documentID); err != nil {
+			span.RecordError(err)
+			return nil, err
 		}
 	}
 
@@ -1561,16 +1616,22 @@ func (uc *RecordUsecase) processAck(ctx context.Context, tx RepositoryTx, ip str
 			return nil, err
 		}
 
-		postProcesses = append(postProcesses,
-			func(ctx context.Context) error {
-				return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
-					ResolveURI: to.CCKVWithHint(),
-					Payload:    ackedSD,
-					Local:      domain.DeliveryLocalCommit,
-					Remote:     domain.DeliveryRemoteCommit,
-				})
-			},
-		)
+		// like reference distribution, only an executing commit ships the
+		// acked document; a dump replay (LocalOnlyExecute) leaves the
+		// associate owner's holding to that side's own dump
+		if mode == domain.CommitModeExecute && uc.delivery != nil {
+			postProcesses = append(postProcesses,
+				func(ctx context.Context) error {
+					return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
+						ResolveURI: to.CCKVWithHint(),
+						Payload:    ackedSD,
+						Local:      domain.DeliveryLocalCommit,
+						Remote:     domain.DeliveryRemoteCommit,
+						IP:         ip,
+					})
+				},
+			)
+		}
 
 	} else {
 		// ignore. because...

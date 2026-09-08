@@ -245,6 +245,33 @@ func TestCommitAckDeliversAckedToTarget(t *testing.T) {
 	}
 }
 
+// A repository replay (LocalOnlyExecute) applies the ack locally but ships no
+// acked document — like reference distribution, only an executing commit
+// federates; the associate owner's holding is that side's own dump.
+func TestCommitAckImportDoesNotDeliverAcked(t *testing.T) {
+	cfg := &domain.Config{FQDN: "example.com"}
+	from := newAckParty(t, cfg.FQDN)
+	to := newAckParty(t, "remote.example.net")
+
+	repo := &recordingRecordRepo{}
+	delivery := &recordingDeliveryQueue{}
+	uc := newAckUsecase(cfg, repo, residenceOf(from, to), delivery)
+
+	sd := signedAck(t, "ack", from, to, time.Now().Add(-time.Minute))
+	if _, err := uc.Commit(context.Background(), "127.0.0.1", sd, domain.CommitModeLocalOnlyExecute); err != nil {
+		t.Fatalf("Commit returned error: %v", err)
+	}
+	if !repo.acknowledgeCalled {
+		t.Fatal("the ack state must still be applied on import")
+	}
+	if len(repo.txs) != 1 || !repo.txs[0].committed {
+		t.Fatalf("expected a committed tx, got %+v", repo.txs)
+	}
+	if len(delivery.jobs) != 0 {
+		t.Fatalf("an imported ack must not deliver an acked document, got %+v", delivery.jobs)
+	}
+}
+
 // A stale ack (accept-if-newer loss, CIP-10 §4) is a side-effect-free no-op:
 // no mirror is delivered and the tx (commit_log included) rolls back.
 func TestCommitStaleAckDeliversNothing(t *testing.T) {

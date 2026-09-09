@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/SherClockHolmes/webpush-go"
+	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	"github.com/xinguang/go-recaptcha"
@@ -107,6 +108,17 @@ func main() {
 	e.HidePort = true
 
 	e.Use(echomiddleware.Recover())
+
+	// HTTP metrics are collected on the public listener only; they are served
+	// from /metrics on the internal listener below, which carries no
+	// middleware, so probe and coordination traffic never shows up in them
+	e.Use(echoprometheus.NewMiddlewareWithConfig(echoprometheus.MiddlewareConfig{
+		Namespace: "concrnt",
+		Skipper: func(c echo.Context) bool {
+			// long-lived websocket upgrades would skew the duration histogram
+			return c.Request().Header.Get("Upgrade") == "websocket"
+		},
+	}))
 
 	if conf.Observability.EnableTrace {
 		cleanup, err := utils.SetupTraceProvider(conf.Observability.TraceEndpoint, conf.Concrnt.FQDN+"/ccapi", version)
@@ -339,8 +351,9 @@ func main() {
 	static.OPTIONS("/register-template", handleNop)
 
 	// the internal listener carries everything operational — liveness and
-	// readiness probes, and the replica-to-replica subscriber coordination
-	// API. it must never be exposed outside the cluster.
+	// readiness probes, the Prometheus scrape endpoint, and the
+	// replica-to-replica subscriber coordination API. it must never be
+	// exposed outside the cluster.
 	internal := echo.New()
 	internal.HideBanner = true
 	internal.HidePort = true
@@ -348,6 +361,8 @@ func main() {
 	internal.GET("/health", func(c echo.Context) (err error) {
 		return c.String(http.StatusOK, "ok")
 	})
+
+	internal.GET("/metrics", echoprometheus.NewHandler())
 
 	var ready atomic.Bool
 	ready.Store(true)

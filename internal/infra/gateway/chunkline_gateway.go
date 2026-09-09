@@ -494,9 +494,11 @@ func (r *resolver) LookupChunkItrs(ctx context.Context, timelines []string, unti
 	for tl, chunkID := range queries {
 		cacheKey := itrCacheKey(tl, chunkID)
 		if item, found := cachedItems[cacheKey]; found {
+			cacheRequests.WithLabelValues("itr", "hit").Inc()
 			results[tl] = string(item.Value)
 			continue
 		}
+		cacheRequests.WithLabelValues("itr", "miss").Inc()
 
 		manifest, ok := manifests[tl]
 		if !ok {
@@ -650,6 +652,9 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 	for tl, itr := range query {
 		cacheKey := bodyCacheKey(tl, itr)
 		if item, found := cachedItems[cacheKey]; found {
+			// a malformed cached item still counts as a hit: it was served
+			// from the cache (dropped), not fetched from origin
+			cacheRequests.WithLabelValues("body", "hit").Inc()
 			var bodyItems []chunkline.BodyItem
 			cacheStr := string(item.Value)
 			cacheStr = cacheStr[1:]
@@ -679,6 +684,7 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 			}
 			continue // cached: no origin fetch needed (a cached latest chunk is kept fresh by the cache updater)
 		}
+		cacheRequests.WithLabelValues("body", "miss").Inc()
 
 		manifest, ok := manifests[tl]
 		if !ok {

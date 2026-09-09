@@ -278,6 +278,32 @@ func main() {
 	subscriptionUC := subscription.New(subscriber, redisPubsub)
 	leaderSub.RegisterClient(subscriptionUC)
 
+	// sampled at scrape time; the replica-local client socket count, and the
+	// federation subscriber's upstream hosts (non-zero only on the leader)
+	prometheus.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
+		Namespace: "concrnt",
+		Name:      "realtime_connections",
+		Help:      "Realtime websocket connections from clients currently open on this replica.",
+	}, func() float64 {
+		return float64(subscriptionUC.SessionCount())
+	}))
+	upstreamOpts := func(state string) prometheus.GaugeOpts {
+		return prometheus.GaugeOpts{
+			Namespace:   "concrnt",
+			Name:        "upstream_connections",
+			Help:        "Upstream realtime hosts tracked by the federation subscriber: desired (demanded) vs current (websocket established).",
+			ConstLabels: prometheus.Labels{"state": state},
+		}
+	}
+	prometheus.MustRegister(prometheus.NewGaugeFunc(upstreamOpts("desired"), func() float64 {
+		desired, _ := leaderSub.ConnectionCounts()
+		return float64(desired)
+	}))
+	prometheus.MustRegister(prometheus.NewGaugeFunc(upstreamOpts("current"), func() float64 {
+		_, current := leaderSub.ConnectionCounts()
+		return float64(current)
+	}))
+
 	chunklineGateway := gateway.NewChunklineGateway(cl, mc, subscriber, redisPubsub)
 	chunklineUC := chunkline.New(chunklineRepo, chunklineGateway, redisKVS)
 

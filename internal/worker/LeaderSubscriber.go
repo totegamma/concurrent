@@ -186,6 +186,22 @@ func (s *LeaderSubscriber) OpenPrefixes() []string {
 	return prefixes
 }
 
+// ConnectionCounts reports the upstream hosts this leader tracks (desired:
+// demanded, whether open, dialing or awaiting repair) and how many of them
+// have an established websocket (current). Both are 0 while not leading.
+func (s *LeaderSubscriber) ConnectionCounts() (desired int, current int) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, state := range s.Subscriptions {
+		desired++
+		if state.Connection != nil {
+			current++
+		}
+	}
+	return desired, current
+}
+
 // RegisterClient adds a source of session demand: its prefixes are both kept
 // subscribed by the keeper and reported by CurrentSubscriptions.
 func (s *LeaderSubscriber) RegisterClient(client SubscribeClient) string {

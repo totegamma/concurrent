@@ -57,6 +57,14 @@ func (uc *Usecase) CurrentSubscriptions() []string {
 	return subscriptions
 }
 
+// SessionCount reports the number of realtime websocket sessions currently
+// open on this replica.
+func (uc *Usecase) SessionCount() int {
+	uc.mu.Lock()
+	defer uc.mu.Unlock()
+	return len(uc.sessions)
+}
+
 func (uc *Usecase) openSession() uint64 {
 	uc.mu.Lock()
 	defer uc.mu.Unlock()

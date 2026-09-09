@@ -67,6 +67,11 @@ present/rest (Echo handlers)  ->  usecase (business logic, interfaces for deps) 
   concerns (`JobQueue`, `KVS`). `record` is the hub: `residence` builds on it (its
   `Repository` embeds `record.EntityRepository`), and `record` in turn depends on
   `server` (remote server resolution) and `chunkline` (removed-item advertisements).
+  Inside `record`, `commit.go` is the write entry point (`Commit` dispatches on document
+  kind) and each target object has its own file (`entity.go`, `record.go`,
+  `association.go`, `ack.go`, `delete.go`); `read.go`/`query.go` are the read paths,
+  `deliver.go` the federation delivery job, `commitlog.go` dump/import, and
+  `usecase.go` the ports and constructor.
 - **`internal/infra/repository/postgres`** — GORM-backed implementations of the usecase
   repository interfaces.
 - **`internal/infra/gateway`** — outbound HTTP to other domains/servers (e.g. chunkline

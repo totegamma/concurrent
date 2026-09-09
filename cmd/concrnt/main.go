@@ -17,6 +17,7 @@ import (
 	"github.com/labstack/echo-contrib/echoprometheus"
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/xinguang/go-recaptcha"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	"go.opentelemetry.io/otel/trace"
@@ -160,6 +161,22 @@ func main() {
 		BuildTime:    buildTime,
 		GoVersion:    goVersion,
 	}
+
+	// the usual *_build_info shape: a constant 1 whose labels carry the build
+	// identity, so dashboards can filter and join on the running version
+	buildInfo := prometheus.NewGauge(prometheus.GaugeOpts{
+		Namespace: "concrnt",
+		Name:      "build_info",
+		Help:      "Build information of the running concrnt; the value is always 1.",
+		ConstLabels: prometheus.Labels{
+			"version":       version,
+			"go_version":    goVersion,
+			"build_time":    buildTime,
+			"build_machine": buildMachine,
+		},
+	})
+	buildInfo.Set(1)
+	prometheus.MustRegister(buildInfo)
 
 	db, err := database.NewPostgres(conf.Backends.PostgresDsn)
 	if err != nil {

@@ -190,7 +190,7 @@ func main() {
 
 	redisPubsub := pubsub.NewRedisPubsub(redis)
 	redisKVS := kvs.NewRedis(redis)
-	deliveryQueue := jobqueue.NewRedisDeliveryQueue(redis)
+	jobQueue := jobqueue.NewRedisJobQueue(redis)
 	policy := service.NewPolicyService(
 		GetGlobalPolicy(),
 		service.GlobalParameters{
@@ -204,7 +204,7 @@ func main() {
 
 	residenceRepo := postgres.NewResidenceRepository(db, cl, domainConfig)
 	recordRepo := postgres.NewRecordRepository(db)
-	recordUC := usecase.NewRecordUsecase(recordRepo, residenceRepo, serverUC, &domainConfig, cl, redisPubsub, policy, deliveryQueue, redisKVS)
+	recordUC := usecase.NewRecordUsecase(recordRepo, residenceRepo, serverUC, &domainConfig, cl, redisPubsub, policy, jobQueue, redisKVS)
 	residenceUC := usecase.NewResidenceUsecase(residenceRepo, recordUC, &domainConfig)
 
 	chunklineRepo := postgres.NewChunklineRepository(db)
@@ -246,10 +246,11 @@ func main() {
 	chunklineGateway := gateway.NewChunklineGateway(cl, mc, subscriber, redisPubsub)
 	chunklineUC := usecase.NewChunklineUsecase(chunklineRepo, chunklineGateway, redisKVS)
 
-	// the delivery queue is a redis-streams consumer group: safe (and useful)
-	// to run on every replica
-	deliveryWorker := worker.NewDeliveryWorker(&domainConfig, cl, redisPubsub, recordUC, deliveryQueue)
-	deliveryWorker.Start(ctx)
+	go func() {
+		if err := jobQueue.Run(ctx); err != nil {
+			slog.Error("job queue stopped", slog.String("error", err.Error()))
+		}
+	}()
 
 	abuseRepo := postgres.NewAbuseRepository(db)
 	abuseUC := usecase.NewAbuseUsecase(abuseRepo)

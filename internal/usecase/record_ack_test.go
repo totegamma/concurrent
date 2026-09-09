@@ -87,7 +87,7 @@ func derivedAcked(t *testing.T, ack concrnt.SignedDocument) concrnt.SignedDocume
 	return derived
 }
 
-func newAckUsecase(cfg *domain.Config, repo RecordRepository, residence ResidenceRepository, delivery DeliveryQueue) *RecordUsecase {
+func newAckUsecase(cfg *domain.Config, repo RecordRepository, residence ResidenceRepository, delivery JobQueue) *RecordUsecase {
 	return NewRecordUsecase(
 		repo,
 		residence,
@@ -208,17 +208,17 @@ func TestCommitAckDeliversAckedToTarget(t *testing.T) {
 			})
 
 			t.Run("committed locally when the target is ours", func(t *testing.T) {
-				if job.Local != domain.DeliveryLocalCommit {
-					t.Fatalf("job Local = %q, want %q", job.Local, domain.DeliveryLocalCommit)
+				if job.Local != DeliveryLocalCommit {
+					t.Fatalf("job Local = %q, want %q", job.Local, DeliveryLocalCommit)
 				}
 			})
 
 			// CIP-10 §5: the target's server must receive the state. With
-			// Remote=none the delivery worker drops the job for a remote
+			// Remote=none Deliver drops the job for a remote
 			// host, so a cross-server ack never reaches the ackee.
 			t.Run("committed remotely when the target is elsewhere", func(t *testing.T) {
-				if job.Remote != domain.DeliveryRemoteCommit {
-					t.Fatalf("job Remote = %q, want %q", job.Remote, domain.DeliveryRemoteCommit)
+				if job.Remote != DeliveryRemoteCommit {
+					t.Fatalf("job Remote = %q, want %q", job.Remote, DeliveryRemoteCommit)
 				}
 			})
 
@@ -350,7 +350,7 @@ func TestCommitAckedAppliesOnTargetServer(t *testing.T) {
 	}
 }
 
-// The real entry for a mirror is the delivery worker re-entering Commit
+// The real entry for a mirror is Deliver re-entering Commit
 // without any service-account context, so the document-direct proof must be
 // verifiable (CIP-10 §5.2 verification rule): the embedded ack verifies
 // against its author's signature and the mirror is byte-equal to the

@@ -152,13 +152,26 @@ func (p *denyKeysPolicyService) Eval(ctx context.Context, req policy.RequestCont
 	return nil
 }
 
+// recordingDeliveryQueue captures the DeliveryJobs a usecase enqueues and
+// the handlers it registers, keyed by job type.
 type recordingDeliveryQueue struct {
-	jobs []domain.DeliveryJob
+	jobs     []DeliveryJob
+	handlers map[string]func(ctx context.Context, payload json.RawMessage) error
 }
 
-func (d *recordingDeliveryQueue) Enqueue(ctx context.Context, job domain.DeliveryJob) error {
-	d.jobs = append(d.jobs, job)
+func (d *recordingDeliveryQueue) Enqueue(ctx context.Context, jobType string, payload any) error {
+	if jobType != JobTypeRecordDelivery {
+		return fmt.Errorf("unexpected job type %q", jobType)
+	}
+	d.jobs = append(d.jobs, payload.(DeliveryJob))
 	return nil
+}
+
+func (d *recordingDeliveryQueue) RegisterHandler(jobType string, handler func(ctx context.Context, payload json.RawMessage) error) {
+	if d.handlers == nil {
+		d.handlers = map[string]func(ctx context.Context, payload json.RawMessage) error{}
+	}
+	d.handlers[jobType] = handler
 }
 
 // subtreeRecord builds a stored record fixture the way QueryRecordSubtree
@@ -206,7 +219,7 @@ func signedDelete(t *testing.T, ccid, privKeyHex, target string) concrnt.SignedD
 // newRangeDeleteUsecase wires a usecase whose delete author is a local,
 // resolvable entity. The subtree base's owner is the server FQDN itself, so
 // ResolveResourceHost resolves it locally without any network.
-func newRangeDeleteUsecase(ccid string, cfg *domain.Config, repo RecordRepository, pol PolicyService, delivery DeliveryQueue, kvs KVS) *RecordUsecase {
+func newRangeDeleteUsecase(ccid string, cfg *domain.Config, repo RecordRepository, pol PolicyService, delivery JobQueue, kvs KVS) *RecordUsecase {
 	return NewRecordUsecase(
 		repo,
 		fixedResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: cfg.FQDN}},
@@ -606,7 +619,7 @@ func TestCommitDeleteSweepsLocalDistributeReference(t *testing.T) {
 		t.Fatalf("unexpected tx state: %+v", repo.txs)
 	}
 	for _, job := range delivery.jobs {
-		if job.Remote != domain.DeliveryRemoteCommit {
+		if job.Remote != DeliveryRemoteCommit {
 			t.Fatalf("authoritative fan-out must re-federate, got %+v", job)
 		}
 	}
@@ -665,7 +678,7 @@ func TestCommitDeleteRemoteTargetSweepsLocalReference(t *testing.T) {
 	}
 	deletedEvents := 0
 	for _, job := range delivery.jobs {
-		if job.Remote != domain.DeliveryRemoteNone {
+		if job.Remote != DeliveryRemoteNone {
 			t.Fatalf("a receiving server must not re-federate the delete, got %+v", job)
 		}
 		if job.Event != nil && job.Event.Type == "deleted" {

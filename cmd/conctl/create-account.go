@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"time"
 
@@ -34,13 +35,15 @@ func (nopPolicy) Eval(context.Context, policy.RequestContext, []concrnt.Policy, 
 	return nil
 }
 
-// nopDelivery discards delivery jobs: account creation via conctl is a
+// nopJobQueue discards background jobs: account creation via conctl is a
 // local, one-shot operation with no federation distribution expected.
-type nopDelivery struct{}
+type nopJobQueue struct{}
 
-func (nopDelivery) Enqueue(context.Context, domain.DeliveryJob) error {
+func (nopJobQueue) Enqueue(context.Context, string, any) error {
 	return nil
 }
+
+func (nopJobQueue) RegisterHandler(string, func(context.Context, json.RawMessage) error) {}
 
 var createAccountCmd = &cobra.Command{
 	Use:   "create-account",
@@ -80,7 +83,7 @@ var createAccountCmd = &cobra.Command{
 		recordRepo := postgres.NewRecordRepository(op.DB)
 		serverRepo := postgres.NewServerRepository(&op.GlobalConfig, op.DB, op.Client)
 		serverUC := usecase.NewServerUsecase(serverRepo, &op.GlobalConfig, concrnt.SoftwareInfo{}, service.NewModuleManager(map[string]string{}, nil), op.Client)
-		recordUC := usecase.NewRecordUsecase(recordRepo, residenceRepo, serverUC, &op.GlobalConfig, op.Client, nopSignal{}, nopPolicy{}, nopDelivery{}, nil)
+		recordUC := usecase.NewRecordUsecase(recordRepo, residenceRepo, serverUC, &op.GlobalConfig, op.Client, nopSignal{}, nopPolicy{}, nopJobQueue{}, nil)
 		residenceUC := usecase.NewResidenceUsecase(residenceRepo, recordUC, &op.GlobalConfig)
 
 		if err := residenceUC.Register(cmd.Context(), "", req); err != nil {

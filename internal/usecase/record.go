@@ -89,12 +89,50 @@ type SignalService interface {
 	Publish(ctx context.Context, channel string, event concrnt.Event) error
 }
 
-// DeliveryQueue hands off federation delivery jobs to be executed
-// asynchronously (host resolution + local publish/commit or remote HTTP
-// commit). See internal/domain.DeliveryJob for the job shape and
-// internal/worker.DeliveryWorker for the consumer side.
-type DeliveryQueue interface {
-	Enqueue(ctx context.Context, job domain.DeliveryJob) error
+// JobTypeRecordDelivery is the JobQueue job type for federation delivery;
+// its payload is a DeliveryJob and its handler is Deliver.
+const JobTypeRecordDelivery = "RecordDelivery"
+
+// DeliveryLocalKind describes what to do when a delivery job's destination
+// resolves to this server itself.
+type DeliveryLocalKind string
+
+// DeliveryRemoteKind describes what to do when a delivery job's destination
+// resolves to another domain.
+type DeliveryRemoteKind string
+
+const (
+	DeliveryLocalNone    DeliveryLocalKind = "none"    // nothing to do locally
+	DeliveryLocalPublish DeliveryLocalKind = "publish" // publish Event on Dest/ResolveURI
+	DeliveryLocalCommit  DeliveryLocalKind = "commit"  // re-enter Commit(ip, Payload, CommitModeExecute)
+
+	DeliveryRemoteNone   DeliveryRemoteKind = "none"   // nothing to do remotely
+	DeliveryRemoteCommit DeliveryRemoteKind = "commit" // POST Payload to the resolved host
+)
+
+// DeliveryJob describes a single unit of federation delivery work: resolve a
+// destination (unless already known), then act locally and/or remotely. It
+// is the payload of a JobTypeRecordDelivery job.
+//
+// Exactly one of ResolveURI / Host should be set: ResolveURI is a CCURI that
+// Deliver must resolve to a host via Client.ResolveResourceHost; Host is an
+// already-known destination domain that requires no resolution (e.g. an
+// entity's registered Domain).
+type DeliveryJob struct {
+	ResolveURI string `json:"resolveUri,omitempty"`
+	Host       string `json:"host,omitempty"`
+
+	Payload concrnt.SignedDocument `json:"payload,omitempty"`
+
+	Local  DeliveryLocalKind  `json:"local"`
+	Remote DeliveryRemoteKind `json:"remote"`
+
+	// Event is used when Local == DeliveryLocalPublish; the publish channel
+	// is ResolveURI.
+	Event *concrnt.Event `json:"event,omitempty"`
+
+	// IP is used when Local == DeliveryLocalCommit, to re-enter Commit.
+	IP string `json:"ip,omitempty"`
 }
 
 type PolicyService interface {
@@ -123,7 +161,7 @@ type RecordUsecase struct {
 	client    *client.Client
 	signal    SignalService
 	policy    PolicyService
-	delivery  DeliveryQueue
+	jobs      JobQueue
 	kvs       KVS
 	cache     *cache.Cache
 }
@@ -136,10 +174,10 @@ func NewRecordUsecase(
 	client *client.Client,
 	signal SignalService,
 	policy PolicyService,
-	delivery DeliveryQueue,
+	jobs JobQueue,
 	kvs KVS,
 ) *RecordUsecase {
-	return &RecordUsecase{
+	uc := &RecordUsecase{
 		repo:      repo,
 		residence: residence,
 		server:    server,
@@ -147,10 +185,24 @@ func NewRecordUsecase(
 		client:    client,
 		signal:    signal,
 		policy:    policy,
-		delivery:  delivery,
+		jobs:      jobs,
 		kvs:       kvs,
 		cache:     cache.New(10*time.Minute, 15*time.Minute),
 	}
+
+	// this usecase owns the delivery job type: it both enqueues DeliveryJobs
+	// and interprets them, so the queue itself stays agnostic
+	if jobs != nil {
+		jobs.RegisterHandler(JobTypeRecordDelivery, func(ctx context.Context, payload json.RawMessage) error {
+			job, err := parseJobPayload[DeliveryJob](payload)
+			if err != nil {
+				return err
+			}
+			return uc.Deliver(ctx, job)
+		})
+	}
+
+	return uc
 }
 
 // resolver returns uc.client as a DocumentResolver, or a nil interface when
@@ -636,11 +688,11 @@ func (uc *RecordUsecase) createReferenceDistributionActions(ctx context.Context,
 		destURI := destURI
 		postProcesses = append(postProcesses,
 			func(ctx context.Context) error {
-				return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
+				return uc.jobs.Enqueue(ctx, JobTypeRecordDelivery, DeliveryJob{
 					ResolveURI: destURI,
 					Payload:    distSD,
-					Local:      domain.DeliveryLocalCommit,
-					Remote:     domain.DeliveryRemoteCommit,
+					Local:      DeliveryLocalCommit,
+					Remote:     DeliveryRemoteCommit,
 					IP:         ip,
 				})
 			},
@@ -766,11 +818,11 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, ip s
 		}
 	}
 
-	remoteKind := domain.DeliveryRemoteNone
+	remoteKind := DeliveryRemoteNone
 	if authoritative {
 		// only the authoritative server re-federates the delete; a receiving
 		// server acts on its own copies and signals its own subscribers
-		remoteKind = domain.DeliveryRemoteCommit
+		remoteKind = DeliveryRemoteCommit
 	}
 
 	// A delete is committed the same way whichever way it arrived: from the
@@ -1035,10 +1087,10 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, ip s
 			postProcesses = append(
 				postProcesses,
 				func(ctx context.Context) error {
-					return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
+					return uc.jobs.Enqueue(ctx, JobTypeRecordDelivery, DeliveryJob{
 						ResolveURI: dest,
 						Payload:    remoteSD,
-						Local:      domain.DeliveryLocalPublish,
+						Local:      DeliveryLocalPublish,
 						Remote:     remoteKind,
 						Event: &concrnt.Event{
 							Type:      "deleted",
@@ -1096,10 +1148,10 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, ip s
 				}
 				postProcesses = append(postProcesses,
 					func(ctx context.Context) error {
-						return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
+						return uc.jobs.Enqueue(ctx, JobTypeRecordDelivery, DeliveryJob{
 							ResolveURI: dest,
 							Payload:    remoteSD,
-							Local:      domain.DeliveryLocalPublish,
+							Local:      DeliveryLocalPublish,
 							Remote:     remoteKind,
 							Event: &concrnt.Event{
 								Type:      "unassociated",
@@ -1502,9 +1554,9 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 
 		// 各タイムラインを購読しているクライアントに、そのタイムラインにassociationが追加されたことを通知するために、
 		// association本体をリモートサーバーに転送し、eventの発生を促す。
-		remoteKind := domain.DeliveryRemoteNone
+		remoteKind := DeliveryRemoteNone
 		if isLocal {
-			remoteKind = domain.DeliveryRemoteCommit
+			remoteKind = DeliveryRemoteCommit
 		}
 
 		for _, channel := range distributions {
@@ -1530,10 +1582,10 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 							ccfs: sd,
 						},
 					})
-					return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
+					return uc.jobs.Enqueue(ctx, JobTypeRecordDelivery, DeliveryJob{
 						ResolveURI: channel,
 						Payload:    remoteSD,
-						Local:      domain.DeliveryLocalPublish,
+						Local:      DeliveryLocalPublish,
 						Remote:     remoteKind,
 						Event:      &event,
 					})
@@ -1619,14 +1671,14 @@ func (uc *RecordUsecase) processAck(ctx context.Context, tx RepositoryTx, ip str
 		// like reference distribution, only an executing commit ships the
 		// acked document; a dump replay (LocalOnlyExecute) leaves the
 		// associate owner's holding to that side's own dump
-		if mode == domain.CommitModeExecute && uc.delivery != nil {
+		if mode == domain.CommitModeExecute && uc.jobs != nil {
 			postProcesses = append(postProcesses,
 				func(ctx context.Context) error {
-					return uc.delivery.Enqueue(ctx, domain.DeliveryJob{
+					return uc.jobs.Enqueue(ctx, JobTypeRecordDelivery, DeliveryJob{
 						ResolveURI: to.CCKVWithHint(),
 						Payload:    ackedSD,
-						Local:      domain.DeliveryLocalCommit,
-						Remote:     domain.DeliveryRemoteCommit,
+						Local:      DeliveryLocalCommit,
+						Remote:     DeliveryRemoteCommit,
 						IP:         ip,
 					})
 				},
@@ -2038,6 +2090,47 @@ func (uc *RecordUsecase) DumpCommitLogs(ctx context.Context) (string, error) {
 	}
 
 	return result, nil
+}
+
+// Deliver executes one delivery job produced by this usecase: resolve the
+// destination (unless it's already a known host), then act locally (publish
+// a realtime event, or re-enter Commit) or remotely (POST to the resolved
+// host). It is the handler registered for JobTypeRecordDelivery.
+func (uc *RecordUsecase) Deliver(ctx context.Context, job DeliveryJob) error {
+	ctx, span := tracer.Start(ctx, "Usecase.Record.Deliver")
+	defer span.End()
+
+	host := job.Host
+	if job.ResolveURI != "" {
+		resolved, err := uc.client.ResolveResourceHost(ctx, job.ResolveURI)
+		if err != nil {
+			span.RecordError(err)
+			return err
+		}
+		host = resolved
+	}
+
+	if host == uc.config.FQDN {
+		switch job.Local {
+		case DeliveryLocalPublish:
+			if job.Event == nil {
+				err := fmt.Errorf("delivery: local publish job for %s missing event", job.ResolveURI)
+				span.RecordError(err)
+				return err
+			}
+			return uc.signal.Publish(ctx, job.ResolveURI, *job.Event)
+		case DeliveryLocalCommit:
+			_, err := uc.Commit(ctx, job.IP, job.Payload, domain.CommitModeExecute)
+			return err
+		default:
+			return nil
+		}
+	}
+
+	if job.Remote == DeliveryRemoteCommit {
+		return uc.client.Commit(ctx, host, job.Payload)
+	}
+	return nil
 }
 
 func (uc *RecordUsecase) IsLocalEntity(ctx context.Context, entity *domain.Entity) bool {

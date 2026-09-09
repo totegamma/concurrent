@@ -1044,12 +1044,15 @@ func TestCommitUpdateEvaluatesStoredSelf(t *testing.T) {
 	}
 }
 
-// recordingSignalService captures every published realtime event.
+// recordingSignalService captures every published realtime event and the
+// channel it went out on.
 type recordingSignalService struct {
-	events []concrnt.Event
+	channels []string
+	events   []concrnt.Event
 }
 
 func (s *recordingSignalService) Publish(ctx context.Context, channel string, event concrnt.Event) error {
+	s.channels = append(s.channels, channel)
 	s.events = append(s.events, event)
 	return nil
 }
@@ -1610,7 +1613,7 @@ func TestCommitAssociationRemoteTargetDoesNotRefanout(t *testing.T) {
 		t.Fatal("expected the local publish job")
 	}
 	for _, job := range delivery.jobs {
-		if job.Remote != domain.DeliveryRemoteNone {
+		if job.Remote != DeliveryRemoteNone {
 			t.Fatalf("non-authoritative association job must not re-commit remotely, got Remote=%q for %s", job.Remote, job.ResolveURI)
 		}
 	}

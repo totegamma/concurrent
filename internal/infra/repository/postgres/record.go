@@ -17,7 +17,7 @@ import (
 	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/internal/domain"
 	"github.com/concrnt/concrnt/internal/infra/database/models"
-	"github.com/concrnt/concrnt/internal/usecase"
+	"github.com/concrnt/concrnt/internal/usecase/record"
 	"github.com/concrnt/concrnt/internal/utils"
 )
 
@@ -29,11 +29,11 @@ type recordTx struct {
 	tx *gorm.DB
 }
 
-func NewRecordRepository(db *gorm.DB) usecase.RecordRepository {
+func NewRecordRepository(db *gorm.DB) record.Repository {
 	return &RecordRepository{db: db}
 }
 
-func (r *RecordRepository) BeginTx(ctx context.Context) (usecase.RepositoryTx, error) {
+func (r *RecordRepository) BeginTx(ctx context.Context) (record.RepositoryTx, error) {
 	tx := r.db.WithContext(ctx).Begin()
 	if tx.Error != nil {
 		return nil, tx.Error
@@ -49,7 +49,7 @@ func (tx *recordTx) Rollback(ctx context.Context) error {
 	return tx.tx.WithContext(ctx).Rollback().Error
 }
 
-func getRecordTx(ctx context.Context, tx usecase.RepositoryTx) (*gorm.DB, error) {
+func getRecordTx(ctx context.Context, tx record.RepositoryTx) (*gorm.DB, error) {
 	recordTx, ok := tx.(*recordTx)
 	if !ok || recordTx == nil || recordTx.tx == nil {
 		return nil, errors.New("invalid record repository transaction")
@@ -59,7 +59,7 @@ func getRecordTx(ctx context.Context, tx usecase.RepositoryTx) (*gorm.DB, error)
 
 func (r *RecordRepository) CreateEntity(
 	ctx context.Context,
-	tx usecase.RepositoryTx,
+	tx record.RepositoryTx,
 	ccid string,
 	alias *string,
 	domain string,
@@ -119,7 +119,7 @@ func (r *RecordRepository) HasCommitLog(ctx context.Context, id string) (bool, e
 	return true, nil
 }
 
-func (r *RecordRepository) CreateCommitLog(ctx context.Context, tx usecase.RepositoryTx, id string, ip string, document string, proof any, owner string) error {
+func (r *RecordRepository) CreateCommitLog(ctx context.Context, tx record.RepositoryTx, id string, ip string, document string, proof any, owner string) error {
 	ctx, span := tracer.Start(ctx, "Repository.Record.CreateCommitLog")
 	defer span.End()
 
@@ -155,7 +155,7 @@ func (r *RecordRepository) CreateCommitLog(ctx context.Context, tx usecase.Repos
 
 func (r *RecordRepository) CreateRecord(
 	ctx context.Context,
-	tx usecase.RepositoryTx,
+	tx record.RepositoryTx,
 	documentID string,
 	key string,
 	owner string,
@@ -269,7 +269,7 @@ func (r *RecordRepository) CreateRecord(
 
 }
 
-func (r *RecordRepository) CreateAssociation(ctx context.Context, tx usecase.RepositoryTx, documentID string, targetURI string, owner string, author string, schema string, variant *string, unique string, createdAt time.Time) (bool, error) {
+func (r *RecordRepository) CreateAssociation(ctx context.Context, tx record.RepositoryTx, documentID string, targetURI string, owner string, author string, schema string, variant *string, unique string, createdAt time.Time) (bool, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.CreateAssociation")
 	defer span.End()
 
@@ -312,7 +312,7 @@ func (r *RecordRepository) CreateAssociation(ctx context.Context, tx usecase.Rep
 	return result.RowsAffected > 0, nil
 }
 
-func (r *RecordRepository) processAck(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time, valid bool) (bool, error) {
+func (r *RecordRepository) processAck(ctx context.Context, tx record.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time, valid bool) (bool, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.processAck")
 	defer span.End()
 
@@ -349,16 +349,16 @@ func (r *RecordRepository) processAck(ctx context.Context, tx usecase.Repository
 
 }
 
-func (r *RecordRepository) Acknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
+func (r *RecordRepository) Acknowledge(ctx context.Context, tx record.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
 	return r.processAck(ctx, tx, documentID, from, to, schema, createdAt, true)
 
 }
 
-func (r *RecordRepository) UnAcknowledge(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
+func (r *RecordRepository) UnAcknowledge(ctx context.Context, tx record.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
 	return r.processAck(ctx, tx, documentID, from, to, schema, createdAt, false)
 }
 
-func (r *RecordRepository) processAcked(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time, valid bool) (bool, error) {
+func (r *RecordRepository) processAcked(ctx context.Context, tx record.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time, valid bool) (bool, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.processAcked")
 	defer span.End()
 
@@ -395,12 +395,12 @@ func (r *RecordRepository) processAcked(ctx context.Context, tx usecase.Reposito
 
 }
 
-func (r *RecordRepository) Acknowledged(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
+func (r *RecordRepository) Acknowledged(ctx context.Context, tx record.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
 	return r.processAcked(ctx, tx, documentID, from, to, schema, createdAt, true)
 
 }
 
-func (r *RecordRepository) UnAcknowledged(ctx context.Context, tx usecase.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
+func (r *RecordRepository) UnAcknowledged(ctx context.Context, tx record.RepositoryTx, documentID string, from string, to string, schema string, createdAt time.Time) (bool, error) {
 	return r.processAcked(ctx, tx, documentID, from, to, schema, createdAt, false)
 }
 
@@ -593,7 +593,7 @@ func (r *RecordRepository) GetSignedDocument(ctx context.Context, uri string) (*
 	}
 }
 
-func (r *RecordRepository) MarkCommitLogGcCandidate(ctx context.Context, tx usecase.RepositoryTx, documentID string) error {
+func (r *RecordRepository) MarkCommitLogGcCandidate(ctx context.Context, tx record.RepositoryTx, documentID string) error {
 	ctx, span := tracer.Start(ctx, "Repository.Record.MarkCommitLogGcCandidate")
 	defer span.End()
 
@@ -613,7 +613,7 @@ func (r *RecordRepository) MarkCommitLogGcCandidate(ctx context.Context, tx usec
 	return nil
 }
 
-func (r *RecordRepository) DeleteRecordByKey(ctx context.Context, tx usecase.RepositoryTx, targetURI string) error {
+func (r *RecordRepository) DeleteRecordByKey(ctx context.Context, tx record.RepositoryTx, targetURI string) error {
 	ctx, span := tracer.Start(ctx, "Repository.Record.DeleteRecordByKey")
 	defer span.End()
 
@@ -627,7 +627,7 @@ func (r *RecordRepository) DeleteRecordByKey(ctx context.Context, tx usecase.Rep
 	return db.Where("document_id = (?)", q).Delete(&models.Record{}).Error
 }
 
-func (r *RecordRepository) DeleteRecordByDocumentID(ctx context.Context, tx usecase.RepositoryTx, documentID string) error {
+func (r *RecordRepository) DeleteRecordByDocumentID(ctx context.Context, tx record.RepositoryTx, documentID string) error {
 	ctx, span := tracer.Start(ctx, "Repository.Record.DeleteRecordByDocumentID")
 	defer span.End()
 
@@ -679,7 +679,7 @@ func (r *RecordRepository) GetTimelineRemoval(ctx context.Context, keyURI string
 	return parent.URI, itemID, nil
 }
 
-func (r *RecordRepository) DeleteAssociation(ctx context.Context, tx usecase.RepositoryTx, documentID string) error {
+func (r *RecordRepository) DeleteAssociation(ctx context.Context, tx record.RepositoryTx, documentID string) error {
 	ctx, span := tracer.Start(ctx, "Repository.Record.DeleteAssociation")
 	defer span.End()
 
@@ -821,7 +821,7 @@ func (r *RecordRepository) GetAssociatedRecords(
 	since, until *time.Time,
 	limit int,
 	order string,
-) ([]usecase.QueryRow, error) {
+) ([]record.QueryRow, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.GetAssociatedRecords")
 	defer span.End()
 
@@ -863,7 +863,7 @@ func (r *RecordRepository) GetAssociatedRecords(
 		return nil, err
 	}
 
-	rows := make([]usecase.QueryRow, len(associations))
+	rows := make([]record.QueryRow, len(associations))
 	for i, assoc := range associations {
 		var proof concrnt.Proof
 		err := json.Unmarshal([]byte(assoc.Document.Proof), &proof)
@@ -874,7 +874,7 @@ func (r *RecordRepository) GetAssociatedRecords(
 
 		ccfs := concrnt.ComposeCCFSURI(assoc.Owner, concrnt.CCFSTypeConcrnt, assoc.DocumentID)
 
-		rows[i] = usecase.QueryRow{
+		rows[i] = record.QueryRow{
 			Row: concrnt.SignedDocument{
 				CCFS:     &ccfs,
 				Document: assoc.Document.Document,
@@ -958,7 +958,7 @@ func (r *RecordRepository) QueryByPrefix(
 	since, until *time.Time,
 	limit int,
 	order string,
-) ([]usecase.QueryRow, error) {
+) ([]record.QueryRow, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.Query")
 	defer span.End()
 
@@ -1002,8 +1002,8 @@ func (r *RecordRepository) QueryByPrefix(
 
 // recordKeysToQueryRows converts preloaded record keys into query rows
 // carrying the created_at sort key the query ordered by.
-func recordKeysToQueryRows(rks []models.RecordKey, span trace.Span) ([]usecase.QueryRow, error) {
-	rows := make([]usecase.QueryRow, 0, len(rks))
+func recordKeysToQueryRows(rks []models.RecordKey, span trace.Span) ([]record.QueryRow, error) {
+	rows := make([]record.QueryRow, 0, len(rks))
 	for _, rk := range rks {
 		var proof concrnt.Proof
 		err := json.Unmarshal([]byte(rk.Record.Document.Proof), &proof)
@@ -1014,7 +1014,7 @@ func recordKeysToQueryRows(rks []models.RecordKey, span trace.Span) ([]usecase.Q
 
 		ccfs := concrnt.ComposeCCFSURI(rk.Record.Owner, concrnt.CCFSTypeConcrnt, rk.Record.DocumentID)
 
-		rows = append(rows, usecase.QueryRow{
+		rows = append(rows, record.QueryRow{
 			Row: concrnt.SignedDocument{
 				CCKV:     &rk.URI,
 				CCFS:     &ccfs,
@@ -1086,7 +1086,7 @@ func (r *RecordRepository) QueryByParent(
 	since, until *time.Time,
 	limit int,
 	order string,
-) ([]usecase.QueryRow, error) {
+) ([]record.QueryRow, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.QueryByParent")
 	defer span.End()
 
@@ -1128,7 +1128,7 @@ func (r *RecordRepository) QueryByParent(
 	return recordKeysToQueryRows(rks, span)
 }
 
-func (r *RecordRepository) getAckRecords(ctx context.Context, from, schema string, since, until *time.Time, limit int, order string) ([]usecase.QueryRow, error) {
+func (r *RecordRepository) getAckRecords(ctx context.Context, from, schema string, since, until *time.Time, limit int, order string) ([]record.QueryRow, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.getAckRecords")
 	defer span.End()
 
@@ -1166,7 +1166,7 @@ func (r *RecordRepository) getAckRecords(ctx context.Context, from, schema strin
 		return nil, err
 	}
 
-	rows := make([]usecase.QueryRow, len(acks))
+	rows := make([]record.QueryRow, len(acks))
 	for i, ack := range acks {
 		var proof concrnt.Proof
 		err := json.Unmarshal([]byte(ack.Document.Proof), &proof)
@@ -1177,7 +1177,7 @@ func (r *RecordRepository) getAckRecords(ctx context.Context, from, schema strin
 
 		ccfs := concrnt.ComposeCCFSURI(ack.From, concrnt.CCFSTypeConcrnt, ack.DocumentID)
 
-		rows[i] = usecase.QueryRow{
+		rows[i] = record.QueryRow{
 			Row: concrnt.SignedDocument{
 				CCFS:     &ccfs,
 				Document: ack.Document.Document,
@@ -1190,7 +1190,7 @@ func (r *RecordRepository) getAckRecords(ctx context.Context, from, schema strin
 	return rows, nil
 }
 
-func (r *RecordRepository) getAckedRecords(ctx context.Context, to, schema string, since, until *time.Time, limit int, order string) ([]usecase.QueryRow, error) {
+func (r *RecordRepository) getAckedRecords(ctx context.Context, to, schema string, since, until *time.Time, limit int, order string) ([]record.QueryRow, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.getAckedRecords")
 	defer span.End()
 
@@ -1228,7 +1228,7 @@ func (r *RecordRepository) getAckedRecords(ctx context.Context, to, schema strin
 		return nil, err
 	}
 
-	rows := make([]usecase.QueryRow, len(acked))
+	rows := make([]record.QueryRow, len(acked))
 	for i, ack := range acked {
 		var proof concrnt.Proof
 		err := json.Unmarshal([]byte(ack.Document.Proof), &proof)
@@ -1241,7 +1241,7 @@ func (r *RecordRepository) getAckedRecords(ctx context.Context, to, schema strin
 		// owner's server
 		ccfs := concrnt.ComposeCCFSURI(ack.To, concrnt.CCFSTypeConcrnt, ack.DocumentID)
 
-		rows[i] = usecase.QueryRow{
+		rows[i] = record.QueryRow{
 			Row: concrnt.SignedDocument{
 				CCFS:     &ccfs,
 				Document: ack.Document.Document,
@@ -1254,7 +1254,7 @@ func (r *RecordRepository) getAckedRecords(ctx context.Context, to, schema strin
 	return rows, nil
 }
 
-func (r *RecordRepository) GetAcknowledgeRecords(ctx context.Context, from, to, schema string, since, until *time.Time, limit int, order string) ([]usecase.QueryRow, error) {
+func (r *RecordRepository) GetAcknowledgeRecords(ctx context.Context, from, to, schema string, since, until *time.Time, limit int, order string) ([]record.QueryRow, error) {
 	ctx, span := tracer.Start(ctx, "Repository.Record.GetAcknowledgeRecords")
 	defer span.End()
 

@@ -9,7 +9,7 @@ import (
 	"time"
 
 	"github.com/concrnt/concrnt/internal/domain"
-	"github.com/concrnt/concrnt/internal/usecase"
+	"github.com/concrnt/concrnt/internal/usecase/record"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/require"
 )
@@ -17,11 +17,11 @@ import (
 // acknowledgesRecordRepo fails loudly if the handler lets an invalid filter
 // through to the repository.
 type acknowledgesRecordRepo struct {
-	usecase.RecordRepository
+	record.Repository
 	called bool
 }
 
-func (r *acknowledgesRecordRepo) GetAcknowledgeRecords(ctx context.Context, from, to, schema string, since, until *time.Time, limit int, order string) ([]usecase.QueryRow, error) {
+func (r *acknowledgesRecordRepo) GetAcknowledgeRecords(ctx context.Context, from, to, schema string, since, until *time.Time, limit int, order string) ([]record.QueryRow, error) {
 	r.called = true
 	return nil, errors.New("repository must not be reached for an invalid filter")
 }
@@ -52,7 +52,7 @@ func TestAcknowledgesRequireExactlyOneSide(t *testing.T) {
 				repo := &acknowledgesRecordRepo{}
 				h := &Handler{
 					config: cfg,
-					record: usecase.NewRecordUsecase(repo, nil, nil, &cfg, nil, nil, nil, nil, nil),
+					record: record.New(repo, nil, nil, &cfg, nil, nil, nil, nil, nil),
 				}
 
 				e := echo.New()

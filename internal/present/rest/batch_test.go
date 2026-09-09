@@ -19,7 +19,7 @@ import (
 	"github.com/concrnt/concrnt/chunkline"
 	"github.com/concrnt/concrnt/client"
 	"github.com/concrnt/concrnt/internal/domain"
-	"github.com/concrnt/concrnt/internal/usecase"
+	chunklineuc "github.com/concrnt/concrnt/internal/usecase/chunkline"
 	"github.com/labstack/echo/v4"
 	"github.com/stretchr/testify/require"
 )
@@ -68,7 +68,7 @@ func TestBatchHandlerAggregatesChunklineItrRequests(t *testing.T) {
 		domain.Config{},
 		nil,
 		nil,
-		usecase.NewChunklineUsecase(repo, nil, nil),
+		chunklineuc.New(repo, nil, nil),
 		nil,
 		nil,
 		nil,
@@ -118,7 +118,7 @@ func TestChunklineItrMissingIsNotFound(t *testing.T) {
 		domain.Config{},
 		nil,
 		nil,
-		usecase.NewChunklineUsecase(repo, nil, nil),
+		chunklineuc.New(repo, nil, nil),
 		nil,
 		nil,
 		nil,
@@ -155,7 +155,7 @@ func TestChunklineItrMissingIsNotFound(t *testing.T) {
 	require.Equal(t, http.StatusNotFound, responses["1"].StatusCode)
 }
 
-var _ usecase.ChunklineRepository = (*batchChunklineRepo)(nil)
+var _ chunklineuc.Repository = (*batchChunklineRepo)(nil)
 
 // A batch carrying more than maxBatchParts application/http parts is rejected
 // with a 400 before any part is dispatched.
@@ -165,7 +165,7 @@ func TestBatchHandlerRejectsTooManyParts(t *testing.T) {
 		domain.Config{},
 		nil,
 		nil,
-		usecase.NewChunklineUsecase(repo, nil, nil),
+		chunklineuc.New(repo, nil, nil),
 		nil,
 		nil,
 		nil,
@@ -209,7 +209,7 @@ func TestBatchHandlerRejectsDuplicateContentID(t *testing.T) {
 		domain.Config{},
 		nil,
 		nil,
-		usecase.NewChunklineUsecase(repo, nil, nil),
+		chunklineuc.New(repo, nil, nil),
 		nil,
 		nil,
 		nil,
@@ -253,7 +253,7 @@ func TestBatchHandlerRejectsMissingContentID(t *testing.T) {
 		domain.Config{},
 		nil,
 		nil,
-		usecase.NewChunklineUsecase(repo, nil, nil),
+		chunklineuc.New(repo, nil, nil),
 		nil,
 		nil,
 		nil,
@@ -370,7 +370,7 @@ func TestBatchHandlerAbsoluteFormTargets(t *testing.T) {
 		domain.Config{FQDN: "example.test"},
 		nil,
 		nil,
-		usecase.NewChunklineUsecase(repo, nil, nil),
+		chunklineuc.New(repo, nil, nil),
 		nil,
 		nil,
 		nil,

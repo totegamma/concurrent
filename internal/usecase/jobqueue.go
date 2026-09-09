@@ -1,3 +1,7 @@
+// Package usecase holds the ports shared by more than one usecase package
+// (job queue, KVS). Each bounded concern lives in its own subpackage
+// (record, residence, server, ...) and declares the repository/gateway
+// interfaces only it needs.
 package usecase
 
 import (
@@ -15,8 +19,8 @@ type JobQueue interface {
 	RegisterHandler(jobType string, handler func(ctx context.Context, payload json.RawMessage) error)
 }
 
-// parseJobPayload restores the typed payload a handler was registered for.
-func parseJobPayload[T any](payload json.RawMessage) (T, error) {
+// ParseJobPayload restores the typed payload a handler was registered for.
+func ParseJobPayload[T any](payload json.RawMessage) (T, error) {
 	var value T
 	err := json.Unmarshal(payload, &value)
 	return value, err

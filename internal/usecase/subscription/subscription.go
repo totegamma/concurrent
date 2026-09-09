@@ -1,4 +1,4 @@
-package usecase
+package subscription
 
 import (
 	"context"
@@ -9,15 +9,15 @@ import (
 	"github.com/concrnt/concrnt/internal/worker"
 )
 
-// SubscriptionEnsurer requests that upstream subscriptions cover the given
+// Ensurer requests that upstream subscriptions cover the given
 // prefixes. Implemented by *worker.SubscriberManager, which runs the request
 // locally on the leader or forwards it to the current cluster leader.
-type SubscriptionEnsurer interface {
+type Ensurer interface {
 	EnsureSubscriptions(ctx context.Context, prefixes []string)
 }
 
-type SubscriptionUsecase struct {
-	ensurer SubscriptionEnsurer
+type Usecase struct {
+	ensurer Ensurer
 	pubsub  worker.PubSub
 
 	mu       sync.Mutex
@@ -25,11 +25,11 @@ type SubscriptionUsecase struct {
 	sessions map[uint64][]string
 }
 
-func NewSubscriptionUsecase(
-	ensurer SubscriptionEnsurer,
+func New(
+	ensurer Ensurer,
 	pubsub worker.PubSub,
-) *SubscriptionUsecase {
-	return &SubscriptionUsecase{
+) *Usecase {
+	return &Usecase{
 		ensurer:  ensurer,
 		pubsub:   pubsub,
 		sessions: make(map[uint64][]string),
@@ -38,7 +38,7 @@ func NewSubscriptionUsecase(
 
 // CurrentSubscriptions returns the union of prefixes wanted by all realtime
 // sessions on this replica.
-func (uc *SubscriptionUsecase) CurrentSubscriptions() []string {
+func (uc *Usecase) CurrentSubscriptions() []string {
 	uc.mu.Lock()
 	defer uc.mu.Unlock()
 
@@ -57,7 +57,7 @@ func (uc *SubscriptionUsecase) CurrentSubscriptions() []string {
 	return subscriptions
 }
 
-func (uc *SubscriptionUsecase) openSession() uint64 {
+func (uc *Usecase) openSession() uint64 {
 	uc.mu.Lock()
 	defer uc.mu.Unlock()
 	uc.nextID++
@@ -66,19 +66,19 @@ func (uc *SubscriptionUsecase) openSession() uint64 {
 	return id
 }
 
-func (uc *SubscriptionUsecase) updateSession(id uint64, prefixes []string) {
+func (uc *Usecase) updateSession(id uint64, prefixes []string) {
 	uc.mu.Lock()
 	defer uc.mu.Unlock()
 	uc.sessions[id] = prefixes
 }
 
-func (uc *SubscriptionUsecase) closeSession(id uint64) {
+func (uc *Usecase) closeSession(id uint64) {
 	uc.mu.Lock()
 	defer uc.mu.Unlock()
 	delete(uc.sessions, id)
 }
 
-func (uc *SubscriptionUsecase) Realtime(ctx context.Context, request <-chan []string, response chan<- concrnt.Event) {
+func (uc *Usecase) Realtime(ctx context.Context, request <-chan []string, response chan<- concrnt.Event) {
 	id := uc.openSession()
 	defer uc.closeSession(id)
 

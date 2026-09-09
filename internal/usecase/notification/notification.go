@@ -1,4 +1,4 @@
-package usecase
+package notification
 
 import (
 	"context"
@@ -9,65 +9,65 @@ import (
 	"github.com/concrnt/concrnt/internal/domain"
 )
 
-type NotificationRepository interface {
+type Repository interface {
 	Subscribe(ctx context.Context, subscription domain.NotificationSubscription) (domain.NotificationSubscription, error)
 	List(ctx context.Context) ([]domain.NotificationSubscription, error)
 	Get(ctx context.Context, vendorID, owner string) (domain.NotificationSubscription, error)
 	Delete(ctx context.Context, vendorID, owner string) error
 }
 
-// NotificationCounterStore holds the per-(vendor, owner) unread counter: a
+// CounterStore holds the per-(vendor, owner) unread counter: a
 // plain integer bumped on every delivered push and zeroed when the client
 // opens its notification view. No read-position tracking by design, so a badge
 // can never linger after the user has looked.
-type NotificationCounterStore interface {
+type CounterStore interface {
 	Incr(ctx context.Context, key string) (int64, error)
 	GetInt(ctx context.Context, key string) (int64, error)
 	Delete(ctx context.Context, key string) error
 }
 
-// NotificationPusher delivers the out-of-band counter-reset push. nil when
+// Pusher delivers the out-of-band counter-reset push. nil when
 // web push is not configured (no VAPID keys).
-type NotificationPusher interface {
+type Pusher interface {
 	SendCounterReset(ctx context.Context, sub domain.NotificationSubscription) error
 }
 
-type NotificationUsecase struct {
-	repo    NotificationRepository
-	counter NotificationCounterStore
-	pusher  NotificationPusher
+type Usecase struct {
+	repo    Repository
+	counter CounterStore
+	pusher  Pusher
 }
 
-func NewNotificationUsecase(repo NotificationRepository, counter NotificationCounterStore, pusher NotificationPusher) *NotificationUsecase {
-	return &NotificationUsecase{repo: repo, counter: counter, pusher: pusher}
+func New(repo Repository, counter CounterStore, pusher Pusher) *Usecase {
+	return &Usecase{repo: repo, counter: counter, pusher: pusher}
 }
 
 func notificationCounterKey(vendorID, owner string) string {
 	return "notification_counter:" + vendorID + ":" + owner
 }
 
-func (uc *NotificationUsecase) Subscribe(ctx context.Context, subscription domain.NotificationSubscription) (domain.NotificationSubscription, error) {
+func (uc *Usecase) Subscribe(ctx context.Context, subscription domain.NotificationSubscription) (domain.NotificationSubscription, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Notification.Subscribe")
 	defer span.End()
 
 	return uc.repo.Subscribe(ctx, subscription)
 }
 
-func (uc *NotificationUsecase) List(ctx context.Context) ([]domain.NotificationSubscription, error) {
+func (uc *Usecase) List(ctx context.Context) ([]domain.NotificationSubscription, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Notification.List")
 	defer span.End()
 
 	return uc.repo.List(ctx)
 }
 
-func (uc *NotificationUsecase) Get(ctx context.Context, vendorID, owner string) (domain.NotificationSubscription, error) {
+func (uc *Usecase) Get(ctx context.Context, vendorID, owner string) (domain.NotificationSubscription, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Notification.Get")
 	defer span.End()
 
 	return uc.repo.Get(ctx, vendorID, owner)
 }
 
-func (uc *NotificationUsecase) Delete(ctx context.Context, vendorID, owner string) error {
+func (uc *Usecase) Delete(ctx context.Context, vendorID, owner string) error {
 	ctx, span := tracer.Start(ctx, "Usecase.Notification.Delete")
 	defer span.End()
 
@@ -77,21 +77,21 @@ func (uc *NotificationUsecase) Delete(ctx context.Context, vendorID, owner strin
 	return uc.counter.Delete(ctx, notificationCounterKey(vendorID, owner))
 }
 
-func (uc *NotificationUsecase) IncrementCounter(ctx context.Context, vendorID, owner string) (int64, error) {
+func (uc *Usecase) IncrementCounter(ctx context.Context, vendorID, owner string) (int64, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Notification.IncrementCounter")
 	defer span.End()
 
 	return uc.counter.Incr(ctx, notificationCounterKey(vendorID, owner))
 }
 
-func (uc *NotificationUsecase) GetCounter(ctx context.Context, vendorID, owner string) (int64, error) {
+func (uc *Usecase) GetCounter(ctx context.Context, vendorID, owner string) (int64, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Notification.GetCounter")
 	defer span.End()
 
 	return uc.counter.GetInt(ctx, notificationCounterKey(vendorID, owner))
 }
 
-func (uc *NotificationUsecase) ResetCounter(ctx context.Context, vendorID, owner string) error {
+func (uc *Usecase) ResetCounter(ctx context.Context, vendorID, owner string) error {
 	ctx, span := tracer.Start(ctx, "Usecase.Notification.ResetCounter")
 	defer span.End()
 

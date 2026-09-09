@@ -5,16 +5,16 @@ import (
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 
 	"github.com/concrnt/concrnt/internal/present/rest/presenter"
-	"github.com/concrnt/concrnt/internal/usecase"
+	"github.com/concrnt/concrnt/internal/usecase/server"
 )
 
 type WellKnownHandler struct {
-	server *usecase.ServerUsecase
+	server *server.Usecase
 	meta   map[string]any
 }
 
 func NewWellKnownHandler(
-	server *usecase.ServerUsecase,
+	server *server.Usecase,
 	meta map[string]any,
 ) *WellKnownHandler {
 	return &WellKnownHandler{

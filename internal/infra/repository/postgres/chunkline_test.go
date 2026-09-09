@@ -9,7 +9,7 @@ import (
 	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/internal/infra/database/models"
 	"github.com/concrnt/concrnt/internal/testutil"
-	"github.com/concrnt/concrnt/internal/usecase"
+	"github.com/concrnt/concrnt/internal/usecase/record"
 	"github.com/stretchr/testify/require"
 )
 
@@ -138,7 +138,7 @@ func TestChunklineManifestEmptyFeedHasNullFirstChunk(t *testing.T) {
 	require.Nil(t, manifest.FirstChunk)
 }
 
-func createChunklineRecord(t *testing.T, ctx context.Context, repo usecase.RecordRepository, id string, key string, createdAt time.Time) {
+func createChunklineRecord(t *testing.T, ctx context.Context, repo record.Repository, id string, key string, createdAt time.Time) {
 	t.Helper()
 
 	sd := repositorySignedDocument(t, concrnt.Document[map[string]string]{
@@ -150,7 +150,7 @@ func createChunklineRecord(t *testing.T, ctx context.Context, repo usecase.Recor
 		CreatedAt: createdAt,
 	})
 
-	withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, "con1owner", func(tx usecase.RepositoryTx) error {
+	withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, "con1owner", func(tx record.RepositoryTx) error {
 		_, err := repo.CreateRecord(ctx, tx, id, key, "con1owner", "con1owner", "https://schema.example/post.json", nil, nil, []string{}, nil, createdAt)
 		return err
 	})

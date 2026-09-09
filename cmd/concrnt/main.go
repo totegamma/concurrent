@@ -34,7 +34,13 @@ import (
 	"github.com/concrnt/concrnt/internal/present/rest"
 	"github.com/concrnt/concrnt/internal/present/rest/middleware"
 	"github.com/concrnt/concrnt/internal/service"
-	"github.com/concrnt/concrnt/internal/usecase"
+	"github.com/concrnt/concrnt/internal/usecase/abuse"
+	"github.com/concrnt/concrnt/internal/usecase/chunkline"
+	"github.com/concrnt/concrnt/internal/usecase/notification"
+	"github.com/concrnt/concrnt/internal/usecase/record"
+	"github.com/concrnt/concrnt/internal/usecase/residence"
+	"github.com/concrnt/concrnt/internal/usecase/server"
+	"github.com/concrnt/concrnt/internal/usecase/subscription"
 	"github.com/concrnt/concrnt/internal/utils"
 	"github.com/concrnt/concrnt/internal/worker"
 )
@@ -200,12 +206,12 @@ func main() {
 	)
 
 	serverRepo := postgres.NewServerRepository(&domainConfig, db, cl)
-	serverUC := usecase.NewServerUsecase(serverRepo, &domainConfig, softwareInfo, moduleManager, cl)
+	serverUC := server.New(serverRepo, &domainConfig, softwareInfo, moduleManager, cl)
 
 	residenceRepo := postgres.NewResidenceRepository(db, cl, domainConfig)
 	recordRepo := postgres.NewRecordRepository(db)
-	recordUC := usecase.NewRecordUsecase(recordRepo, residenceRepo, serverUC, &domainConfig, cl, redisPubsub, policy, jobQueue, redisKVS)
-	residenceUC := usecase.NewResidenceUsecase(residenceRepo, recordUC, &domainConfig)
+	recordUC := record.New(recordRepo, residenceRepo, serverUC, &domainConfig, cl, redisPubsub, policy, jobQueue, redisKVS)
+	residenceUC := residence.New(residenceRepo, recordUC, &domainConfig)
 
 	chunklineRepo := postgres.NewChunklineRepository(db)
 
@@ -228,23 +234,23 @@ func main() {
 			RecordSize: 2048,
 		}
 	}
-	var notificationPusher usecase.NotificationPusher
+	var notificationPusher notification.Pusher
 	if webpushOpts != nil {
 		notificationPusher = push.NewWebPush(*webpushOpts)
 	}
 
 	notificationRepo := postgres.NewNotificationRepository(db)
-	notificationUC := usecase.NewNotificationUsecase(notificationRepo, redisKVS, notificationPusher)
+	notificationUC := notification.New(notificationRepo, redisKVS, notificationPusher)
 
 	leaderSub := worker.NewLeaderSubscriber(&domainConfig, cl, redisPubsub, discovery)
 	workerSub := worker.NewWorkerSubscriber(elector)
 	subscriber := worker.NewSubscriberManager(elector, leaderSub, workerSub)
 
-	subscriptionUC := usecase.NewSubscriptionUsecase(subscriber, redisPubsub)
+	subscriptionUC := subscription.New(subscriber, redisPubsub)
 	leaderSub.RegisterClient(subscriptionUC)
 
 	chunklineGateway := gateway.NewChunklineGateway(cl, mc, subscriber, redisPubsub)
-	chunklineUC := usecase.NewChunklineUsecase(chunklineRepo, chunklineGateway, redisKVS)
+	chunklineUC := chunkline.New(chunklineRepo, chunklineGateway, redisKVS)
 
 	go func() {
 		if err := jobQueue.Run(ctx); err != nil {
@@ -253,7 +259,7 @@ func main() {
 	}()
 
 	abuseRepo := postgres.NewAbuseRepository(db)
-	abuseUC := usecase.NewAbuseUsecase(abuseRepo)
+	abuseUC := abuse.New(abuseRepo)
 
 	var notificationReactor *worker.NotificationReactor
 	if webpushOpts != nil {

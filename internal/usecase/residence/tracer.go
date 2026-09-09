@@ -1,4 +1,4 @@
-package usecase
+package residence
 
 import (
 	"go.opentelemetry.io/otel"

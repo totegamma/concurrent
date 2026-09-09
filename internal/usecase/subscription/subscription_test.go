@@ -1,4 +1,4 @@
-package usecase
+package subscription
 
 import (
 	"context"
@@ -30,7 +30,7 @@ func (stubPubSub) SubscribeAll(ctx context.Context, response chan<- concrnt.Even
 // Two concurrent realtime sessions must both contribute to the demand set;
 // before per-session tracking, the last writer overwrote the whole set.
 func TestCurrentSubscriptionsUnionsSessions(t *testing.T) {
-	uc := NewSubscriptionUsecase(stubEnsurer{}, stubPubSub{})
+	uc := New(stubEnsurer{}, stubPubSub{})
 
 	ctx1, cancel1 := context.WithCancel(context.Background())
 	defer cancel1()

@@ -1,4 +1,4 @@
-package usecase
+package server
 
 import (
 	"context"
@@ -10,29 +10,29 @@ import (
 	"github.com/concrnt/concrnt/internal/service"
 )
 
-// ServerRepository defines persistence/lookup for remote servers.
-type ServerRepository interface {
+// Repository defines persistence/lookup for remote servers.
+type Repository interface {
 	Resolve(ctx context.Context, identifier string, hint *string) (*domain.Server, error)
 	List(ctx context.Context) ([]*concrnt.WellKnownConcrnt, error)
 }
 
-type ServerUsecase struct {
-	repo   ServerRepository
+type Usecase struct {
+	repo   Repository
 	config *domain.Config
 	info   concrnt.SoftwareInfo
 	mm     *service.ModuleManager
 	client *client.Client
 }
 
-func NewServerUsecase(
-	repo ServerRepository,
+func New(
+	repo Repository,
 	config *domain.Config,
 	info concrnt.SoftwareInfo,
 	mm *service.ModuleManager,
 	cl *client.Client,
 
-) *ServerUsecase {
-	return &ServerUsecase{
+) *Usecase {
+	return &Usecase{
 		repo:   repo,
 		config: config,
 		info:   info,
@@ -41,7 +41,7 @@ func NewServerUsecase(
 	}
 }
 
-func (uc *ServerUsecase) Resolve(ctx context.Context, identifier string, hint *string) (*domain.Server, error) {
+func (uc *Usecase) Resolve(ctx context.Context, identifier string, hint *string) (*domain.Server, error) {
 
 	if (identifier == uc.config.FQDN) || (identifier == uc.config.CSID) {
 		return uc.GetThisServer()
@@ -54,7 +54,7 @@ func (uc *ServerUsecase) Resolve(ctx context.Context, identifier string, hint *s
 	return sv, nil
 }
 
-func (uc *ServerUsecase) List(ctx context.Context) ([]*concrnt.WellKnownConcrnt, error) {
+func (uc *Usecase) List(ctx context.Context) ([]*concrnt.WellKnownConcrnt, error) {
 	return uc.repo.List(ctx)
 }
 
@@ -62,7 +62,7 @@ func (uc *ServerUsecase) List(ctx context.Context) ([]*concrnt.WellKnownConcrnt,
 // terminates with domain.RedirectError pointing at the file location: the
 // local storage module for blobs owned by this server's residents, or the
 // owner server's resolve endpoint otherwise.
-func (uc *ServerUsecase) ResolveBlob(ctx context.Context, parsed *concrnt.CCURI) error {
+func (uc *Usecase) ResolveBlob(ctx context.Context, parsed *concrnt.CCURI) error {
 	host, err := uc.client.ResolveResourceHost(ctx, parsed.Raw)
 	if err != nil {
 		return domain.NotFoundError{Resource: parsed.Raw}
@@ -100,7 +100,7 @@ func (uc *ServerUsecase) ResolveBlob(ctx context.Context, parsed *concrnt.CCURI)
 	return domain.RedirectError{Location: path}
 }
 
-func (uc *ServerUsecase) GetThisServer() (*domain.Server, error) {
+func (uc *Usecase) GetThisServer() (*domain.Server, error) {
 	wellknown := concrnt.WellKnownConcrnt{
 		Version:      "2.0",
 		Domain:       uc.config.FQDN,

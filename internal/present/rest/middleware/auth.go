@@ -15,7 +15,8 @@ import (
 	"github.com/concrnt/concrnt/client"
 	"github.com/concrnt/concrnt/impl/interop"
 	"github.com/concrnt/concrnt/internal/domain"
-	"github.com/concrnt/concrnt/internal/usecase"
+	"github.com/concrnt/concrnt/internal/usecase/record"
+	"github.com/concrnt/concrnt/internal/usecase/server"
 	"github.com/concrnt/concrnt/jwt"
 	"github.com/concrnt/concrnt/schemas"
 )
@@ -25,15 +26,15 @@ var tracer = otel.Tracer("auth")
 type AuthMiddleware struct {
 	config domain.Config
 	client *client.Client
-	server *usecase.ServerUsecase
-	record *usecase.RecordUsecase
+	server *server.Usecase
+	record *record.Usecase
 }
 
 func NewAuthMiddleware(
 	config domain.Config,
 	client *client.Client,
-	server *usecase.ServerUsecase,
-	record *usecase.RecordUsecase,
+	server *server.Usecase,
+	record *record.Usecase,
 ) *AuthMiddleware {
 	return &AuthMiddleware{
 		config: config,

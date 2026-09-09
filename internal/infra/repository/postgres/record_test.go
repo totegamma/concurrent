@@ -14,7 +14,7 @@ import (
 	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/internal/infra/database/models"
 	"github.com/concrnt/concrnt/internal/testutil"
-	"github.com/concrnt/concrnt/internal/usecase"
+	"github.com/concrnt/concrnt/internal/usecase/record"
 	"github.com/concrnt/concrnt/schemas"
 )
 
@@ -40,7 +40,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 			Distributes: &distributions,
 		})
 		onUpdate := "forget"
-		withRepositoryTx(t, ctx, repo, "record-1-old", "127.0.0.1", oldSD, "con1owner", func(tx usecase.RepositoryTx) error {
+		withRepositoryTx(t, ctx, repo, "record-1-old", "127.0.0.1", oldSD, "con1owner", func(tx record.RepositoryTx) error {
 			applied, err := repo.CreateRecord(ctx, tx, "record-1-old", key, "con1owner", "con1owner", "https://schema.example/post.json", &onUpdate, nil, distributions, nil, createdAt)
 			require.True(t, applied)
 			return err
@@ -54,12 +54,12 @@ func TestRecordRepositoryWrites(t *testing.T) {
 
 		requireCommitOwner(t, db, "record-1-old", "con1owner")
 
-		var record models.Record
-		require.NoError(t, db.Where("document_id = ?", "record-1-old").Take(&record).Error)
-		require.Equal(t, "con1owner", record.Owner)
-		require.Equal(t, "https://schema.example/post.json", record.Schema)
-		require.Equal(t, distributions, []string(record.Distributions))
-		require.True(t, record.CreatedAt.Equal(createdAt))
+		var stored models.Record
+		require.NoError(t, db.Where("document_id = ?", "record-1-old").Take(&stored).Error)
+		require.Equal(t, "con1owner", stored.Owner)
+		require.Equal(t, "https://schema.example/post.json", stored.Schema)
+		require.Equal(t, distributions, []string(stored.Distributions))
+		require.True(t, stored.CreatedAt.Equal(createdAt))
 
 		var recordKey models.RecordKey
 		require.NoError(t, db.Where("uri = ?", key).Take(&recordKey).Error)
@@ -82,7 +82,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 			Schema:    "https://schema.example/post.v2.json",
 			CreatedAt: newCreatedAt,
 		})
-		withRepositoryTx(t, ctx, repo, "record-2-new", "127.0.0.1", newSD, "con1owner", func(tx usecase.RepositoryTx) error {
+		withRepositoryTx(t, ctx, repo, "record-2-new", "127.0.0.1", newSD, "con1owner", func(tx record.RepositoryTx) error {
 			applied, err := repo.CreateRecord(ctx, tx, "record-2-new", key, "con1owner", "con1owner", "https://schema.example/post.v2.json", &onUpdate, nil, []string{}, nil, newCreatedAt)
 			require.True(t, applied)
 			return err
@@ -156,7 +156,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 						CreatedAt: createdAt,
 						OnUpdate:  tc.onUpdate,
 					})
-					withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, "con1owner", func(tx usecase.RepositoryTx) error {
+					withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, "con1owner", func(tx record.RepositoryTx) error {
 						applied, err := repo.CreateRecord(ctx, tx, id, key, "con1owner", "con1owner", "https://schema.example/post.json", tc.onUpdate, nil, []string{}, nil, createdAt)
 						require.True(t, applied)
 						return err
@@ -197,7 +197,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 				CreatedAt: createdAt,
 				OnUpdate:  ptr("forget"),
 			})
-			withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, "con1entity", func(tx usecase.RepositoryTx) error {
+			withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, "con1entity", func(tx record.RepositoryTx) error {
 				applied, err := repo.CreateEntity(ctx, tx, "con1entity", nil, "example.com", id, createdAt)
 				require.True(t, applied)
 				return err
@@ -255,17 +255,17 @@ func TestRecordRepositoryWrites(t *testing.T) {
 			targetURI: targetSD,
 		}
 
-		withRepositoryTx(t, ctx, repo, "reference-record", "127.0.0.1", refSD, "con1owner", func(tx usecase.RepositoryTx) error {
+		withRepositoryTx(t, ctx, repo, "reference-record", "127.0.0.1", refSD, "con1owner", func(tx record.RepositoryTx) error {
 			_, err := repo.CreateRecord(ctx, tx, "reference-record", "cckv://con1owner/timeline/ref-1", "con1owner", "con1owner", "https://schema.example/target.json", nil, nil, []string{}, &targetURI, targetCreatedAt)
 			return err
 		})
 
-		var record models.Record
-		require.NoError(t, db.Where("document_id = ?", "reference-record").Take(&record).Error)
-		require.NotNil(t, record.Redirect)
-		require.Equal(t, targetURI, *record.Redirect)
-		require.Equal(t, "https://schema.example/target.json", record.Schema)
-		require.True(t, record.CreatedAt.Equal(targetCreatedAt))
+		var stored models.Record
+		require.NoError(t, db.Where("document_id = ?", "reference-record").Take(&stored).Error)
+		require.NotNil(t, stored.Redirect)
+		require.Equal(t, targetURI, *stored.Redirect)
+		require.Equal(t, "https://schema.example/target.json", stored.Schema)
+		require.True(t, stored.CreatedAt.Equal(targetCreatedAt))
 	})
 
 	t.Run("timeline removal tuple matches chunkline body IDs", func(t *testing.T) {
@@ -327,7 +327,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		associationUnique := fmt.Sprintf("%x", xxh3.HashString("con1owner"+"con1author"+key+variant))
 		associationCreatedAt := time.Date(2026, 3, 4, 5, 6, 7, 0, time.UTC)
 		var inserted bool
-		withRepositoryTx(t, ctx, repo, "association-record", "127.0.0.1", associationSD, "con1owner", func(tx usecase.RepositoryTx) error {
+		withRepositoryTx(t, ctx, repo, "association-record", "127.0.0.1", associationSD, "con1owner", func(tx record.RepositoryTx) error {
 			var err error
 			inserted, err = repo.CreateAssociation(ctx, tx, "association-record", key, "con1owner", "con1author", "https://schema.example/comment.json", &variant, associationUnique, associationCreatedAt)
 			return err
@@ -344,7 +344,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 
 		// duplicate deliveries are silent no-ops: the same document re-sent
 		// (primary-key conflict)...
-		withRepositoryTx(t, ctx, repo, "association-record", "127.0.0.1", associationSD, "con1owner", func(tx usecase.RepositoryTx) error {
+		withRepositoryTx(t, ctx, repo, "association-record", "127.0.0.1", associationSD, "con1owner", func(tx record.RepositoryTx) error {
 			var err error
 			inserted, err = repo.CreateAssociation(ctx, tx, "association-record", key, "con1owner", "con1author", "https://schema.example/comment.json", &variant, associationUnique, associationCreatedAt)
 			return err
@@ -353,7 +353,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 
 		// ...and the same logical association re-signed under a new document id
 		// (unique-key conflict)
-		withRepositoryTx(t, ctx, repo, "association-record-retry", "127.0.0.1", associationSD, "con1owner", func(tx usecase.RepositoryTx) error {
+		withRepositoryTx(t, ctx, repo, "association-record-retry", "127.0.0.1", associationSD, "con1owner", func(tx record.RepositoryTx) error {
 			var err error
 			inserted, err = repo.CreateAssociation(ctx, tx, "association-record-retry", key, "con1owner", "con1author", "https://schema.example/comment.json", &variant, associationUnique, associationCreatedAt)
 			return err
@@ -404,7 +404,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 			return applied
 		}
 
-		withRepositoryTx(t, ctx, repo, "ack-1-on", "127.0.0.1", ackDoc("ack", ackCreatedAt), "con1author", func(tx usecase.RepositoryTx) error {
+		withRepositoryTx(t, ctx, repo, "ack-1-on", "127.0.0.1", ackDoc("ack", ackCreatedAt), "con1author", func(tx record.RepositoryTx) error {
 			applied, err := repo.Acknowledge(ctx, tx, "ack-1-on", "con1author", "con1owner", ackSchema, ackCreatedAt)
 			require.True(t, applied)
 			return err
@@ -423,7 +423,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		require.Equal(t, "ack-1-on", ackState().DocumentID)
 
 		unackCreatedAt := ackCreatedAt.Add(time.Hour)
-		withRepositoryTx(t, ctx, repo, "ack-2-off", "127.0.0.1", ackDoc("unack", unackCreatedAt), "con1author", func(tx usecase.RepositoryTx) error {
+		withRepositoryTx(t, ctx, repo, "ack-2-off", "127.0.0.1", ackDoc("unack", unackCreatedAt), "con1author", func(tx record.RepositoryTx) error {
 			applied, err := repo.UnAcknowledge(ctx, tx, "ack-2-off", "con1author", "con1owner", ackSchema, unackCreatedAt)
 			require.True(t, applied)
 			return err
@@ -442,7 +442,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 		// ...and after a newer ack (t2), an unack replayed from before it (t1)
 		// must not roll the state back either.
 		reackCreatedAt := ackCreatedAt.Add(24 * time.Hour)
-		withRepositoryTx(t, ctx, repo, "ack-3-on", "127.0.0.1", ackDoc("ack", reackCreatedAt), "con1author", func(tx usecase.RepositoryTx) error {
+		withRepositoryTx(t, ctx, repo, "ack-3-on", "127.0.0.1", ackDoc("ack", reackCreatedAt), "con1author", func(tx record.RepositoryTx) error {
 			applied, err := repo.Acknowledge(ctx, tx, "ack-3-on", "con1author", "con1owner", ackSchema, reackCreatedAt)
 			require.True(t, applied)
 			return err
@@ -489,7 +489,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 			Schema:    "https://schema.example/post.json",
 			CreatedAt: time.Date(2026, 6, 7, 8, 9, 10, 0, time.UTC),
 		})
-		withRepositoryTx(t, ctx, repo, "delete-target", "127.0.0.1", deleteTargetSD, "con1owner", func(tx usecase.RepositoryTx) error {
+		withRepositoryTx(t, ctx, repo, "delete-target", "127.0.0.1", deleteTargetSD, "con1owner", func(tx record.RepositoryTx) error {
 			_, err := repo.CreateRecord(ctx, tx, "delete-target", deleteKey, "con1owner", "con1owner", "https://schema.example/post.json", nil, nil, []string{}, nil, time.Date(2026, 6, 7, 8, 9, 10, 0, time.UTC))
 			return err
 		})
@@ -500,7 +500,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 			Author:    "con1author",
 			CreatedAt: time.Date(2026, 6, 8, 8, 9, 10, 0, time.UTC),
 		})
-		withRepositoryTx(t, ctx, repo, "delete-commit", "127.0.0.1", deleteSD, "con1owner", func(tx usecase.RepositoryTx) error {
+		withRepositoryTx(t, ctx, repo, "delete-commit", "127.0.0.1", deleteSD, "con1owner", func(tx record.RepositoryTx) error {
 			return repo.DeleteRecordByKey(ctx, tx, deleteKey)
 		})
 
@@ -525,7 +525,7 @@ func TestRecordRepositoryWrites(t *testing.T) {
 			Schema:    "https://schema.example/post.json",
 			CreatedAt: time.Date(2026, 5, 6, 7, 8, 9, 0, time.UTC),
 		})
-		withRepositoryTx(t, ctx, repo, "gc-flag", "127.0.0.1", sd, "con1owner", func(tx usecase.RepositoryTx) error {
+		withRepositoryTx(t, ctx, repo, "gc-flag", "127.0.0.1", sd, "con1owner", func(tx record.RepositoryTx) error {
 			return nil
 		})
 
@@ -644,7 +644,7 @@ func TestRecordSubtreeQueryAndDelete(t *testing.T) {
 			Schema:    "https://schema.example/item.json",
 			CreatedAt: createdAt,
 		})
-		withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, "con1owner", func(tx usecase.RepositoryTx) error {
+		withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, "con1owner", func(tx record.RepositoryTx) error {
 			_, err := repo.CreateRecord(ctx, tx, id, key, "con1owner", "con1owner", "https://schema.example/item.json", nil, nil, []string{}, nil, createdAt)
 			return err
 		})
@@ -660,7 +660,7 @@ func TestRecordSubtreeQueryAndDelete(t *testing.T) {
 		CreatedAt: createdAt,
 		Associate: &keys[1],
 	})
-	withRepositoryTx(t, ctx, repo, "subtree-association", "127.0.0.1", associationSD, "con1owner", func(tx usecase.RepositoryTx) error {
+	withRepositoryTx(t, ctx, repo, "subtree-association", "127.0.0.1", associationSD, "con1owner", func(tx record.RepositoryTx) error {
 		_, err := repo.CreateAssociation(ctx, tx, "subtree-association", keys[1], "con1owner", "con1author", "https://schema.example/comment.json", &variant, "subtree-unique", createdAt)
 		return err
 	})
@@ -705,7 +705,7 @@ func TestRecordSubtreeQueryAndDelete(t *testing.T) {
 			Author:    "con1owner",
 			CreatedAt: createdAt,
 		})
-		withRepositoryTx(t, ctx, repo, "subtree-delete", "127.0.0.1", deleteSD, "con1owner", func(tx usecase.RepositoryTx) error {
+		withRepositoryTx(t, ctx, repo, "subtree-delete", "127.0.0.1", deleteSD, "con1owner", func(tx record.RepositoryTx) error {
 			for _, uri := range urisOf(sds) {
 				if err := repo.DeleteRecordByKey(ctx, tx, uri); err != nil {
 					return err
@@ -775,13 +775,13 @@ func TestRecordQueryAuthorFilter(t *testing.T) {
 			Schema:    "https://schema.example/item.json",
 			CreatedAt: createdAt.Add(time.Duration(i) * time.Second),
 		})
-		withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, "con1owner", func(tx usecase.RepositoryTx) error {
+		withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, "con1owner", func(tx record.RepositoryTx) error {
 			_, err := repo.CreateRecord(ctx, tx, id, e.key, "con1owner", e.author, "https://schema.example/item.json", nil, nil, []string{}, nil, createdAt.Add(time.Duration(i)*time.Second))
 			return err
 		})
 	}
 
-	urisOfRows := func(rows []usecase.QueryRow) []string {
+	urisOfRows := func(rows []record.QueryRow) []string {
 		uris := make([]string, 0, len(rows))
 		for _, row := range rows {
 			require.NotNil(t, row.Row.CCKV)
@@ -836,7 +836,7 @@ func TestHierarchicalRecordPoliciesRootFirst(t *testing.T) {
 			CreatedAt: createdAt,
 		})
 		p := policyJSON
-		withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, "con1powner", func(tx usecase.RepositoryTx) error {
+		withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, "con1powner", func(tx record.RepositoryTx) error {
 			applied, err := repo.CreateRecord(ctx, tx, id, key, "con1powner", "con1powner", "https://schema.example/post.json", nil, &p, []string{}, nil, createdAt)
 			require.True(t, applied)
 			return err
@@ -886,7 +886,7 @@ func TestHierarchicalRecordPoliciesEmitsPolicylessDistributingLevel(t *testing.T
 			Schema:    "https://schema.example/post.json",
 			CreatedAt: createdAt,
 		})
-		withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, "con1downer", func(tx usecase.RepositoryTx) error {
+		withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, "con1downer", func(tx record.RepositoryTx) error {
 			applied, err := repo.CreateRecord(ctx, tx, id, tc.key, "con1downer", "con1downer", "https://schema.example/post.json", nil, tc.policies, tc.distributions, nil, createdAt)
 			require.True(t, applied)
 			return err
@@ -926,7 +926,7 @@ func TestCreateRecordAppliesOverParentPlaceholder(t *testing.T) {
 			Schema:    "https://schema.example/post.json",
 			CreatedAt: createdAt,
 		})
-		withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, "con1ph", func(tx usecase.RepositoryTx) error {
+		withRepositoryTx(t, ctx, repo, id, "127.0.0.1", sd, "con1ph", func(tx record.RepositoryTx) error {
 			applied, err := repo.CreateRecord(ctx, tx, id, key, "con1ph", "con1ph", "https://schema.example/post.json", nil, nil, []string{}, nil, createdAt)
 			require.True(t, applied)
 			return err
@@ -1032,7 +1032,7 @@ func TestCreateRecordFreshKeyConditionalUpsert(t *testing.T) {
 // withRepositoryTx runs fn inside a commit transaction that already holds the
 // commit log for sd, recorded under owner (the single entity every commit is
 // attributed to).
-func withRepositoryTx(t *testing.T, ctx context.Context, repo usecase.RecordRepository, id string, ip string, sd concrnt.SignedDocument, owner string, fn func(tx usecase.RepositoryTx) error) {
+func withRepositoryTx(t *testing.T, ctx context.Context, repo record.Repository, id string, ip string, sd concrnt.SignedDocument, owner string, fn func(tx record.RepositoryTx) error) {
 	t.Helper()
 
 	tx, err := repo.BeginTx(ctx)

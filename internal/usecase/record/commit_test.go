@@ -1,4 +1,4 @@
-package usecase
+package record
 
 import (
 	"context"
@@ -15,23 +15,25 @@ import (
 	"github.com/concrnt/concrnt/impl/interop"
 	"github.com/concrnt/concrnt/internal/domain"
 	"github.com/concrnt/concrnt/internal/service"
+	"github.com/concrnt/concrnt/internal/usecase"
+	"github.com/concrnt/concrnt/internal/usecase/server"
 	"github.com/concrnt/concrnt/policy"
 	"github.com/concrnt/concrnt/schemas"
 )
 
-type stubRecordRepo struct{ RecordRepository }
+type stubRecordRepo struct{ Repository }
 
 func (stubRecordRepo) HasCommitLog(ctx context.Context, id string) (bool, error) {
 	return false, nil
 }
 
-type stubResidenceRepo struct{ ResidenceRepository }
+type stubResidenceRepo struct{ EntityRepository }
 
 func (stubResidenceRepo) GetEntityByCCID(ctx context.Context, ccid string) (*domain.Entity, error) {
 	return nil, domain.ErrNotFound
 }
 
-// recordingRecordRepo satisfies the write path of RecordRepository in memory
+// recordingRecordRepo satisfies the write path of Repository in memory
 // and records which mutations were attempted. commitLogs seeds the ids
 // HasCommitLog answers true for (already-committed documents); storedSD, when
 // set, is what GetSignedDocument serves for every key (a pre-existing record);
@@ -43,7 +45,7 @@ func (stubResidenceRepo) GetEntityByCCID(ctx context.Context, ccid string) (*dom
 // make Acknowledge / UnAcknowledge and Acknowledged / UnAcknowledged report
 // that loss unconditionally.
 type recordingRecordRepo struct {
-	RecordRepository
+	Repository
 	commitLogs      map[string]bool
 	storedSD        *concrnt.SignedDocument
 	storedCreatedAt time.Time
@@ -149,7 +151,7 @@ func (r *recordingRecordRepo) QueryByParent(ctx context.Context, parent, schema,
 
 // fixedResidenceRepo serves one pre-existing entity for every lookup.
 type fixedResidenceRepo struct {
-	ResidenceRepository
+	EntityRepository
 	entity *domain.Entity
 }
 
@@ -176,11 +178,11 @@ func (s testServerRepo) List(ctx context.Context) ([]*concrnt.WellKnownConcrnt, 
 	return nil, nil
 }
 
-// newTestServerUsecase wires a ServerUsecase that resolves every remote domain
+// newTestServerUsecase wires a server.Usecase that resolves every remote domain
 // to a green (same-layer, unblocked) server.
-func newTestServerUsecase(cfg *domain.Config) *ServerUsecase {
-	server := &domain.Server{WellKnown: concrnt.WellKnownConcrnt{Layer: cfg.Layer}}
-	return NewServerUsecase(testServerRepo{server: server}, cfg, concrnt.SoftwareInfo{}, service.NewModuleManager(map[string]string{}, nil), nil)
+func newTestServerUsecase(cfg *domain.Config) *server.Usecase {
+	sv := &domain.Server{WellKnown: concrnt.WellKnownConcrnt{Layer: cfg.Layer}}
+	return server.New(testServerRepo{server: sv}, cfg, concrnt.SoftwareInfo{}, service.NewModuleManager(map[string]string{}, nil), nil)
 }
 
 type nopPolicyService struct{}
@@ -261,7 +263,7 @@ func signedCommitDocument(t *testing.T, kind string) concrnt.SignedDocument {
 // must fail with an error, not a nil-pointer panic.
 func TestCommitUnresolvableRequesterReturnsError(t *testing.T) {
 	cfg := &domain.Config{FQDN: "example.com"}
-	uc := NewRecordUsecase(
+	uc := New(
 		stubRecordRepo{},
 		stubResidenceRepo{},
 		newTestServerUsecase(cfg),
@@ -338,7 +340,7 @@ func TestCommitEntityAcceptIfNewer(t *testing.T) {
 			stored := newEntityDoc(tc.storedAt)
 			repo := &recordingRecordRepo{storedCreatedAt: tc.storedAt}
 			cfg := &domain.Config{FQDN: "example.com"}
-			uc := NewRecordUsecase(
+			uc := New(
 				repo,
 				fixedResidenceRepo{entity: &domain.Entity{
 					ID:             ccid,
@@ -523,7 +525,7 @@ func TestCommitDocumentReferenceInlineTargetOffline(t *testing.T) {
 
 	repo := &recordingRecordRepo{}
 	cfg := &domain.Config{FQDN: "example.com"}
-	uc := NewRecordUsecase(
+	uc := New(
 		repo,
 		fixedResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: "remote.example.net"}},
 		newTestServerUsecase(cfg),
@@ -570,8 +572,8 @@ func signedRecord(t *testing.T, ccid, privKeyHex string, createdAt time.Time) co
 
 // newRecordCommitUsecase wires a usecase whose author entity is local and
 // resolvable, so a plain record commit reaches the repository.
-func newRecordCommitUsecase(ccid string, cfg *domain.Config, repo RecordRepository, store KVS) *RecordUsecase {
-	return NewRecordUsecase(
+func newRecordCommitUsecase(ccid string, cfg *domain.Config, repo Repository, store usecase.KVS) *Usecase {
+	return New(
 		repo,
 		fixedResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: cfg.FQDN}},
 		newTestServerUsecase(cfg),
@@ -664,8 +666,8 @@ func TestCommitEntityBackdateExemptRequiresDirectProof(t *testing.T) {
 			CreatedAt: createdAt,
 		}, priv)
 	}
-	newEntityUsecase := func(repo RecordRepository) *RecordUsecase {
-		return NewRecordUsecase(
+	newEntityUsecase := func(repo Repository) *Usecase {
+		return New(
 			repo,
 			fixedResidenceRepo{},
 			newTestServerUsecase(cfg),
@@ -1014,7 +1016,7 @@ func TestCommitUpdateEvaluatesStoredSelf(t *testing.T) {
 
 	repo := &recordingRecordRepo{storedSD: &stored}
 	pol := &capturingPolicyService{}
-	uc := NewRecordUsecase(
+	uc := New(
 		repo,
 		fixedResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: cfg.FQDN}},
 		newTestServerUsecase(cfg),
@@ -1083,7 +1085,7 @@ func TestCreatedEventMarkedForAnonymous(t *testing.T) {
 	run := func(t *testing.T, pol PolicyService) concrnt.Event {
 		t.Helper()
 		signal := &recordingSignalService{}
-		uc := NewRecordUsecase(
+		uc := New(
 			&recordingRecordRepo{},
 			fixedResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: cfg.FQDN}},
 			newTestServerUsecase(cfg),
@@ -1173,7 +1175,7 @@ func TestEventNestedReferencesMarkedForAnonymous(t *testing.T) {
 		publicURI:    publicSD,
 	}
 
-	uc := NewRecordUsecase(
+	uc := New(
 		&recordingRecordRepo{},
 		fixedResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: cfg.FQDN}},
 		newTestServerUsecase(cfg),
@@ -1251,7 +1253,7 @@ func TestAssociatedEventMarkedForAnonymous(t *testing.T) {
 
 	pol := &anonymousDenyPolicyService{}
 	delivery := &recordingDeliveryQueue{}
-	uc := NewRecordUsecase(
+	uc := New(
 		&associationRecordingRepo{},
 		fixedResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: cfg.FQDN, SignedDocument: &concrnt.SignedDocument{Document: "{}"}}},
 		newTestServerUsecase(cfg),
@@ -1434,8 +1436,8 @@ func TestCommitEntityRequiresGreenServer(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			repo := &recordingRecordRepo{}
 			cfg := &domain.Config{FQDN: "example.com", Layer: "mainnet"}
-			serverUC := NewServerUsecase(testServerRepo{server: tc.server}, cfg, concrnt.SoftwareInfo{}, service.NewModuleManager(map[string]string{}, nil), nil)
-			uc := NewRecordUsecase(
+			serverUC := server.New(testServerRepo{server: tc.server}, cfg, concrnt.SoftwareInfo{}, service.NewModuleManager(map[string]string{}, nil), nil)
+			uc := New(
 				repo,
 				fixedResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: "remote.example.net"}},
 				serverUC,
@@ -1474,8 +1476,8 @@ func TestCommitEntityNoneProofSkipsGreenServerCheck(t *testing.T) {
 
 	repo := &recordingRecordRepo{}
 	cfg := &domain.Config{FQDN: "example.com", Layer: "mainnet"}
-	unresolvable := NewServerUsecase(testServerRepo{server: nil}, cfg, concrnt.SoftwareInfo{}, service.NewModuleManager(map[string]string{}, nil), nil)
-	uc := NewRecordUsecase(
+	unresolvable := server.New(testServerRepo{server: nil}, cfg, concrnt.SoftwareInfo{}, service.NewModuleManager(map[string]string{}, nil), nil)
+	uc := New(
 		repo,
 		fixedResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: "remote.example.net"}},
 		unresolvable,

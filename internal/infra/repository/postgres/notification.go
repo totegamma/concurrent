@@ -9,14 +9,14 @@ import (
 
 	"github.com/concrnt/concrnt/internal/domain"
 	"github.com/concrnt/concrnt/internal/infra/database/models"
-	"github.com/concrnt/concrnt/internal/usecase"
+	"github.com/concrnt/concrnt/internal/usecase/notification"
 )
 
 type NotificationRepository struct {
 	db *gorm.DB
 }
 
-func NewNotificationRepository(db *gorm.DB) usecase.NotificationRepository {
+func NewNotificationRepository(db *gorm.DB) notification.Repository {
 	return &NotificationRepository{db: db}
 }
 

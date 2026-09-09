@@ -12,7 +12,9 @@ import (
 	"github.com/concrnt/concrnt/internal/domain"
 	"github.com/concrnt/concrnt/internal/infra/repository/postgres"
 	"github.com/concrnt/concrnt/internal/service"
-	"github.com/concrnt/concrnt/internal/usecase"
+	"github.com/concrnt/concrnt/internal/usecase/record"
+	"github.com/concrnt/concrnt/internal/usecase/residence"
+	"github.com/concrnt/concrnt/internal/usecase/server"
 	"github.com/concrnt/concrnt/policy"
 )
 
@@ -82,9 +84,9 @@ var createAccountCmd = &cobra.Command{
 		residenceRepo := postgres.NewResidenceRepository(op.DB, op.Client, op.GlobalConfig)
 		recordRepo := postgres.NewRecordRepository(op.DB)
 		serverRepo := postgres.NewServerRepository(&op.GlobalConfig, op.DB, op.Client)
-		serverUC := usecase.NewServerUsecase(serverRepo, &op.GlobalConfig, concrnt.SoftwareInfo{}, service.NewModuleManager(map[string]string{}, nil), op.Client)
-		recordUC := usecase.NewRecordUsecase(recordRepo, residenceRepo, serverUC, &op.GlobalConfig, op.Client, nopSignal{}, nopPolicy{}, nopJobQueue{}, nil)
-		residenceUC := usecase.NewResidenceUsecase(residenceRepo, recordUC, &op.GlobalConfig)
+		serverUC := server.New(serverRepo, &op.GlobalConfig, concrnt.SoftwareInfo{}, service.NewModuleManager(map[string]string{}, nil), op.Client)
+		recordUC := record.New(recordRepo, residenceRepo, serverUC, &op.GlobalConfig, op.Client, nopSignal{}, nopPolicy{}, nopJobQueue{}, nil)
+		residenceUC := residence.New(residenceRepo, recordUC, &op.GlobalConfig)
 
 		if err := residenceUC.Register(cmd.Context(), "", req); err != nil {
 			return fmt.Errorf("failed to create account: %w", err)

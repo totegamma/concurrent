@@ -1,4 +1,4 @@
-package usecase
+package record
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/impl/interop"
 	"github.com/concrnt/concrnt/internal/domain"
+	"github.com/concrnt/concrnt/internal/usecase"
 )
 
 // Ack / unack / acked / unacked commits (CIP-10 §5 / §5.2, SPEC_DECISIONS
@@ -22,7 +23,7 @@ const followSchema = "https://example.com/follow.json"
 // mapResidenceRepo serves one entity per ccid, so an ack's author and target
 // can live on different domains.
 type mapResidenceRepo struct {
-	ResidenceRepository
+	EntityRepository
 	entities map[string]*domain.Entity
 }
 
@@ -87,8 +88,8 @@ func derivedAcked(t *testing.T, ack concrnt.SignedDocument) concrnt.SignedDocume
 	return derived
 }
 
-func newAckUsecase(cfg *domain.Config, repo RecordRepository, residence ResidenceRepository, delivery JobQueue) *RecordUsecase {
-	return NewRecordUsecase(
+func newAckUsecase(cfg *domain.Config, repo Repository, residence EntityRepository, delivery usecase.JobQueue) *Usecase {
+	return New(
 		repo,
 		residence,
 		newTestServerUsecase(cfg),

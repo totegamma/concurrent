@@ -12,7 +12,7 @@ import (
 	"github.com/concrnt/concrnt/client"
 	"github.com/concrnt/concrnt/internal/domain"
 	"github.com/concrnt/concrnt/internal/infra/database/models"
-	"github.com/concrnt/concrnt/internal/usecase"
+	"github.com/concrnt/concrnt/internal/usecase/server"
 )
 
 type ServerRepository struct {
@@ -21,7 +21,7 @@ type ServerRepository struct {
 	client *client.Client
 }
 
-func NewServerRepository(config *domain.Config, db *gorm.DB, cl *client.Client) usecase.ServerRepository {
+func NewServerRepository(config *domain.Config, db *gorm.DB, cl *client.Client) server.Repository {
 	return &ServerRepository{
 		config: config,
 		db:     db,

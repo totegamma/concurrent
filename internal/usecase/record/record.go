@@ -1,4 +1,4 @@
-package usecase
+package record
 
 import (
 	"context"
@@ -20,12 +20,15 @@ import (
 	"github.com/concrnt/concrnt/client"
 	"github.com/concrnt/concrnt/impl/interop"
 	"github.com/concrnt/concrnt/internal/domain"
+	"github.com/concrnt/concrnt/internal/usecase"
+	"github.com/concrnt/concrnt/internal/usecase/chunkline"
+	"github.com/concrnt/concrnt/internal/usecase/server"
 	"github.com/concrnt/concrnt/internal/utils"
 	"github.com/concrnt/concrnt/policy"
 	"github.com/concrnt/concrnt/schemas"
 )
 
-type RecordRepository interface {
+type Repository interface {
 	// Utilities
 	BeginTx(ctx context.Context) (RepositoryTx, error)
 
@@ -139,12 +142,13 @@ type PolicyService interface {
 	Eval(ctx context.Context, req policy.RequestContext, stack []concrnt.Policy, action string, key string) error
 }
 
-// KVS is a store of TTL'd string sets, used here to hold per-timeline
-// removed-item advertisements. Implemented by internal/infra/kvs.Redis; nil in
-// offline tooling/tests.
-type KVS interface {
-	SetAdd(ctx context.Context, key string, value string, ttl time.Duration) error
-	SetMembers(ctx context.Context, key string) ([]string, error)
+// EntityRepository is the slice of the residence repository this usecase
+// needs: residency checks on entity commits and entity lookups. The full
+// residence.Repository embeds it.
+type EntityRepository interface {
+	GetMeta(ctx context.Context, ccid string) (*domain.EntityMeta, error)
+	GetEntityByCCID(ctx context.Context, ccid string) (*domain.Entity, error)
+	GetEntityByAlias(ctx context.Context, alias string) (*domain.Entity, error)
 }
 
 type commitApplyResult struct {
@@ -153,48 +157,48 @@ type commitApplyResult struct {
 	noop          bool
 }
 
-type RecordUsecase struct {
-	repo      RecordRepository
-	residence ResidenceRepository
-	server    *ServerUsecase
-	config    *domain.Config
-	client    *client.Client
-	signal    SignalService
-	policy    PolicyService
-	jobs      JobQueue
-	kvs       KVS
-	cache     *cache.Cache
+type Usecase struct {
+	repo   Repository
+	entity EntityRepository
+	server *server.Usecase
+	config *domain.Config
+	client *client.Client
+	signal SignalService
+	policy PolicyService
+	jobs   usecase.JobQueue
+	kvs    usecase.KVS
+	cache  *cache.Cache
 }
 
-func NewRecordUsecase(
-	repo RecordRepository,
-	residence ResidenceRepository,
-	server *ServerUsecase,
+func New(
+	repo Repository,
+	entity EntityRepository,
+	server *server.Usecase,
 	config *domain.Config,
 	client *client.Client,
 	signal SignalService,
 	policy PolicyService,
-	jobs JobQueue,
-	kvs KVS,
-) *RecordUsecase {
-	uc := &RecordUsecase{
-		repo:      repo,
-		residence: residence,
-		server:    server,
-		config:    config,
-		client:    client,
-		signal:    signal,
-		policy:    policy,
-		jobs:      jobs,
-		kvs:       kvs,
-		cache:     cache.New(10*time.Minute, 15*time.Minute),
+	jobs usecase.JobQueue,
+	kvs usecase.KVS,
+) *Usecase {
+	uc := &Usecase{
+		repo:   repo,
+		entity: entity,
+		server: server,
+		config: config,
+		client: client,
+		signal: signal,
+		policy: policy,
+		jobs:   jobs,
+		kvs:    kvs,
+		cache:  cache.New(10*time.Minute, 15*time.Minute),
 	}
 
 	// this usecase owns the delivery job type: it both enqueues DeliveryJobs
 	// and interprets them, so the queue itself stays agnostic
 	if jobs != nil {
 		jobs.RegisterHandler(JobTypeRecordDelivery, func(ctx context.Context, payload json.RawMessage) error {
-			job, err := parseJobPayload[DeliveryJob](payload)
+			job, err := usecase.ParseJobPayload[DeliveryJob](payload)
 			if err != nil {
 				return err
 			}
@@ -208,7 +212,7 @@ func NewRecordUsecase(
 // resolver returns uc.client as a DocumentResolver, or a nil interface when
 // the client itself is nil (offline tooling, tests) — assigning a typed nil
 // pointer directly would bypass Verify's nil-resolver guard and panic on use.
-func (uc *RecordUsecase) resolver() concrnt.DocumentResolver {
+func (uc *Usecase) resolver() concrnt.DocumentResolver {
 	if uc.client == nil {
 		return nil
 	}
@@ -229,7 +233,7 @@ func GetReferrerFromReferences(sd concrnt.SignedDocument, requesterID string) *s
 	return nil
 }
 
-func (uc *RecordUsecase) Commit(ctx context.Context, ip string, sd concrnt.SignedDocument, mode domain.CommitMode) (*concrnt.SignedDocument, error) {
+func (uc *Usecase) Commit(ctx context.Context, ip string, sd concrnt.SignedDocument, mode domain.CommitMode) (*concrnt.SignedDocument, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.Commit")
 	defer span.End()
 
@@ -540,7 +544,7 @@ func rejectAliasOwners(doc concrnt.Document[any]) error {
 	return nil
 }
 
-func (uc *RecordUsecase) saveEntity(ctx context.Context, tx RepositoryTx, ip string, sd concrnt.SignedDocument) (*commitApplyResult, error) {
+func (uc *Usecase) saveEntity(ctx context.Context, tx RepositoryTx, ip string, sd concrnt.SignedDocument) (*commitApplyResult, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.SaveEntity")
 	defer span.End()
 
@@ -571,7 +575,7 @@ func (uc *RecordUsecase) saveEntity(ctx context.Context, tx RepositoryTx, ip str
 
 	if entity.Value.Domain == uc.config.FQDN {
 		// if local, check if author is registered
-		_, err := uc.residence.GetMeta(ctx, entity.Author)
+		_, err := uc.entity.GetMeta(ctx, entity.Author)
 		if err != nil {
 			span.RecordError(err)
 			return nil, errors.New("user is not registered for this domain")
@@ -636,7 +640,7 @@ func distributionsFromPtr(distributions *[]string) []string {
 	return *distributions
 }
 
-func (uc *RecordUsecase) createReferenceDistributionActions(ctx context.Context, ip string, author string, href string, requester domain.Entity, sd concrnt.SignedDocument, destinations []string, mode domain.CommitMode) ([]PostProcessAction, error) {
+func (uc *Usecase) createReferenceDistributionActions(ctx context.Context, ip string, author string, href string, requester domain.Entity, sd concrnt.SignedDocument, destinations []string, mode domain.CommitMode) ([]PostProcessAction, error) {
 	if mode != domain.CommitModeExecute || len(destinations) == 0 {
 		return nil, nil
 	}
@@ -702,7 +706,7 @@ func (uc *RecordUsecase) createReferenceDistributionActions(ctx context.Context,
 	return postProcesses, nil
 }
 
-func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, ip string, requester domain.Entity, sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
+func (uc *Usecase) deleteRecord(ctx context.Context, tx RepositoryTx, ip string, requester domain.Entity, sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.Delete")
 	defer span.End()
 
@@ -1044,7 +1048,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, ip s
 					span.RecordError(err) // non-fatal: the deleted item just lingers in caches
 				} else if tl != "" {
 					postProcesses = append(postProcesses, func(ctx context.Context) error {
-						return uc.kvs.SetAdd(ctx, removedItemsKey(tl), id, removedItemsTTL)
+						return uc.kvs.SetAdd(ctx, chunkline.RemovedItemsKey(tl), id, chunkline.RemovedItemsTTL)
 					})
 				}
 			}
@@ -1068,7 +1072,7 @@ func (uc *RecordUsecase) deleteRecord(ctx context.Context, tx RepositoryTx, ip s
 		if uc.kvs != nil && removedTimeline != "" {
 			tl, id := removedTimeline, removedItemID
 			postProcesses = append(postProcesses, func(ctx context.Context) error {
-				return uc.kvs.SetAdd(ctx, removedItemsKey(tl), id, removedItemsTTL)
+				return uc.kvs.SetAdd(ctx, chunkline.RemovedItemsKey(tl), id, chunkline.RemovedItemsTTL)
 			})
 		}
 
@@ -1216,7 +1220,7 @@ func parseRangeDeleteTarget(targetURI string) (base string, includeSelf bool, is
 	return base, includeSelf, true, nil
 }
 
-func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, ip string, requester domain.Entity, parsed concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
+func (uc *Usecase) createRecord(ctx context.Context, tx RepositoryTx, ip string, requester domain.Entity, parsed concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.CreateRecord")
 	defer span.End()
 
@@ -1398,7 +1402,7 @@ func (uc *RecordUsecase) createRecord(ctx context.Context, tx RepositoryTx, ip s
 	return &commitApplyResult{result: &sd, postProcesses: postProcesses}, nil
 }
 
-func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx, ip string, requester domain.Entity, parsed concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
+func (uc *Usecase) createAssociation(ctx context.Context, tx RepositoryTx, ip string, requester domain.Entity, parsed concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.CreateAssociation")
 	defer span.End()
 
@@ -1599,7 +1603,7 @@ func (uc *RecordUsecase) createAssociation(ctx context.Context, tx RepositoryTx,
 	return &commitApplyResult{result: &sd, postProcesses: postProcesses}, nil
 }
 
-func (uc *RecordUsecase) processAck(ctx context.Context, tx RepositoryTx, ip string, from domain.Entity, to domain.Entity, doc concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
+func (uc *Usecase) processAck(ctx context.Context, tx RepositoryTx, ip string, from domain.Entity, to domain.Entity, doc concrnt.Document[any], sd concrnt.SignedDocument, mode domain.CommitMode) (*commitApplyResult, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.Acknowledge")
 	defer span.End()
 
@@ -1727,7 +1731,7 @@ func (uc *RecordUsecase) processAck(ctx context.Context, tx RepositoryTx, ip str
 
 }
 
-func (uc *RecordUsecase) GetEntity(ctx context.Context, uri string) (*domain.Entity, error) {
+func (uc *Usecase) GetEntity(ctx context.Context, uri string) (*domain.Entity, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.GetEntity")
 	defer span.End()
 
@@ -1744,7 +1748,7 @@ func (uc *RecordUsecase) GetEntity(ctx context.Context, uri string) (*domain.Ent
 
 	if parsed.Owner[0] == '@' { // alias
 		alias := parsed.Owner[1:]
-		sd, err := uc.residence.GetEntityByAlias(ctx, alias)
+		sd, err := uc.entity.GetEntityByAlias(ctx, alias)
 		if err == nil {
 			return sd, nil
 		}
@@ -1775,7 +1779,7 @@ func (uc *RecordUsecase) GetEntity(ctx context.Context, uri string) (*domain.Ent
 		return uc.GetEntity(ctx, redirect)
 	} else {
 		ccid := parsed.Owner
-		entity, err := uc.residence.GetEntityByCCID(ctx, ccid)
+		entity, err := uc.entity.GetEntityByCCID(ctx, ccid)
 		if err == nil {
 			return entity, nil
 		}
@@ -1804,7 +1808,7 @@ func (uc *RecordUsecase) GetEntity(ctx context.Context, uri string) (*domain.Ent
 		}
 
 		// commit済みなので今度は成功するはず
-		entity, err = uc.residence.GetEntityByCCID(ctx, ccid)
+		entity, err = uc.entity.GetEntityByCCID(ctx, ccid)
 		if err != nil {
 			return nil, err
 		}
@@ -1812,7 +1816,7 @@ func (uc *RecordUsecase) GetEntity(ctx context.Context, uri string) (*domain.Ent
 	}
 }
 
-func (uc *RecordUsecase) GetSigned(ctx context.Context, uri string) (*concrnt.SignedDocument, error) {
+func (uc *Usecase) GetSigned(ctx context.Context, uri string) (*concrnt.SignedDocument, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.GetSigned")
 	defer span.End()
 
@@ -1860,12 +1864,12 @@ func (uc *RecordUsecase) GetSigned(ctx context.Context, uri string) (*concrnt.Si
 	}
 }
 
-func (uc *RecordUsecase) checkReadAccess(ctx context.Context, uri string, sd concrnt.SignedDocument) error {
+func (uc *Usecase) checkReadAccess(ctx context.Context, uri string, sd concrnt.SignedDocument) error {
 	requester, _ := ctx.Value(interop.RequesterCtxKey).(domain.Entity)
 	return uc.checkReadAccessAs(ctx, uri, sd, requester)
 }
 
-func (uc *RecordUsecase) checkReadAccessAs(ctx context.Context, uri string, sd concrnt.SignedDocument, requester domain.Entity) error {
+func (uc *Usecase) checkReadAccessAs(ctx context.Context, uri string, sd concrnt.SignedDocument, requester domain.Entity) error {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.CheckReadAccess")
 	defer span.End()
 
@@ -1913,7 +1917,7 @@ func (uc *RecordUsecase) checkReadAccessAs(ctx context.Context, uri string, sd c
 	return nil
 }
 
-func (uc *RecordUsecase) markEventForAnonymous(ctx context.Context, event concrnt.Event) concrnt.Event {
+func (uc *Usecase) markEventForAnonymous(ctx context.Context, event concrnt.Event) concrnt.Event {
 	if len(event.References) == 0 {
 		return event
 	}
@@ -1982,7 +1986,7 @@ func paginateWindow(rows []QueryRow, limit int) ([]concrnt.SignedDocument, *time
 	return items, prev, next
 }
 
-func (uc *RecordUsecase) GetAcknowledgeRecords(ctx context.Context, from, to, schema string, since, until *time.Time, limit int, order string) (concrnt.QueryResult, error) {
+func (uc *Usecase) GetAcknowledgeRecords(ctx context.Context, from, to, schema string, since, until *time.Time, limit int, order string) (concrnt.QueryResult, error) {
 	rows, err := uc.repo.GetAcknowledgeRecords(ctx, from, to, schema, since, until, limit+1, order)
 	if err != nil {
 		return concrnt.QueryResult{}, err
@@ -1991,11 +1995,11 @@ func (uc *RecordUsecase) GetAcknowledgeRecords(ctx context.Context, from, to, sc
 	return concrnt.QueryResult{Items: items, Prev: prev, Next: next}, nil
 }
 
-func (uc *RecordUsecase) GetAcknowledgeRecordCounts(ctx context.Context, from, to, schema string) (map[string]int64, error) {
+func (uc *Usecase) GetAcknowledgeRecordCounts(ctx context.Context, from, to, schema string) (map[string]int64, error) {
 	return uc.repo.GetAcknowledgeRecordCounts(ctx, from, to, schema)
 }
 
-func (uc *RecordUsecase) GetAssociatedRecords(ctx context.Context, targetURI, schema, variant, author string, since, until *time.Time, limit int, order string) (concrnt.QueryResult, error) {
+func (uc *Usecase) GetAssociatedRecords(ctx context.Context, targetURI, schema, variant, author string, since, until *time.Time, limit int, order string) (concrnt.QueryResult, error) {
 	rows, err := uc.repo.GetAssociatedRecords(ctx, targetURI, schema, variant, author, since, until, limit+1, order)
 	if err != nil {
 		return concrnt.QueryResult{}, err
@@ -2004,15 +2008,15 @@ func (uc *RecordUsecase) GetAssociatedRecords(ctx context.Context, targetURI, sc
 	return concrnt.QueryResult{Items: items, Prev: prev, Next: next}, nil
 }
 
-func (uc *RecordUsecase) GetAssociatedRecordCountsBySchema(ctx context.Context, targetURI string) (map[string]int64, error) {
+func (uc *Usecase) GetAssociatedRecordCountsBySchema(ctx context.Context, targetURI string) (map[string]int64, error) {
 	return uc.repo.GetAssociatedRecordCountsBySchema(ctx, targetURI)
 }
 
-func (uc *RecordUsecase) GetAssociatedRecordCountsByVariant(ctx context.Context, targetURI, schema string) (*utils.OrderedKVMap[int64], error) {
+func (uc *Usecase) GetAssociatedRecordCountsByVariant(ctx context.Context, targetURI, schema string) (*utils.OrderedKVMap[int64], error) {
 	return uc.repo.GetAssociatedRecordCountsByVariant(ctx, targetURI, schema)
 }
 
-func (uc *RecordUsecase) Query(
+func (uc *Usecase) Query(
 	ctx context.Context,
 	prefix, parent, schema, author string,
 	since, until *time.Time,
@@ -2062,7 +2066,7 @@ func (uc *RecordUsecase) Query(
 	return concrnt.QueryResult{Items: filtered, Prev: prev, Next: next}, nil
 }
 
-func (uc *RecordUsecase) DumpCommitLogs(ctx context.Context) (string, error) {
+func (uc *Usecase) DumpCommitLogs(ctx context.Context) (string, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.GetCommitlog")
 	defer span.End()
 
@@ -2096,7 +2100,7 @@ func (uc *RecordUsecase) DumpCommitLogs(ctx context.Context) (string, error) {
 // destination (unless it's already a known host), then act locally (publish
 // a realtime event, or re-enter Commit) or remotely (POST to the resolved
 // host). It is the handler registered for JobTypeRecordDelivery.
-func (uc *RecordUsecase) Deliver(ctx context.Context, job DeliveryJob) error {
+func (uc *Usecase) Deliver(ctx context.Context, job DeliveryJob) error {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.Deliver")
 	defer span.End()
 
@@ -2133,11 +2137,11 @@ func (uc *RecordUsecase) Deliver(ctx context.Context, job DeliveryJob) error {
 	return nil
 }
 
-func (uc *RecordUsecase) IsLocalEntity(ctx context.Context, entity *domain.Entity) bool {
+func (uc *Usecase) IsLocalEntity(ctx context.Context, entity *domain.Entity) bool {
 	return uc.config.FQDN == entity.Domain
 }
 
-func (uc *RecordUsecase) IsLocalEntityByCCID(ctx context.Context, entityID string) (bool, error) {
+func (uc *Usecase) IsLocalEntityByCCID(ctx context.Context, entityID string) (bool, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.IsLocalEntity")
 	defer span.End()
 
@@ -2162,7 +2166,7 @@ type ImportResult struct {
 	Error    string `json:"error,omitempty"`
 }
 
-func (uc *RecordUsecase) ImportCommitLogs(ctx context.Context, ip string, jsonl string) []ImportResult {
+func (uc *Usecase) ImportCommitLogs(ctx context.Context, ip string, jsonl string) []ImportResult {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.ImportCommitLogs")
 	defer span.End()
 
@@ -2200,7 +2204,7 @@ func (uc *RecordUsecase) ImportCommitLogs(ctx context.Context, ip string, jsonl 
 	return results
 }
 
-func (uc *RecordUsecase) getBlockingUsers(ctx context.Context, userID string) ([]string, error) {
+func (uc *Usecase) getBlockingUsers(ctx context.Context, userID string) ([]string, error) {
 	ctx, span := tracer.Start(ctx, "Usecase.Record.GetBlockingUsers")
 	defer span.End()
 

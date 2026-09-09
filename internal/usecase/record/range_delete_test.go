@@ -1,4 +1,4 @@
-package usecase
+package record
 
 import (
 	"context"
@@ -14,6 +14,8 @@ import (
 	"github.com/concrnt/concrnt/cdid"
 	"github.com/concrnt/concrnt/client"
 	"github.com/concrnt/concrnt/internal/domain"
+	"github.com/concrnt/concrnt/internal/usecase"
+	"github.com/concrnt/concrnt/internal/usecase/chunkline"
 	"github.com/concrnt/concrnt/policy"
 	"github.com/concrnt/concrnt/schemas"
 )
@@ -81,7 +83,7 @@ type subtreeQueryCall struct {
 // GetSignedDocument serves per URI (delete targets, reference rows);
 // removals is what GetTimelineRemoval serves per key URI as (timeline, item).
 type rangeDeleteRepo struct {
-	RecordRepository
+	Repository
 	subtree     []concrnt.SignedDocument
 	stored      map[string]concrnt.SignedDocument
 	removals    map[string][2]string
@@ -219,8 +221,8 @@ func signedDelete(t *testing.T, ccid, privKeyHex, target string) concrnt.SignedD
 // newRangeDeleteUsecase wires a usecase whose delete author is a local,
 // resolvable entity. The subtree base's owner is the server FQDN itself, so
 // ResolveResourceHost resolves it locally without any network.
-func newRangeDeleteUsecase(ccid string, cfg *domain.Config, repo RecordRepository, pol PolicyService, delivery JobQueue, kvs KVS) *RecordUsecase {
-	return NewRecordUsecase(
+func newRangeDeleteUsecase(ccid string, cfg *domain.Config, repo Repository, pol PolicyService, delivery usecase.JobQueue, kvs usecase.KVS) *Usecase {
+	return New(
 		repo,
 		fixedResidenceRepo{entity: &domain.Entity{ID: ccid, Domain: cfg.FQDN}},
 		newTestServerUsecase(cfg),
@@ -481,7 +483,7 @@ func TestDeleteRecordRangeRemoteMatchesReferences(t *testing.T) {
 		dest + "/" + refSegment(base):      referenceRecord(t, dest+"/"+refSegment(base), base),
 		dest + "/" + refSegment(base+"/a"): referenceRecord(t, dest+"/"+refSegment(base+"/a"), base+"/a"),
 	}}
-	uc := NewRecordUsecase(
+	uc := New(
 		repo,
 		fixedResidenceRepo{entity: &requester},
 		newTestServerUsecase(cfg),
@@ -612,8 +614,8 @@ func TestCommitDeleteSweepsLocalDistributeReference(t *testing.T) {
 	if !slices.Equal(pol.evaled, []string{targetURI, refKey}) {
 		t.Fatalf("policy evaluated on %v, want [%s %s]", pol.evaled, targetURI, refKey)
 	}
-	if !slices.Equal(kvs.addedSets, []string{removedItemsKey(dest)}) {
-		t.Fatalf("removed-item advertisements = %v, want [%s]", kvs.addedSets, removedItemsKey(dest))
+	if !slices.Equal(kvs.addedSets, []string{chunkline.RemovedItemsKey(dest)}) {
+		t.Fatalf("removed-item advertisements = %v, want [%s]", kvs.addedSets, chunkline.RemovedItemsKey(dest))
 	}
 	if len(repo.txs) != 1 || !repo.txs[0].committed {
 		t.Fatalf("unexpected tx state: %+v", repo.txs)
@@ -659,8 +661,8 @@ func TestCommitDeleteRemoteTargetSweepsLocalReference(t *testing.T) {
 	if !slices.Equal(pol.evaled, []string{refKey}) {
 		t.Fatalf("policy evaluated on %v, want [%s]", pol.evaled, refKey)
 	}
-	if !slices.Equal(kvs.addedSets, []string{removedItemsKey(dest)}) {
-		t.Fatalf("removed-item advertisements = %v, want [%s]", kvs.addedSets, removedItemsKey(dest))
+	if !slices.Equal(kvs.addedSets, []string{chunkline.RemovedItemsKey(dest)}) {
+		t.Fatalf("removed-item advertisements = %v, want [%s]", kvs.addedSets, chunkline.RemovedItemsKey(dest))
 	}
 	if len(repo.txs) != 1 || !repo.txs[0].committed {
 		t.Fatalf("commitlog must be kept for a delete that acted locally, got %+v", repo.txs)

@@ -8,7 +8,7 @@ import (
 	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/internal/infra/database/models"
 	"github.com/concrnt/concrnt/internal/testutil"
-	"github.com/concrnt/concrnt/internal/usecase"
+	"github.com/concrnt/concrnt/internal/usecase/record"
 	"github.com/stretchr/testify/require"
 )
 
@@ -54,7 +54,7 @@ func TestAckedRepositoryAcceptIfNewer(t *testing.T) {
 	}
 	commit := func(id, kind string, createdAt time.Time) {
 		t.Helper()
-		withRepositoryTx(t, ctx, repo, id, "127.0.0.1", mirror(kind, createdAt), to, func(tx usecase.RepositoryTx) error {
+		withRepositoryTx(t, ctx, repo, id, "127.0.0.1", mirror(kind, createdAt), to, func(tx record.RepositoryTx) error {
 			transition := repo.Acknowledged
 			if kind == "unacked" {
 				transition = repo.UnAcknowledged
@@ -148,26 +148,26 @@ func TestGetAcknowledgeRecordsServesHeldSide(t *testing.T) {
 	}
 
 	// local acker → local target: this server holds both the ack and the acked
-	withRepositoryTx(t, ctx, repo, "ack-local", "127.0.0.1", doc("ack", localAcker, local), localAcker, func(tx usecase.RepositoryTx) error {
+	withRepositoryTx(t, ctx, repo, "ack-local", "127.0.0.1", doc("ack", localAcker, local), localAcker, func(tx record.RepositoryTx) error {
 		_, err := repo.Acknowledge(ctx, tx, "ack-local", localAcker, local, schema, at)
 		return err
 	})
-	withRepositoryTx(t, ctx, repo, "acked-local", "127.0.0.1", doc("acked", localAcker, local), local, func(tx usecase.RepositoryTx) error {
+	withRepositoryTx(t, ctx, repo, "acked-local", "127.0.0.1", doc("acked", localAcker, local), local, func(tx record.RepositoryTx) error {
 		_, err := repo.Acknowledged(ctx, tx, "acked-local", localAcker, local, schema, at)
 		return err
 	})
 	// local acker → remote target: only the ack is here
-	withRepositoryTx(t, ctx, repo, "ack-outbound", "127.0.0.1", doc("ack", localAcker, remoteTarget), localAcker, func(tx usecase.RepositoryTx) error {
+	withRepositoryTx(t, ctx, repo, "ack-outbound", "127.0.0.1", doc("ack", localAcker, remoteTarget), localAcker, func(tx record.RepositoryTx) error {
 		_, err := repo.Acknowledge(ctx, tx, "ack-outbound", localAcker, remoteTarget, schema, at.Add(time.Hour))
 		return err
 	})
 	// remote acker → local target: only the acked is here
-	withRepositoryTx(t, ctx, repo, "acked-inbound", "127.0.0.1", doc("acked", remoteAcker, local), local, func(tx usecase.RepositoryTx) error {
+	withRepositoryTx(t, ctx, repo, "acked-inbound", "127.0.0.1", doc("acked", remoteAcker, local), local, func(tx record.RepositoryTx) error {
 		_, err := repo.Acknowledged(ctx, tx, "acked-inbound", remoteAcker, local, schema, at.Add(2*time.Hour))
 		return err
 	})
 
-	ids := func(rows []usecase.QueryRow) []string {
+	ids := func(rows []record.QueryRow) []string {
 		t.Helper()
 		out := make([]string, len(rows))
 		for i, row := range rows {

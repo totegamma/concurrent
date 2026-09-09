@@ -21,29 +21,35 @@ import (
 	"github.com/concrnt/concrnt/impl/interop"
 	"github.com/concrnt/concrnt/internal/domain"
 	"github.com/concrnt/concrnt/internal/present/rest/presenter"
-	"github.com/concrnt/concrnt/internal/usecase"
+	"github.com/concrnt/concrnt/internal/usecase/abuse"
+	"github.com/concrnt/concrnt/internal/usecase/chunkline"
+	"github.com/concrnt/concrnt/internal/usecase/notification"
+	"github.com/concrnt/concrnt/internal/usecase/record"
+	"github.com/concrnt/concrnt/internal/usecase/residence"
+	"github.com/concrnt/concrnt/internal/usecase/server"
+	"github.com/concrnt/concrnt/internal/usecase/subscription"
 )
 
 type Handler struct {
 	config    domain.Config
-	residence *usecase.ResidenceUsecase
-	record    *usecase.RecordUsecase
-	chunkline *usecase.ChunklineUsecase
-	server    *usecase.ServerUsecase
-	notify    *usecase.NotificationUsecase
-	abuse     *usecase.AbuseUsecase
-	subscribe *usecase.SubscriptionUsecase
+	residence *residence.Usecase
+	record    *record.Usecase
+	chunkline *chunkline.Usecase
+	server    *server.Usecase
+	notify    *notification.Usecase
+	abuse     *abuse.Usecase
+	subscribe *subscription.Usecase
 }
 
 func NewHandler(
 	config domain.Config,
-	residence *usecase.ResidenceUsecase,
-	record *usecase.RecordUsecase,
-	chunkline *usecase.ChunklineUsecase,
-	server *usecase.ServerUsecase,
-	notify *usecase.NotificationUsecase,
-	abuse *usecase.AbuseUsecase,
-	subscribe *usecase.SubscriptionUsecase,
+	residence *residence.Usecase,
+	record *record.Usecase,
+	chunkline *chunkline.Usecase,
+	server *server.Usecase,
+	notify *notification.Usecase,
+	abuse *abuse.Usecase,
+	subscribe *subscription.Usecase,
 ) *Handler {
 	return &Handler{
 		config:    config,

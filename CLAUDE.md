@@ -58,11 +58,15 @@ present/rest (Echo handlers)  ->  usecase (business logic, interfaces for deps) 
 - **`internal/domain`** — core types with no persistence/transport concerns: `Entity`,
   `Record`, `Config`, and sentinel errors (`NotFoundError`, `PermissionError`,
   `RedirectError`, `ValidationError`), each implementing `Is()` for `errors.Is` matching.
-- **`internal/usecase`** — one file per bounded concern (`record.go`, `residence.go`,
-  `server.go`, `notification.go`, `subscription.go`, `chunkline.go`, `abuse.go`). Each
-  usecase declares the repository/gateway interfaces it needs (e.g. `RecordRepository`,
-  `SignalService`, `PolicyService` in `record.go`) rather than depending on concrete infra
-  types — infra packages satisfy these interfaces structurally.
+- **`internal/usecase`** — one subpackage per bounded concern (`record`, `residence`,
+  `server`, `notification`, `subscription`, `chunkline`, `abuse`), each exposing
+  `Usecase`/`New` plus the repository/gateway interfaces only it needs (e.g.
+  `record.Repository`, `record.SignalService`, `record.PolicyService`) rather than
+  depending on concrete infra types — infra packages satisfy these interfaces
+  structurally. The parent `usecase` package holds only the ports shared across
+  concerns (`JobQueue`, `KVS`). `record` is the hub: `residence` builds on it (its
+  `Repository` embeds `record.EntityRepository`), and `record` in turn depends on
+  `server` (remote server resolution) and `chunkline` (removed-item advertisements).
 - **`internal/infra/repository/postgres`** — GORM-backed implementations of the usecase
   repository interfaces.
 - **`internal/infra/gateway`** — outbound HTTP to other domains/servers (e.g. chunkline

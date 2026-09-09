@@ -1,4 +1,4 @@
-package usecase
+package record
 
 import (
 	"context"
@@ -65,14 +65,14 @@ func (s *remoteCommitServer) committed() []concrnt.SignedDocument {
 // newDeliverUsecase wires a usecase with a real client (no fakes possible:
 // the usecase holds *client.Client) whose remote.example is remapped to the
 // given httptest server, if any.
-func newDeliverUsecase(t *testing.T, cfg *domain.Config, repo RecordRepository, residence ResidenceRepository, signal SignalService, remote *httptest.Server) (*RecordUsecase, *recordingDeliveryQueue) {
+func newDeliverUsecase(t *testing.T, cfg *domain.Config, repo Repository, residence EntityRepository, signal SignalService, remote *httptest.Server) (*Usecase, *recordingDeliveryQueue) {
 	t.Helper()
 	cl := client.New(cfg.FQDN)
 	if remote != nil {
 		cl.AddHostRemapping(deliverRemoteHost, remote.URL)
 	}
 	queue := &recordingDeliveryQueue{}
-	uc := NewRecordUsecase(
+	uc := New(
 		repo,
 		residence,
 		newTestServerUsecase(cfg),
@@ -90,7 +90,7 @@ func newDeliverUsecase(t *testing.T, cfg *domain.Config, repo RecordRepository, 
 // registers the handler with the queue, and that handler restores the
 // serialized DeliveryJob and runs Deliver on it — the queue itself never
 // learns what the payload is.
-func TestNewRecordUsecaseRegistersDeliveryHandler(t *testing.T) {
+func TestNewRegistersDeliveryHandler(t *testing.T) {
 	cfg := &domain.Config{FQDN: "example.com"}
 	signal := &recordingSignalService{}
 	_, queue := newDeliverUsecase(t, cfg, &recordingRecordRepo{}, residenceOf(), signal, nil)

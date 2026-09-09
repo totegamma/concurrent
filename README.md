@@ -65,6 +65,99 @@ The protocol is specified as a collection of small documents called [CIPs (Concr
 ## Contributing
 When creating a PR, we generally recommend creating an issue first and reaching a consensus on whether or not to proceed. (Concrnt is currently being heavily developed, and there may be changes that cannot be made due to its policy.)
 
+## Development
+
+### Build / test
+
+```sh
+go build ./cmd/concrnt      # the server
+go build ./cmd/conctl       # admin CLI (account creation, key generation, v1->v2 migration, repairs)
+go build ./cmd/k8s-elector  # optional Kubernetes sidecar for leader election / peer discovery
+
+go vet ./...
+go test ./...                                    # repository-layer tests spin up Postgres via dockertest (needs a Docker daemon)
+go test ./policy/... ./chunkline/... ./client/... # pure-logic packages, no Docker required
+go test ./... -run TestName -v                   # a single test
+```
+
+`go build` / `go vet` / `go test` are the tools of record; there is no Makefile or lint
+config. `cmd/concrnt/Dockerfile` is the canonical build recipe used by CI
+(`.github/workflows/docker-publish.yml`), which publishes multi-arch images on `v*.*.*`
+tags and pushes to `main`.
+
+### Architecture
+
+The server (`cmd/concrnt/main.go`) is a single Echo HTTP process wired up by hand in
+`main()` (no DI framework). Layering, outside-in:
+
+```
+present/rest (Echo handlers) -> usecase (business logic, interfaces for deps) -> infra/* (Postgres, Redis, outbound HTTP)
+                                       |
+                                       v
+                                    domain (entities, Config, sentinel errors)
+```
+
+- **`internal/domain`** — core types with no persistence/transport concerns: `Entity`,
+  `Record`, `Config`, and sentinel errors (`NotFoundError`, `PermissionError`,
+  `RedirectError`, `ValidationError`) matched with `errors.Is`.
+- **`internal/usecase`** — one subpackage per bounded concern (`record`, `residence`,
+  `server`, `notification`, `subscription`, `chunkline`, `abuse`), each exposing
+  `Usecase`/`New` plus the repository/gateway interfaces only it needs; infra packages
+  satisfy these interfaces structurally. The parent package holds only the ports shared
+  across concerns (`JobQueue`, `KVS`). `record` is the hub: `residence` builds on it (its
+  `Repository` embeds `record.EntityRepository`), and `record` depends on `server` (remote
+  server resolution) and `chunkline` (removed-item advertisements). Inside `record`,
+  `commit.go` is the write entry point (`Commit` dispatches on document kind) and each
+  target object has its own file (`entity.go`, `record.go`, `association.go`, `ack.go`,
+  `delete.go`); `read.go`/`query.go` are the read paths, `deliver.go` the federation
+  delivery job, `commitlog.go` dump/import, and `usecase.go` the ports and constructor.
+- **`internal/infra`** — adapters behind the usecase interfaces: `repository/postgres`
+  (GORM), `gateway` (outbound HTTP to other servers, e.g. chunkline federation), `pubsub`
+  (Redis realtime pub/sub), `kvs` and `jobqueue` (Redis), `push` (Web Push), `cluster`
+  (leader election / peer discovery via the elector HTTP protocol), `database` and
+  `config` (connections and YAML loading).
+- **`internal/present/rest`** — `Handler` registers the CCAPI routes; `wellknown.go`
+  serves `/.well-known/concrnt`; `proxy.go` reverse-proxies to registered modules;
+  `middleware/` holds auth (subkey and ecrecover verification); `presenter/` maps
+  domain types to wire-format responses.
+- **`internal/service`** — cross-cutting singletons: `ModuleManager` (polls configured
+  `services` for a `/cc-info` endpoint map and merges it with the base REST endpoints —
+  this is how modules add API routes without being compiled in) and `PolicyService`
+  (wraps the `policy` evaluator with the global policy and parameters).
+- **`internal/worker`** — background loops: the realtime subscriber (leader/worker split
+  across replicas) and `NotificationReactor` (Web Push, enabled when VAPID keys are
+  configured).
+- **`policy/`** — the CIP-12 policy engine: policies are stacks of layers of statements
+  (`action`, glob `key`, boolean `Condition`, `emit`), folded with `UNSET`/`ALLOW`/`DENY`
+  combining logic.
+- **`chunkline/`** — the timeline data structure: a `Manifest` describes chunked,
+  paginated timeline storage, and `Client` merges multiple remote timelines into a single
+  time-ordered stream via a heap, so timelines federate across domains without loading
+  everything into memory.
+- **`client/`** — outbound client for other concrnt servers (signed documents, CCKV/CCFS
+  URI resolution, realtime websocket subscriptions).
+- **`cdid/`** — CDID, the sortable base32 25-byte ID scheme used for records, timelines
+  and chunks (`KindTime` embeds a timestamp, `KindHash` derives from content).
+- **`impl/tags`**, **`impl/interop`** — the entity tag-string parser, and the types shared
+  with modules that plug in via the `/cc-info` protocol.
+- **Root package `concrnt`** — the wire-level protocol types shared across every layer:
+  `SignedDocument`/`Document[T]`/`Proof` (the CIP-1 envelope and its ecrecover / subkey /
+  document-reference proofs), `Policy`, `Event`, `CCURI` (`cckv://` and `ccfs://`), and
+  secp256k1 signing/verification.
+
+### Config
+
+`internal/infra/config` loads YAML; see `config.example.yaml` for the full shape
+(`concrnt` domain identity and registration mode, `backends` for Postgres/Redis/Memcached,
+`observability` tracing, `integrations` for captcha/VAPID keys, `meta` for
+instance branding served via well-known, `services` for pluggable modules).
+`domain.Config` is the resulting in-process representation.
+
+### Migration
+
+`conctl migrate v1-to-v2` (backed by `legacy/`) exports a v1 identity's full log and
+re-imports it into a v2 server through the commit-log import path.
+
 ---
 
 > [!IMPORTANT]

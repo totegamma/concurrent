@@ -34,7 +34,7 @@ type SubscriberClient interface {
 	Realtime(ctx context.Context, fqdn string) (*websocket.Conn, error)
 }
 
-// CachePurger drops caches that are only valid while an upstream subscription
+// CachePurger drops caches that are only valid while a peer subscription
 // is open. The subscriber invokes it on both subscription edges: on close
 // (depth 1) because the cache stops being maintained, and on open (depth 2,
 // covering a gap that started in the previous chunk period) because whatever
@@ -67,7 +67,7 @@ type PubSub interface {
 	SubscribeAll(ctx context.Context, response chan<- concrnt.Event) error
 }
 
-// LeaderSubscriber is the Subscriber that actually dials upstream websockets.
+// LeaderSubscriber is the Subscriber that actually dials peer websockets.
 // It must run on exactly one replica of the cluster (the leader): Start is
 // called once per lead term.
 //
@@ -75,7 +75,7 @@ type PubSub interface {
 //
 //   - The keeper's working demand (intent): session clients (Clients), cache
 //     keep-alive clients (keepAlive), and every peer replica's local demand
-//     polled once per tick (pollPeerDemand). This decides which upstream
+//     polled once per tick (pollPeerDemand). This decides which peer
 //     subscriptions to open and close.
 //
 //   - The served aggregate (fact): what CurrentSubscriptions answers to
@@ -101,7 +101,7 @@ type LeaderSubscriber struct {
 	peerDemand map[string][]string // last known demand per peer, keyed by peer base URL; membership pruned by discovery, not by time
 
 	// localSeen marks prefixes that recently resolved to this host's own
-	// FQDN. They need no upstream connection — local events always reach
+	// FQDN. They need no peer connection — local events always reach
 	// redis through the delivery path and the cache updater maintains their
 	// cached chunks — so they count as servable in CurrentSubscriptions.
 	// Entries are refreshed by every ensure and expired by the keeper.
@@ -163,7 +163,7 @@ func (s *LeaderSubscriber) SetCachePurger(p CachePurger) {
 	s.mu.Unlock()
 }
 
-// OpenPrefixes reports the union of prefixes whose upstream connection is
+// OpenPrefixes reports the union of prefixes whose peer connection is
 // currently established (as opposed to merely demanded or still dialing).
 func (s *LeaderSubscriber) OpenPrefixes() []string {
 	s.mu.Lock()
@@ -186,7 +186,7 @@ func (s *LeaderSubscriber) OpenPrefixes() []string {
 	return prefixes
 }
 
-// ConnectionCounts reports the upstream hosts this leader tracks (desired:
+// ConnectionCounts reports the peer hosts this leader tracks (desired:
 // demanded, whether open, dialing or awaiting repair) and how many of them
 // have an established websocket (current). Both are 0 while not leading.
 func (s *LeaderSubscriber) ConnectionCounts() (desired int, current int) {
@@ -218,7 +218,7 @@ func (s *LeaderSubscriber) RegisterClient(client SubscribeClient) string {
 }
 
 // RegisterKeepAliveClient adds a source of cache keep-alive demand: its
-// prefixes keep upstream subscriptions open (so an established cache keeps
+// prefixes keep peer subscriptions open (so an established cache keeps
 // being maintained) but are excluded from the served aggregate. Serving them
 // would let reads re-cache new latest chunks, which feeds the keep-alive
 // again — a loop that would hold every once-read timeline open forever.
@@ -238,7 +238,7 @@ func (s *LeaderSubscriber) RegisterKeepAliveClient(client SubscribeClient) strin
 // CurrentSubscriptions reports the cluster-wide set of prefixes whose latest
 // chunks are actually being maintained right now: session demand (local
 // clients plus the peer-demand cache) intersected with the prefixes whose
-// upstream connection is open or which are local to this host. Everything is
+// peer connection is open or which are local to this host. Everything is
 // answered from in-memory state — no network I/O — so workers polling this
 // over HTTP on every chunkline cache check stay cheap, and it can never
 // over-report a prefix whose dial is failing.
@@ -528,7 +528,7 @@ func (s *LeaderSubscriber) closeAllSubscriptions(ctx context.Context) {
 	)
 }
 
-// EnsureSubscriptions makes sure an upstream subscription exists for every
+// EnsureSubscriptions makes sure a peer subscription exists for every
 // given prefix. The caller's ctx bounds only host resolution; connections are
 // bound to the lead context captured at Start, so an ensure forwarded over
 // HTTP does not tear its connection down when the request ends.
@@ -569,7 +569,7 @@ func (s *LeaderSubscriber) EnsureSubscriptions(ctx context.Context, prefixes []s
 		}
 
 		if host == s.Config.FQDN {
-			// local prefix: no upstream connection needed — local events
+			// local prefix: no peer connection needed — local events
 			// always reach redis via the delivery path and the cache updater
 			// maintains their cached chunks, so mark it directly servable
 			s.mu.Lock()

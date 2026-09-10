@@ -15,6 +15,7 @@ import (
 
 	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/internal/domain"
+	"github.com/concrnt/concrnt/internal/infra/push"
 	"github.com/concrnt/concrnt/schemas"
 )
 
@@ -180,10 +181,12 @@ func (r *NotificationReactor) runWorker(ctx context.Context, sub domain.Notifica
 
 			resp, err := webpush.SendNotification(payload, &subscription, &r.opts)
 			if err != nil {
+				push.RecordSend(push.KindNotification, 0, err)
 				slog.Error("failed to send notification", slog.String("error", err.Error()))
 				r.releaseClaim(ctx, claimedKey)
 				continue
 			}
+			push.RecordSend(push.KindNotification, resp.StatusCode, nil)
 
 			if resp.StatusCode != httpStatusCreated {
 				body, readErr := io.ReadAll(resp.Body)

@@ -24,8 +24,8 @@ type AggregateDemand interface {
 	CurrentSubscriptions() []string
 }
 
-// Ensurer requests that upstream subscriptions cover the given prefixes; only
-// meaningful on the leader, which is the only replica that dials upstream.
+// Ensurer requests that peer subscriptions cover the given prefixes; only
+// meaningful on the leader, which is the only replica that dials peers.
 type Ensurer interface {
 	EnsureSubscriptions(ctx context.Context, prefixes []string)
 }

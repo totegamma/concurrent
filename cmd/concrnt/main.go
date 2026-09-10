@@ -18,6 +18,7 @@ import (
 	"github.com/labstack/echo/v4"
 	echomiddleware "github.com/labstack/echo/v4/middleware"
 	"github.com/prometheus/client_golang/prometheus"
+	"github.com/prometheus/client_golang/prometheus/collectors"
 	"github.com/xinguang/go-recaptcha"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/labstack/echo/otelecho"
 	"go.opentelemetry.io/otel/trace"
@@ -290,7 +291,7 @@ func main() {
 	leaderSub.RegisterClient(subscriptionUC)
 
 	// sampled at scrape time; the replica-local client socket count, and the
-	// federation subscriber's upstream hosts (non-zero only on the leader)
+	// federation subscriber's peer hosts (non-zero only on the leader)
 	prometheus.MustRegister(prometheus.NewGaugeFunc(prometheus.GaugeOpts{
 		Namespace: "concrnt",
 		Name:      "realtime_connections",
@@ -298,19 +299,19 @@ func main() {
 	}, func() float64 {
 		return float64(subscriptionUC.SessionCount())
 	}))
-	upstreamOpts := func(state string) prometheus.GaugeOpts {
+	peerOpts := func(state string) prometheus.GaugeOpts {
 		return prometheus.GaugeOpts{
 			Namespace:   "concrnt",
-			Name:        "upstream_connections",
-			Help:        "Upstream realtime hosts tracked by the federation subscriber: desired (demanded) vs current (websocket established).",
+			Name:        "peer_connections",
+			Help:        "Peer realtime hosts the federation subscriber keeps websockets to: desired (demanded) vs current (websocket established).",
 			ConstLabels: prometheus.Labels{"state": state},
 		}
 	}
-	prometheus.MustRegister(prometheus.NewGaugeFunc(upstreamOpts("desired"), func() float64 {
+	prometheus.MustRegister(prometheus.NewGaugeFunc(peerOpts("desired"), func() float64 {
 		desired, _ := leaderSub.ConnectionCounts()
 		return float64(desired)
 	}))
-	prometheus.MustRegister(prometheus.NewGaugeFunc(upstreamOpts("current"), func() float64 {
+	prometheus.MustRegister(prometheus.NewGaugeFunc(peerOpts("current"), func() float64 {
 		_, current := leaderSub.ConnectionCounts()
 		return float64(current)
 	}))
@@ -340,7 +341,7 @@ func main() {
 	}
 
 	// singleton workers run only while this replica holds the leadership: the
-	// federation subscriber (one upstream websocket per remote host for the
+	// federation subscriber (one peer websocket per remote host for the
 	// whole cluster), the chunkline cache updater, and the push reactor
 	go elector.Run(ctx, func(leadCtx context.Context) {
 		leaderSub.Start(leadCtx)
@@ -425,6 +426,10 @@ func main() {
 	if err != nil {
 		panic("failed to get sql.DB: " + err.Error())
 	}
+
+	// connection pool usage (go_sql_*): the pool is small, so saturation
+	// and wait time are the first thing to check when everything gets slow
+	prometheus.MustRegister(collectors.NewDBStatsCollector(sqlDB, "concrnt"))
 
 	internal.GET("/ready", func(c echo.Context) (err error) {
 		if !ready.Load() {

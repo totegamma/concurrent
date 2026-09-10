@@ -9,7 +9,7 @@ type LeaderState interface {
 }
 
 // SubscriberManager is the Subscriber the rest of the application talks to.
-// It delegates every call to LeaderSubscriber (which actually dials upstream
+// It delegates every call to LeaderSubscriber (which actually dials peers
 // websockets) while this replica leads, and to WorkerSubscriber (which only
 // relays to the leader over HTTP) otherwise. In standalone mode elector is an
 // AlwaysLeader, so every call goes to LeaderSubscriber.

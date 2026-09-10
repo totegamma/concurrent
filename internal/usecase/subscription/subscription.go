@@ -9,7 +9,7 @@ import (
 	"github.com/concrnt/concrnt/internal/worker"
 )
 
-// Ensurer requests that upstream subscriptions cover the given
+// Ensurer requests that peer subscriptions cover the given
 // prefixes. Implemented by *worker.SubscriberManager, which runs the request
 // locally on the leader or forwards it to the current cluster leader.
 type Ensurer interface {

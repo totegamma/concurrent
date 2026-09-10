@@ -88,7 +88,7 @@ func (g *ChunklineGateway) QueryDescending(ctx context.Context, uris []string, u
 	return g.resolver.QueryDescending(ctx, uris, until, limit)
 }
 
-// OpenSubscriptions reports the prefixes whose upstream subscription is
+// OpenSubscriptions reports the prefixes whose peer subscription is
 // currently established (as opposed to merely demanded).
 type OpenSubscriptions interface {
 	OpenPrefixes() []string
@@ -838,7 +838,7 @@ func (r *resolver) LoadChunkBodies(ctx context.Context, query map[string]string)
 }
 
 func (r *resolver) CurrentSubscriptions() []string {
-	// start from the prefixes whose upstream subscription is actually open:
+	// start from the prefixes whose peer subscription is actually open:
 	// "open + latest chunk cached => keep" is self-sustaining regardless of
 	// which replica wrote the cache, whereas demand-based input would drop
 	// the timeline in the same tick its demand lapses, orphaning the cache
@@ -980,7 +980,7 @@ func (r *resolver) applyEventToCache(ctx context.Context, event concrnt.Event) {
 }
 
 // PurgeLatest drops the cached latest chunk (and, for depth 2, the previous
-// one) of each timeline. The subscriber calls this when an upstream
+// one) of each timeline. The subscriber calls this when a peer
 // subscription opens or closes: a cached latest chunk is only valid while the
 // leader is receiving events for it, so both edges invalidate whatever was
 // cached before or during the unsubscribed gap.

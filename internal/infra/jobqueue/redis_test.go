@@ -10,6 +10,7 @@ import (
 
 	"github.com/concrnt/concrnt/internal/infra/jobqueue"
 	"github.com/concrnt/concrnt/internal/testutil"
+	promtestutil "github.com/prometheus/client_golang/prometheus/testutil"
 )
 
 type testPayload struct {
@@ -107,6 +108,14 @@ func TestRedisJobQueue_RetryThenDeadLetter(t *testing.T) {
 	// The 3rd failure dead-letters synchronously inside process(); give it a
 	// moment to land before asserting on the DLQ.
 	time.Sleep(200 * time.Millisecond)
+
+	// two rescheduled attempts, then the third dead-letters
+	if got := promtestutil.ToFloat64(jobqueue.JobsProcessedForTest("test", "retry")); got != 2 {
+		t.Fatalf("jobs_total{type=test,result=retry} = %v, want 2", got)
+	}
+	if got := promtestutil.ToFloat64(jobqueue.JobsProcessedForTest("test", "dlq")); got != 1 {
+		t.Fatalf("jobs_total{type=test,result=dlq} = %v, want 1", got)
+	}
 
 	n, err := q.ReinjectDLQ(context.Background())
 	if err != nil {

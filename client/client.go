@@ -27,6 +27,7 @@ import (
 	"github.com/concrnt/concrnt/schemas"
 	"github.com/gorilla/websocket"
 	"github.com/patrickmn/go-cache"
+	"github.com/prometheus/client_golang/prometheus"
 )
 
 var tracer = otel.Tracer("client")
@@ -61,8 +62,24 @@ func New(defaultResolver string) *Client {
 		remappings:      make(map[string]*url.URL),
 	}
 	httpClient.Transport = otelhttp.NewTransport(c)
+	// a process normally has exactly one federation client; a second one
+	// (tests) must not panic on the duplicate collector, so ignore that error
+	_ = prometheus.Register(newPeerOfflineCollector(c))
 	go c.UpKeeper()
 	return c
+}
+
+// offlineHosts lists the peer hosts currently considered offline.
+func (c *Client) offlineHosts() []string {
+	c.onlineMu.RLock()
+	defer c.onlineMu.RUnlock()
+	hosts := make([]string, 0, len(c.lastFailed))
+	for host, lastFailed := range c.lastFailed {
+		if !lastFailed.IsZero() {
+			hosts = append(hosts, host)
+		}
+	}
+	return hosts
 }
 
 func (c *Client) SetUserAgent(software, version string) {
@@ -211,6 +228,9 @@ func (c *Client) RoundTrip(req *http.Request) (*http.Response, error) {
 	ctx, span := tracer.Start(req.Context(), "HTTP "+req.Method)
 	defer span.End()
 
+	peerHost := req.Host
+	start := time.Now()
+
 	if remap, ok := c.remappings[req.Host]; ok {
 		req.Host = remap.Host
 		req.URL.Host = remap.Host
@@ -224,7 +244,13 @@ func (c *Client) RoundTrip(req *http.Request) (*http.Response, error) {
 
 	otel.GetTextMapPropagator().Inject(ctx, propagation.HeaderCarrier(req.Header))
 
-	return http.DefaultTransport.RoundTrip(req)
+	resp, err := http.DefaultTransport.RoundTrip(req)
+	code := 0
+	if resp != nil {
+		code = resp.StatusCode
+	}
+	observePeerRequest(peerHost, code, err, time.Since(start).Seconds())
+	return resp, err
 }
 
 func (c *Client) resolveResolver(ctx context.Context, resolver string) (string, error) {

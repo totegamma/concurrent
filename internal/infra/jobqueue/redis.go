@@ -164,12 +164,16 @@ func (q *RedisJobQueue) Enqueue(ctx context.Context, jobType string, payload any
 	if err != nil {
 		return err
 	}
-	return q.enqueueRaw(ctx, Job{
+	err = q.enqueueRaw(ctx, Job{
 		ID:        uuid.NewString(),
 		Type:      jobType,
 		Payload:   raw,
 		CreatedAt: time.Now(),
 	})
+	if err == nil {
+		jobsEnqueued.WithLabelValues(jobType).Inc()
+	}
+	return err
 }
 
 func (q *RedisJobQueue) enqueueRaw(ctx context.Context, job Job) error {
@@ -216,6 +220,12 @@ func (q *RedisJobQueue) Run(ctx context.Context) error {
 	go func() {
 		defer wg.Done()
 		q.reclaimLoop(ctx)
+	}()
+
+	wg.Add(1)
+	go func() {
+		defer wg.Done()
+		q.statsLoop(ctx)
 	}()
 
 	<-ctx.Done()
@@ -353,6 +363,7 @@ func (q *RedisJobQueue) process(ctx context.Context, msg redis.XMessage) {
 	var job Job
 	if err := json.Unmarshal([]byte(raw), &job); err != nil {
 		slog.Error("job queue: dropping unparseable job", slog.String("streamId", msg.ID), slog.String("error", err.Error()))
+		jobsProcessed.WithLabelValues("unparseable", resultDLQ).Inc()
 		q.deadLetterRaw(raw)
 		q.ackAndDel(msg.ID)
 		return
@@ -361,13 +372,16 @@ func (q *RedisJobQueue) process(ctx context.Context, msg redis.XMessage) {
 	var err error
 	if handler, ok := q.handlerFor(job.Type); ok {
 		handlerCtx, cancel := context.WithTimeout(ctx, handlerTimeout)
+		start := time.Now()
 		err = handler(handlerCtx, job.Payload)
+		jobDuration.WithLabelValues(job.Type).Observe(time.Since(start).Seconds())
 		cancel()
 	} else {
 		err = fmt.Errorf("job queue: no handler registered for job type %q", job.Type)
 	}
 
 	if err == nil {
+		jobsProcessed.WithLabelValues(job.Type, resultOK).Inc()
 		q.ackAndDel(msg.ID)
 		return
 	}
@@ -386,11 +400,13 @@ func (q *RedisJobQueue) process(ctx context.Context, msg redis.XMessage) {
 	if job.Attempt >= q.maxAttempts {
 		slog.Error("job queue: exhausted retries, moving to DLQ",
 			slog.String("jobId", job.ID), slog.String("type", job.Type), slog.Int("attempt", job.Attempt), slog.String("error", err.Error()))
+		jobsProcessed.WithLabelValues(job.Type, resultDLQ).Inc()
 		q.deadLetterJob(job)
 		q.ackAndDel(msg.ID)
 		return
 	}
 
+	jobsProcessed.WithLabelValues(job.Type, resultRetry).Inc()
 	q.scheduleRetry(job)
 	q.ackAndDel(msg.ID)
 }

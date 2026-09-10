@@ -27,7 +27,7 @@ type EnsureRequest struct {
 }
 
 // WorkerSubscriber is the Subscriber that runs on non-leader replicas: it
-// never dials an upstream websocket itself, only relays subscription demand
+// never dials a peer websocket itself, only relays subscription demand
 // to whichever replica currently holds cluster leadership.
 type WorkerSubscriber struct {
 	elector LeaderLocator

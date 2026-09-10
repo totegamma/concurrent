@@ -18,7 +18,7 @@ type fakeLeaderState struct{ leader bool }
 func (f fakeLeaderState) IsLeader() bool { return f.leader }
 
 // While leading, the manager must delegate to the real LeaderSubscriber
-// (which dials upstream), not forward over HTTP.
+// (which dials peers), not forward over HTTP.
 func TestSubscriberManagerDelegatesToLeaderWhenLeading(t *testing.T) {
 	ws := newWSTestServer(t)
 	fake := &fakeSubClient{ws: ws}

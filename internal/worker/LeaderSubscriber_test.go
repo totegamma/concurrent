@@ -772,7 +772,7 @@ func TestUnopenedDemandNotServed(t *testing.T) {
 	}
 }
 
-// Prefixes resolving to this host need no upstream connection (local events
+// Prefixes resolving to this host need no peer connection (local events
 // reach redis via the delivery path and the cache updater maintains them), so
 // they are served as soon as demand exists.
 func TestLocalPrefixServed(t *testing.T) {

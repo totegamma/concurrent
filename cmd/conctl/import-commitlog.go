@@ -15,7 +15,6 @@ import (
 
 	"github.com/concrnt/concrnt"
 	"github.com/concrnt/concrnt/internal/domain"
-	"github.com/concrnt/concrnt/internal/infra/repository/postgres"
 	"github.com/concrnt/concrnt/jwt"
 )
 
@@ -48,7 +47,7 @@ var importCommitlogCmd = &cobra.Command{
 		"before the records that reference them).\n" +
 		"Local-entity registration state (entity_metas: inviter/info) lives outside the commit\n" +
 		"log; if a [metas-file] is given (as produced by dump-commitlog) it is restored first,\n" +
-		"directly against Postgres. Import is idempotent: commit ids are content+time derived\n" +
+		"directly against the database. Import is idempotent: commit ids are content+time derived\n" +
 		"and entity commits are accept-if-newer, so re-running is safe.",
 	Args: cobra.RangeArgs(1, 2),
 	RunE: withOperationContext(func(cmd *cobra.Command, args []string, op *operationContext) error {
@@ -70,10 +69,10 @@ var importCommitlogCmd = &cobra.Command{
 
 		var metaOK, entityOK, otherOK, failed int
 
-		// 1. Restore entity metas first (directly against Postgres) so local
+		// 1. Restore entity metas first (directly against the database) so local
 		//    entity commits pass their registration check on the server.
 		if metasPath != "" {
-			residenceRepo := postgres.NewResidenceRepository(op.DB, op.Client, op.GlobalConfig)
+			residenceRepo := op.Repos.Residence
 			f, err := os.Open(metasPath)
 			if err != nil {
 				return fmt.Errorf("failed to open metas file: %w", err)

@@ -115,6 +115,17 @@ func main() {
 	// middleware, so probe and coordination traffic never shows up in them
 	e.Use(echoprometheus.NewMiddlewareWithConfig(echoprometheus.MiddlewareConfig{
 		Namespace: "concrnt",
+		LabelFuncs: map[string]echoprometheus.LabelValueFunc{
+			// which service answered: proxied requests carry the target
+			// service's name in the cc-service header set by rest.Proxy;
+			// everything else is handled in-process
+			"service": func(c echo.Context, err error) string {
+				if service := c.Response().Header().Get("cc-service"); service != "" {
+					return service
+				}
+				return "concrnt"
+			},
+		},
 		Skipper: func(c echo.Context) bool {
 			// long-lived websocket upgrades would skew the duration histogram
 			return c.Request().Header.Get("Upgrade") == "websocket"

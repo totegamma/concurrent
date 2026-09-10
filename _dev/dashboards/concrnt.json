@@ -560,12 +560,165 @@
       "type": "timeseries"
     },
     {
+      "datasource": {
+        "type": "prometheus",
+        "uid": "${Prometheus}"
+      },
+      "fieldConfig": {
+        "defaults": {
+          "color": {
+            "mode": "thresholds"
+          },
+          "custom": {
+            "align": "auto",
+            "cellOptions": {
+              "type": "auto"
+            },
+            "inspect": false
+          },
+          "mappings": [],
+          "thresholds": {
+            "mode": "absolute",
+            "steps": [
+              {
+                "color": "green",
+                "value": null
+              },
+              {
+                "color": "red",
+                "value": 80
+              }
+            ]
+          }
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "p90"
+            },
+            "properties": [
+              {
+                "id": "unit",
+                "value": "s"
+              },
+              {
+                "id": "decimals",
+                "value": 3
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "gauge",
+                  "mode": "basic"
+                }
+              },
+              {
+                "id": "custom.width",
+                "value": 220
+              },
+              {
+                "id": "min",
+                "value": 0
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "method"
+            },
+            "properties": [
+              {
+                "id": "custom.width",
+                "value": 90
+              }
+            ]
+          }
+        ]
+      },
+      "gridPos": {
+        "h": 11,
+        "w": 24,
+        "x": 0,
+        "y": 18
+      },
+      "id": 39,
+      "options": {
+        "cellHeight": "sm",
+        "footer": {
+          "countRows": false,
+          "fields": "",
+          "reducer": [
+            "sum"
+          ],
+          "show": false
+        },
+        "showHeader": true,
+        "sortBy": [
+          {
+            "desc": true,
+            "displayName": "p90"
+          }
+        ]
+      },
+      "pluginVersion": "10.2.3",
+      "targets": [
+        {
+          "datasource": {
+            "type": "prometheus",
+            "uid": "${Prometheus}"
+          },
+          "editorMode": "code",
+          "exemplar": false,
+          "expr": "topk(10, histogram_quantile(0.9, sum by (method, url, le) (rate(concrnt_echo_request_duration_seconds_bucket{instance=~\"$instance\"}[$__rate_interval]))) > 0)",
+          "format": "table",
+          "instant": true,
+          "legendFormat": "__auto",
+          "range": false,
+          "refId": "A"
+        }
+      ],
+      "title": "Slowest paths (p90, top 10)",
+      "transformations": [
+        {
+          "id": "organize",
+          "options": {
+            "excludeByName": {
+              "Time": true
+            },
+            "indexByName": {
+              "method": 0,
+              "url": 1,
+              "Value": 2
+            },
+            "renameByName": {
+              "Value": "p90",
+              "url": "path"
+            }
+          }
+        },
+        {
+          "id": "sortBy",
+          "options": {
+            "sort": [
+              {
+                "desc": true,
+                "field": "p90"
+              }
+            ]
+          }
+        }
+      ],
+      "type": "table"
+    },
+    {
       "collapsed": false,
       "gridPos": {
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 18
+        "y": 29
       },
       "id": 9,
       "panels": [],
@@ -602,7 +755,7 @@
         "h": 8,
         "w": 4,
         "x": 0,
-        "y": 19
+        "y": 30
       },
       "id": 35,
       "options": {
@@ -667,7 +820,7 @@
       "gridPos": {
         "x": 4,
         "w": 8,
-        "y": 19,
+        "y": 30,
         "h": 8
       },
       "id": 36,
@@ -769,7 +922,7 @@
       "gridPos": {
         "x": 12,
         "w": 12,
-        "y": 19,
+        "y": 30,
         "h": 8
       },
       "id": 37,
@@ -869,7 +1022,7 @@
       "gridPos": {
         "x": 0,
         "w": 24,
-        "y": 27,
+        "y": 38,
         "h": 10
       },
       "id": 38,
@@ -924,7 +1077,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 37
+        "y": 48
       },
       "id": 11,
       "panels": [],
@@ -996,7 +1149,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 38
+        "y": 49
       },
       "id": 12,
       "options": {
@@ -1091,7 +1244,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 38
+        "y": 49
       },
       "id": 10,
       "options": {
@@ -1128,7 +1281,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 46
+        "y": 57
       },
       "id": 14,
       "panels": [],
@@ -1161,7 +1314,7 @@
         "h": 6,
         "w": 6,
         "x": 0,
-        "y": 47
+        "y": 58
       },
       "id": 13,
       "options": {
@@ -1224,7 +1377,7 @@
         "h": 6,
         "w": 6,
         "x": 6,
-        "y": 47
+        "y": 58
       },
       "id": 23,
       "options": {
@@ -1288,7 +1441,7 @@
         "h": 6,
         "w": 6,
         "x": 12,
-        "y": 47
+        "y": 58
       },
       "id": 24,
       "options": {
@@ -1352,7 +1505,7 @@
         "h": 6,
         "w": 6,
         "x": 18,
-        "y": 47
+        "y": 58
       },
       "id": 25,
       "options": {
@@ -1455,7 +1608,7 @@
         "h": 8,
         "w": 24,
         "x": 0,
-        "y": 53
+        "y": 64
       },
       "id": 15,
       "options": {
@@ -1493,7 +1646,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 61
+        "y": 72
       },
       "id": 16,
       "panels": [],
@@ -1534,7 +1687,7 @@
         "h": 7,
         "w": 8,
         "x": 0,
-        "y": 62
+        "y": 73
       },
       "id": 20,
       "links": [],
@@ -1649,7 +1802,7 @@
         "h": 7,
         "w": 8,
         "x": 8,
-        "y": 62
+        "y": 73
       },
       "id": 22,
       "links": [],
@@ -1750,7 +1903,7 @@
         "h": 7,
         "w": 8,
         "x": 16,
-        "y": 62
+        "y": 73
       },
       "id": 21,
       "links": [],
@@ -1850,7 +2003,7 @@
         "h": 8,
         "w": 12,
         "x": 0,
-        "y": 69
+        "y": 80
       },
       "id": 18,
       "links": [],
@@ -1956,7 +2109,7 @@
         "h": 8,
         "w": 12,
         "x": 12,
-        "y": 69
+        "y": 80
       },
       "id": 17,
       "links": [],
@@ -2002,7 +2155,7 @@
         "h": 1,
         "w": 24,
         "x": 0,
-        "y": 77
+        "y": 88
       },
       "id": 26,
       "panels": [],
@@ -2038,7 +2191,7 @@
         "h": 6,
         "w": 4,
         "x": 0,
-        "y": 78
+        "y": 89
       },
       "hideTimeOverride": true,
       "id": 28,
@@ -2111,7 +2264,7 @@
         "h": 6,
         "w": 5,
         "x": 4,
-        "y": 78
+        "y": 89
       },
       "hideTimeOverride": true,
       "id": 27,
@@ -2184,7 +2337,7 @@
         "h": 6,
         "w": 5,
         "x": 9,
-        "y": 78
+        "y": 89
       },
       "id": 31,
       "links": [],
@@ -2255,7 +2408,7 @@
         "h": 6,
         "w": 5,
         "x": 14,
-        "y": 78
+        "y": 89
       },
       "id": 32,
       "options": {
@@ -2321,7 +2474,7 @@
         "h": 6,
         "w": 5,
         "x": 19,
-        "y": 78
+        "y": 89
       },
       "id": 33,
       "options": {
@@ -2423,7 +2576,7 @@
         "h": 7,
         "w": 24,
         "x": 0,
-        "y": 84
+        "y": 95
       },
       "id": 29,
       "links": [],

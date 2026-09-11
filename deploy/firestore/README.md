@@ -27,6 +27,8 @@ enforce indexes, so deploy them first and wait for `READY`:
 ```sh
 cd deploy/firestore
 firebase deploy --only firestore:indexes --project "$PROJECT"   # add "database" to firebase.json for a named DB
+# or, without the Firebase CLI:
+PROJECT="$PROJECT" DATABASE="$DB" sh apply-indexes.sh
 gcloud firestore indexes composite list --project "$PROJECT" --database="$DB"
 ```
 

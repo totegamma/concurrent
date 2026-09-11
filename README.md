@@ -85,6 +85,13 @@ config. `cmd/concrnt/Dockerfile` is the canonical build recipe used by CI
 (`.github/workflows/docker-publish.yml`), which publishes multi-arch images on `v*.*.*`
 tags and pushes to `main`.
 
+Tags also run `.github/workflows/release.yml`, which uses GoReleaser (`.goreleaser.yaml`)
+to attach linux amd64/arm64 tarballs (concrnt + conctl + k8s-elector) and `concrnt`
+deb/rpm packages (server + CLI, systemd unit, `/etc/concrnt/config/config.yaml`) to the
+GitHub Release. Releases created from the GitHub UI keep their hand-written notes; only
+the assets are added. `goreleaser release --snapshot --clean` reproduces the artifacts
+locally under `dist/`.
+
 ### Architecture
 
 The server (`cmd/concrnt/main.go`) is a single Echo HTTP process wired up by hand in

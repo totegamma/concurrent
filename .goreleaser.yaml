@@ -1,0 +1,121 @@
+# GoReleaser configuration. Run by .github/workflows/release.yml on every
+# v*.*.* tag: cross-compiles the binaries, packs tarballs and deb/rpm
+# packages, and attaches everything to the GitHub Release for the tag.
+#
+# local dry run (no publish):  goreleaser release --snapshot --clean
+version: 2
+
+project_name: concrnt
+
+before:
+  hooks:
+    - go mod download
+    - go mod verify
+
+env:
+  - CGO_ENABLED=0
+
+builds:
+  # same -X wiring as cmd/concrnt/Dockerfile so `concrnt` reports its version
+  # identically whether it came from ghcr or from a release asset.
+  # GO_VERSION / BUILD_MACHINE are exported by the workflow.
+  - id: concrnt
+    main: ./cmd/concrnt
+    binary: concrnt
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: &ldflags
+      - -s -w
+      - -X main.version={{ .Tag }}
+      - '-X "main.buildMachine={{ envOrDefault "BUILD_MACHINE" "goreleaser" }}"'
+      - '-X "main.buildTime={{ .Date }}"'
+      - '-X "main.goVersion={{ envOrDefault "GO_VERSION" "unknown" }}"'
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+  - id: conctl
+    main: ./cmd/conctl
+    binary: conctl
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: *ldflags
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+  - id: k8s-elector
+    main: ./cmd/k8s-elector
+    binary: k8s-elector
+    goos: [linux]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: *ldflags
+    mod_timestamp: "{{ .CommitTimestamp }}"
+
+archives:
+  # concrnt_<version>_linux_<arch>.tar.gz: all three binaries + docs
+  - id: concrnt
+    ids: [concrnt, conctl, k8s-elector]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    files:
+      - LICENSE
+      - README.md
+      - config.example.yaml
+
+nfpms:
+  # concrnt_<version>_linux_<arch>.deb / concrnt-<version>.<arch>.rpm
+  # server + admin CLI, systemd unit, and the example config installed as
+  # the live config (marked noreplace so upgrades never clobber edits).
+  # k8s-elector is deliberately left out: it only makes sense inside a Pod.
+  - id: concrnt
+    package_name: concrnt
+    ids: [concrnt, conctl]
+    vendor: concrnt
+    homepage: https://github.com/concrnt/concrnt
+    maintainer: totegamma <github@gammalab.net>
+    description: |-
+      concrnt decentralized SNS server.
+      Ships the concrnt daemon and the conctl admin CLI.
+    license: MIT
+    formats: [deb, rpm]
+    bindir: /usr/bin
+    contents:
+      - src: _packaging/concrnt.service
+        dst: /usr/lib/systemd/system/concrnt.service
+      # concrnt reads every file under /etc/concrnt/config, so nothing but
+      # real config may live there (no *.example siblings).
+      - src: config.example.yaml
+        dst: /etc/concrnt/config/config.yaml
+        type: config|noreplace
+        file_info:
+          mode: 0640
+      # served as /static/tos, /static/code-of-conduct, /static/register-template
+      - dst: /etc/concrnt/static
+        type: dir
+      - src: LICENSE
+        dst: /usr/share/doc/concrnt/LICENSE
+    scripts:
+      postinstall: _packaging/postinstall.sh
+      preremove: _packaging/preremove.sh
+
+checksum:
+  name_template: checksums.txt
+
+snapshot:
+  version_template: "{{ incpatch .Version }}-next"
+
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - "^fix ci"
+      - "^update workflow"
+
+release:
+  github:
+    owner: concrnt
+    name: concrnt
+  # releases are usually created from the GitHub UI with hand-written notes
+  # (which is what pushes the tag); keep that name/body and only add assets.
+  mode: keep-existing
+  # v2.0.0-beta13 etc. become pre-releases, matching the docker `latest` rule
+  prerelease: auto

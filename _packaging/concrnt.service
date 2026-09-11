@@ -1,0 +1,23 @@
+[Unit]
+Description=concrnt server
+Documentation=https://github.com/concrnt/concrnt
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=concrnt
+Group=concrnt
+# directory of yaml files merged together (config.yaml, secret.yaml, ...)
+Environment=CONCRNT_CONFIG=/etc/concrnt/config
+ExecStart=/usr/bin/concrnt
+Restart=on-failure
+RestartSec=5
+# concrnt writes nothing to disk; everything lives in postgres/redis
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

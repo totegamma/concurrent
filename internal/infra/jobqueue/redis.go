@@ -502,6 +502,13 @@ func (q *RedisJobQueue) ScanDLQ(ctx context.Context, fn func(DeadLetter) error) 
 	}
 }
 
+// PurgeDLQ removes every dead-letter entry that was dead-lettered before
+// the given time (stream ids are the XADD timestamp, so this is a MINID
+// trim) and returns how many were removed.
+func (q *RedisJobQueue) PurgeDLQ(ctx context.Context, before time.Time) (int64, error) {
+	return q.rdb.XTrimMinID(ctx, dlqStreamKey, strconv.FormatInt(before.UnixMilli(), 10)).Result()
+}
+
 // ReinjectDLQ re-enqueues every job currently in the dead-letter stream
 // (attempt counter and last error reset) and removes it from the DLQ.
 func (q *RedisJobQueue) ReinjectDLQ(ctx context.Context) (int, error) {

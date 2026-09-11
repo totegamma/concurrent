@@ -251,3 +251,41 @@ func TestRedisJobQueue_UnknownTypeIsRetried(t *testing.T) {
 	}
 	t.Fatal("job never reached the DLQ after exhausting retries")
 }
+
+// PurgeDLQ trims by dead-letter time: entries whose stream id timestamp is
+// before the cutoff go, the rest stay.
+func TestRedisJobQueue_PurgeDLQBefore(t *testing.T) {
+	rdb, cleanup := testutil.CreateRDB()
+	defer cleanup()
+
+	for _, id := range []string{"1000-0", "2000-0", "2000-1", "3000-0"} {
+		if err := rdb.XAdd(context.Background(), &redis.XAddArgs{
+			Stream: "jobqueue:dlq",
+			ID:     id,
+			Values: map[string]interface{}{"payload": `{"id":"` + id + `","type":"test","payload":{},"attempt":8,"createdAt":"2026-01-01T00:00:00Z"}`},
+		}).Err(); err != nil {
+			t.Fatalf("XAdd failed: %v", err)
+		}
+	}
+
+	q := jobqueue.NewRedisJobQueue(rdb, jobqueue.WithConsumerName("test-purge"))
+
+	deleted, err := q.PurgeDLQ(context.Background(), time.UnixMilli(2000))
+	if err != nil {
+		t.Fatalf("PurgeDLQ failed: %v", err)
+	}
+	if deleted != 1 {
+		t.Fatalf("PurgeDLQ deleted %d entries, want 1", deleted)
+	}
+
+	var remaining []string
+	if err := q.ScanDLQ(context.Background(), func(dl jobqueue.DeadLetter) error {
+		remaining = append(remaining, dl.StreamID)
+		return nil
+	}); err != nil {
+		t.Fatalf("ScanDLQ failed: %v", err)
+	}
+	if len(remaining) != 3 || remaining[0] != "2000-0" {
+		t.Fatalf("remaining DLQ entries = %v, want [2000-0 2000-1 3000-0]", remaining)
+	}
+}

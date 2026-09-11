@@ -461,6 +461,47 @@ func (q *RedisJobQueue) deadLetterRaw(payload string) {
 	}
 }
 
+// DeadLetter is one dead-letter stream entry as read back for inspection:
+// the stream id it sits under and the Job envelope it holds. Raw is set
+// instead of Job when the stored payload is not a valid envelope (see
+// process: an unparseable stream message is dead-lettered as-is).
+type DeadLetter struct {
+	StreamID string          `json:"streamId"`
+	Job      json.RawMessage `json:"job,omitempty"`
+	Raw      string          `json:"raw,omitempty"`
+}
+
+const dlqScanBatch = 1000
+
+// ScanDLQ walks the dead-letter stream oldest-first without modifying it,
+// calling fn for each entry; the first error fn returns stops the scan.
+func (q *RedisJobQueue) ScanDLQ(ctx context.Context, fn func(DeadLetter) error) error {
+	start := "-"
+	for {
+		entries, err := q.rdb.XRangeN(ctx, dlqStreamKey, start, "+", dlqScanBatch).Result()
+		if err != nil {
+			return err
+		}
+		if len(entries) == 0 {
+			return nil
+		}
+		for _, entry := range entries {
+			raw, _ := entry.Values["payload"].(string)
+			dl := DeadLetter{StreamID: entry.ID}
+			if json.Valid([]byte(raw)) {
+				dl.Job = json.RawMessage(raw)
+			} else {
+				dl.Raw = raw
+			}
+			if err := fn(dl); err != nil {
+				return err
+			}
+		}
+		// exclusive lower bound: resume after the last id of this batch
+		start = "(" + entries[len(entries)-1].ID
+	}
+}
+
 // ReinjectDLQ re-enqueues every job currently in the dead-letter stream
 // (attempt counter and last error reset) and removes it from the DLQ.
 func (q *RedisJobQueue) ReinjectDLQ(ctx context.Context) (int, error) {

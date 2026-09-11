@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"strconv"
 	"sync"
 	"testing"
 	"time"
@@ -11,6 +12,7 @@ import (
 	"github.com/concrnt/concrnt/internal/infra/jobqueue"
 	"github.com/concrnt/concrnt/internal/testutil"
 	promtestutil "github.com/prometheus/client_golang/prometheus/testutil"
+	"github.com/redis/go-redis/v9"
 )
 
 type testPayload struct {
@@ -117,12 +119,89 @@ func TestRedisJobQueue_RetryThenDeadLetter(t *testing.T) {
 		t.Fatalf("jobs_total{type=test,result=dlq} = %v, want 1", got)
 	}
 
+	var dead []jobqueue.DeadLetter
+	if err := q.ScanDLQ(context.Background(), func(dl jobqueue.DeadLetter) error {
+		dead = append(dead, dl)
+		return nil
+	}); err != nil {
+		t.Fatalf("ScanDLQ failed: %v", err)
+	}
+	if len(dead) != 1 {
+		t.Fatalf("ScanDLQ returned %d entries, want 1", len(dead))
+	}
+	var deadJob jobqueue.Job
+	if err := json.Unmarshal(dead[0].Job, &deadJob); err != nil {
+		t.Fatalf("ScanDLQ entry is not a job envelope: %v", err)
+	}
+	if deadJob.Type != "test" || deadJob.Attempt != 3 || deadJob.LastError != "boom" {
+		t.Fatalf("ScanDLQ entry = %+v, want type=test attempt=3 lastError=boom", deadJob)
+	}
+
 	n, err := q.ReinjectDLQ(context.Background())
 	if err != nil {
 		t.Fatalf("ReinjectDLQ failed: %v", err)
 	}
 	if n != 1 {
 		t.Fatalf("ReinjectDLQ moved %d jobs, want 1", n)
+	}
+
+	// scanning is read-only, so reinject saw exactly what scan reported
+	if err := q.ScanDLQ(context.Background(), func(jobqueue.DeadLetter) error {
+		return errors.New("DLQ should be empty after reinject")
+	}); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// ScanDLQ pages through the stream and reports entries that were never a
+// valid envelope as raw text rather than dropping them.
+func TestRedisJobQueue_ScanDLQPagesAndKeepsRaw(t *testing.T) {
+	rdb, cleanup := testutil.CreateRDB()
+	defer cleanup()
+
+	const total = 2500
+	for i := 0; i < total; i++ {
+		payload := `{"id":"job-` + strconv.Itoa(i) + `","type":"test","payload":{},"attempt":8,"createdAt":"2026-01-01T00:00:00Z"}`
+		if i == 7 {
+			payload = "not json"
+		}
+		if err := rdb.XAdd(context.Background(), &redis.XAddArgs{
+			Stream: "jobqueue:dlq",
+			Values: map[string]interface{}{"payload": payload},
+		}).Err(); err != nil {
+			t.Fatalf("XAdd failed: %v", err)
+		}
+	}
+
+	q := jobqueue.NewRedisJobQueue(rdb, jobqueue.WithConsumerName("test-scan"))
+
+	var dead []jobqueue.DeadLetter
+	if err := q.ScanDLQ(context.Background(), func(dl jobqueue.DeadLetter) error {
+		dead = append(dead, dl)
+		return nil
+	}); err != nil {
+		t.Fatalf("ScanDLQ failed: %v", err)
+	}
+	if len(dead) != total {
+		t.Fatalf("ScanDLQ returned %d entries, want %d", len(dead), total)
+	}
+	for i, dl := range dead {
+		if i > 0 && dl.StreamID <= dead[i-1].StreamID {
+			t.Fatalf("entry %d (%s) is not after entry %d (%s)", i, dl.StreamID, i-1, dead[i-1].StreamID)
+		}
+		if i == 7 {
+			if dl.Raw != "not json" || dl.Job != nil {
+				t.Fatalf("unparseable entry = %+v, want raw text", dl)
+			}
+			continue
+		}
+		var job jobqueue.Job
+		if err := json.Unmarshal(dl.Job, &job); err != nil {
+			t.Fatalf("entry %d is not a job envelope: %v", i, err)
+		}
+		if job.ID != "job-"+strconv.Itoa(i) {
+			t.Fatalf("entry %d has id %s, want job-%d", i, job.ID, i)
+		}
 	}
 }
 
